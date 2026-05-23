@@ -48,9 +48,9 @@ function MainView() {
     <div className="flex-1 min-h-0">
       <Group orientation="horizontal" className="h-full w-full flex">
         <Panel
-          defaultSize={28}
-          minSize={18}
-          maxSize={50}
+          defaultSize="28%"
+          minSize="18%"
+          maxSize="50%"
           className="border-r border-border bg-bg-secondary/50 flex flex-col min-h-0 min-w-0"
         >
           <TopicInspector />
