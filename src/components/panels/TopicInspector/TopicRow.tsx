@@ -48,6 +48,7 @@ export function TopicRow({ topic, index }: TopicRowProps) {
       className="topic-row flex items-center gap-3 opacity-0 animate-fade-in group cursor-pointer"
       style={{ animationDelay: `${Math.min(index * 0.04, 0.6)}s` }}
       id={`topic-row-${topic.name.replace(/\//g, '-')}`}
+      title={`${topic.name}\n${topic.type}`}
       onClick={() => handleOpen(defaultKind)}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {

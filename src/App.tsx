@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Group, Panel, Separator } from 'react-resizable-panels';
 import { useBagStore } from './store/bagStore';
 import { useLayoutStore } from './store/layoutStore';
 import { DropZone } from './components/layout/DropZone';
@@ -44,20 +45,29 @@ function MainView() {
   if (!bag) return null;
 
   return (
-    <div className="flex-1 flex min-h-0">
-      <aside className="w-[420px] border-r border-border flex flex-col min-h-0 bg-bg-secondary/50">
-        <TopicInspector />
-      </aside>
-
-      <main className="flex-1 flex min-h-0">
-        {panels.length === 0 ? (
-          <div className="flex-1 flex items-center justify-center p-8 bg-grid bg-gradient-radial">
-            <EmptyPanelState bag={bag} />
-          </div>
-        ) : (
-          <PanelGrid />
-        )}
-      </main>
+    <div className="flex-1 min-h-0">
+      <Group orientation="horizontal" className="h-full w-full flex">
+        <Panel
+          defaultSize={28}
+          minSize={18}
+          maxSize={50}
+          className="border-r border-border bg-bg-secondary/50 flex flex-col min-h-0 min-w-0"
+        >
+          <TopicInspector />
+        </Panel>
+        <Separator className="group relative w-1.5 cursor-col-resize flex-shrink-0">
+          <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-border group-hover:bg-accent-blue/60 transition-colors" />
+        </Separator>
+        <Panel className="flex flex-col min-h-0 min-w-0">
+          {panels.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center p-8 bg-grid bg-gradient-radial">
+              <EmptyPanelState bag={bag} />
+            </div>
+          ) : (
+            <PanelGrid />
+          )}
+        </Panel>
+      </Group>
     </div>
   );
 }
@@ -70,13 +80,15 @@ function EmptyPanelState({ bag }: { bag: BagSummary }) {
     <div className="text-center max-w-md animate-fade-in-up">
       <div className="mx-auto w-16 h-16 rounded-2xl bg-accent-emerald/10 flex items-center justify-center mb-6">
         <svg
-          className="w-8 h-8 text-accent-emerald"
-          fill="none"
+          className="w-9 h-9 text-accent-emerald"
           viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2}
+          fill="currentColor"
         >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <path
+            fillRule="evenodd"
+            clipRule="evenodd"
+            d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12zm13.36-1.814a.75.75 0 10-1.22-.872l-3.236 4.53-1.715-1.715a.75.75 0 10-1.06 1.06l2.25 2.25a.75.75 0 001.14-.094l3.84-5.16z"
+          />
         </svg>
       </div>
 
