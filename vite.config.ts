@@ -18,8 +18,8 @@ export default defineConfig({
   ],
 
   optimizeDeps: {
-    // CRITICAL: prevent Vite from trying to pre-bundle the WASM module
-    exclude: ['sql.js'],
+    // Include sql.js in pre-bundling so Vite wraps CJS → ESM properly
+    include: ['sql.js'],
   },
 
   server: {
