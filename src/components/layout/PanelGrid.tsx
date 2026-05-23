@@ -25,8 +25,9 @@ export function PanelGrid() {
     );
   }
 
-  // Equal initial sizes for the open panels.
-  const initialSize = 100 / panels.length;
+  // Equal initial sizes for the open panels — pass as a percent STRING since
+  // bare numbers are treated as pixels in react-resizable-panels v4.
+  const initialSize = `${100 / panels.length}%`;
   // Recompute layout key whenever the set of open panels changes so the
   // Group re-measures on every open/close.
   const groupKey = panels.map((p) => p.id).join('|');
@@ -53,12 +54,12 @@ function PanelFragment({
   isLast,
 }: {
   panel: PanelInstance;
-  initialSize: number;
+  initialSize: string;
   isLast: boolean;
 }) {
   return (
     <>
-      <Panel defaultSize={initialSize} minSize={15} className="flex flex-col min-w-0 min-h-0">
+      <Panel defaultSize={initialSize} minSize="15%" className="flex flex-col min-w-0 min-h-0">
         {renderPanel(panel)}
       </Panel>
       {!isLast && <ResizeHandle />}
