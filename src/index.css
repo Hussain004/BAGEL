@@ -45,13 +45,18 @@
   --shadow-panel: 0 4px 24px rgba(0, 0, 0, 0.4);
 }
 
-/* ── Base Styles ── */
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+/* ── Base Styles ──
+   Wrapped in @layer base so it doesn't outrank Tailwind's utility classes
+   (an unlayered `* { padding: 0 }` would beat `.pl-10` in the cascade and
+   silently break every padding utility we apply to native inputs/buttons). */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
 }
 
 html {

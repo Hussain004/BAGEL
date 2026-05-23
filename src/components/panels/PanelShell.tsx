@@ -42,7 +42,10 @@ export function PanelShell({
           style={{ backgroundColor: accentColor ?? '#94a3b8' }}
         />
         <span className="badge badge-slate flex-shrink-0">{KIND_LABELS[kind]}</span>
-        <span className="mono text-sm text-text-primary font-medium truncate flex-1">
+        <span
+          className="mono text-sm text-text-primary font-medium truncate flex-1"
+          title={topicName}
+        >
           {topicName}
         </span>
         <div className="flex items-center gap-1.5 flex-shrink-0 text-xs">
