@@ -36,6 +36,16 @@ export function disposeMcapCache(): void {
   cached = null;
 }
 
+/**
+ * Files larger than this skip the stream-reader fallback. The stream reader
+ * needs the whole file as a Uint8Array, which fails for multi-GB bags
+ * (browsers cap ArrayBuffer allocations around ~2 GB and `file.arrayBuffer()`
+ * rejects with "requested file could not be read" once memory is exhausted).
+ * The indexed reader does range reads via BlobReadable instead, so any file
+ * with a summary section still works regardless of size.
+ */
+const STREAM_FALLBACK_MAX_BYTES = 512 * 1024 * 1024;
+
 async function loadMcap(file: File): Promise<CachedMcap> {
   if (
     cached &&
@@ -45,9 +55,9 @@ async function loadMcap(file: File): Promise<CachedMcap> {
     return cached;
   }
 
-  const arrayBuffer = await file.arrayBuffer();
-  const blob = new Blob([arrayBuffer]);
-  const readable = new BlobReadable(blob);
+  // File extends Blob, so BlobReadable can range-read directly against it —
+  // no upfront arrayBuffer(), which would OOM on multi-GB files.
+  const readable = new BlobReadable(file);
 
   let reader: McapIndexedReader | null = null;
   let buffer: Uint8Array | null = null;
@@ -55,6 +65,7 @@ async function loadMcap(file: File): Promise<CachedMcap> {
   const schemaById = new Map<number, { name: string; encoding: string; data: Uint8Array }>();
   const topicMeta = new Map<string, { schemaName: string; schemaText: string | null }>();
 
+  let indexedError: unknown = null;
   try {
     reader = await McapIndexedReader.Initialize({ readable });
     for (const schema of reader.schemasById.values()) {
@@ -75,8 +86,25 @@ async function loadMcap(file: File): Promise<CachedMcap> {
         schemaText: schema ? decodeSchemaText(schema.data) : null,
       });
     }
-  } catch {
-    // Stream-reader fallback path — keep the buffer for later reads.
+  } catch (err) {
+    indexedError = err;
+  }
+
+  if (!reader) {
+    if (file.size > STREAM_FALLBACK_MAX_BYTES) {
+      const sizeMb = (file.size / (1024 * 1024)).toFixed(0);
+      const detail =
+        indexedError instanceof Error ? indexedError.message : String(indexedError);
+      throw new Error(
+        `"${file.name}" (${sizeMb} MB) does not have an MCAP summary/index section, ` +
+          'so we would need to load the whole file into memory to scan it linearly. ' +
+          'That is not supported for files over 512 MB in the browser. Re-record the ' +
+          'bag with an index (the default for recent ros2_bag_mcap recorders) or run ' +
+          '`mcap recover` over the file, then try again. (' + detail + ')',
+      );
+    }
+
+    const arrayBuffer = await file.arrayBuffer();
     buffer = new Uint8Array(arrayBuffer);
     const streamReader = new McapStreamReader();
     streamReader.append(buffer);
