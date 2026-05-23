@@ -90,7 +90,7 @@ export function Timeline() {
   const fraction = endNs > startNs ? elapsed / duration : 0;
 
   return (
-    <div className="border-t border-border bg-bg-secondary/70 backdrop-blur-md px-4 py-3 flex items-center gap-4 animate-fade-in">
+    <div className="border-t border-border bg-bg-secondary/70 backdrop-blur-md px-4 py-3 flex items-center gap-4 animate-fade-in flex-shrink-0">
       <button
         onClick={() => setPlaying(!playing)}
         className="w-9 h-9 rounded-full flex items-center justify-center bg-accent-blue/15 hover:bg-accent-blue/25 border border-accent-blue/30 text-accent-blue transition-all"

@@ -31,7 +31,7 @@ export default function App() {
   if (!bag) return <DropZone />;
 
   return (
-    <div className="min-h-screen flex flex-col bg-bg-primary">
+    <div className="h-screen flex flex-col overflow-hidden bg-bg-primary">
       <Toolbar />
       <MainView />
       <Timeline />
@@ -45,7 +45,7 @@ function MainView() {
   if (!bag) return null;
 
   return (
-    <div className="flex-1 min-h-0">
+    <div className="flex-1 min-h-0 overflow-hidden">
       <Group orientation="horizontal" className="h-full w-full flex">
         <Panel
           defaultSize="28%"

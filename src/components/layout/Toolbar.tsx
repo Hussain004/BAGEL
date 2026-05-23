@@ -12,7 +12,7 @@ export function Toolbar() {
   if (!bag) return null;
 
   return (
-    <header className="glass-strong px-6 py-3 flex items-center justify-between animate-fade-in sticky top-0 z-50">
+    <header className="glass-strong px-6 py-3 flex items-center justify-between animate-fade-in flex-shrink-0 z-50">
       {/* Left: Logo + File Name */}
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2">
