@@ -18,6 +18,7 @@
     "@mcap/core": "^2.2.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
+    "react-resizable-panels": "^4.11.1",
     "sql.js": "^1.14.1",
     "uplot": "^1.6.32",
     "zustand": "^5.0.13"
