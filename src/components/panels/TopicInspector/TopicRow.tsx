@@ -46,26 +46,26 @@ export function TopicRow({ topic, index }: TopicRowProps) {
       />
 
       {/* Topic info */}
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 overflow-hidden">
         <div className="flex items-center gap-2">
-          <span className="mono text-text-primary text-sm font-medium truncate">
+          <span className="mono text-text-primary text-sm font-medium truncate block">
             {topic.name}
           </span>
         </div>
-        <div className="flex items-center gap-2 mt-0.5">
-          <span className={`badge ${badgeClass}`}>
+        <div className="flex items-center gap-2 mt-0.5 overflow-hidden">
+          <span className={`badge ${badgeClass} flex-shrink-0`}>
             {packageName}
           </span>
-          <span className="text-text-tertiary text-xs">
+          <span className="text-text-tertiary text-xs truncate">
             {shortType}
           </span>
         </div>
       </div>
 
       {/* Stats */}
-      <div className="flex items-center gap-4 flex-shrink-0">
+      <div className="flex items-center gap-4 flex-shrink-0 ml-2">
         {/* Message count */}
-        <div className="text-right">
+        <div className="text-right min-w-[55px]">
           <span className="text-text-primary text-sm font-medium mono">
             {topic.messageCount.toLocaleString()}
           </span>
@@ -74,7 +74,7 @@ export function TopicRow({ topic, index }: TopicRowProps) {
 
         {/* Frequency */}
         {topic.frequency !== undefined && topic.frequency > 0 && (
-          <div className="text-right min-w-[60px]">
+          <div className="text-right min-w-[55px]">
             <span className="text-text-secondary text-xs mono">
               {topic.frequency.toFixed(1)}
             </span>

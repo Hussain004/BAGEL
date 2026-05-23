@@ -24,11 +24,28 @@ export async function parseMcap(file: File): Promise<BagSummary> {
     // Try indexed reader first (requires summary section in file)
     const reader = await McapIndexedReader.Initialize({ readable });
     return extractSummaryFromIndexed(reader, file);
-  } catch {
+  } catch (indexedError) {
     // Fall back to stream reader if no index available
-    console.warn('MCAP file lacks index, falling back to stream reader');
-    const buffer = await file.arrayBuffer();
-    return extractSummaryFromStream(new Uint8Array(buffer), file);
+    try {
+      console.warn('MCAP indexed reader failed, falling back to stream reader');
+      const buffer = await file.arrayBuffer();
+      return extractSummaryFromStream(new Uint8Array(buffer), file);
+    } catch (streamError) {
+      // Both failed — provide a helpful error
+      const msg = indexedError instanceof Error ? indexedError.message : String(indexedError);
+      
+      if (msg.includes('magic') || msg.includes('Expected MCAP')) {
+        throw new Error(
+          `"${file.name}" does not appear to be a valid MCAP file. ` +
+          'The file header does not match the MCAP format. ' +
+          'Please ensure you are uploading a .mcap bag file recorded by ROS2.'
+        );
+      }
+      
+      throw new Error(
+        `Failed to parse "${file.name}" as MCAP: ${msg}`
+      );
+    }
   }
 }
 

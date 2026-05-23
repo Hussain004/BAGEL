@@ -5,22 +5,32 @@
  * DB3 files are SQLite databases with 'topics' and 'messages' tables.
  */
 
-import initSqlJs, { type Database } from 'sql.js';
 import type { BagSummary, TopicInfo } from '../types/bag';
 
-// Use Vite's ?url import to get the WASM file URL
-import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
+// sql.js Database type (declared manually since sql.js lacks proper ESM types)
+interface SqlDatabase {
+  exec(sql: string): { columns: string[]; values: unknown[][] }[];
+  close(): void;
+}
 
-let sqlPromise: ReturnType<typeof initSqlJs> | null = null;
+let sqlPromise: Promise<{ Database: new (data?: ArrayLike<number>) => SqlDatabase }> | null = null;
 
 /**
- * Lazily initialize sql.js WASM module (singleton)
+ * Lazily initialize sql.js WASM module (singleton).
+ * Uses dynamic import for CJS/ESM compatibility with Vite dev server.
  */
 function getSqlJs() {
   if (!sqlPromise) {
-    sqlPromise = initSqlJs({
-      locateFile: () => sqlWasmUrl,
-    });
+    sqlPromise = (async () => {
+      // Dynamic import handles both CJS (dev) and ESM (prod) modes
+      const sqlJsModule = await import('sql.js');
+      const initSqlJs = (sqlJsModule as any).default || sqlJsModule;
+
+      // WASM binary is in public/ — served as-is by Vite in dev and prod
+      return initSqlJs({
+        locateFile: () => '/sql-wasm.wasm',
+      });
+    })();
   }
   return sqlPromise;
 }
@@ -71,7 +81,7 @@ export async function parseDb3(file: File): Promise<BagSummary> {
 /**
  * Query the topics table from the SQLite database.
  */
-function queryTopics(db: Database): TopicInfo[] {
+function queryTopics(db: SqlDatabase): TopicInfo[] {
   const results = db.exec(`
     SELECT id, name, type, serialization_format 
     FROM topics
@@ -92,7 +102,7 @@ function queryTopics(db: Database): TopicInfo[] {
  * Query message statistics: time range and per-topic message counts.
  * Uses topic_id joins to get counts per topic name.
  */
-function queryMessageStats(db: Database): {
+function queryMessageStats(db: SqlDatabase): {
   startTime: bigint;
   endTime: bigint;
   messageCounts: Map<string, number>;
