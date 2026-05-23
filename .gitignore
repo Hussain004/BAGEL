@@ -26,3 +26,4 @@ Thumbs.db
 # Test files (too large for git)
 test_files/
 ros2-bagviz-implementation-plan.md
+walkthrough.md
