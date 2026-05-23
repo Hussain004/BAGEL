@@ -1,9 +1,8 @@
 import { getTopicColor, getTypeCategory } from '../../../utils/color';
+import { isImageType } from '../../../utils/messages';
+import { useLayoutStore, type PanelKind } from '../../../store/layoutStore';
 import type { TopicInfo } from '../../../types/bag';
 
-/**
- * Type category to badge CSS class mapping
- */
 const BADGE_CLASSES: Record<string, string> = {
   sensor_msgs: 'badge-cyan',
   geometry_msgs: 'badge-violet',
@@ -19,52 +18,70 @@ interface TopicRowProps {
   index: number;
 }
 
-/**
- * TopicRow — A single topic row in the topic inspector.
- * Shows the topic name, message type badge, message count, and frequency.
- */
+/** Suggested default panel for a topic — image for image types, otherwise plot. */
+function suggestPanelKind(topic: TopicInfo): PanelKind {
+  if (isImageType(topic.type)) return 'image';
+  return 'plot';
+}
+
 export function TopicRow({ topic, index }: TopicRowProps) {
   const color = getTopicColor(topic.name, topic.type);
   const category = getTypeCategory(topic.type);
   const badgeClass = BADGE_CLASSES[category] || 'badge-slate';
 
-  // Extract short type name (e.g. "Imu" from "sensor_msgs/msg/Imu")
   const parts = topic.type.split('/');
   const shortType = parts[parts.length - 1] || topic.type;
   const packageName = parts[0] || '';
 
+  const openPanel = useLayoutStore((s) => s.openPanel);
+  const hasOpenPanel = useLayoutStore((s) => s.hasPanelForTopic(topic.name));
+
+  const handleOpen = (kind: PanelKind) => {
+    openPanel({ kind, topicName: topic.name, type: topic.type });
+  };
+
+  const defaultKind = suggestPanelKind(topic);
+  const isImage = defaultKind === 'image';
+
   return (
     <div
-      className="topic-row flex items-center gap-3 opacity-0 animate-fade-in"
+      className="topic-row flex items-center gap-3 opacity-0 animate-fade-in group cursor-pointer"
       style={{ animationDelay: `${Math.min(index * 0.04, 0.6)}s` }}
       id={`topic-row-${topic.name.replace(/\//g, '-')}`}
+      onClick={() => handleOpen(defaultKind)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleOpen(defaultKind);
+        }
+      }}
+      role="button"
+      tabIndex={0}
     >
-      {/* Color indicator */}
       <div
         className="w-1.5 h-8 rounded-full flex-shrink-0 transition-all"
         style={{ backgroundColor: color }}
       />
 
-      {/* Topic info */}
       <div className="flex-1 min-w-0 overflow-hidden">
         <div className="flex items-center gap-2">
           <span className="mono text-text-primary text-sm font-medium truncate block">
             {topic.name}
           </span>
+          {hasOpenPanel && (
+            <span
+              className="w-1.5 h-1.5 rounded-full bg-accent-blue flex-shrink-0"
+              title="Panel open for this topic"
+            />
+          )}
         </div>
         <div className="flex items-center gap-2 mt-0.5 overflow-hidden">
-          <span className={`badge ${badgeClass} flex-shrink-0`}>
-            {packageName}
-          </span>
-          <span className="text-text-tertiary text-xs truncate">
-            {shortType}
-          </span>
+          <span className={`badge ${badgeClass} flex-shrink-0`}>{packageName}</span>
+          <span className="text-text-tertiary text-xs truncate">{shortType}</span>
         </div>
       </div>
 
-      {/* Stats */}
       <div className="flex items-center gap-4 flex-shrink-0 ml-2">
-        {/* Message count */}
         <div className="text-right min-w-[55px]">
           <span className="text-text-primary text-sm font-medium mono">
             {topic.messageCount.toLocaleString()}
@@ -72,7 +89,6 @@ export function TopicRow({ topic, index }: TopicRowProps) {
           <span className="text-text-muted text-xs ml-1">msgs</span>
         </div>
 
-        {/* Frequency */}
         {topic.frequency !== undefined && topic.frequency > 0 && (
           <div className="text-right min-w-[55px]">
             <span className="text-text-secondary text-xs mono">
@@ -81,7 +97,51 @@ export function TopicRow({ topic, index }: TopicRowProps) {
             <span className="text-text-muted text-xs ml-0.5">Hz</span>
           </div>
         )}
+
+        <div
+          className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {isImage ? (
+            <PanelButton
+              label="Image"
+              title="Open image viewer"
+              onClick={() => handleOpen('image')}
+            />
+          ) : (
+            <PanelButton
+              label="Plot"
+              title="Open time-series plot"
+              onClick={() => handleOpen('plot')}
+            />
+          )}
+          <PanelButton
+            label="Raw"
+            title="Open raw inspector"
+            onClick={() => handleOpen('raw')}
+          />
+        </div>
       </div>
     </div>
+  );
+}
+
+function PanelButton({
+  label,
+  title,
+  onClick,
+}: {
+  label: string;
+  title: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      title={title}
+      onClick={onClick}
+      className="px-2 py-1 rounded-md text-[10px] font-medium mono bg-surface border border-border hover:border-accent-blue/40 hover:text-accent-blue text-text-secondary transition-all"
+    >
+      {label}
+    </button>
   );
 }
