@@ -4,7 +4,7 @@
 
 # BAGEL
 
-### BAG ExpLoration — ROS2 Bag File Web Visualizer
+### BAG ExpLoration: ROS2 Bag File Web Visualizer
 
 **Explore ROS2 bag files in your browser. No installation required.**
 
@@ -19,9 +19,9 @@
 
 ---
 
-## 🥯 What is BAGEL?
+## What is BAGEL?
 
-**BAGEL** is a fully static web application that lets you explore ROS2 bag files (`.db3` and `.mcap`) entirely in your browser — no server, no installation, no account. Just drag and drop.
+**BAGEL** is a fully static web application that lets you explore ROS2 bag files (`.db3` and `.mcap`) entirely in your browser needing no server, no installation, no account. Just drag and drop!
 
 Robotics engineers and researchers frequently generate bag files during experiments, SLAM runs, and sensor calibration. Inspecting these files currently requires a full ROS2 installation, Foxglove Studio (increasingly commercial), or writing custom Python scripts for every inspection task.
 
@@ -34,28 +34,25 @@ BAGEL eliminates this friction.
 | Need ROS2 installed to inspect bag files | Works in any modern browser |
 | Foxglove Studio going commercial | 100% open source, MIT licensed |
 | `ros2 bag info` gives text-only output | Rich visual interface with search & filtering |
-| Can't share bag contents easily | Zero-install — send anyone the URL |
+| Can't share bag contents easily | Zero-install, you can send anyone the URL |
 | Students struggle with ROS2 tooling | No setup required, just drag and drop |
 
 ---
 
-## ✨ Features
+## Features
 
-### v0.1 — Foundation & File Parsing *(Current)*
+### v0.1: Foundation & File Parsing *(Current)*
 
-- 🗂️ **Drag & drop** `.db3` and `.mcap` ROS2 bag files
-- 🔍 **Auto-detect** file format from extension and magic bytes
-- 📊 **Topic Inspector** — browse all topics with:
+- **Drag & drop** `.db3` and `.mcap` ROS2 bag files
+- **Auto-detect** file format from extension and magic bytes
+- **Topic Inspector**: browse all topics with:
   - Topic name (color-coded by message type category)
   - Message type with package badge
   - Message count
   - Publishing frequency (Hz)
-- 📈 **Bag summary** — duration, total messages, file size, active topics
-- 🔎 **Search & filter** — quickly find topics by name or type
-- 📋 **Sort** — by name, message count, or frequency
-- 🌙 **Premium dark theme** — glassmorphism, micro-animations, gradient accents
-- 🔒 **100% client-side** — your data never leaves your machine
-- ⚡ **Fast** — WASM-powered SQLite, streaming MCAP parser
+- **Bag summary**: duration, total messages, file size, active topics
+- **Search & filter**: quickly find topics by name or type
+- **Sort**: by name, message count, or frequency
 
 ### Roadmap
 
@@ -68,7 +65,7 @@ BAGEL eliminates this friction.
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Use the Live Demo
 
@@ -94,7 +91,7 @@ Then open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 | Layer | Technology | Purpose |
 |---|---|---|
@@ -110,7 +107,7 @@ Then open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 User's Browser
@@ -159,7 +156,7 @@ BAGEL's built-in type registry covers all standard ROS2 packages:
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 src/
@@ -192,34 +189,7 @@ src/
 
 ---
 
-## 🤝 Contributing
-
-Contributions are welcome! Here's how to get started:
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-### Development
-
-```bash
-pnpm install          # Install dependencies
-pnpm dev              # Start dev server with HMR
-pnpm build            # Production build
-pnpm preview          # Preview production build
-```
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
-
----
-
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - [Foxglove](https://foxglove.dev/) for the excellent open-source ROS2 parsing libraries
 - [sql.js](https://sql.js.org/) for making SQLite run in the browser
