@@ -26,9 +26,9 @@ function getSqlJs() {
       const sqlJsModule = await import('sql.js');
       const initSqlJs = (sqlJsModule as any).default || sqlJsModule;
 
-      // Locate the WASM binary copied by vite-plugin-static-copy
+      // WASM binary is in public/ — served as-is by Vite in dev and prod
       return initSqlJs({
-        locateFile: () => new URL('/assets/sql-wasm.wasm', window.location.href).href,
+        locateFile: () => '/sql-wasm.wasm',
       });
     })();
   }
