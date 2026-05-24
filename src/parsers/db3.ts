@@ -230,11 +230,17 @@ export async function readRawMessagesDb3(
 /**
  * Read and CDR-deserialize messages for a topic. Returns nulls for messages
  * whose type isn't in the bundled type registry.
+ *
+ * Yields to the event loop every 500 messages so the UI stays responsive
+ * while large topics decode; onProgress fires at the same cadence.
  */
+const DB3_YIELD_EVERY = 500;
+
 export async function readDeserializedMessagesDb3(
   file: File,
   topicName: string,
   limit?: number,
+  onProgress?: (decoded: number) => void,
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null }[]> {
   const { topicTypeByName } = await loadDb(file);
   const msgType = topicTypeByName.get(topicName);
@@ -249,7 +255,12 @@ export async function readDeserializedMessagesDb3(
     } catch {
       out.push({ timestamp: raw.timestamp, value: null });
     }
+    if (out.length % DB3_YIELD_EVERY === 0) {
+      onProgress?.(out.length);
+      await new Promise((r) => setTimeout(r, 0));
+    }
   }
+  onProgress?.(out.length);
   return out;
 }
 
