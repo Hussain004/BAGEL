@@ -253,6 +253,80 @@ export async function readDeserializedMessagesDb3(
   return out;
 }
 
+/**
+ * Read and deserialize a single message near `timeNs` for a topic.
+ *
+ * Used by Image/Raw inspector panels for lazy single-frame loads. SQLite
+ * finds the nearest row by timestamp directly so we never pull the whole
+ * topic's blobs into memory.
+ */
+export async function readMessageAtTimeDb3(
+  file: File,
+  topicName: string,
+  timeNs: bigint,
+): Promise<{ timestamp: bigint; value: Record<string, unknown> | null } | null> {
+  const { db, topicTypeByName } = await loadDb(file);
+  const msgType = topicTypeByName.get(topicName);
+  if (!msgType) return null;
+
+  // The closest row by abs(ts - target) — use a UNION ordered pattern so
+  // SQLite can use the timestamp index in both directions. Two positional
+  // binds per side: (topic name, target ts).
+  const sql = `
+    SELECT timestamp, data FROM (
+      SELECT m.timestamp AS timestamp, m.data AS data
+      FROM messages m
+      JOIN topics t ON m.topic_id = t.id
+      WHERE t.name = ? AND m.timestamp >= ?
+      ORDER BY m.timestamp ASC LIMIT 1
+    )
+    UNION ALL
+    SELECT timestamp, data FROM (
+      SELECT m.timestamp AS timestamp, m.data AS data
+      FROM messages m
+      JOIN topics t ON m.topic_id = t.id
+      WHERE t.name = ? AND m.timestamp < ?
+      ORDER BY m.timestamp DESC LIMIT 1
+    )
+  `;
+
+  const stmt = db.prepare(sql);
+  // sql.js' bind() takes a positional array. ROS2 nanosecond timestamps
+  // exceed 2^53; sql.js v1.14 accepts BigInt via the unknown[] form, but
+  // we type as unknown[] since the declaration only knows about unknown.
+  stmt.bind([topicName, timeNs, topicName, timeNs] as unknown[]);
+
+  let best: { timestamp: bigint; data: Uint8Array } | null = null;
+  try {
+    while (stmt.step()) {
+      const row = stmt.get();
+      const ts = row[0] as number | bigint;
+      const data = row[1] as Uint8Array;
+      const tsBig = typeof ts === 'bigint' ? ts : BigInt(ts);
+      const dist = tsBig > timeNs ? tsBig - timeNs : timeNs - tsBig;
+      const bestDist =
+        best === null
+          ? null
+          : best.timestamp > timeNs
+            ? best.timestamp - timeNs
+            : timeNs - best.timestamp;
+      if (bestDist === null || dist < bestDist) {
+        best = { timestamp: tsBig, data };
+      }
+    }
+  } finally {
+    stmt.free();
+  }
+
+  if (!best) return null;
+  try {
+    const value = await deserializeByType(msgType, best.data);
+    return { timestamp: best.timestamp, value };
+  } catch {
+    return { timestamp: best.timestamp, value: null };
+  }
+}
+
 /** Get the ROS2 type name for a topic in this db3 file. */
 export async function getTopicTypeDb3(
   file: File,

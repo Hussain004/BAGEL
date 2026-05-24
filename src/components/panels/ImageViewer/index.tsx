@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useTopicMessages } from '../../../hooks/useTopicMessages';
+import { useEffect, useRef, useState } from 'react';
+import { useMessageAtTime } from '../../../hooks/useMessageAtTime';
+import { useBagStore } from '../../../store/bagStore';
 import { usePlayheadStore } from '../../../store/playheadStore';
-import { nearestMessageIndex, isCompressedImageType } from '../../../utils/messages';
+import { isCompressedImageType } from '../../../utils/messages';
 import { nsToSeconds } from '../../../utils/time';
 import { PanelShell } from '../PanelShell';
 import { getTopicColor } from '../../../utils/color';
@@ -15,35 +16,35 @@ interface ImageViewerProps {
 /**
  * ImageViewer — Renders the current frame for a sensor_msgs/Image or
  * sensor_msgs/CompressedImage topic at the global playhead time.
+ *
+ * Uses lazy single-message reads (useMessageAtTime) instead of eagerly
+ * loading every frame. Image streams in compressed bags are gigabytes of
+ * raw pixel data — preloading them would hang the UI for many minutes.
  */
 export function ImageViewer({ panelId, topicName, type }: ImageViewerProps) {
-  const { messages, loading, error } = useTopicMessages(topicName);
+  const bag = useBagStore((s) => s.bag);
   const playheadNs = usePlayheadStore((s) => s.timeNs);
-  const seek = usePlayheadStore((s) => s.seek);
   const compressed = isCompressedImageType(type);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const currentIndex = useMemo(() => {
-    if (!messages || messages.length === 0) return -1;
-    return nearestMessageIndex(messages, playheadNs);
-  }, [messages, playheadNs]);
+  const { message, loading, error } = useMessageAtTime(topicName, playheadNs);
 
-  const currentMsg = currentIndex >= 0 && messages ? messages[currentIndex] : null;
   const [renderError, setRenderError] = useState<string | null>(null);
   const [meta, setMeta] = useState<{ width: number; height: number; encoding: string } | null>(
     null,
   );
 
+  // Draw the current frame onto the canvas.
   useEffect(() => {
     setRenderError(null);
-    if (!currentMsg?.value || !canvasRef.current) return;
+    if (!message?.value || !canvasRef.current) return;
 
     let cancelled = false;
     (async () => {
       try {
         const bitmap = compressed
-          ? await decodeCompressed(currentMsg.value!)
-          : await decodeRaw(currentMsg.value!);
+          ? await decodeCompressed(message.value!)
+          : await decodeRaw(message.value!);
         if (cancelled) {
           bitmap?.close?.();
           return;
@@ -58,7 +59,7 @@ export function ImageViewer({ panelId, topicName, type }: ImageViewerProps) {
         setMeta({
           width: bitmap.width,
           height: bitmap.height,
-          encoding: (currentMsg.value!.encoding as string) ?? (compressed ? 'compressed' : 'raw'),
+          encoding: (message.value!.encoding as string) ?? (compressed ? 'compressed' : 'raw'),
         });
       } catch (err) {
         if (cancelled) return;
@@ -69,20 +70,22 @@ export function ImageViewer({ panelId, topicName, type }: ImageViewerProps) {
     return () => {
       cancelled = true;
     };
-  }, [currentMsg, compressed]);
+  }, [message, compressed]);
 
   const accent = getTopicColor(topicName, type);
+  const showInitialLoading = loading && !message;
+  const startNs = bag?.startTime ?? 0n;
 
   return (
     <PanelShell panelId={panelId} kind="image" topicName={topicName} type={type} accentColor={accent}>
-      {loading && <PanelLoadingState message="Decoding frames…" />}
-      {error && <PanelErrorState message={error} />}
-      {!loading && !error && (!messages || messages.length === 0) && (
+      {showInitialLoading && <PanelLoadingState message="Loading frame…" />}
+      {error && !message && <PanelErrorState message={error} />}
+      {!loading && !error && !message && (
         <PanelEmptyState message="No image messages on this topic." />
       )}
-      {messages && messages.length > 0 && (
+      {message && (
         <div className="flex-1 flex flex-col min-h-0">
-          <div className="flex-1 flex items-center justify-center bg-bg-primary/60 overflow-hidden min-h-[200px] p-3">
+          <div className="flex-1 flex items-center justify-center bg-bg-primary/60 overflow-hidden min-h-[200px] p-3 relative">
             {renderError ? (
               <div className="text-center max-w-md">
                 <div className="text-accent-rose text-sm font-medium mb-1">
@@ -96,72 +99,33 @@ export function ImageViewer({ panelId, topicName, type }: ImageViewerProps) {
                 className="max-w-full max-h-full object-contain rounded-md border border-border"
               />
             )}
-          </div>
-
-          <div className="px-4 py-2 border-t border-border flex items-center gap-3 mono text-xs text-text-secondary">
-            <FrameStepper
-              currentIndex={currentIndex}
-              total={messages.length}
-              onJump={(i) => seek(messages[i].timestamp)}
-            />
-            <div className="flex-1 text-right">
-              {meta && (
-                <span>
-                  <span className="text-text-primary">{meta.width}×{meta.height}</span>
-                  <span className="text-text-muted ml-2">{meta.encoding}</span>
-                </span>
-              )}
-            </div>
+            {loading && (
+              <div
+                className="absolute top-2 right-2 w-4 h-4 text-accent-blue animate-spin-slow"
+                title="Loading newer frame…"
+              >
+                <svg fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              </div>
+            )}
           </div>
 
           <div className="px-4 py-1.5 border-t border-border flex items-center justify-between text-text-muted text-xs mono">
             <span>
-              frame {Math.max(0, currentIndex) + 1} / {messages.length}
+              t = {nsToSeconds(message.timestamp - startNs).toFixed(3)}s
             </span>
-            {currentMsg && (
+            {meta && (
               <span>
-                t = {nsToSeconds(currentMsg.timestamp - messages[0].timestamp).toFixed(3)}s
+                <span className="text-text-primary">{meta.width}×{meta.height}</span>
+                <span className="text-text-muted ml-2">{meta.encoding}</span>
               </span>
             )}
           </div>
         </div>
       )}
     </PanelShell>
-  );
-}
-
-function FrameStepper({
-  currentIndex,
-  total,
-  onJump,
-}: {
-  currentIndex: number;
-  total: number;
-  onJump: (i: number) => void;
-}) {
-  return (
-    <div className="flex items-center gap-1">
-      <button
-        onClick={() => onJump(Math.max(0, currentIndex - 1))}
-        disabled={currentIndex <= 0}
-        className="w-7 h-7 rounded-md flex items-center justify-center bg-surface border border-border hover:bg-surface-hover disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-        title="Previous frame"
-      >
-        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-        </svg>
-      </button>
-      <button
-        onClick={() => onJump(Math.min(total - 1, currentIndex + 1))}
-        disabled={currentIndex >= total - 1}
-        className="w-7 h-7 rounded-md flex items-center justify-center bg-surface border border-border hover:bg-surface-hover disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-        title="Next frame"
-      >
-        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-        </svg>
-      </button>
-    </div>
   );
 }
 
@@ -254,7 +218,7 @@ function PanelLoadingState({ message }: { message: string }) {
 function PanelErrorState({ message }: { message: string }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-2 p-8 text-center">
-      <div className="text-accent-rose text-sm font-medium">Failed to load messages</div>
+      <div className="text-accent-rose text-sm font-medium">Failed to load frame</div>
       <div className="text-text-secondary text-xs max-w-md">{message}</div>
     </div>
   );

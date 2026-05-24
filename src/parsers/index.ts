@@ -11,6 +11,7 @@ import {
   parseMcap,
   readRawMessagesMcap,
   readDeserializedMessagesMcap,
+  readMessageAtTimeMcap,
   getTopicTypeMcap,
   disposeMcapCache,
 } from './mcap';
@@ -18,6 +19,7 @@ import {
   parseDb3,
   readRawMessagesDb3,
   readDeserializedMessagesDb3,
+  readMessageAtTimeDb3,
   getTopicTypeDb3,
   disposeDb3Cache,
 } from './db3';
@@ -74,6 +76,23 @@ export async function readDeserializedMessages(
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null }[]> {
   if (format === 'mcap') return readDeserializedMessagesMcap(file, topicName, limit);
   return readDeserializedMessagesDb3(file, topicName, limit);
+}
+
+/**
+ * Read just one message — the one nearest `timeNs` — for a topic.
+ *
+ * Used by panels that only need the current frame at the playhead time
+ * (Image, Raw inspector). Skips loading every message on the topic,
+ * which would be many GB for image streams in compressed bags.
+ */
+export async function readMessageAtTime(
+  file: File,
+  format: BagFormat,
+  topicName: string,
+  timeNs: bigint,
+): Promise<{ timestamp: bigint; value: Record<string, unknown> | null } | null> {
+  if (format === 'mcap') return readMessageAtTimeMcap(file, topicName, timeNs);
+  return readMessageAtTimeDb3(file, topicName, timeNs);
 }
 
 export async function getTopicType(

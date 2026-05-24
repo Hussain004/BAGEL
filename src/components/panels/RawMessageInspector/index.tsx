@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
-import { useTopicMessages } from '../../../hooks/useTopicMessages';
+import { useState } from 'react';
+import { useMessageAtTime } from '../../../hooks/useMessageAtTime';
+import { useBagStore } from '../../../store/bagStore';
 import { usePlayheadStore } from '../../../store/playheadStore';
-import { nearestMessageIndex } from '../../../utils/messages';
 import { toHexDump } from '../../../utils/bytes';
 import { nsToSeconds } from '../../../utils/time';
 import { PanelShell } from '../PanelShell';
@@ -14,19 +14,18 @@ interface RawMessageInspectorProps {
 }
 
 /**
- * RawMessageInspector — Shows the deserialized message at the current playhead
- * time as a JSON tree. Falls back to hex when the type isn't in the registry.
+ * RawMessageInspector — Shows the deserialized message at the current
+ * playhead time as a JSON tree. Falls back to hex when the type isn't in
+ * the registry. Reads just the message at the playhead via
+ * useMessageAtTime — never preloads the whole topic.
  */
 export function RawMessageInspector({ panelId, topicName, type }: RawMessageInspectorProps) {
-  const { messages, loading, error } = useTopicMessages(topicName);
+  const bag = useBagStore((s) => s.bag);
   const playheadNs = usePlayheadStore((s) => s.timeNs);
+  const { message, loading, error } = useMessageAtTime(topicName, playheadNs);
 
-  const currentIndex = useMemo(() => {
-    if (!messages || messages.length === 0) return -1;
-    return nearestMessageIndex(messages, playheadNs);
-  }, [messages, playheadNs]);
-
-  const current = currentIndex >= 0 && messages ? messages[currentIndex] : null;
+  const startNs = bag?.startTime ?? 0n;
+  const showInitialLoading = loading && !message;
 
   return (
     <PanelShell
@@ -36,36 +35,39 @@ export function RawMessageInspector({ panelId, topicName, type }: RawMessageInsp
       type={type}
       accentColor={getTopicColor(topicName, type)}
     >
-      {loading && <Loading />}
-      {error && <ErrorState message={error} />}
-      {!loading && !error && (!messages || messages.length === 0) && (
+      {showInitialLoading && <Loading />}
+      {error && !message && <ErrorState message={error} />}
+      {!loading && !error && !message && (
         <EmptyState message="No messages on this topic." />
       )}
-      {messages && messages.length > 0 && current && (
+      {message && (
         <div className="flex-1 flex flex-col min-h-0">
-          <div className="flex-1 min-h-0 overflow-auto px-4 py-3 mono text-xs">
-            {current.value ? (
-              <JsonTree value={current.value} depth={0} />
+          <div className="flex-1 min-h-0 overflow-auto px-4 py-3 mono text-xs relative">
+            {message.value ? (
+              <JsonTree value={message.value} depth={0} />
             ) : (
               <div className="text-text-muted whitespace-pre">
                 <div className="mb-2 text-accent-amber">
                   Could not deserialize this message — type not in the built-in registry.
                 </div>
-                <pre className="text-text-secondary">
-                  {/* hex dump fallback if the message exposes its raw bytes */}
-                  {placeholder}
-                </pre>
+                <pre className="text-text-secondary">{placeholder}</pre>
+              </div>
+            )}
+            {loading && (
+              <div
+                className="absolute top-2 right-2 w-3.5 h-3.5 text-accent-blue animate-spin-slow"
+                title="Loading newer message…"
+              >
+                <svg fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
               </div>
             )}
           </div>
 
-          <div className="px-4 py-1.5 border-t border-border flex items-center justify-between text-text-muted text-xs mono">
-            <span>
-              message {currentIndex + 1} / {messages.length}
-            </span>
-            <span>
-              t = {nsToSeconds(current.timestamp - messages[0].timestamp).toFixed(3)}s
-            </span>
+          <div className="px-4 py-1.5 border-t border-border flex items-center justify-end text-text-muted text-xs mono">
+            <span>t = {nsToSeconds(message.timestamp - startNs).toFixed(3)}s</span>
           </div>
         </div>
       )}
