@@ -31,6 +31,7 @@ export default defineConfig({
           if (id.includes('@mcap/') || id.includes('@mcap\\\\')) return 'mcap';
           if (id.includes('fzstd')) return 'mcap-decompress';
           if (id.includes('@foxglove/')) return 'foxglove';
+          if (id.includes('node_modules/three/') || id.includes('node_modules\\three\\')) return 'three';
         },
       },
     },

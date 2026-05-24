@@ -1,6 +1,8 @@
 import { getTopicColor, getTypeCategory } from '../../../utils/color';
 import {
   isImageType,
+  isLaserScanType,
+  isPointCloud2Type,
   isTfTopic,
   isTrajectoryCapableType,
 } from '../../../utils/messages';
@@ -26,6 +28,8 @@ interface TopicRowProps {
 function suggestPanelKind(topic: TopicInfo): PanelKind {
   if (isTfTopic(topic.name, topic.type)) return 'tf';
   if (isImageType(topic.type)) return 'image';
+  // PointCloud2 / LaserScan default to the 3D view — that's the whole point.
+  if (isPointCloud2Type(topic.type) || isLaserScanType(topic.type)) return '3d';
   // For pose-only types (Pose, Point, TransformStamped) plot has nothing
   // useful to show; jump straight to the trajectory view.
   if (
@@ -44,6 +48,17 @@ function suggestPanelKind(topic: TopicInfo): PanelKind {
 function panelOptionsFor(topic: TopicInfo): PanelKind[] {
   if (isTfTopic(topic.name, topic.type)) return ['tf', 'raw'];
   if (isImageType(topic.type)) return ['image', 'raw'];
+  if (isPointCloud2Type(topic.type)) return ['3d', 'raw'];
+  if (isLaserScanType(topic.type)) return ['3d', 'plot', 'raw'];
+  if (
+    isTrajectoryCapableType(topic.type) &&
+    (topic.type.endsWith('/Odometry') ||
+      topic.type.endsWith('/PoseStamped') ||
+      topic.type.endsWith('/PoseWithCovarianceStamped') ||
+      topic.type.endsWith('/TransformStamped'))
+  ) {
+    return ['trajectory', '3d', 'plot', 'raw'];
+  }
   if (isTrajectoryCapableType(topic.type)) return ['trajectory', 'plot', 'raw'];
   return ['plot', 'raw'];
 }
@@ -54,6 +69,7 @@ const KIND_BUTTON_LABEL: Record<PanelKind, string> = {
   raw: 'Raw',
   trajectory: 'Path',
   tf: 'TF',
+  '3d': '3D',
 };
 
 const KIND_BUTTON_TITLE: Record<PanelKind, string> = {
@@ -62,6 +78,7 @@ const KIND_BUTTON_TITLE: Record<PanelKind, string> = {
   raw: 'Open raw inspector',
   trajectory: 'Open 2D trajectory',
   tf: 'Open TF tree',
+  '3d': 'Open 3D scene',
 };
 
 export function TopicRow({ topic, index }: TopicRowProps) {

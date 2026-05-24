@@ -41,7 +41,19 @@ BAGEL eliminates this friction.
 
 ## Features
 
-### v0.3: Trajectory, TF Tree & Web Worker *(Current)*
+### v0.4: 3D Visualization *(Current)*
+
+Everything in v0.3, plus:
+
+- **ThreeDScene panel**: a Three.js-powered 3D viewer that opens on `sensor_msgs/PointCloud2`, `sensor_msgs/LaserScan`, and pose-bearing topics (`Odometry`, `PoseStamped`, `PoseWithCovarianceStamped`, `TransformStamped`). Orbit controls (drag to rotate, wheel to zoom, right-drag to pan) with damping; ROS Z-up convention so "up" actually points up. A faint ground grid in the XY plane and a world-axis triad keep the user oriented at all zoom levels.
+- **PointCloud2 rendering**: decodes the packed binary layout from each message's `fields` array — supports `FLOAT32 / FLOAT64 / INT8…INT32 / UINT8…UINT32` datatypes, the RGB-packed-in-a-float ROS convention, and intensity / ring fields. Colormaps: **height** (z), **intensity** (or ring index if no intensity), and **single colour**. Sub-samples to 500k points per frame so a full 1 M-point sweep doesn't lock the page; reuses GPU buffers across playhead ticks when the point count is stable.
+- **LaserScan overlay**: lifts the polar `(range, angle)` ring into 3D at `z=0` so it sits naturally on top of the ground grid. Coloured by distance from the sensor (Turbo colormap) so depth is visible at a glance.
+- **Pose / Odometry markers**: rendered as a coordinate-frame axes triad with a forward-pointing arrow, oriented by the message's quaternion. Track a robot's pose through the scene in real time as the playhead advances.
+- **TF-aware rendering**: when the bag has `/tf` and `/tf_static`, every panel composes the chain from the source topic's `header.frame_id` up to a chosen *world frame* (`map` or `odom` by default) and applies it to the rendered geometry. A dropdown in the panel's Display card lets you switch the world frame at any time. Without TF, panels render directly in the topic's local frame and surface that fact.
+- **Display controls**: per-panel pop-out card with color-mode buttons (PointCloud2), point-size slider, grid / axes toggles, and the world-frame selector.
+- **3D quick-button**: `PointCloud2` and `LaserScan` topics expose a `3D` button in the sidebar and default-open the 3D panel on click. Pose-bearing topics gain a `3D` option alongside their existing `Path` and `Plot` buttons.
+
+### v0.3: Trajectory, TF Tree & Web Worker
 
 Everything in v0.2, plus:
 
@@ -74,8 +86,7 @@ Everything in v0.2, plus:
 
 | Version | Features |
 |---|---|
-| **v0.4** | 3D point cloud rendering, LaserScan overlay, camera frustum, TF-aware scene |
-| **v0.5** | CSV/JSON export, keyboard shortcuts, sample bag loader, polish & launch |
+| **v0.5** | CSV/JSON export, keyboard shortcuts, URL state, sample bag loader, polish & launch |
 
 ---
 
@@ -120,6 +131,7 @@ Then open [http://localhost:5173](http://localhost:5173) in your browser.
 | **SQLite** | sql.js (WASM) | Parse .db3 files in-browser |
 | **CDR Deser.** | @foxglove/rosmsg2-serialization | ROS2 message deserialization |
 | **Type Registry** | @foxglove/rosmsg-msgs-common | Pre-built ROS2 message defs |
+| **3D** | three.js (WebGL) | Point clouds, scans, pose markers, orbit controls |
 | **Deployment** | Vercel | Static site hosting |
 
 ---
@@ -228,7 +240,8 @@ src/
 │       ├── ImageViewer/            # Raw + Compressed image decoder
 │       ├── RawMessageInspector/    # JSON tree at playhead time
 │       ├── TrajectoryPlot/         # 2D x/y path on a canvas
-│       └── TFTree/                 # /tf + /tf_static graph view
+│       ├── TFTree/                 # /tf + /tf_static graph view
+│       └── ThreeDScene/            # Three.js 3D viewer (PointCloud2, LaserScan, Pose)
 │
 ├── types/                # TypeScript interfaces
 │   ├── bag.ts            # BagSummary, TopicInfo, RawMessage
@@ -239,7 +252,8 @@ src/
     ├── bytes.ts          # File size, hex dump, magic bytes
     ├── color.ts          # Topic color assignment
     ├── messages.ts       # flattenNumeric, nearestMessageIndex, type sniffing
-    └── trajectory.ts     # Pose / NavSatFix → x/y extraction + bounds
+    ├── trajectory.ts     # Pose / NavSatFix → x/y extraction + bounds
+    └── pointcloud.ts     # PointCloud2 binary decode + Turbo colormap
 ```
 
 ---
