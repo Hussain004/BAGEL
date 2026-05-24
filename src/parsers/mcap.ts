@@ -11,10 +11,35 @@
  * the reader on every panel read.
  */
 
-import { McapIndexedReader, McapStreamReader } from '@mcap/core';
+import { McapIndexedReader, McapStreamReader, type DecompressHandlers } from '@mcap/core';
 import { BlobReadable } from '@mcap/browser';
+import { decompress as fzstdDecompress } from 'fzstd';
 import type { BagSummary, RawMessage, TopicInfo } from '../types/bag';
 import { deserializeWithSchema } from './cdr';
+
+/**
+ * Decompression handlers for MCAP chunks.
+ *
+ * MCAP chunks can be uncompressed, lz4, zstd, or bz2. ROS2 bags recorded
+ * with `--storage mcap` and compression enabled produce zstd chunks; some
+ * tools (e.g. arkit-to-mcap) only emit zstd. Without these handlers the
+ * IndexedReader rejects every compressed chunk with "Unsupported
+ * compression zstd".
+ *
+ * We use `fzstd` — a pure-JS zstd decoder — instead of the official
+ * `@foxglove/wasm-zstd` because Vite 8's Rolldown bundler can't ingest
+ * the WASM modules' CJS require() form. lz4 and bz2 are not implemented;
+ * an unsupported compression will surface a clear error at read time.
+ */
+const decompressHandlers: DecompressHandlers = {
+  zstd: (buffer, decompressedSize) =>
+    fzstdDecompress(
+      // fzstd accepts a typed array and an optional output buffer of the
+      // expected size; pre-allocating avoids resize overhead.
+      buffer,
+      new Uint8Array(Number(decompressedSize)),
+    ),
+};
 
 interface CachedMcap {
   fileName: string;
@@ -24,6 +49,7 @@ interface CachedMcap {
   channelById: Map<number, { topic: string; schemaId: number }>;
   schemaById: Map<number, { name: string; encoding: string; data: Uint8Array }>;
   topicMeta: Map<string, { schemaName: string; schemaText: string | null }>;
+  decompressHandlers: DecompressHandlers;
 }
 
 let cached: CachedMcap | null = null;
@@ -67,7 +93,7 @@ async function loadMcap(file: File): Promise<CachedMcap> {
 
   let indexedError: unknown = null;
   try {
-    reader = await McapIndexedReader.Initialize({ readable });
+    reader = await McapIndexedReader.Initialize({ readable, decompressHandlers });
     for (const schema of reader.schemasById.values()) {
       schemaById.set(schema.id, {
         name: schema.name,
@@ -106,7 +132,7 @@ async function loadMcap(file: File): Promise<CachedMcap> {
 
     const arrayBuffer = await file.arrayBuffer();
     buffer = new Uint8Array(arrayBuffer);
-    const streamReader = new McapStreamReader();
+    const streamReader = new McapStreamReader({ decompressHandlers });
     streamReader.append(buffer);
     for (let record; (record = streamReader.nextRecord()); ) {
       if (record.type === 'Schema') {
@@ -139,6 +165,7 @@ async function loadMcap(file: File): Promise<CachedMcap> {
     channelById,
     schemaById,
     topicMeta,
+    decompressHandlers,
   };
   return cached;
 }
@@ -207,7 +234,7 @@ function extractSummaryFromIndexed(meta: CachedMcap, file: File): BagSummary {
 }
 
 function extractSummaryFromStream(meta: CachedMcap, file: File): BagSummary {
-  const reader = new McapStreamReader();
+  const reader = new McapStreamReader({ decompressHandlers: meta.decompressHandlers });
   reader.append(meta.buffer!);
 
   const channelMessageCounts = new Map<number, number>();
@@ -272,7 +299,7 @@ export async function readRawMessagesMcap(
   }
 
   if (meta.buffer) {
-    const reader = new McapStreamReader();
+    const reader = new McapStreamReader({ decompressHandlers: meta.decompressHandlers });
     reader.append(meta.buffer);
     const channelIdsForTopic = new Set<number>();
     for (const [id, ch] of meta.channelById) {
