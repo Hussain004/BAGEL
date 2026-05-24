@@ -48,6 +48,11 @@ interface CachedDb {
   fileSize: number;
   db: SqlDatabase;
   topicTypeByName: Map<string, string>;
+  /** Per-topic LRU of decoded messages keyed by row timestamp. Skips the
+   *  CDR decode when the playhead ticks above the topic's publish rate
+   *  (image playback at 30 Hz against a 10 Hz topic returns the same
+   *  message three times in a row otherwise). */
+  messageCache: Map<string, Map<bigint, Record<string, unknown> | null>>;
 }
 
 let cachedDb: CachedDb | null = null;
@@ -95,8 +100,45 @@ async function loadDb(file: File): Promise<CachedDb> {
     fileSize: file.size,
     db,
     topicTypeByName,
+    messageCache: new Map(),
   };
   return cachedDb;
+}
+
+/** Per-topic decoded-message LRU bound. */
+const DB3_MESSAGE_CACHE_MAX_PER_TOPIC = 6;
+
+async function rememberDecodedDb3(
+  cache: CachedDb,
+  topicName: string,
+  timestamp: bigint,
+  data: Uint8Array,
+  msgType: string,
+): Promise<Record<string, unknown> | null> {
+  let perTopic = cache.messageCache.get(topicName);
+  if (!perTopic) {
+    perTopic = new Map();
+    cache.messageCache.set(topicName, perTopic);
+  } else if (perTopic.has(timestamp)) {
+    const hit = perTopic.get(timestamp)!;
+    // Bump to MRU end.
+    perTopic.delete(timestamp);
+    perTopic.set(timestamp, hit);
+    return hit;
+  }
+  let value: Record<string, unknown> | null;
+  try {
+    value = await deserializeByType(msgType, data);
+  } catch {
+    value = null;
+  }
+  perTopic.set(timestamp, value);
+  while (perTopic.size > DB3_MESSAGE_CACHE_MAX_PER_TOPIC) {
+    const oldest = perTopic.keys().next().value;
+    if (oldest === undefined) break;
+    perTopic.delete(oldest);
+  }
+  return value;
 }
 
 /**
@@ -276,7 +318,8 @@ export async function readMessageAtTimeDb3(
   topicName: string,
   timeNs: bigint,
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null } | null> {
-  const { db, topicTypeByName } = await loadDb(file);
+  const cache = await loadDb(file);
+  const { db, topicTypeByName } = cache;
   const msgType = topicTypeByName.get(topicName);
   if (!msgType) return null;
 
@@ -330,12 +373,14 @@ export async function readMessageAtTimeDb3(
   }
 
   if (!best) return null;
-  try {
-    const value = await deserializeByType(msgType, best.data);
-    return { timestamp: best.timestamp, value };
-  } catch {
-    return { timestamp: best.timestamp, value: null };
-  }
+  const value = await rememberDecodedDb3(
+    cache,
+    topicName,
+    best.timestamp,
+    best.data,
+    msgType,
+  );
+  return { timestamp: best.timestamp, value };
 }
 
 /** Get the ROS2 type name for a topic in this db3 file. */

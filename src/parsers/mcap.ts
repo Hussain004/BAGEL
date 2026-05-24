@@ -30,16 +30,116 @@ import { deserializeWithSchema } from './cdr';
  * `@foxglove/wasm-zstd` because Vite 8's Rolldown bundler can't ingest
  * the WASM modules' CJS require() form. lz4 and bz2 are not implemented;
  * an unsupported compression will surface a clear error at read time.
+ *
+ * Chunk caching: every call to `readMessages({ startTime })` from the
+ * IndexedReader causes the chunk containing that timestamp to be
+ * re-decompressed from scratch. That's catastrophic during image-topic
+ * playback — at 30 Hz scrubbing through a topic whose frames all live in
+ * the same 30-second chunk, we'd decompress the same multi-megabyte
+ * chunk thirty times a second. The cache below keys decompressed
+ * buffers by a fingerprint of the compressed bytes (length + sampled
+ * FNV-1a from head/middle/tail) and is bounded by total decompressed
+ * size, evicting LRU. The cache is per-bag — disposing the cached
+ * MCAP releases the chunks alongside the reader.
  */
-const decompressHandlers: DecompressHandlers = {
-  zstd: (buffer, decompressedSize) =>
-    fzstdDecompress(
-      // fzstd accepts a typed array and an optional output buffer of the
-      // expected size; pre-allocating avoids resize overhead.
-      buffer,
-      new Uint8Array(Number(decompressedSize)),
-    ),
-};
+
+const CHUNK_CACHE_MAX_BYTES = 256 * 1024 * 1024;
+
+interface ChunkCacheEntry {
+  data: Uint8Array;
+  ts: number;
+}
+
+class ChunkCache {
+  private readonly entries = new Map<string, ChunkCacheEntry>();
+  private totalBytes = 0;
+  private tickCounter = 0;
+  private readonly maxBytes: number;
+  constructor(maxBytes: number) {
+    this.maxBytes = maxBytes;
+  }
+
+  get(key: string): Uint8Array | undefined {
+    const e = this.entries.get(key);
+    if (!e) return undefined;
+    e.ts = ++this.tickCounter;
+    return e.data;
+  }
+
+  set(key: string, data: Uint8Array): void {
+    if (this.entries.has(key)) return;
+    while (
+      this.totalBytes + data.byteLength > this.maxBytes &&
+      this.entries.size > 0
+    ) {
+      this.evictOldest();
+    }
+    this.entries.set(key, { data, ts: ++this.tickCounter });
+    this.totalBytes += data.byteLength;
+  }
+
+  clear(): void {
+    this.entries.clear();
+    this.totalBytes = 0;
+  }
+
+  private evictOldest(): void {
+    let oldestKey: string | null = null;
+    let oldestTs = Infinity;
+    for (const [k, v] of this.entries) {
+      if (v.ts < oldestTs) {
+        oldestTs = v.ts;
+        oldestKey = k;
+      }
+    }
+    if (oldestKey === null) return;
+    const evicted = this.entries.get(oldestKey)!;
+    this.totalBytes -= evicted.data.byteLength;
+    this.entries.delete(oldestKey);
+  }
+}
+
+/**
+ * Fingerprint a compressed buffer using FNV-1a over ~192 sampled bytes
+ * plus the length. Two distinct MCAP chunks would have to collide on all
+ * of head / middle / tail samples *and* have identical lengths to share a
+ * key, which is vanishingly unlikely for real bag data.
+ */
+function fingerprintBuffer(buf: Uint8Array): string {
+  const len = buf.length;
+  if (len === 0) return 'e';
+  const FNV_PRIME = 16777619;
+  let h = 2166136261;
+  const headEnd = Math.min(64, len);
+  for (let i = 0; i < headEnd; i++) h = Math.imul(h ^ buf[i], FNV_PRIME);
+  if (len > 256) {
+    const mid = (len >> 1) - 32;
+    for (let i = 0; i < 64; i++) h = Math.imul(h ^ buf[mid + i], FNV_PRIME);
+  }
+  if (len > 128) {
+    const tail = len - 64;
+    for (let i = 0; i < 64; i++) h = Math.imul(h ^ buf[tail + i], FNV_PRIME);
+  }
+  return `${len}|${(h >>> 0).toString(36)}`;
+}
+
+function makeDecompressHandlers(chunkCache: ChunkCache): DecompressHandlers {
+  return {
+    zstd: (buffer, decompressedSize) => {
+      const key = fingerprintBuffer(buffer);
+      const hit = chunkCache.get(key);
+      if (hit) return hit;
+      const out = fzstdDecompress(
+        // fzstd accepts a typed array and an optional output buffer of the
+        // expected size; pre-allocating avoids resize overhead.
+        buffer,
+        new Uint8Array(Number(decompressedSize)),
+      );
+      chunkCache.set(key, out);
+      return out;
+    },
+  };
+}
 
 interface CachedMcap {
   fileName: string;
@@ -50,6 +150,11 @@ interface CachedMcap {
   schemaById: Map<number, { name: string; encoding: string; data: Uint8Array }>;
   topicMeta: Map<string, { schemaName: string; schemaText: string | null }>;
   decompressHandlers: DecompressHandlers;
+  chunkCache: ChunkCache;
+  /** Per-topic LRU of the most recently returned decoded messages. Keyed
+   *  by topic and indexed by message logTime — lets scrubbing inside a
+   *  single frame's validity range short-circuit the entire read pipeline. */
+  messageCache: Map<string, Map<bigint, Record<string, unknown> | null>>;
 }
 
 let cached: CachedMcap | null = null;
@@ -59,6 +164,10 @@ function decodeSchemaText(data: Uint8Array): string {
 }
 
 export function disposeMcapCache(): void {
+  if (cached) {
+    cached.chunkCache.clear();
+    cached.messageCache.clear();
+  }
   cached = null;
 }
 
@@ -80,6 +189,12 @@ async function loadMcap(file: File): Promise<CachedMcap> {
   ) {
     return cached;
   }
+
+  // Per-bag chunk cache so consecutive image-playback frames don't keep
+  // re-decompressing the same multi-megabyte zstd chunk.
+  const chunkCache = new ChunkCache(CHUNK_CACHE_MAX_BYTES);
+  const decompressHandlers = makeDecompressHandlers(chunkCache);
+  const messageCache = new Map<string, Map<bigint, Record<string, unknown> | null>>();
 
   // File extends Blob, so BlobReadable can range-read directly against it —
   // no upfront arrayBuffer(), which would OOM on multi-GB files.
@@ -166,6 +281,8 @@ async function loadMcap(file: File): Promise<CachedMcap> {
     schemaById,
     topicMeta,
     decompressHandlers,
+    chunkCache,
+    messageCache,
   };
   return cached;
 }
@@ -396,6 +513,40 @@ export async function getTopicTypeMcap(
   return meta.topicMeta.get(topicName)?.schemaName;
 }
 
+/** Per-topic decoded-message LRU bound. Big enough to cover both directions
+ *  of a scrub through a handful of adjacent frames; small enough that raw
+ *  1080p images (~6 MB each) don't blow up the worker heap. */
+const MESSAGE_CACHE_MAX_PER_TOPIC = 6;
+
+function rememberDecoded(
+  meta: CachedMcap,
+  topicName: string,
+  logTime: bigint,
+  raw: Uint8Array,
+  decode: (raw: Uint8Array) => Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  let perTopic = meta.messageCache.get(topicName);
+  if (!perTopic) {
+    perTopic = new Map();
+    meta.messageCache.set(topicName, perTopic);
+  } else if (perTopic.has(logTime)) {
+    // Cache hit — skip the (potentially expensive) CDR decode entirely.
+    // Re-insert to bump it to the most-recently-used end of the map.
+    const cached = perTopic.get(logTime)!;
+    perTopic.delete(logTime);
+    perTopic.set(logTime, cached);
+    return cached;
+  }
+  const value = decode(raw);
+  perTopic.set(logTime, value);
+  while (perTopic.size > MESSAGE_CACHE_MAX_PER_TOPIC) {
+    const oldest = perTopic.keys().next().value;
+    if (oldest === undefined) break;
+    perTopic.delete(oldest);
+  }
+  return value;
+}
+
 /**
  * Read and deserialize a single message near `timeNs` for a topic.
  *
@@ -407,6 +558,14 @@ export async function getTopicTypeMcap(
  * take the first hit. If there's nothing at-or-after (playhead past the
  * last message), seek backward. Only the chunks that contain the answer
  * get decompressed, so this is O(one chunk) instead of O(whole topic).
+ *
+ * Two layers of caching keep image-topic playback smooth:
+ *  - the chunk decompression cache amortises zstd cost across every
+ *    frame in the same chunk;
+ *  - the per-topic decoded-message LRU below short-circuits the CDR
+ *    decode when the same frame's logTime is requested again (which
+ *    happens whenever the playhead ticks at a higher rate than the
+ *    topic publishes).
  */
 export async function readMessageAtTimeMcap(
   file: File,
@@ -417,9 +576,10 @@ export async function readMessageAtTimeMcap(
   const topicInfo = meta.topicMeta.get(topicName);
   if (!topicInfo || !topicInfo.schemaText) return null;
 
-  const decode = (raw: Uint8Array) => {
+  const schemaText = topicInfo.schemaText;
+  const decode = (raw: Uint8Array): Record<string, unknown> | null => {
     try {
-      return deserializeWithSchema(topicInfo.schemaText!, raw);
+      return deserializeWithSchema(schemaText, raw);
     } catch {
       return null;
     }
@@ -430,7 +590,8 @@ export async function readMessageAtTimeMcap(
       topics: [topicName],
       startTime: timeNs,
     })) {
-      return { timestamp: msg.logTime, value: decode(msg.data) };
+      const value = rememberDecoded(meta, topicName, msg.logTime, msg.data, decode);
+      return { timestamp: msg.logTime, value };
     }
     // Nothing at or after — fall back to the latest message at or before.
     for await (const msg of meta.reader.readMessages({
@@ -438,7 +599,8 @@ export async function readMessageAtTimeMcap(
       endTime: timeNs,
       reverse: true,
     })) {
-      return { timestamp: msg.logTime, value: decode(msg.data) };
+      const value = rememberDecoded(meta, topicName, msg.logTime, msg.data, decode);
+      return { timestamp: msg.logTime, value };
     }
     return null;
   }
@@ -469,7 +631,8 @@ export async function readMessageAtTimeMcap(
       }
     }
     if (bestTs !== null && bestData) {
-      return { timestamp: bestTs, value: decode(bestData) };
+      const value = rememberDecoded(meta, topicName, bestTs, bestData, decode);
+      return { timestamp: bestTs, value };
     }
   }
   return null;
