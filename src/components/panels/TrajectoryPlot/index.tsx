@@ -450,16 +450,18 @@ function drawMarker(
 function drawScaleBar(
   ctx: CanvasRenderingContext2D,
   w: number,
-  _h: number,
+  h: number,
   view: View,
 ) {
-  // Aim for a 100 px scale bar; snap to a nice round metres value.
+  // Aim for a 100 px scale bar; snap to a nice round metres value. Anchored
+  // bottom-right so the canvas overlay buttons (Fit, source label) stay
+  // clear of the top edge.
   const targetPx = 100;
   const targetWorld = targetPx / view.scale;
   const step = niceStep(targetWorld);
   const px = step * view.scale;
   const x0 = w - 16 - px;
-  const y0 = 16;
+  const y0 = h - 16;
   ctx.strokeStyle = '#f1f5f9';
   ctx.fillStyle = '#f1f5f9';
   ctx.lineWidth = 1.5;
