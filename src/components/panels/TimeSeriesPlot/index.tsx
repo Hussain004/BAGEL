@@ -44,7 +44,7 @@ const PLOT_MESSAGE_LIMIT = 50_000;
 
 export function TimeSeriesPlot({ panelId, topicName, type }: TimeSeriesPlotProps) {
   const bag = useBagStore((s) => s.bag);
-  const { messages, loading, error } = useTopicMessages(topicName, PLOT_MESSAGE_LIMIT);
+  const { messages, loading, progress, error } = useTopicMessages(topicName, PLOT_MESSAGE_LIMIT);
   const totalMessages = useMemo(
     () => bag?.topics.find((t) => t.name === topicName)?.messageCount ?? 0,
     [bag, topicName],
@@ -176,7 +176,18 @@ export function TimeSeriesPlot({ panelId, topicName, type }: TimeSeriesPlotProps
       type={type}
       accentColor={getTopicColor(topicName, type)}
     >
-      {loading && <PanelLoadingState message="Decoding messages…" />}
+      {loading && (
+        <PanelLoadingState
+          message={
+            totalMessages > 0
+              ? `Decoded ${progress.toLocaleString()} of ${Math.min(
+                  totalMessages,
+                  PLOT_MESSAGE_LIMIT,
+                ).toLocaleString()} messages…`
+              : `Decoded ${progress.toLocaleString()} messages…`
+          }
+        />
+      )}
       {error && <PanelErrorState message={error} />}
       {!loading && !error && (!series || messages?.length === 0) && (
         <PanelEmptyState

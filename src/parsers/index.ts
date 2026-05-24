@@ -73,9 +73,11 @@ export async function readDeserializedMessages(
   format: BagFormat,
   topicName: string,
   limit?: number,
+  onProgress?: (decoded: number) => void,
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null }[]> {
-  if (format === 'mcap') return readDeserializedMessagesMcap(file, topicName, limit);
-  return readDeserializedMessagesDb3(file, topicName, limit);
+  if (format === 'mcap')
+    return readDeserializedMessagesMcap(file, topicName, limit, onProgress);
+  return readDeserializedMessagesDb3(file, topicName, limit, onProgress);
 }
 
 /**

@@ -319,24 +319,71 @@ export async function readRawMessagesMcap(
   return out;
 }
 
+/**
+ * Read + CDR-deserialize every message on a topic in a single pass.
+ *
+ * Optional `onProgress` is fired roughly every YIELD_EVERY messages and
+ * after each yield so callers can surface a "decoded N of ~M" indicator.
+ * The yields also keep the main thread responsive (close buttons, scrub
+ * gestures stay snappy while a multi-thousand-message topic decodes).
+ */
+const YIELD_EVERY = 500;
+
 export async function readDeserializedMessagesMcap(
   file: File,
   topicName: string,
   limit?: number,
+  onProgress?: (decoded: number) => void,
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null }[]> {
   const meta = await loadMcap(file);
   const topicInfo = meta.topicMeta.get(topicName);
   if (!topicInfo || !topicInfo.schemaText) return [];
+  const schemaText = topicInfo.schemaText;
 
-  const raws = await readRawMessagesMcap(file, topicName, limit);
   const out: { timestamp: bigint; value: Record<string, unknown> | null }[] = [];
-  for (const raw of raws) {
+
+  const decodeOne = (raw: Uint8Array): Record<string, unknown> | null => {
     try {
-      const value = deserializeWithSchema(topicInfo.schemaText, raw.data);
-      out.push({ timestamp: raw.timestamp, value });
+      return deserializeWithSchema(schemaText, raw);
     } catch {
-      out.push({ timestamp: raw.timestamp, value: null });
+      return null;
     }
+  };
+
+  const tick = async () => {
+    if (out.length % YIELD_EVERY === 0) {
+      onProgress?.(out.length);
+      // Hand control back to the browser so layout / input / rAF can run.
+      await new Promise((r) => setTimeout(r, 0));
+    }
+  };
+
+  if (meta.reader) {
+    for await (const msg of meta.reader.readMessages({ topics: [topicName] })) {
+      out.push({ timestamp: msg.logTime, value: decodeOne(msg.data) });
+      if (limit && out.length >= limit) break;
+      await tick();
+    }
+    onProgress?.(out.length);
+    return out;
+  }
+
+  if (meta.buffer) {
+    const reader = new McapStreamReader({ decompressHandlers: meta.decompressHandlers });
+    reader.append(meta.buffer);
+    const channelIdsForTopic = new Set<number>();
+    for (const [id, ch] of meta.channelById) {
+      if (ch.topic === topicName) channelIdsForTopic.add(id);
+    }
+    for (let record; (record = reader.nextRecord()); ) {
+      if (record.type !== 'Message' || !channelIdsForTopic.has(record.channelId)) continue;
+      const data =
+        record.data instanceof Uint8Array ? record.data : new Uint8Array(record.data);
+      out.push({ timestamp: record.logTime, value: decodeOne(data) });
+      if (limit && out.length >= limit) break;
+      await tick();
+    }
+    onProgress?.(out.length);
   }
   return out;
 }

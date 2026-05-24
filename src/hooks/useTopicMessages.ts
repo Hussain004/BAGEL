@@ -3,9 +3,9 @@
  * cache the result keyed by (fileName, fileSize, topicName) so re-opening a
  * panel reuses the prior parse.
  *
- * For very large topics (point clouds with millions of points, hour-long
- * image streams) you should switch to a windowed reader; for v0.2 we load
- * everything up front. A `limit` parameter exposes a guard rail.
+ * Reports decode progress (`progress` count) so loading UIs can show "decoded
+ * N of ~M" instead of an opaque spinner. The cache stays at the topic level
+ * — partial decodes aren't cached, only completed ones.
  */
 
 import { useEffect, useState } from 'react';
@@ -32,6 +32,8 @@ function keyOf(k: CacheKey): string {
 export interface TopicMessagesState {
   messages: DecodedMessage[] | null;
   loading: boolean;
+  /** Approximate decode progress (number of messages decoded so far). */
+  progress: number;
   error: string | null;
 }
 
@@ -41,13 +43,14 @@ export function useTopicMessages(topicName: string, limit?: number): TopicMessag
   const [state, setState] = useState<TopicMessagesState>({
     messages: null,
     loading: true,
+    progress: 0,
     error: null,
   });
 
   useEffect(() => {
     if (!bag || !file) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setState({ messages: null, loading: false, error: null });
+      setState({ messages: null, loading: false, progress: 0, error: null });
       return;
     }
 
@@ -59,24 +62,27 @@ export function useTopicMessages(topicName: string, limit?: number): TopicMessag
     const cached = cache.get(cacheKey);
     if (cached) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setState({ messages: cached, loading: false, error: null });
+      setState({ messages: cached, loading: false, progress: cached.length, error: null });
       return;
     }
 
     let cancelled = false;
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setState({ messages: null, loading: true, error: null });
+    setState({ messages: null, loading: true, progress: 0, error: null });
 
-    readDeserializedMessages(file, bag.format, topicName, limit)
+    readDeserializedMessages(file, bag.format, topicName, limit, (decoded) => {
+      if (cancelled) return;
+      setState((s) => ({ ...s, progress: decoded }));
+    })
       .then((msgs) => {
         if (cancelled) return;
         cache.set(cacheKey, msgs);
-        setState({ messages: msgs, loading: false, error: null });
+        setState({ messages: msgs, loading: false, progress: msgs.length, error: null });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
         const msg = err instanceof Error ? err.message : String(err);
-        setState({ messages: null, loading: false, error: msg });
+        setState((s) => ({ ...s, loading: false, error: msg }));
       });
 
     return () => {
