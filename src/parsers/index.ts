@@ -1,100 +1,51 @@
 /**
- * Unified Bag File Parser
+ * Public parser API used by the rest of the app.
  *
- * Detects the format of a bag file and delegates to the appropriate parser.
- * Also exposes a single set of message-reading APIs that route by detected
- * format so panels don't have to care about db3 vs mcap.
+ * Routes every call through the parser Web Worker (see `workers/parser.worker.ts`)
+ * so the heavy lifting — MCAP chunk decompression, sql.js queries, CDR
+ * deserialization — runs off the UI thread. The function signatures match
+ * the previous main-thread implementation so existing callers don't change.
+ *
+ * The actual parser implementations live in `./core.ts`; only the worker
+ * imports them, which keeps the main bundle slim (no @mcap/core, sql.js, or
+ * fzstd in the React render path).
  */
 
 import type { BagFormat, BagSummary, RawMessage } from '../types/bag';
-import {
-  parseMcap,
-  readRawMessagesMcap,
-  readDeserializedMessagesMcap,
-  readMessageAtTimeMcap,
-  getTopicTypeMcap,
-  disposeMcapCache,
-} from './mcap';
-import {
-  parseDb3,
-  readRawMessagesDb3,
-  readDeserializedMessagesDb3,
-  readMessageAtTimeDb3,
-  getTopicTypeDb3,
-  disposeDb3Cache,
-} from './db3';
-import { checkMagicBytes } from '../utils/bytes';
+import { getParserClient } from '../workers/parserClient';
 
-const MCAP_MAGIC = [0x89, 0x4d, 0x43, 0x41, 0x50, 0x30, 0x0d, 0x0a];
-const SQLITE_MAGIC = [0x53, 0x51, 0x4c, 0x69, 0x74, 0x65];
-
-export async function detectFormat(file: File): Promise<BagFormat | 'unknown'> {
-  const ext = file.name.split('.').pop()?.toLowerCase();
-  if (ext === 'mcap') return 'mcap';
-  if (ext === 'db3') return 'db3';
-
-  const header = new Uint8Array(await file.slice(0, 16).arrayBuffer());
-  if (checkMagicBytes(header, MCAP_MAGIC)) return 'mcap';
-  if (checkMagicBytes(header, SQLITE_MAGIC)) return 'db3';
-
-  return 'unknown';
-}
+type DecodedMessage = { timestamp: bigint; value: Record<string, unknown> | null };
 
 export async function parseBag(file: File): Promise<BagSummary> {
-  const format = await detectFormat(file);
-
-  switch (format) {
-    case 'mcap':
-      return parseMcap(file);
-    case 'db3':
-      return parseDb3(file);
-    default:
-      throw new Error(
-        `Unsupported file format: "${file.name}". ` +
-          'BAGEL supports .db3 (ROS2 SQLite) and .mcap (MCAP) bag files.',
-      );
-  }
+  return getParserClient().parseBag(file);
 }
 
-/** Read raw CDR-encoded messages for a topic, in chronological order. */
 export async function readRawMessages(
   file: File,
   format: BagFormat,
   topicName: string,
   limit?: number,
 ): Promise<RawMessage[]> {
-  if (format === 'mcap') return readRawMessagesMcap(file, topicName, limit);
-  return readRawMessagesDb3(file, topicName, limit);
+  return getParserClient().readRawMessages(file, format, topicName, limit);
 }
 
-/** Read and deserialize messages for a topic, in chronological order. */
 export async function readDeserializedMessages(
   file: File,
   format: BagFormat,
   topicName: string,
   limit?: number,
   onProgress?: (decoded: number) => void,
-): Promise<{ timestamp: bigint; value: Record<string, unknown> | null }[]> {
-  if (format === 'mcap')
-    return readDeserializedMessagesMcap(file, topicName, limit, onProgress);
-  return readDeserializedMessagesDb3(file, topicName, limit, onProgress);
+): Promise<DecodedMessage[]> {
+  return getParserClient().readDeserializedMessages(file, format, topicName, limit, onProgress);
 }
 
-/**
- * Read just one message — the one nearest `timeNs` — for a topic.
- *
- * Used by panels that only need the current frame at the playhead time
- * (Image, Raw inspector). Skips loading every message on the topic,
- * which would be many GB for image streams in compressed bags.
- */
 export async function readMessageAtTime(
   file: File,
   format: BagFormat,
   topicName: string,
   timeNs: bigint,
-): Promise<{ timestamp: bigint; value: Record<string, unknown> | null } | null> {
-  if (format === 'mcap') return readMessageAtTimeMcap(file, topicName, timeNs);
-  return readMessageAtTimeDb3(file, topicName, timeNs);
+): Promise<DecodedMessage | null> {
+  return getParserClient().readMessageAtTime(file, format, topicName, timeNs);
 }
 
 export async function getTopicType(
@@ -102,14 +53,10 @@ export async function getTopicType(
   format: BagFormat,
   topicName: string,
 ): Promise<string | undefined> {
-  if (format === 'mcap') return getTopicTypeMcap(file, topicName);
-  return getTopicTypeDb3(file, topicName);
+  return getParserClient().getTopicType(file, format, topicName);
 }
 
 export function disposeParserCaches(): void {
-  disposeMcapCache();
-  disposeDb3Cache();
+  // Fire-and-forget: cache disposal doesn't need to block the caller.
+  void getParserClient().disposeParserCaches();
 }
-
-export { parseMcap } from './mcap';
-export { parseDb3 } from './db3';
