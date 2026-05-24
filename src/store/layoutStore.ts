@@ -8,7 +8,7 @@
 
 import { create } from 'zustand';
 
-export type PanelKind = 'plot' | 'image' | 'raw';
+export type PanelKind = 'plot' | 'image' | 'raw' | 'trajectory' | 'tf';
 
 export interface PanelInstance {
   id: string;

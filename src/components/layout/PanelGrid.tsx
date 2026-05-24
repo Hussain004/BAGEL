@@ -3,6 +3,8 @@ import { useLayoutStore, type PanelInstance } from '../../store/layoutStore';
 import { TimeSeriesPlot } from '../panels/TimeSeriesPlot';
 import { ImageViewer } from '../panels/ImageViewer';
 import { RawMessageInspector } from '../panels/RawMessageInspector';
+import { TrajectoryPlot } from '../panels/TrajectoryPlot';
+import { TFTree } from '../panels/TFTree';
 
 /**
  * PanelGrid — Resizable layout for the open visualization panels.
@@ -93,5 +95,9 @@ function renderPanel(p: PanelInstance) {
       return <ImageViewer panelId={p.id} topicName={p.topicName} type={p.type} />;
     case 'raw':
       return <RawMessageInspector panelId={p.id} topicName={p.topicName} type={p.type} />;
+    case 'trajectory':
+      return <TrajectoryPlot panelId={p.id} topicName={p.topicName} type={p.type} />;
+    case 'tf':
+      return <TFTree panelId={p.id} topicName={p.topicName} type={p.type} />;
   }
 }

@@ -79,3 +79,23 @@ export function isImageType(type: string): boolean {
 export function isCompressedImageType(type: string): boolean {
   return type.includes('CompressedImage');
 }
+
+/** True if a ROS2 type carries planar pose data the Trajectory panel can render. */
+export function isTrajectoryCapableType(type: string): boolean {
+  return (
+    type.endsWith('/Odometry') ||
+    type.endsWith('/PoseStamped') ||
+    type.endsWith('/PoseWithCovarianceStamped') ||
+    type.endsWith('/Pose') ||
+    type.endsWith('/Point') ||
+    type.endsWith('/PointStamped') ||
+    type.endsWith('/TransformStamped') ||
+    type.endsWith('/NavSatFix')
+  );
+}
+
+/** True if a topic carries a TF graph (tf2_msgs/TFMessage on /tf or /tf_static). */
+export function isTfTopic(topicName: string, type: string): boolean {
+  if (!type.endsWith('/TFMessage')) return false;
+  return topicName === '/tf' || topicName === '/tf_static' || topicName.endsWith('/tf');
+}

@@ -1,5 +1,9 @@
 import { getTopicColor, getTypeCategory } from '../../../utils/color';
-import { isImageType } from '../../../utils/messages';
+import {
+  isImageType,
+  isTfTopic,
+  isTrajectoryCapableType,
+} from '../../../utils/messages';
 import { useLayoutStore, type PanelKind } from '../../../store/layoutStore';
 import type { TopicInfo } from '../../../types/bag';
 
@@ -18,11 +22,47 @@ interface TopicRowProps {
   index: number;
 }
 
-/** Suggested default panel for a topic — image for image types, otherwise plot. */
+/** Pick the panel kind to open when the user single-clicks a topic. */
 function suggestPanelKind(topic: TopicInfo): PanelKind {
+  if (isTfTopic(topic.name, topic.type)) return 'tf';
   if (isImageType(topic.type)) return 'image';
+  // For pose-only types (Pose, Point, TransformStamped) plot has nothing
+  // useful to show; jump straight to the trajectory view.
+  if (
+    isTrajectoryCapableType(topic.type) &&
+    !topic.type.endsWith('/Odometry') &&
+    !topic.type.endsWith('/PoseStamped') &&
+    !topic.type.endsWith('/PoseWithCovarianceStamped') &&
+    !topic.type.endsWith('/NavSatFix')
+  ) {
+    return 'trajectory';
+  }
   return 'plot';
 }
+
+/** The panel kinds that should appear as quick buttons for a given topic. */
+function panelOptionsFor(topic: TopicInfo): PanelKind[] {
+  if (isTfTopic(topic.name, topic.type)) return ['tf', 'raw'];
+  if (isImageType(topic.type)) return ['image', 'raw'];
+  if (isTrajectoryCapableType(topic.type)) return ['trajectory', 'plot', 'raw'];
+  return ['plot', 'raw'];
+}
+
+const KIND_BUTTON_LABEL: Record<PanelKind, string> = {
+  plot: 'Plot',
+  image: 'Image',
+  raw: 'Raw',
+  trajectory: 'Path',
+  tf: 'TF',
+};
+
+const KIND_BUTTON_TITLE: Record<PanelKind, string> = {
+  plot: 'Open time-series plot',
+  image: 'Open image viewer',
+  raw: 'Open raw inspector',
+  trajectory: 'Open 2D trajectory',
+  tf: 'Open TF tree',
+};
 
 export function TopicRow({ topic, index }: TopicRowProps) {
   const color = getTopicColor(topic.name, topic.type);
@@ -41,7 +81,7 @@ export function TopicRow({ topic, index }: TopicRowProps) {
   };
 
   const defaultKind = suggestPanelKind(topic);
-  const isImage = defaultKind === 'image';
+  const buttonKinds = panelOptionsFor(topic);
 
   return (
     <div
@@ -103,24 +143,15 @@ export function TopicRow({ topic, index }: TopicRowProps) {
           className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
           onClick={(e) => e.stopPropagation()}
         >
-          {isImage ? (
+          {buttonKinds.map((kind) => (
             <PanelButton
-              label="Image"
-              title="Open image viewer"
-              onClick={() => handleOpen('image')}
+              key={kind}
+              label={KIND_BUTTON_LABEL[kind]}
+              title={KIND_BUTTON_TITLE[kind]}
+              onClick={() => handleOpen(kind)}
+              accent={kind === defaultKind}
             />
-          ) : (
-            <PanelButton
-              label="Plot"
-              title="Open time-series plot"
-              onClick={() => handleOpen('plot')}
-            />
-          )}
-          <PanelButton
-            label="Raw"
-            title="Open raw inspector"
-            onClick={() => handleOpen('raw')}
-          />
+          ))}
         </div>
       </div>
     </div>
@@ -131,16 +162,22 @@ function PanelButton({
   label,
   title,
   onClick,
+  accent,
 }: {
   label: string;
   title: string;
   onClick: () => void;
+  accent?: boolean;
 }) {
   return (
     <button
       title={title}
       onClick={onClick}
-      className="px-2 py-1 rounded-md text-[10px] font-medium mono bg-surface border border-border hover:border-accent-blue/40 hover:text-accent-blue text-text-secondary transition-all"
+      className={`px-2 py-1 rounded-md text-[10px] font-medium mono border transition-all ${
+        accent
+          ? 'bg-accent-blue/10 border-accent-blue/40 text-accent-blue hover:bg-accent-blue/15'
+          : 'bg-surface border-border hover:border-accent-blue/40 hover:text-accent-blue text-text-secondary'
+      }`}
     >
       {label}
     </button>

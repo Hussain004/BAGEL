@@ -41,9 +41,16 @@ BAGEL eliminates this friction.
 
 ## Features
 
-### v0.2: Plotting, Image Viewer & Playhead *(Current)*
+### v0.3: Trajectory, TF Tree & Web Worker *(Current)*
 
-Everything in v0.1, plus:
+Everything in v0.2, plus:
+
+- **TrajectoryPlot** panel: click any pose-bearing topic to render its 2D path. Supports `nav_msgs/Odometry`, `geometry_msgs/PoseStamped`, `PoseWithCovarianceStamped`, `Pose`, `Point(Stamped)`, `TransformStamped`, and `sensor_msgs/NavSatFix` (equirectangular projection from the first GPS fix). The polyline runs blue → red along the path, with a playhead marker that follows the bag time and a heading arrow when the source message has an orientation quaternion. Mouse-wheel zoom, drag-to-pan, and a dynamic scale bar in metres / km.
+- **TFTree** panel: parses `/tf` and `/tf_static` into a single graph and renders the frame hierarchy as an interactive top-down tree. Click any frame to see its current transform (translation, quaternion, Euler angles in degrees) at the playhead time, and to highlight the root → frame chain. Static and dynamic edges are visually distinct (dashed vs solid).
+- **Web Worker parsing**: every heavy operation — initial bag parse, MCAP chunk zstd-decompression, sql.js queries, CDR deserialization — now runs in a dedicated parser worker. The React render loop stays responsive while a topic decodes; scrubbing the timeline, toggling panels, and resizing the layout no longer block on the bag. `@mcap/core`, `sql.js`, `fzstd`, and the `@foxglove/*` libraries live entirely in the worker chunk and never touch the UI thread.
+- **Smarter sidebar panel buttons**: each topic row now offers exactly the panel kinds that fit its type. Pose topics get a `Path` button, `/tf` and `/tf_static` get a `TF` button, image topics keep `Image`, and `Raw` is always available. The default-click panel matches the topic's nature (TF → tf, pose-only → trajectory, image → image, otherwise → plot).
+
+### v0.2: Plotting, Image Viewer & Playhead
 
 - **Global playhead**: timeline strip at the bottom with click/drag scrub, play/pause, 0.25×–4× speed, and Spacebar shortcut. Every open panel syncs to the same timestamp.
 - **TimeSeriesPlot** panel: click any non-image topic to chart its numeric fields. Auto-extracts every numeric leaf (e.g. `linear.x`, `angular.z`, `orientation.w`) as a separate series, with per-field visibility toggles. uPlot-driven, handles up to 50,000 points per panel.
@@ -67,11 +74,8 @@ Everything in v0.1, plus:
 
 | Version | Features |
 |---|---|
-| **v0.3** | Web Worker parsing + WASM zstd (perf foundation), 2D trajectory plot, TF tree graph |
-| **v0.4** | 3D point cloud rendering, LaserScan overlay, camera frustum |
+| **v0.4** | 3D point cloud rendering, LaserScan overlay, camera frustum, TF-aware scene |
 | **v0.5** | CSV/JSON export, keyboard shortcuts, sample bag loader, polish & launch |
-
-> v0.3 includes performance work needed before BAGEL can stay snappy on multi-GB compressed bags.
 
 ---
 
@@ -125,37 +129,48 @@ Then open [http://localhost:5173](http://localhost:5173) in your browser.
 ```
 User's Browser
 │
-├── File Input (drag & drop)
-│     │
-│     ▼
-├── Format Detection (.db3 or .mcap?)
-│     │
-│     ├── .mcap → @mcap/core IndexedReader (range reads via BlobReadable)
-│     │              ├── fzstd  (decompress zstd chunks)
-│     │              └── readMessageAtTime / readMessages(topic)
-│     │
-│     └── .db3  → sql.js (SQLite via WASM)
-│                     └── SQL: topics / messages tables, nearest-row at time
-│
-├── CDR Deserialization (single-pass, with progress + yields)
-│     └── @foxglove/rosmsg2-serialization
-│           Schemas from MCAP file or @foxglove/rosmsg-msgs-common
-│
-├── Application State (Zustand)
-│     ├── bagStore       (BagSummary + source File)
-│     ├── playheadStore  (timeNs, playing, speed, seek)
-│     └── layoutStore    (open panels keyed by kind:topic)
-│
-└── UI (React + TailwindCSS + react-resizable-panels)
-      ├── DropZone           (landing page)
-      ├── Toolbar            (bag info bar)
-      ├── TopicInspector     (sidebar topic list)
-      ├── Timeline           (global playhead scrubber)
-      └── PanelGrid
-            ├── TimeSeriesPlot     (uPlot)
-            ├── ImageViewer        (canvas; lazy single-frame reads)
-            └── RawMessageInspector (collapsible JSON tree)
+├── Main thread (React render loop)
+│   │
+│   ├── DropZone / Toolbar / Timeline / Sidebar / PanelGrid
+│   │
+│   ├── Zustand stores
+│   │     ├── bagStore       (BagSummary + source File handle)
+│   │     ├── playheadStore  (timeNs, playing, speed, seek)
+│   │     └── layoutStore    (open panels keyed by kind:topic)
+│   │
+│   ├── Hooks (lazy fetch + cache decoded messages)
+│   │     ├── useTopicMessages
+│   │     ├── useMessageAtTime
+│   │     ├── useTrajectory
+│   │     └── useTFGraph
+│   │
+│   └── parsers/index.ts  → tiny shim that talks to the worker
+│         │
+│         │  postMessage({ id, method, params })
+│         ▼
+└── Parser Web Worker (off-thread)
+      │
+      ├── parseBag(file)                  → BagSummary
+      ├── readDeserializedMessages(...)   → decoded[]   (streams progress)
+      ├── readMessageAtTime(...)          → one message
+      └── disposeParserCaches()
+      │
+      ├── Format detect (.db3 or .mcap?)
+      │     ├── .mcap → @mcap/core IndexedReader (range reads via BlobReadable)
+      │     │              └── fzstd (decompress zstd chunks)
+      │     └── .db3  → sql.js (SQLite compiled to WASM)
+      │                     └── nearest-row-at-time SQL
+      │
+      └── CDR Deserialization (@foxglove/rosmsg2-serialization)
+            Schemas from MCAP file or @foxglove/rosmsg-msgs-common
 ```
+
+The main bundle no longer ships `@mcap/core`, `sql.js`, `fzstd`, or the
+`@foxglove/*` libraries — those are bundled into the worker chunk that
+Vite emits as a sibling of `index.js`. The worker's MCAP reader and
+sql.js database are held in module-level caches that survive across
+panel reads, so opening a second panel on the same topic doesn't re-pay
+the parse cost.
 
 ### Supported Message Types
 
@@ -180,11 +195,16 @@ BAGEL's built-in type registry covers all standard ROS2 packages:
 ```
 src/
 ├── parsers/              # Core parsing (no React deps)
-│   ├── index.ts          # Format detection + unified parser, message-read APIs
+│   ├── index.ts          # Thin shim: forwards every call to the parser worker
+│   ├── core.ts           # Worker-only: format detect + unified parse + read APIs
 │   ├── mcap.ts           # MCAP reader (range reads, fzstd decompress, lazy seek)
 │   ├── db3.ts            # SQLite reader (cached Database, nearest-at-time query)
 │   ├── cdr.ts            # CDR deserializer (cached MessageReader per type)
 │   └── typeRegistry.ts   # ROS2 message definitions
+│
+├── workers/
+│   ├── parser.worker.ts  # Web Worker entry — owns the parser caches
+│   └── parserClient.ts   # Main-thread RPC client (promise-based)
 │
 ├── store/
 │   ├── bagStore.ts        # Bag summary + source File
@@ -206,7 +226,9 @@ src/
 │       ├── TopicInspector/         # Sidebar topic list with search/sort
 │       ├── TimeSeriesPlot/         # uPlot-based time-series chart
 │       ├── ImageViewer/            # Raw + Compressed image decoder
-│       └── RawMessageInspector/    # JSON tree at playhead time
+│       ├── RawMessageInspector/    # JSON tree at playhead time
+│       ├── TrajectoryPlot/         # 2D x/y path on a canvas
+│       └── TFTree/                 # /tf + /tf_static graph view
 │
 ├── types/                # TypeScript interfaces
 │   ├── bag.ts            # BagSummary, TopicInfo, RawMessage
@@ -216,7 +238,8 @@ src/
     ├── time.ts           # Nanosecond timestamp utils
     ├── bytes.ts          # File size, hex dump, magic bytes
     ├── color.ts          # Topic color assignment
-    └── messages.ts       # flattenNumeric, nearestMessageIndex, isImageType
+    ├── messages.ts       # flattenNumeric, nearestMessageIndex, type sniffing
+    └── trajectory.ts     # Pose / NavSatFix → x/y extraction + bounds
 ```
 
 ---
