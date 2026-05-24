@@ -19,9 +19,13 @@ import {
   readRawMessages,
   readDeserializedMessages,
   readMessageAtTime,
+  readPointCloudAtTime,
+  readLaserScanAtTime,
   getTopicType,
   disposeParserCaches,
 } from '../parsers/core';
+import type { ColorMode, PointCloudExtraction } from '../utils/pointcloud';
+import type { LaserScanExtraction } from '../utils/laserscan';
 
 type DecodedMessage = { timestamp: bigint; value: Record<string, unknown> | null };
 
@@ -30,6 +34,8 @@ type Method =
   | 'readRawMessages'
   | 'readDeserializedMessages'
   | 'readMessageAtTime'
+  | 'readPointCloudAtTime'
+  | 'readLaserScanAtTime'
   | 'getTopicType'
   | 'disposeParserCaches';
 
@@ -55,6 +61,20 @@ interface ReadMessageAtTimeParams {
   topicName: string;
   timeNs: bigint;
 }
+interface ReadPointCloudAtTimeParams {
+  file: File;
+  format: BagFormat;
+  topicName: string;
+  timeNs: bigint;
+  colorMode: ColorMode;
+  maxPoints?: number;
+}
+interface ReadLaserScanAtTimeParams {
+  file: File;
+  format: BagFormat;
+  topicName: string;
+  timeNs: bigint;
+}
 interface GetTopicTypeParams {
   file: File;
   format: BagFormat;
@@ -66,6 +86,8 @@ type WorkerRequest =
   | BaseRequest<ReadRawMessagesParams>
   | BaseRequest<ReadDeserializedMessagesParams>
   | BaseRequest<ReadMessageAtTimeParams>
+  | BaseRequest<ReadPointCloudAtTimeParams>
+  | BaseRequest<ReadLaserScanAtTimeParams>
   | BaseRequest<GetTopicTypeParams>
   | BaseRequest<undefined>;
 
@@ -91,6 +113,8 @@ export type WorkerResponse =
   | ResultResponse<RawMessage[]>
   | ResultResponse<DecodedMessage[]>
   | ResultResponse<DecodedMessage | null>
+  | ResultResponse<(PointCloudExtraction & { timestamp: bigint }) | null>
+  | ResultResponse<(LaserScanExtraction & { timestamp: bigint }) | null>
   | ResultResponse<string | undefined>
   | ResultResponse<void>
   | ErrorResponse;
@@ -99,8 +123,14 @@ const ctx = self as unknown as DedicatedWorkerGlobalScope;
 
 ctx.addEventListener('message', async (e: MessageEvent<WorkerRequest>) => {
   const req = e.data;
-  const respond = <T>(payload: T) =>
-    ctx.postMessage({ id: req.id, type: 'result', result: payload } satisfies ResultResponse<T>);
+  const respond = <T>(payload: T, transfer?: Transferable[]) => {
+    const msg = { id: req.id, type: 'result', result: payload } satisfies ResultResponse<T>;
+    if (transfer && transfer.length > 0) {
+      ctx.postMessage(msg, transfer);
+    } else {
+      ctx.postMessage(msg);
+    }
+  };
   const fail = (err: unknown) => {
     const message = err instanceof Error ? err.message : String(err);
     ctx.postMessage({ id: req.id, type: 'error', error: message } satisfies ErrorResponse);
@@ -134,6 +164,35 @@ ctx.addEventListener('message', async (e: MessageEvent<WorkerRequest>) => {
       case 'readMessageAtTime': {
         const { file, format, topicName, timeNs } = req.params as ReadMessageAtTimeParams;
         respond(await readMessageAtTime(file, format, topicName, timeNs));
+        return;
+      }
+      case 'readPointCloudAtTime': {
+        const { file, format, topicName, timeNs, colorMode, maxPoints } =
+          req.params as ReadPointCloudAtTimeParams;
+        const result = await readPointCloudAtTime(
+          file,
+          format,
+          topicName,
+          timeNs,
+          colorMode,
+          maxPoints,
+        );
+        // Transfer the Float32Array backing buffers — zero copy to the main
+        // thread. positions / colors are unique per decode, never shared.
+        const transfer = result
+          ? [result.positions.buffer, result.colors.buffer]
+          : undefined;
+        respond(result, transfer as Transferable[] | undefined);
+        return;
+      }
+      case 'readLaserScanAtTime': {
+        const { file, format, topicName, timeNs } =
+          req.params as ReadLaserScanAtTimeParams;
+        const result = await readLaserScanAtTime(file, format, topicName, timeNs);
+        const transfer = result
+          ? [result.positions.buffer, result.colors.buffer]
+          : undefined;
+        respond(result, transfer as Transferable[] | undefined);
         return;
       }
       case 'getTopicType': {

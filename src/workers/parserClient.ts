@@ -12,8 +12,12 @@
  */
 
 import type { BagFormat, BagSummary, RawMessage } from '../types/bag';
+import type { ColorMode, PointCloudExtraction } from '../utils/pointcloud';
+import type { LaserScanExtraction } from '../utils/laserscan';
 
 type DecodedMessage = { timestamp: bigint; value: Record<string, unknown> | null };
+type DecodedPointCloud = (PointCloudExtraction & { timestamp: bigint }) | null;
+type DecodedLaserScan = (LaserScanExtraction & { timestamp: bigint }) | null;
 
 interface PendingRequest {
   resolve: (value: unknown) => void;
@@ -131,6 +135,38 @@ class ParserClient {
     timeNs: bigint,
   ): Promise<DecodedMessage | null> {
     return this.request<DecodedMessage | null>('readMessageAtTime', {
+      file,
+      format,
+      topicName,
+      timeNs,
+    });
+  }
+
+  readPointCloudAtTime(
+    file: File,
+    format: BagFormat,
+    topicName: string,
+    timeNs: bigint,
+    colorMode: ColorMode,
+    maxPoints?: number,
+  ): Promise<DecodedPointCloud> {
+    return this.request<DecodedPointCloud>('readPointCloudAtTime', {
+      file,
+      format,
+      topicName,
+      timeNs,
+      colorMode,
+      maxPoints,
+    });
+  }
+
+  readLaserScanAtTime(
+    file: File,
+    format: BagFormat,
+    topicName: string,
+    timeNs: bigint,
+  ): Promise<DecodedLaserScan> {
+    return this.request<DecodedLaserScan>('readLaserScanAtTime', {
       file,
       format,
       topicName,
