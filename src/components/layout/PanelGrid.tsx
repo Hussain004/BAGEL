@@ -5,6 +5,7 @@ import { ImageViewer } from '../panels/ImageViewer';
 import { RawMessageInspector } from '../panels/RawMessageInspector';
 import { TrajectoryPlot } from '../panels/TrajectoryPlot';
 import { TFTree } from '../panels/TFTree';
+import { ThreeDScene } from '../panels/ThreeDScene';
 
 /**
  * PanelGrid — Resizable layout for the open visualization panels.
@@ -99,5 +100,7 @@ function renderPanel(p: PanelInstance) {
       return <TrajectoryPlot panelId={p.id} topicName={p.topicName} type={p.type} />;
     case 'tf':
       return <TFTree panelId={p.id} topicName={p.topicName} type={p.type} />;
+    case '3d':
+      return <ThreeDScene panelId={p.id} topicName={p.topicName} type={p.type} />;
   }
 }

@@ -99,3 +99,31 @@ export function isTfTopic(topicName: string, type: string): boolean {
   if (!type.endsWith('/TFMessage')) return false;
   return topicName === '/tf' || topicName === '/tf_static' || topicName.endsWith('/tf');
 }
+
+/** True if a ROS2 type is sensor_msgs/PointCloud2. */
+export function isPointCloud2Type(type: string): boolean {
+  return type.endsWith('/PointCloud2');
+}
+
+/** True if a ROS2 type is sensor_msgs/LaserScan. */
+export function isLaserScanType(type: string): boolean {
+  return type.endsWith('/LaserScan');
+}
+
+/**
+ * True if the topic carries spatial data the ThreeDScene panel can render.
+ *
+ * Anything that produces a position in 3D space counts: full point clouds,
+ * LaserScans (we lift the polar ring into XY at z=0), and pose / odometry
+ * topics (rendered as coordinate frame axes).
+ */
+export function is3DCapableType(type: string): boolean {
+  if (isPointCloud2Type(type) || isLaserScanType(type)) return true;
+  // Pose-bearing types — we'll render them as a coordinate frame triad.
+  return (
+    type.endsWith('/Odometry') ||
+    type.endsWith('/PoseStamped') ||
+    type.endsWith('/PoseWithCovarianceStamped') ||
+    type.endsWith('/TransformStamped')
+  );
+}
