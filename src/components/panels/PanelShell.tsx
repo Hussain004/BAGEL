@@ -14,6 +14,8 @@ const KIND_LABELS: Record<PanelKind, string> = {
   plot: 'Plot',
   image: 'Image',
   raw: 'Raw',
+  trajectory: 'Trajectory',
+  tf: 'TF Tree',
 };
 
 /**
