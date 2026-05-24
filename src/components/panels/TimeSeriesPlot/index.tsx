@@ -31,9 +31,25 @@ interface TimeSeriesPlotProps {
   type: string;
 }
 
+/**
+ * Cap on eager message loads per plot panel.
+ *
+ * The plot needs every numeric value to draw the time series, but for huge
+ * topics (10k+ msgs at 100 Hz over many minutes) loading everything stalls
+ * the UI thread for ages. 50,000 is enough for 8 minutes at 100 Hz; beyond
+ * that we surface a clear "showing first N of M" hint so the user knows
+ * they're looking at a window, not the full bag.
+ */
+const PLOT_MESSAGE_LIMIT = 50_000;
+
 export function TimeSeriesPlot({ panelId, topicName, type }: TimeSeriesPlotProps) {
   const bag = useBagStore((s) => s.bag);
-  const { messages, loading, error } = useTopicMessages(topicName);
+  const { messages, loading, error } = useTopicMessages(topicName, PLOT_MESSAGE_LIMIT);
+  const totalMessages = useMemo(
+    () => bag?.topics.find((t) => t.name === topicName)?.messageCount ?? 0,
+    [bag, topicName],
+  );
+  const truncated = messages != null && totalMessages > messages.length;
 
   // Numeric series extracted from the messages: dict of field-path → values aligned with time array.
   const series = useMemo(() => {
@@ -202,8 +218,18 @@ export function TimeSeriesPlot({ panelId, topicName, type }: TimeSeriesPlotProps
         </div>
       )}
       {bag && (
-        <div className="px-4 py-1.5 border-t border-border text-text-muted text-xs mono flex items-center justify-between">
-          <span>{messages?.length ?? 0} samples</span>
+        <div className="px-4 py-1.5 border-t border-border text-text-muted text-xs mono flex items-center justify-between gap-3">
+          <span>
+            {messages?.length.toLocaleString() ?? 0} samples
+            {truncated && (
+              <span
+                className="text-accent-amber ml-2"
+                title={`Topic has ${totalMessages.toLocaleString()} messages; only the first ${PLOT_MESSAGE_LIMIT.toLocaleString()} are plotted.`}
+              >
+                (first {PLOT_MESSAGE_LIMIT.toLocaleString()} of {totalMessages.toLocaleString()})
+              </span>
+            )}
+          </span>
           <span>relative t in seconds from first message</span>
         </div>
       )}

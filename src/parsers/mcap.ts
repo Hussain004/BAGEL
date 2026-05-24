@@ -348,3 +348,82 @@ export async function getTopicTypeMcap(
   const meta = await loadMcap(file);
   return meta.topicMeta.get(topicName)?.schemaName;
 }
+
+/**
+ * Read and deserialize a single message near `timeNs` for a topic.
+ *
+ * Used by the Image and Raw inspector panels which only ever need the
+ * one frame at the current playhead — not every message on the topic
+ * (which can be gigabytes for image streams in compressed bags).
+ *
+ * Strategy: ask the IndexedReader for messages starting at `timeNs` and
+ * take the first hit. If there's nothing at-or-after (playhead past the
+ * last message), seek backward. Only the chunks that contain the answer
+ * get decompressed, so this is O(one chunk) instead of O(whole topic).
+ */
+export async function readMessageAtTimeMcap(
+  file: File,
+  topicName: string,
+  timeNs: bigint,
+): Promise<{ timestamp: bigint; value: Record<string, unknown> | null } | null> {
+  const meta = await loadMcap(file);
+  const topicInfo = meta.topicMeta.get(topicName);
+  if (!topicInfo || !topicInfo.schemaText) return null;
+
+  const decode = (raw: Uint8Array) => {
+    try {
+      return deserializeWithSchema(topicInfo.schemaText!, raw);
+    } catch {
+      return null;
+    }
+  };
+
+  if (meta.reader) {
+    for await (const msg of meta.reader.readMessages({
+      topics: [topicName],
+      startTime: timeNs,
+    })) {
+      return { timestamp: msg.logTime, value: decode(msg.data) };
+    }
+    // Nothing at or after — fall back to the latest message at or before.
+    for await (const msg of meta.reader.readMessages({
+      topics: [topicName],
+      endTime: timeNs,
+      reverse: true,
+    })) {
+      return { timestamp: msg.logTime, value: decode(msg.data) };
+    }
+    return null;
+  }
+
+  // Stream-reader fallback: scan and keep the message closest to timeNs.
+  if (meta.buffer) {
+    const reader = new McapStreamReader({ decompressHandlers: meta.decompressHandlers });
+    reader.append(meta.buffer);
+    const channelIdsForTopic = new Set<number>();
+    for (const [id, ch] of meta.channelById) {
+      if (ch.topic === topicName) channelIdsForTopic.add(id);
+    }
+    let bestTs: bigint | null = null;
+    let bestData: Uint8Array | null = null;
+    for (let record; (record = reader.nextRecord()); ) {
+      if (record.type !== 'Message' || !channelIdsForTopic.has(record.channelId)) continue;
+      const dist =
+        record.logTime > timeNs ? record.logTime - timeNs : timeNs - record.logTime;
+      const bestDist =
+        bestTs === null
+          ? null
+          : bestTs > timeNs
+            ? bestTs - timeNs
+            : timeNs - bestTs;
+      if (bestDist === null || dist < bestDist) {
+        bestTs = record.logTime;
+        bestData = record.data instanceof Uint8Array ? record.data : new Uint8Array(record.data);
+      }
+    }
+    if (bestTs !== null && bestData) {
+      return { timestamp: bestTs, value: decode(bestData) };
+    }
+  }
+  return null;
+}
