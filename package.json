@@ -16,6 +16,7 @@
     "@foxglove/rosmsg2-serialization": "^3.1.1",
     "@mcap/browser": "^1.1.0",
     "@mcap/core": "^2.2.1",
+    "fzstd": "^0.1.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-resizable-panels": "^4.11.1",
