@@ -83,9 +83,11 @@ export function TopicRow({ topic, index }: TopicRowProps) {
   const defaultKind = suggestPanelKind(topic);
   const buttonKinds = panelOptionsFor(topic);
 
+  const hasFrequency = topic.frequency !== undefined && topic.frequency > 0;
+
   return (
     <div
-      className="topic-row flex items-center gap-3 opacity-0 animate-fade-in group cursor-pointer"
+      className="topic-row relative flex items-center gap-3 opacity-0 animate-fade-in group cursor-pointer"
       style={{ animationDelay: `${Math.min(index * 0.04, 0.6)}s` }}
       id={`topic-row-${topic.name.replace(/\//g, '-')}`}
       title={`${topic.name}\n${topic.type}`}
@@ -122,37 +124,44 @@ export function TopicRow({ topic, index }: TopicRowProps) {
         </div>
       </div>
 
-      <div className="flex items-center gap-4 flex-shrink-0 ml-2">
-        <div className="text-right min-w-[55px]">
+      {/* Stats column — fixed-width slots so msgs/Hz line up vertically across
+          every row and sit flush against the right edge of the sidebar. The
+          Hz slot is always rendered (invisible when the topic has no rate)
+          so rows without a frequency don't shift their msgs column left. */}
+      <div className="flex items-center gap-4 flex-shrink-0 ml-2 transition-opacity group-hover:opacity-0 pointer-events-none">
+        <div className="text-right min-w-[60px] whitespace-nowrap">
           <span className="text-text-primary text-sm font-medium mono">
             {topic.messageCount.toLocaleString()}
           </span>
           <span className="text-text-muted text-xs ml-1">msgs</span>
         </div>
 
-        {topic.frequency !== undefined && topic.frequency > 0 && (
-          <div className="text-right min-w-[55px]">
-            <span className="text-text-secondary text-xs mono">
-              {topic.frequency.toFixed(1)}
-            </span>
-            <span className="text-text-muted text-xs ml-0.5">Hz</span>
-          </div>
-        )}
-
         <div
-          className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-          onClick={(e) => e.stopPropagation()}
+          className={`text-right min-w-[55px] whitespace-nowrap ${hasFrequency ? '' : 'invisible'}`}
         >
-          {buttonKinds.map((kind) => (
-            <PanelButton
-              key={kind}
-              label={KIND_BUTTON_LABEL[kind]}
-              title={KIND_BUTTON_TITLE[kind]}
-              onClick={() => handleOpen(kind)}
-              accent={kind === defaultKind}
-            />
-          ))}
+          <span className="text-text-secondary text-xs mono">
+            {hasFrequency ? topic.frequency!.toFixed(1) : '0.0'}
+          </span>
+          <span className="text-text-muted text-xs ml-0.5">Hz</span>
         </div>
+      </div>
+
+      {/* Hover-only panel buttons. Absolute so they never push the stats
+          column left — the data stays anchored to the right edge while the
+          buttons fade in on top of it. */}
+      <div
+        className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {buttonKinds.map((kind) => (
+          <PanelButton
+            key={kind}
+            label={KIND_BUTTON_LABEL[kind]}
+            title={KIND_BUTTON_TITLE[kind]}
+            onClick={() => handleOpen(kind)}
+            accent={kind === defaultKind}
+          />
+        ))}
       </div>
     </div>
   );
