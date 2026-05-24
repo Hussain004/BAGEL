@@ -27,3 +27,4 @@ Thumbs.db
 test_files/
 ros2-bagel-implementation-plan.md
 walkthrough.md
+.claude/settings.local.json

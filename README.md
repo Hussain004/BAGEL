@@ -41,7 +41,24 @@ BAGEL eliminates this friction.
 
 ## Features
 
+<<<<<<< Updated upstream
 ### v0.1: Foundation & File Parsing *(Current)*
+=======
+### v0.2: Plotting, Image Viewer & Playhead *(Current)*
+
+Everything in v0.1, plus:
+
+- **Global playhead**: timeline strip at the bottom with click/drag scrub, play/pause, 0.25×–4× speed, and Spacebar shortcut. Every open panel syncs to the same timestamp.
+- **TimeSeriesPlot** panel: click any non-image topic to chart its numeric fields. Auto-extracts every numeric leaf (e.g. `linear.x`, `angular.z`, `orientation.w`) as a separate series, with per-field visibility toggles. uPlot-driven, handles up to 50,000 points per panel.
+- **ImageViewer** panel: click any `sensor_msgs/Image` or `CompressedImage` topic to see the frame nearest the playhead time. Supports `rgb8 / bgr8 / rgba8 / mono8 / mono16` raw encodings and `jpeg / png` compressed. Lazy single-message reads: multi-GB image streams open near-instantly.
+- **RawMessageInspector** panel: collapsible JSON tree of the deserialized message at the playhead, with type-aware coloring and hex dumps for `Uint8Array` fields.
+- **Resizable panel layout**: sidebar and visualization panels are split by `react-resizable-panels` handles; drag to reflow.
+- **Active-panel indicator**: small blue dot on sidebar topic rows that already have a panel open.
+- **Zstd-compressed MCAP support**: bags recorded with `--compression zstd` (the new ROS2 default) decompress via a pure-JS zstd decoder, no extra setup.
+- **Multi-GB file handling**: MCAP indexed reader does range reads against the source `File` instead of loading the whole bag into a single ArrayBuffer; bags well over 2 GB work.
+
+### v0.1: Foundation & File Parsing
+>>>>>>> Stashed changes
 
 - **Drag & drop** `.db3` and `.mcap` ROS2 bag files
 - **Auto-detect** file format from extension and magic bytes
@@ -58,10 +75,18 @@ BAGEL eliminates this friction.
 
 | Version | Features |
 |---|---|
+<<<<<<< Updated upstream
 | **v0.2** | Time-series plotting, image viewer, global playhead |
 | **v0.3** | 2D trajectory visualization, TF tree graph |
 | **v0.4** | 3D point cloud rendering, LaserScan overlay |
 | **v0.5** | CSV/JSON export, keyboard shortcuts, sample bag loader |
+=======
+| **v0.3** | Web Worker parsing + WASM zstd (perf foundation), 2D trajectory plot, TF tree graph |
+| **v0.4** | 3D point cloud rendering, LaserScan overlay, camera frustum |
+| **v0.5** | CSV/JSON export, keyboard shortcuts, sample bag loader, polish & launch |
+
+> v0.3 includes performance work needed before BAGEL can stay snappy on multi-GB compressed bags
+>>>>>>> Stashed changes
 
 ---
 
