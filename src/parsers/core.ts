@@ -24,6 +24,13 @@ import {
   disposeDb3Cache,
 } from './db3';
 import { checkMagicBytes } from '../utils/bytes';
+import {
+  decodePointCloud2,
+  type ColorMode,
+  type PointCloudExtraction,
+  type PointCloud2Message,
+} from '../utils/pointcloud';
+import { decodeLaserScan, type LaserScanExtraction, type LaserScanMessage } from '../utils/laserscan';
 
 const MCAP_MAGIC = [0x89, 0x4d, 0x43, 0x41, 0x50, 0x30, 0x0d, 0x0a];
 const SQLITE_MAGIC = [0x53, 0x51, 0x4c, 0x69, 0x74, 0x65];
@@ -109,6 +116,55 @@ export async function getTopicType(
 export function disposeParserCaches(): void {
   disposeMcapCache();
   disposeDb3Cache();
+}
+
+/**
+ * Decode a single PointCloud2 message at `timeNs` and return Float32Array
+ * positions + colors. Output buffers are transferable so the worker can
+ * ship them back to the main thread without copying.
+ *
+ * Returns null if the topic has no message at the requested time or the
+ * message is malformed.
+ */
+export async function readPointCloudAtTime(
+  file: File,
+  format: BagFormat,
+  topicName: string,
+  timeNs: bigint,
+  colorMode: ColorMode = 'height',
+  maxPoints?: number,
+): Promise<(PointCloudExtraction & { timestamp: bigint }) | null> {
+  const message =
+    format === 'mcap'
+      ? await readMessageAtTimeMcap(file, topicName, timeNs)
+      : await readMessageAtTimeDb3(file, topicName, timeNs);
+  if (!message || !message.value) return null;
+  const decoded = decodePointCloud2(message.value as PointCloud2Message, {
+    colorMode,
+    maxPoints,
+  });
+  if (!decoded) return null;
+  return { ...decoded, timestamp: message.timestamp };
+}
+
+/**
+ * Decode a single LaserScan message at `timeNs` and return positions / colors
+ * as transferable Float32Arrays.
+ */
+export async function readLaserScanAtTime(
+  file: File,
+  format: BagFormat,
+  topicName: string,
+  timeNs: bigint,
+): Promise<(LaserScanExtraction & { timestamp: bigint }) | null> {
+  const message =
+    format === 'mcap'
+      ? await readMessageAtTimeMcap(file, topicName, timeNs)
+      : await readMessageAtTimeDb3(file, topicName, timeNs);
+  if (!message || !message.value) return null;
+  const decoded = decodeLaserScan(message.value as LaserScanMessage);
+  if (!decoded) return null;
+  return { ...decoded, timestamp: message.timestamp };
 }
 
 export { parseMcap } from './mcap';

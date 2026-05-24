@@ -21,18 +21,13 @@ import {
   createWorldAxes,
   disposeObject,
   extractPose,
-  updateLaserScan,
-  updatePointCloud,
+  updateCloud,
   updatePoseAxes,
-  type LaserScanMessage,
-  type LaserScanObject,
-  type PointCloudObject,
+  type CloudObject,
   type PoseAxesObject,
 } from './sceneObjects';
-import {
-  composeTFChain,
-  pickWorldFrame,
-} from './tfTransform';
+import { composeTFChain, pickWorldFrame } from './tfTransform';
+import { useDecodedCloud } from './useDecodedPointCloud';
 
 interface ThreeDSceneProps {
   panelId: string;
@@ -51,46 +46,63 @@ function detectKind(type: string): SceneKind {
 /**
  * ThreeDScene — Three.js-powered 3D viewer for spatial ROS2 topics.
  *
- * Supported message kinds:
- *   - sensor_msgs/PointCloud2 → coloured point cloud (height / intensity / single)
- *   - sensor_msgs/LaserScan   → polar ring lifted into XY at z=0
- *   - nav_msgs/Odometry, geometry_msgs/Pose*, geometry_msgs/TransformStamped
- *                              → coordinate-frame axes + heading arrow
+ * Render-flow split:
+ *   - PointCloud2 / LaserScan → worker-decoded buffers (transferable
+ *     Float32Arrays) via `useDecodedCloud`. The main thread never walks
+ *     the raw `data: Uint8Array` and never copies it across postMessage.
+ *   - Pose-bearing topics → `useMessageAtTime` (small messages, decode on
+ *     the main thread is cheap).
  *
- * All renderings are transformed into a chosen *world frame* using the
- * /tf graph from v0.3 when available. The world frame defaults to "map" or
- * "odom" if those exist, otherwise the topmost root of the TF tree.
+ * TF: when /tf is present, the message's `header.frame_id` is composed with
+ * the user-selected world frame at every playhead update. Heavy graph walks
+ * are cheap (a handful of binary searches), but we memoize when nothing
+ * changes so the scene update doesn't redo unnecessary work.
  */
 export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
   const bag = useBagStore((s) => s.bag);
   const playheadNs = usePlayheadStore((s) => s.timeNs);
   const sceneKind = useMemo(() => detectKind(type), [type]);
 
-  const { message, loading, error } = useMessageAtTime(topicName, playheadNs);
-  const { graph, missing: noTf } = useTFGraph();
-
-  const { containerRef, sceneRef } = useScene();
-
-  // UI state.
   const [colorMode, setColorMode] = useState<ColorMode>('height');
   const [pointSize, setPointSize] = useState(2.5);
   const [showGrid, setShowGrid] = useState(true);
   const [showWorldAxes, setShowWorldAxes] = useState(true);
   const [worldFrame, setWorldFrame] = useState<string | null>(null);
-  // Auto-pick a world frame when the TF graph arrives. The user can override
-  // it via the dropdown afterward.
-  useEffect(() => {
-    if (worldFrame || !graph || !message?.value) return;
-    const srcFrame = pickFrameId(message.value);
-    const pick = pickWorldFrame(graph, srcFrame);
-    if (pick) setWorldFrame(pick);
-  }, [graph, message, worldFrame]);
 
-  // Owned scene objects. Re-built when the panel kind changes (it shouldn't,
-  // because topic+type is fixed for the panel lifetime, but be defensive).
+  // Cloud topics use the worker-decoded fast path; pose topics stay on the
+  // generic message-at-time hook because their messages are tiny.
+  const isCloud = sceneKind === 'pointcloud' || sceneKind === 'laserscan';
+  const cloudState = useDecodedCloud({
+    kind: sceneKind === 'pointcloud' ? 'pointcloud' : 'laserscan',
+    topicName,
+    timeNs: playheadNs,
+    colorMode: sceneKind === 'pointcloud' ? colorMode : undefined,
+  });
+  const poseState = useMessageAtTime(topicName, playheadNs);
+
+  const cloud = isCloud ? cloudState.cloud : null;
+  const poseMessage = !isCloud ? poseState.message : null;
+  const loading = isCloud ? cloudState.loading : poseState.loading;
+  const error = isCloud ? cloudState.error : poseState.error;
+
+  const { graph, missing: noTf } = useTFGraph();
+  const { containerRef, sceneRef } = useScene();
+
+  // Auto-pick a world frame when the TF graph + first message arrive.
+  useEffect(() => {
+    if (worldFrame || !graph) return;
+    const srcFrame =
+      cloud?.frameId ?? (poseMessage ? pickFrameId(poseMessage.value) : undefined);
+    if (!srcFrame) return;
+    const pick = pickWorldFrame(graph, srcFrame);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (pick) setWorldFrame(pick);
+  }, [graph, cloud, poseMessage, worldFrame]);
+
+  // Build scene objects exactly once per panel mount. Stats are tracked in a
+  // ref so per-frame updates don't trigger React renders.
   const objectsRef = useRef<{
-    pointCloud: PointCloudObject | null;
-    laserScan: LaserScanObject | null;
+    cloud: CloudObject | null;
     poseAxes: PoseAxesObject | null;
     grid: THREE.GridHelper | null;
     worldAxes: THREE.AxesHelper | null;
@@ -100,19 +112,18 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
     const refs = sceneRef.current;
     if (!refs) return;
     const owned = {
-      pointCloud: null as PointCloudObject | null,
-      laserScan: null as LaserScanObject | null,
+      cloud: null as CloudObject | null,
       poseAxes: null as PoseAxesObject | null,
       grid: null as THREE.GridHelper | null,
       worldAxes: null as THREE.AxesHelper | null,
     };
 
     if (sceneKind === 'pointcloud') {
-      owned.pointCloud = createPointCloud(pointSize);
-      refs.userGroup.add(owned.pointCloud.object);
+      owned.cloud = createPointCloud(pointSize);
+      refs.userGroup.add(owned.cloud.object);
     } else if (sceneKind === 'laserscan') {
-      owned.laserScan = createLaserScan(pointSize + 1);
-      refs.userGroup.add(owned.laserScan.object);
+      owned.cloud = createLaserScan(pointSize + 1);
+      refs.userGroup.add(owned.cloud.object);
     } else {
       owned.poseAxes = createPoseAxes(1.0);
       refs.userGroup.add(owned.poseAxes.object);
@@ -127,13 +138,9 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
     refs.renderOnce();
 
     return () => {
-      if (owned.pointCloud) {
-        refs.userGroup.remove(owned.pointCloud.object);
-        disposeObject(owned.pointCloud.object);
-      }
-      if (owned.laserScan) {
-        refs.userGroup.remove(owned.laserScan.object);
-        disposeObject(owned.laserScan.object);
+      if (owned.cloud) {
+        refs.userGroup.remove(owned.cloud.object);
+        disposeObject(owned.cloud.object);
       }
       if (owned.poseAxes) {
         refs.userGroup.remove(owned.poseAxes.object);
@@ -155,11 +162,11 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
       }
       objectsRef.current = null;
     };
-    // sceneRef is a stable ref; bind to sceneKind so a hypothetical kind
-    // change rebuilds the objects.
-  }, [sceneKind, sceneRef, pointSize]);
+    // Intentionally only on mount: we never swap kinds mid-lifetime.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sceneRef, sceneKind]);
 
-  // Toggle grid / axes visibility without rebuilding.
+  // Toggle helpers without rebuilding objects.
   useEffect(() => {
     const refs = sceneRef.current;
     const owned = objectsRef.current;
@@ -169,71 +176,93 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
     refs.renderOnce();
   }, [showGrid, showWorldAxes, sceneRef]);
 
-  // Apply point size live to PointsMaterial.
   useEffect(() => {
     const owned = objectsRef.current;
     const refs = sceneRef.current;
     if (!refs || !owned) return;
-    if (owned.pointCloud) owned.pointCloud.material.size = pointSize;
-    if (owned.laserScan) owned.laserScan.material.size = pointSize + 1;
+    if (owned.cloud) owned.cloud.material.size = sceneKind === 'laserscan' ? pointSize + 1 : pointSize;
     refs.renderOnce();
-  }, [pointSize, sceneRef]);
+  }, [pointSize, sceneKind, sceneRef]);
 
-  // Stats surfaced to the footer.
+  // Footer stats. Updated only when the data actually changes (not on every
+  // playhead tick), so React doesn't churn during playback.
   const [stats, setStats] = useState<{
     points: number;
-    bounds: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null;
+    bounds: {
+      min: { x: number; y: number; z: number };
+      max: { x: number; y: number; z: number };
+    } | null;
     sourceFrame: string | null;
-  }>({ points: 0, bounds: null, sourceFrame: null });
+    timestamp: bigint | null;
+  }>({ points: 0, bounds: null, sourceFrame: null, timestamp: null });
 
-  // Update scene objects whenever we have a new message or the TF frame /
-  // color mode changes.
+  // Memoize the world transform so the per-frame effect doesn't redo the
+  // chain walk when the playhead moves but TF graph / world frame don't.
+  const cachedTransformRef = useRef<{
+    key: string;
+    matrix: THREE.Matrix4;
+  } | null>(null);
+
+  // Apply a fresh cloud frame to the scene. Splitting from the pose branch
+  // keeps each branch's dependencies clear and avoids ping-ponging when
+  // both states update at once.
   useEffect(() => {
     const refs = sceneRef.current;
     const owned = objectsRef.current;
-    if (!refs || !owned || !message?.value) return;
+    if (!refs || !owned?.cloud || !cloud) return;
 
-    const value = message.value as Record<string, unknown>;
-    const sourceFrame = pickFrameId(value) ?? null;
+    const sourceFrame = cloud.frameId ?? null;
+    applyTransform(refs.userGroup, graph, sourceFrame, worldFrame, cloud.timestamp, cachedTransformRef);
 
-    // Compute the source→world transform if we have a TF graph + chosen
-    // world frame. When the graph is missing or doesn't contain either
-    // frame, render in-place (frame == world).
-    const transform = computeWorldTransform(graph, sourceFrame, worldFrame, message.timestamp);
-    refs.userGroup.matrixAutoUpdate = false;
-    refs.userGroup.matrix.copy(transform);
-
-    if (owned.pointCloud) {
-      const ok = updatePointCloud(owned.pointCloud, value, colorMode);
-      if (ok) {
-        setStats({ points: owned.pointCloud.pointCount, bounds: owned.pointCloud.bounds, sourceFrame });
-      }
-    } else if (owned.laserScan) {
-      const ok = updateLaserScan(owned.laserScan, value as LaserScanMessage);
-      if (ok) {
-        setStats({ points: owned.laserScan.pointCount, bounds: owned.laserScan.bounds, sourceFrame });
-      }
-    } else if (owned.poseAxes) {
-      const pose = extractPose(message.value, type);
-      if (pose) {
-        updatePoseAxes(owned.poseAxes, pose);
-        setStats({
-          points: 1,
-          bounds: {
-            min: { x: pose.position.x - 1, y: pose.position.y - 1, z: pose.position.z - 1 },
-            max: { x: pose.position.x + 1, y: pose.position.y + 1, z: pose.position.z + 1 },
-          },
-          sourceFrame,
-        });
-      }
-    }
-
+    updateCloud(owned.cloud, {
+      positions: cloud.positions,
+      colors: cloud.colors,
+      pointCount: cloud.pointCount,
+      bounds: cloud.bounds,
+    });
+    setStats({
+      points: cloud.pointCount,
+      bounds: cloud.bounds,
+      sourceFrame,
+      timestamp: cloud.timestamp,
+    });
     refs.renderOnce();
-  }, [message, colorMode, graph, worldFrame, type, sceneRef]);
+  }, [cloud, graph, worldFrame, sceneRef]);
 
-  // Camera auto-fit: the first time we get bounds for this scene, snap the
-  // camera to a reasonable distance. Subsequent updates leave the user's view
-  // alone (so playback doesn't yank the camera around).
+  useEffect(() => {
+    const refs = sceneRef.current;
+    const owned = objectsRef.current;
+    if (!refs || !owned?.poseAxes || !poseMessage?.value) return;
+
+    const sourceFrame = pickFrameId(poseMessage.value) ?? null;
+    applyTransform(
+      refs.userGroup,
+      graph,
+      sourceFrame,
+      worldFrame,
+      poseMessage.timestamp,
+      cachedTransformRef,
+    );
+
+    const pose = extractPose(poseMessage.value, type);
+    if (pose) {
+      updatePoseAxes(owned.poseAxes, pose);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setStats({
+        points: 1,
+        bounds: {
+          min: { x: pose.position.x - 1, y: pose.position.y - 1, z: pose.position.z - 1 },
+          max: { x: pose.position.x + 1, y: pose.position.y + 1, z: pose.position.z + 1 },
+        },
+        sourceFrame,
+        timestamp: poseMessage.timestamp,
+      });
+    }
+    refs.renderOnce();
+  }, [poseMessage, graph, worldFrame, type, sceneRef]);
+
+  // First-frame autofit. Subsequent frames leave the camera alone so playback
+  // doesn't yank the view around.
   const hasAutoFitRef = useRef(false);
   useEffect(() => {
     if (hasAutoFitRef.current) return;
@@ -247,8 +276,6 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
       Math.hypot(max.x - min.x, max.y - min.y, max.z - min.z) * 0.7,
       3,
     );
-    // Bounds are in source frame; if a TF transform is in play, push them
-    // through the userGroup matrix so the camera lands near the visible data.
     const target = new THREE.Vector3(cx, cy, cz).applyMatrix4(refs.userGroup.matrix);
     refs.resetCamera(target, radius);
     hasAutoFitRef.current = true;
@@ -276,6 +303,8 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
     }
   };
 
+  const showInitialSpinner = loading && !cloud && !poseMessage;
+
   return (
     <PanelShell
       panelId={panelId}
@@ -288,7 +317,6 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
         <div className="flex-1 min-h-[260px] relative bg-bg-primary/60 overflow-hidden">
           <div ref={containerRef} className="absolute inset-0" />
 
-          {/* Controls overlay (top-right) */}
           <div className="absolute top-2 right-2 flex flex-col gap-1.5 items-end">
             <div className="flex gap-1">
               <button
@@ -316,7 +344,6 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
             />
           </div>
 
-          {/* Status overlay (top-left) */}
           <div className="absolute top-2 left-2 text-text-muted text-[10px] mono leading-tight bg-bg-primary/60 backdrop-blur px-2 py-1 rounded-md border border-border max-w-[60%]">
             <div className="text-text-secondary">
               {sceneKind === 'pointcloud'
@@ -342,8 +369,7 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
             )}
           </div>
 
-          {/* Loading / error overlays */}
-          {loading && !message && (
+          {showInitialSpinner && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-bg-primary/70">
               <svg
                 className="w-6 h-6 text-accent-blue animate-spin-slow"
@@ -367,7 +393,7 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
               <span className="text-text-secondary text-sm">Loading frame…</span>
             </div>
           )}
-          {error && !message && (
+          {error && !cloud && !poseMessage && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-bg-primary/70 p-8 text-center">
               <div className="text-accent-rose text-sm font-medium">Failed to load frame</div>
               <div className="text-text-secondary text-xs max-w-md">{error}</div>
@@ -378,7 +404,7 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
         <div className="px-4 py-1.5 border-t border-border flex items-center justify-between text-text-muted text-xs mono gap-3">
           <span>
             {sceneKind === 'pose'
-              ? message
+              ? poseMessage
                 ? '1 pose'
                 : 'no data'
               : `${stats.points.toLocaleString()} pts`}
@@ -389,8 +415,8 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
             )}
           </span>
           <span>
-            {message
-              ? `t = ${nsToSeconds(message.timestamp - startNs).toFixed(3)}s`
+            {stats.timestamp !== null
+              ? `t = ${nsToSeconds(stats.timestamp - startNs).toFixed(3)}s`
               : 'no message at playhead'}
           </span>
         </div>
@@ -531,16 +557,39 @@ function pickFrameId(value: Record<string, unknown> | null | undefined): string 
   return typeof fid === 'string' && fid.length > 0 ? fid : undefined;
 }
 
-function computeWorldTransform(
+/**
+ * Set the user-group's matrix to the TF transform from sourceFrame → worldFrame
+ * at `timeNs`. Reuses the cached Matrix4 when nothing material has changed,
+ * which is the common case during playback within the same chunk of TF data.
+ */
+function applyTransform(
+  userGroup: THREE.Group,
   graph: TFGraph | null,
   sourceFrame: string | null,
   worldFrame: string | null,
   timeNs: bigint,
-): THREE.Matrix4 {
-  const identity = new THREE.Matrix4();
+  cache: React.MutableRefObject<{ key: string; matrix: THREE.Matrix4 } | null>,
+): void {
+  userGroup.matrixAutoUpdate = false;
   if (!graph || !sourceFrame || !worldFrame || sourceFrame === worldFrame) {
-    return identity;
+    userGroup.matrix.identity();
+    cache.current = null;
+    return;
+  }
+  // Quantize timeNs to ~100 ms so consecutive playhead ticks within the same
+  // /tf sample window reuse the same transform without re-walking the chain.
+  const bucket = timeNs / 100_000_000n;
+  const key = `${sourceFrame}>${worldFrame}@${bucket.toString()}`;
+  if (cache.current && cache.current.key === key) {
+    userGroup.matrix.copy(cache.current.matrix);
+    return;
   }
   const m = composeTFChain(graph, sourceFrame, worldFrame, timeNs);
-  return m ?? identity;
+  if (m) {
+    userGroup.matrix.copy(m);
+    cache.current = { key, matrix: m };
+  } else {
+    userGroup.matrix.identity();
+    cache.current = null;
+  }
 }
