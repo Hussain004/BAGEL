@@ -41,32 +41,24 @@ BAGEL eliminates this friction.
 
 ## Features
 
-<<<<<<< Updated upstream
-### v0.1: Foundation & File Parsing *(Current)*
-=======
 ### v0.2: Plotting, Image Viewer & Playhead *(Current)*
 
 Everything in v0.1, plus:
 
-- **Global playhead**: timeline strip at the bottom with click/drag scrub, play/pause, 0.25×–4× speed, and Spacebar shortcut. Every open panel syncs to the same timestamp.
-- **TimeSeriesPlot** panel: click any non-image topic to chart its numeric fields. Auto-extracts every numeric leaf (e.g. `linear.x`, `angular.z`, `orientation.w`) as a separate series, with per-field visibility toggles. uPlot-driven, handles up to 50,000 points per panel.
-- **ImageViewer** panel: click any `sensor_msgs/Image` or `CompressedImage` topic to see the frame nearest the playhead time. Supports `rgb8 / bgr8 / rgba8 / mono8 / mono16` raw encodings and `jpeg / png` compressed. Lazy single-message reads: multi-GB image streams open near-instantly.
-- **RawMessageInspector** panel: collapsible JSON tree of the deserialized message at the playhead, with type-aware coloring and hex dumps for `Uint8Array` fields.
-- **Resizable panel layout**: sidebar and visualization panels are split by `react-resizable-panels` handles; drag to reflow.
-- **Active-panel indicator**: small blue dot on sidebar topic rows that already have a panel open.
-- **Zstd-compressed MCAP support**: bags recorded with `--compression zstd` (the new ROS2 default) decompress via a pure-JS zstd decoder, no extra setup.
-- **Multi-GB file handling**: MCAP indexed reader does range reads against the source `File` instead of loading the whole bag into a single ArrayBuffer; bags well over 2 GB work.
+- **Global playhead** — timeline strip at the bottom with click/drag scrub, play/pause, 0.25×–4× speed, and Spacebar shortcut. Every open panel syncs to the same timestamp.
+- **TimeSeriesPlot** panel — click any non-image topic to chart its numeric fields. Auto-extracts every numeric leaf (e.g. `linear.x`, `angular.z`, `orientation.w`) as a separate series, with per-field visibility toggles. uPlot-driven, handles up to 50,000 points per panel.
+- **ImageViewer** panel — click any `sensor_msgs/Image` or `CompressedImage` topic to see the frame nearest the playhead time. Supports `rgb8 / bgr8 / rgba8 / mono8 / mono16` raw encodings and `jpeg / png` compressed. Lazy single-message reads — multi-GB image streams open near-instantly.
+- **RawMessageInspector** panel — collapsible JSON tree of the deserialized message at the playhead, with type-aware coloring and hex dumps for `Uint8Array` fields.
+- **Resizable panel layout** — sidebar and visualization panels are split by `react-resizable-panels` handles; drag to reflow.
+- **Active-panel indicator** — small blue dot on sidebar topic rows that already have a panel open.
+- **Zstd-compressed MCAP support** — bags recorded with `--compression zstd` (the new ROS2 default) decompress via a pure-JS zstd decoder, no extra setup.
+- **Multi-GB file handling** — MCAP indexed reader does range reads against the source `File` instead of loading the whole bag into a single ArrayBuffer; bags well over 2 GB work.
 
 ### v0.1: Foundation & File Parsing
->>>>>>> Stashed changes
 
 - **Drag & drop** `.db3` and `.mcap` ROS2 bag files
 - **Auto-detect** file format from extension and magic bytes
-- **Topic Inspector**: browse all topics with:
-  - Topic name (color-coded by message type category)
-  - Message type with package badge
-  - Message count
-  - Publishing frequency (Hz)
+- **Topic Inspector**: browse all topics with name, type, message count, and Hz
 - **Bag summary**: duration, total messages, file size, active topics
 - **Search & filter**: quickly find topics by name or type
 - **Sort**: by name, message count, or frequency
@@ -75,18 +67,11 @@ Everything in v0.1, plus:
 
 | Version | Features |
 |---|---|
-<<<<<<< Updated upstream
-| **v0.2** | Time-series plotting, image viewer, global playhead |
-| **v0.3** | 2D trajectory visualization, TF tree graph |
-| **v0.4** | 3D point cloud rendering, LaserScan overlay |
-| **v0.5** | CSV/JSON export, keyboard shortcuts, sample bag loader |
-=======
 | **v0.3** | Web Worker parsing + WASM zstd (perf foundation), 2D trajectory plot, TF tree graph |
 | **v0.4** | 3D point cloud rendering, LaserScan overlay, camera frustum |
 | **v0.5** | CSV/JSON export, keyboard shortcuts, sample bag loader, polish & launch |
 
-> v0.3 includes performance work needed before BAGEL can stay snappy on multi-GB compressed bags
->>>>>>> Stashed changes
+> v0.3 includes performance work needed before BAGEL can stay snappy on multi-GB compressed bags — see [`ros2-bagel-implementation-plan.md`](ros2-bagel-implementation-plan.md#v03--performance-foundations--2d-trajectory--tf-tree) for the breakdown.
 
 ---
 
@@ -123,8 +108,11 @@ Then open [http://localhost:5173](http://localhost:5173) in your browser.
 | **Framework** | React 19 + TypeScript | Component-based UI |
 | **Build** | Vite 8 | Fast HMR, WASM support |
 | **Styling** | TailwindCSS v4 | Utility-first dark theme |
-| **State** | Zustand | Lightweight state management |
-| **MCAP Parsing** | @mcap/core | Official MCAP reader (MIT) |
+| **State** | Zustand | Bag, playhead, and layout stores |
+| **Resizable layout** | react-resizable-panels | Drag-to-resize sidebar + panels |
+| **Charting** | uPlot | High-perf canvas time-series |
+| **MCAP Parsing** | @mcap/core + @mcap/browser | Official MCAP reader (range-read from File) |
+| **Zstd decode** | fzstd | Pure-JS zstd for compressed MCAP chunks |
 | **SQLite** | sql.js (WASM) | Parse .db3 files in-browser |
 | **CDR Deser.** | @foxglove/rosmsg2-serialization | ROS2 message deserialization |
 | **Type Registry** | @foxglove/rosmsg-msgs-common | Pre-built ROS2 message defs |
@@ -142,25 +130,31 @@ User's Browser
 │     ▼
 ├── Format Detection (.db3 or .mcap?)
 │     │
-│     ├── .mcap → @mcap/core (native JS)
-│     │               └── Reads channels, schemas, statistics
+│     ├── .mcap → @mcap/core IndexedReader (range reads via BlobReadable)
+│     │              ├── fzstd  (decompress zstd chunks)
+│     │              └── readMessageAtTime / readMessages(topic)
 │     │
-│     └── .db3 → sql.js (SQLite via WASM)
-│                     └── Queries: topics, messages tables
+│     └── .db3  → sql.js (SQLite via WASM)
+│                     └── SQL: topics / messages tables, nearest-row at time
 │
-├── CDR Deserialization
+├── CDR Deserialization (single-pass, with progress + yields)
 │     └── @foxglove/rosmsg2-serialization
-│           Uses schemas from file (MCAP) or type registry (DB3)
+│           Schemas from MCAP file or @foxglove/rosmsg-msgs-common
 │
 ├── Application State (Zustand)
-│     ├── bag: BagSummary
-│     ├── topics[]
-│     └── isLoading, error, progress
+│     ├── bagStore       (BagSummary + source File)
+│     ├── playheadStore  (timeNs, playing, speed, seek)
+│     └── layoutStore    (open panels keyed by kind:topic)
 │
-└── UI (React + TailwindCSS)
-      ├── DropZone (landing page)
-      ├── Toolbar (bag info bar)
-      └── TopicInspector (topic list panel)
+└── UI (React + TailwindCSS + react-resizable-panels)
+      ├── DropZone           (landing page)
+      ├── Toolbar            (bag info bar)
+      ├── TopicInspector     (sidebar topic list)
+      ├── Timeline           (global playhead scrubber)
+      └── PanelGrid
+            ├── TimeSeriesPlot     (uPlot)
+            ├── ImageViewer        (canvas; lazy single-frame reads)
+            └── RawMessageInspector (collapsible JSON tree)
 ```
 
 ### Supported Message Types
@@ -186,30 +180,43 @@ BAGEL's built-in type registry covers all standard ROS2 packages:
 ```
 src/
 ├── parsers/              # Core parsing (no React deps)
-│   ├── index.ts          # Format detection + unified parser
-│   ├── mcap.ts           # MCAP reader (@mcap/core)
-│   ├── db3.ts            # SQLite reader (sql.js WASM)
-│   ├── cdr.ts            # CDR deserializer
+│   ├── index.ts          # Format detection + unified parser, message-read APIs
+│   ├── mcap.ts           # MCAP reader (range reads, fzstd decompress, lazy seek)
+│   ├── db3.ts            # SQLite reader (cached Database, nearest-at-time query)
+│   ├── cdr.ts            # CDR deserializer (cached MessageReader per type)
 │   └── typeRegistry.ts   # ROS2 message definitions
 │
 ├── store/
-│   └── bagStore.ts       # Zustand state (bag, loading, errors)
+│   ├── bagStore.ts        # Bag summary + source File
+│   ├── playheadStore.ts   # Time cursor, play/pause, speed
+│   └── layoutStore.ts     # Open panels keyed by kind:topic
+│
+├── hooks/
+│   ├── useTopicMessages.ts   # Eager load all messages (for plot; capped)
+│   └── useMessageAtTime.ts   # Lazy load one message at playhead (for image/raw)
 │
 ├── components/
 │   ├── layout/
-│   │   ├── DropZone.tsx   # Drag & drop landing page
-│   │   └── Toolbar.tsx    # Top info bar
+│   │   ├── DropZone.tsx    # Drag & drop landing page
+│   │   ├── Toolbar.tsx     # Top info bar
+│   │   ├── Timeline.tsx    # Global playhead scrubber
+│   │   └── PanelGrid.tsx   # Resizable visualization grid
 │   └── panels/
-│       └── TopicInspector/ # Topic list with search/sort
+│       ├── PanelShell.tsx          # Header + close chrome shared by panels
+│       ├── TopicInspector/         # Sidebar topic list with search/sort
+│       ├── TimeSeriesPlot/         # uPlot-based time-series chart
+│       ├── ImageViewer/            # Raw + Compressed image decoder
+│       └── RawMessageInspector/    # JSON tree at playhead time
 │
 ├── types/                # TypeScript interfaces
-│   ├── bag.ts            # BagSummary, TopicInfo
-│   └── ros2.ts           # ROS2 message types
+│   ├── bag.ts            # BagSummary, TopicInfo, RawMessage
+│   └── ros2.ts           # Common ROS2 message types
 │
 └── utils/                # Helpers
     ├── time.ts           # Nanosecond timestamp utils
-    ├── bytes.ts          # File size, hex dump
-    └── color.ts          # Topic color assignment
+    ├── bytes.ts          # File size, hex dump, magic bytes
+    ├── color.ts          # Topic color assignment
+    └── messages.ts       # flattenNumeric, nearestMessageIndex, isImageType
 ```
 
 ---
