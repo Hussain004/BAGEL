@@ -79,6 +79,14 @@ body {
   flex-direction: column;
 }
 
+/* Native <select> popup options don't reliably pick up the page's
+   color-scheme on every browser/OS — set option colours explicitly so the
+   dropdown list stays readable on the dark theme. */
+select option {
+  background-color: var(--color-surface);
+  color: var(--color-text-primary);
+}
+
 /* ── Animated Background ── */
 .bg-grid {
   background-image:
