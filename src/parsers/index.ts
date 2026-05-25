@@ -57,6 +57,7 @@ export async function readPointCloudAtTime(
   timeNs: bigint,
   colorMode: ColorMode,
   maxPoints?: number,
+  maxRange?: number,
 ): Promise<(PointCloudExtraction & { timestamp: bigint }) | null> {
   return getParserClient().readPointCloudAtTime(
     file,
@@ -65,6 +66,7 @@ export async function readPointCloudAtTime(
     timeNs,
     colorMode,
     maxPoints,
+    maxRange,
   );
 }
 

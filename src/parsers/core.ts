@@ -134,6 +134,7 @@ export async function readPointCloudAtTime(
   timeNs: bigint,
   colorMode: ColorMode = 'height',
   maxPoints?: number,
+  maxRange?: number,
 ): Promise<(PointCloudExtraction & { timestamp: bigint }) | null> {
   const message =
     format === 'mcap'
@@ -147,16 +148,17 @@ export async function readPointCloudAtTime(
   // than type name means converted bags with non-standard names still work.
   const value = message.value;
   const hasPointCloud2Fields = Array.isArray((value as { fields?: unknown[] }).fields);
+  const opts = { colorMode, maxPoints, maxRange };
   // Try the PointCloud2 path first when the shape matches, otherwise the
   // list-of-points path (Livox CustomMsg and similar). Fall back to the
   // other decoder if the preferred one returns null — a few converted bags
   // carry both shapes side-by-side, and one of them will succeed.
   const decoded = hasPointCloud2Fields
-    ? (decodePointCloud2(value as PointCloud2Message, { colorMode, maxPoints }) ??
-      decodeCustomCloud(value, { colorMode, maxPoints }))
+    ? (decodePointCloud2(value as PointCloud2Message, opts) ??
+      decodeCustomCloud(value, opts))
     : looksLikeCustomCloud(value)
-      ? (decodeCustomCloud(value, { colorMode, maxPoints }) ??
-        decodePointCloud2(value as PointCloud2Message, { colorMode, maxPoints }))
+      ? (decodeCustomCloud(value, opts) ??
+        decodePointCloud2(value as PointCloud2Message, opts))
       : null;
   if (!decoded) return null;
   return { ...decoded, timestamp: message.timestamp };

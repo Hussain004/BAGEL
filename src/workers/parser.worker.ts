@@ -68,6 +68,7 @@ interface ReadPointCloudAtTimeParams {
   timeNs: bigint;
   colorMode: ColorMode;
   maxPoints?: number;
+  maxRange?: number;
 }
 interface ReadLaserScanAtTimeParams {
   file: File;
@@ -167,7 +168,7 @@ ctx.addEventListener('message', async (e: MessageEvent<WorkerRequest>) => {
         return;
       }
       case 'readPointCloudAtTime': {
-        const { file, format, topicName, timeNs, colorMode, maxPoints } =
+        const { file, format, topicName, timeNs, colorMode, maxPoints, maxRange } =
           req.params as ReadPointCloudAtTimeParams;
         const result = await readPointCloudAtTime(
           file,
@@ -176,6 +177,7 @@ ctx.addEventListener('message', async (e: MessageEvent<WorkerRequest>) => {
           timeNs,
           colorMode,
           maxPoints,
+          maxRange,
         );
         // Transfer the Float32Array backing buffers — zero copy to the main
         // thread. positions / colors are unique per decode, never shared.

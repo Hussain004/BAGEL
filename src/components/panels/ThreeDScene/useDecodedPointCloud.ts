@@ -44,6 +44,8 @@ interface Options {
   colorMode?: ColorMode;
   /** Hard cap on points decoded per frame (PointCloud2 only). */
   maxPoints?: number;
+  /** Drop points farther than this from the sensor origin (PointCloud2 only). */
+  maxRange?: number;
 }
 
 export function useDecodedCloud({
@@ -52,6 +54,7 @@ export function useDecodedCloud({
   timeNs,
   colorMode = 'height',
   maxPoints,
+  maxRange,
 }: Options): DecodedCloudState {
   const bag = useBagStore((s) => s.bag);
   const file = useBagStore((s) => s.file);
@@ -66,7 +69,12 @@ export function useDecodedCloud({
   // updates collapse onto the latest pending target so we never decode frames
   // the user is about to skip past.
   const inflightRef = useRef(false);
-  const pendingRef = useRef<{ timeNs: bigint; colorMode: ColorMode; maxPoints: number | undefined } | null>(null);
+  const pendingRef = useRef<{
+    timeNs: bigint;
+    colorMode: ColorMode;
+    maxPoints: number | undefined;
+    maxRange: number | undefined;
+  } | null>(null);
   const fireRef = useRef<() => void>(() => {});
   // Session id keyed on (bag, file, topic, kind). Bumped only when one of
   // these changes — never on timeNs ticks, so playback doesn't cancel its
@@ -114,7 +122,15 @@ export function useDecodedCloud({
 
       const promise: Promise<DecodedCloud | null> =
         kind === 'pointcloud'
-          ? readPointCloudAtTime(file, bag.format, topicName, target.timeNs, target.colorMode, target.maxPoints)
+          ? readPointCloudAtTime(
+              file,
+              bag.format,
+              topicName,
+              target.timeNs,
+              target.colorMode,
+              target.maxPoints,
+              target.maxRange,
+            )
           : readLaserScanAtTime(file, bag.format, topicName, target.timeNs);
 
       promise
@@ -125,7 +141,7 @@ export function useDecodedCloud({
             return;
           }
           if (cloud) {
-            const key = `${target.colorMode}|${cloud.timestamp.toString()}`;
+            const key = `${target.colorMode}|${target.maxRange ?? 0}|${cloud.timestamp.toString()}`;
             if (lastResultKeyRef.current === key) {
               // Same frame + same color settings; don't notify React (avoids
               // a redundant scene rebuild on the same data).
@@ -151,7 +167,7 @@ export function useDecodedCloud({
         });
     };
 
-    pendingRef.current = { timeNs, colorMode, maxPoints };
+    pendingRef.current = { timeNs, colorMode, maxPoints, maxRange };
     fireRef.current = fire;
     // Only flip the spinner when nothing is in flight, so during playback the
     // existing frame stays painted until the next one arrives (no flicker).
@@ -159,7 +175,7 @@ export function useDecodedCloud({
       setState((s) => ({ ...s, loading: true, error: null }));
     }
     fire();
-  }, [bag, file, topicName, timeNs, colorMode, maxPoints, kind]);
+  }, [bag, file, topicName, timeNs, colorMode, maxPoints, maxRange, kind]);
 
   return state;
 }

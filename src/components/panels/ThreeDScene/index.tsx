@@ -28,6 +28,7 @@ import {
 } from './sceneObjects';
 import { composeTFChain, pickWorldFrame } from './tfTransform';
 import { useDecodedCloud } from './useDecodedPointCloud';
+import { CloudAccumulator } from './accumulator';
 
 interface ThreeDSceneProps {
   panelId: string;
@@ -72,6 +73,25 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
   const [showWorldAxes, setShowWorldAxes] = useState(true);
   const [worldFrame, setWorldFrame] = useState<string | null>(null);
 
+  // Range filter — drop returns farther than `maxRange` metres from the
+  // sensor origin before bounds + height-colour are computed.
+  const [rangeLimitOn, setRangeLimitOn] = useState(false);
+  const [maxRange, setMaxRange] = useState(30);
+
+  // Accumulation — keep a ring buffer of world-frame points across frames so
+  // the user can build up a running "map" view from a drone flight or SLAM run.
+  const [accumulating, setAccumulating] = useState(false);
+  const [accumBudget, setAccumBudget] = useState(1_000_000);
+  const [accumPerFrame, setAccumPerFrame] = useState(25_000);
+  // Footer stats for the accumulator. Updated on every successful append.
+  const [accumStats, setAccumStats] = useState<{ points: number; frames: number }>({
+    points: 0,
+    frames: 0,
+  });
+
+  // Pivot — Shift+Click sets a custom orbit centre; null means "auto-fit centre".
+  const [pivot, setPivot] = useState<{ x: number; y: number; z: number } | null>(null);
+
   // Cloud topics use the worker-decoded fast path; pose topics stay on the
   // generic message-at-time hook because their messages are tiny.
   const isCloud = sceneKind === 'pointcloud' || sceneKind === 'laserscan';
@@ -80,6 +100,10 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
     topicName,
     timeNs: playheadNs,
     colorMode: sceneKind === 'pointcloud' ? colorMode : undefined,
+    // LaserScan ignores maxRange in the decoder; only piping it through for
+    // PointCloud2 keeps the hook's request key tight for scans.
+    maxRange:
+      sceneKind === 'pointcloud' && rangeLimitOn && maxRange > 0 ? maxRange : undefined,
   });
   const poseState = useMessageAtTime(topicName, playheadNs);
 
@@ -109,7 +133,16 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
     poseAxes: PoseAxesObject | null;
     grid: THREE.GridHelper | null;
     worldAxes: THREE.AxesHelper | null;
+    /** Ring-buffer accumulator for world-frame points. Cloud panels only. */
+    accumulator: CloudAccumulator | null;
+    /** Visual marker at the orbit pivot. Hidden when pivot is the auto-fit centre. */
+    pivotMarker: THREE.Mesh | null;
   } | null>(null);
+
+  // Dedupe accumulator appends — the cloud-effect can fire on the same
+  // timestamp when a non-data prop changes (e.g. point size), and we don't
+  // want each colour-mode flip to double-add the current frame.
+  const lastAppendedTsRef = useRef<bigint | null>(null);
 
   useEffect(() => {
     const refs = sceneRef.current;
@@ -119,11 +152,19 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
       poseAxes: null as PoseAxesObject | null,
       grid: null as THREE.GridHelper | null,
       worldAxes: null as THREE.AxesHelper | null,
+      accumulator: null as CloudAccumulator | null,
+      pivotMarker: null as THREE.Mesh | null,
     };
 
     if (sceneKind === 'pointcloud') {
       owned.cloud = createPointCloud(pointSize);
       refs.userGroup.add(owned.cloud.object);
+      // Accumulator only makes sense for full point clouds — laser scans
+      // already represent a single 2D ring per frame and don't benefit much
+      // from running concatenation.
+      owned.accumulator = new CloudAccumulator(accumBudget, pointSize);
+      owned.accumulator.object.visible = false;
+      refs.worldGroup.add(owned.accumulator.object);
     } else if (sceneKind === 'laserscan') {
       owned.cloud = createLaserScan(pointSize + 1);
       refs.userGroup.add(owned.cloud.object);
@@ -136,6 +177,21 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
     refs.worldGroup.add(owned.grid);
     owned.worldAxes = createWorldAxes(1.0);
     refs.worldGroup.add(owned.worldAxes);
+
+    // Custom-pivot indicator. Wireframe sphere over the scene (depthTest off)
+    // so it stays visible against any colour cloud.
+    const pivotGeo = new THREE.SphereGeometry(0.15, 12, 8);
+    const pivotMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.85,
+      depthTest: false,
+    });
+    owned.pivotMarker = new THREE.Mesh(pivotGeo, pivotMat);
+    owned.pivotMarker.renderOrder = 999;
+    owned.pivotMarker.visible = false;
+    refs.worldGroup.add(owned.pivotMarker);
 
     objectsRef.current = owned;
     refs.renderOnce();
@@ -163,6 +219,17 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
         if (Array.isArray(m)) m.forEach((mm) => mm.dispose());
         else m.dispose();
       }
+      if (owned.accumulator) {
+        refs.worldGroup.remove(owned.accumulator.object);
+        owned.accumulator.dispose();
+      }
+      if (owned.pivotMarker) {
+        refs.worldGroup.remove(owned.pivotMarker);
+        owned.pivotMarker.geometry.dispose();
+        const m = owned.pivotMarker.material as THREE.Material | THREE.Material[];
+        if (Array.isArray(m)) m.forEach((mm) => mm.dispose());
+        else m.dispose();
+      }
       objectsRef.current = null;
     };
     // Intentionally only on mount: we never swap kinds mid-lifetime.
@@ -184,8 +251,130 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
     const refs = sceneRef.current;
     if (!refs || !owned) return;
     if (owned.cloud) owned.cloud.material.size = sceneKind === 'laserscan' ? pointSize + 1 : pointSize;
+    if (owned.accumulator) owned.accumulator.setPointSize(pointSize);
     refs.renderOnce();
   }, [pointSize, sceneKind, sceneRef]);
+
+  // Accumulator visibility toggle.
+  useEffect(() => {
+    const owned = objectsRef.current;
+    const refs = sceneRef.current;
+    if (!refs || !owned?.accumulator) return;
+    owned.accumulator.object.visible = accumulating;
+    refs.renderOnce();
+  }, [accumulating, sceneRef]);
+
+  // Re-size the accumulator buffer when the user changes the budget slider.
+  // resize() drops existing data, so the stats reset alongside.
+  useEffect(() => {
+    const owned = objectsRef.current;
+    const refs = sceneRef.current;
+    if (!refs || !owned?.accumulator) return;
+    owned.accumulator.resize(accumBudget);
+    lastAppendedTsRef.current = null;
+    setAccumStats({ points: 0, frames: 0 });
+    refs.renderOnce();
+  }, [accumBudget, sceneRef]);
+
+  // Clear the accumulator whenever the world frame the panel renders into
+  // changes, or the topic changes — old accumulated points are expressed in
+  // the previous world frame's coordinates and would float misaligned.
+  useEffect(() => {
+    const owned = objectsRef.current;
+    const refs = sceneRef.current;
+    if (!refs || !owned?.accumulator) return;
+    owned.accumulator.clear();
+    lastAppendedTsRef.current = null;
+    setAccumStats({ points: 0, frames: 0 });
+    refs.renderOnce();
+  }, [worldFrame, topicName, sceneRef]);
+
+  const handleClearAccumulator = () => {
+    const owned = objectsRef.current;
+    const refs = sceneRef.current;
+    if (!refs || !owned?.accumulator) return;
+    owned.accumulator.clear();
+    lastAppendedTsRef.current = null;
+    setAccumStats({ points: 0, frames: 0 });
+    refs.renderOnce();
+  };
+
+  // Shift+Click → pick a custom orbit pivot in world space.
+  //
+  // We raycast against the active cloud first (with a Points.threshold tied
+  // to the camera distance so the picked tolerance scales with zoom). If
+  // nothing's hit — e.g. the user clicked empty space — we fall back to the
+  // z=0 ground plane, which is the conventional ROS world floor.
+  useEffect(() => {
+    const refs = sceneRef.current;
+    if (!refs) return;
+    const canvas = refs.renderer.domElement;
+    const raycaster = new THREE.Raycaster();
+    const ndc = new THREE.Vector2();
+    const groundPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+    const planeHit = new THREE.Vector3();
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!event.shiftKey || event.button !== 0) return;
+      // Block OrbitControls from interpreting this as a drag-start.
+      event.preventDefault();
+      event.stopPropagation();
+
+      const rect = canvas.getBoundingClientRect();
+      ndc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      ndc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(ndc, refs.camera);
+      // Threshold scales with view radius so picking feels the same whether
+      // you're zoomed into a 5 m room or out over a 200 m field.
+      const viewRadius = refs.camera.position.distanceTo(refs.controls.target);
+      raycaster.params.Points = { threshold: Math.max(viewRadius * 0.01, 0.05) };
+
+      let hit: THREE.Vector3 | null = null;
+      const cloudObj = objectsRef.current?.cloud?.object;
+      const accumObj = objectsRef.current?.accumulator?.object;
+      // Try both the live frame and the accumulated cloud — either is fair
+      // game as a pivot target.
+      const targets: THREE.Object3D[] = [];
+      if (cloudObj) targets.push(cloudObj);
+      if (accumObj && accumObj.visible) targets.push(accumObj);
+      for (const target of targets) {
+        const hits = raycaster.intersectObject(target, false);
+        if (hits.length > 0) {
+          hit = hits[0].point.clone();
+          break;
+        }
+      }
+      if (!hit) {
+        const out = raycaster.ray.intersectPlane(groundPlane, planeHit);
+        if (out) hit = planeHit.clone();
+      }
+      if (!hit) return;
+      refs.setOrbitTarget(hit);
+      setPivot({ x: hit.x, y: hit.y, z: hit.z });
+    };
+
+    canvas.addEventListener('pointerdown', handlePointerDown);
+    return () => {
+      canvas.removeEventListener('pointerdown', handlePointerDown);
+    };
+    // sceneRef stays stable for the panel's lifetime; the handler closes over
+    // the live objectsRef so we don't need to re-bind when the cloud updates.
+  }, [sceneRef]);
+
+  // Keep the pivot marker in sync with the chosen pivot.
+  useEffect(() => {
+    const owned = objectsRef.current;
+    const refs = sceneRef.current;
+    if (!refs || !owned?.pivotMarker) return;
+    if (pivot) {
+      owned.pivotMarker.position.set(pivot.x, pivot.y, pivot.z);
+      owned.pivotMarker.visible = true;
+    } else {
+      owned.pivotMarker.visible = false;
+    }
+    refs.renderOnce();
+  }, [pivot, sceneRef]);
 
   // Footer stats. Updated only when the data actually changes (not on every
   // playhead tick), so React doesn't churn during playback.
@@ -229,8 +418,34 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
       sourceFrame,
       timestamp: cloud.timestamp,
     });
+
+    // Accumulator append. We use the same source→world matrix that's now on
+    // userGroup so the appended points land in world coordinates and stay put
+    // when subsequent frames apply a different TF chain.
+    if (
+      accumulating &&
+      owned.accumulator &&
+      sceneKind === 'pointcloud' &&
+      lastAppendedTsRef.current !== cloud.timestamp
+    ) {
+      const worldMatrix = cachedTransformRef.current?.matrix ?? new THREE.Matrix4();
+      const stride = Math.max(
+        1,
+        Math.ceil(cloud.pointCount / Math.max(1, accumPerFrame)),
+      );
+      owned.accumulator.append(
+        cloud.positions,
+        cloud.colors,
+        cloud.pointCount,
+        worldMatrix,
+        stride,
+      );
+      lastAppendedTsRef.current = cloud.timestamp;
+      const stats = owned.accumulator.getStats();
+      setAccumStats({ points: stats.pointCount, frames: stats.framesAccumulated });
+    }
     refs.renderOnce();
-  }, [cloud, graph, worldFrame, sceneRef]);
+  }, [cloud, graph, worldFrame, sceneRef, accumulating, accumPerFrame, sceneKind]);
 
   useEffect(() => {
     const refs = sceneRef.current;
@@ -304,6 +519,31 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
     } else {
       refs.resetCamera(new THREE.Vector3(0, 0, 0), 10);
     }
+    // Fit re-centres the orbit on the cloud, which means any manual pivot is
+    // implicitly overridden. Drop the marker so the user isn't left wondering
+    // why orbiting no longer happens around their picked point.
+    setPivot(null);
+  };
+
+  /**
+   * Recentre the orbit on the auto-fit centre without moving the camera.
+   * Lets the user return from a custom pivot when their current viewing
+   * angle is still useful but the rotation centre has drifted off-cloud.
+   */
+  const handleResetPivot = () => {
+    const refs = sceneRef.current;
+    if (!refs) return;
+    if (stats.bounds) {
+      const { min, max } = stats.bounds;
+      const cx = (min.x + max.x) / 2;
+      const cy = (min.y + max.y) / 2;
+      const cz = (min.z + max.z) / 2;
+      const target = new THREE.Vector3(cx, cy, cz).applyMatrix4(refs.userGroup.matrix);
+      refs.setOrbitTarget(target);
+    } else {
+      refs.setOrbitTarget(new THREE.Vector3(0, 0, 0));
+    }
+    setPivot(null);
   };
 
   const showInitialSpinner = loading && !cloud && !poseMessage;
@@ -322,6 +562,15 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
 
           <div className="absolute top-2 right-2 flex flex-col gap-1.5 items-end">
             <div className="flex gap-1">
+              {pivot && (
+                <button
+                  onClick={handleResetPivot}
+                  className="px-2 py-1 rounded-md text-xs mono bg-surface/80 border border-border hover:border-accent-blue/40 hover:text-accent-blue text-text-secondary transition-all"
+                  title="Return orbit centre to the auto-fit point"
+                >
+                  Reset pivot
+                </button>
+              )}
               <button
                 onClick={handleResetCamera}
                 className="px-2 py-1 rounded-md text-xs mono bg-surface/80 border border-border hover:border-accent-blue/40 hover:text-accent-blue text-text-secondary transition-all"
@@ -344,6 +593,18 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
               worldFrame={worldFrame}
               setWorldFrame={setWorldFrame}
               noTf={noTf}
+              rangeLimitOn={rangeLimitOn}
+              setRangeLimitOn={setRangeLimitOn}
+              maxRange={maxRange}
+              setMaxRange={setMaxRange}
+              accumulating={accumulating}
+              setAccumulating={setAccumulating}
+              accumBudget={accumBudget}
+              setAccumBudget={setAccumBudget}
+              accumPerFrame={accumPerFrame}
+              setAccumPerFrame={setAccumPerFrame}
+              onClearAccumulator={handleClearAccumulator}
+              accumStats={accumStats}
             />
           </div>
 
@@ -369,6 +630,11 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
             )}
             {!stats.sourceFrame && noTf && (
               <div className="text-text-tertiary">no /tf — rendering in topic frame</div>
+            )}
+            {isCloud && (
+              <div className="text-text-tertiary mt-0.5">
+                shift+click sets orbit centre
+              </div>
             )}
           </div>
 
@@ -416,6 +682,15 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
                 z {stats.bounds.min.z.toFixed(2)}…{stats.bounds.max.z.toFixed(2)} m
               </span>
             )}
+            {sceneKind === 'pointcloud' && accumulating && accumStats.points > 0 && (
+              <span className="text-accent-blue/80 ml-3">
+                +{accumStats.points.toLocaleString()} accum
+                <span className="text-text-tertiary">
+                  {' '}
+                  ({accumStats.frames} frames)
+                </span>
+              </span>
+            )}
           </span>
           <span>
             {stats.timestamp !== null
@@ -442,6 +717,18 @@ interface ControlsCardProps {
   worldFrame: string | null;
   setWorldFrame: (f: string) => void;
   noTf: boolean;
+  rangeLimitOn: boolean;
+  setRangeLimitOn: (v: boolean) => void;
+  maxRange: number;
+  setMaxRange: (n: number) => void;
+  accumulating: boolean;
+  setAccumulating: (v: boolean) => void;
+  accumBudget: number;
+  setAccumBudget: (n: number) => void;
+  accumPerFrame: number;
+  setAccumPerFrame: (n: number) => void;
+  onClearAccumulator: () => void;
+  accumStats: { points: number; frames: number };
 }
 
 function ControlsCard({
@@ -458,6 +745,18 @@ function ControlsCard({
   worldFrame,
   setWorldFrame,
   noTf,
+  rangeLimitOn,
+  setRangeLimitOn,
+  maxRange,
+  setMaxRange,
+  accumulating,
+  setAccumulating,
+  accumBudget,
+  setAccumBudget,
+  accumPerFrame,
+  setAccumPerFrame,
+  onClearAccumulator,
+  accumStats,
 }: ControlsCardProps) {
   const [open, setOpen] = useState(false);
   const allFrames = useMemo(() => (graph ? Array.from(graph.frames).sort() : []), [graph]);
@@ -511,7 +810,107 @@ function ControlsCard({
               className="w-full accent-accent-blue"
             />
           </div>
-          <div className="flex items-center justify-between">
+          {sceneKind === 'pointcloud' && (
+            <div className="pt-1 border-t border-border/60">
+              <label className="flex items-center justify-between text-text-secondary cursor-pointer mb-1">
+                <span className="flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={rangeLimitOn}
+                    onChange={(e) => setRangeLimitOn(e.target.checked)}
+                    className="accent-accent-blue"
+                  />
+                  limit range
+                </span>
+                <span className="text-text-tertiary text-[10px]">
+                  {rangeLimitOn ? `${maxRange.toFixed(0)} m` : 'off'}
+                </span>
+              </label>
+              <input
+                type="range"
+                min={1}
+                max={200}
+                step={1}
+                value={maxRange}
+                disabled={!rangeLimitOn}
+                onChange={(e) => setMaxRange(Number(e.target.value))}
+                className="w-full accent-accent-blue disabled:opacity-40"
+              />
+            </div>
+          )}
+          {sceneKind === 'pointcloud' && (
+            <div className="pt-1 border-t border-border/60 space-y-1.5">
+              <label className="flex items-center justify-between text-text-secondary cursor-pointer">
+                <span className="flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={accumulating}
+                    onChange={(e) => setAccumulating(e.target.checked)}
+                    className="accent-accent-blue"
+                  />
+                  accumulate
+                </span>
+                {accumulating && (
+                  <button
+                    onClick={onClearAccumulator}
+                    className="text-text-tertiary hover:text-accent-rose text-[10px] underline decoration-dotted"
+                    title="Clear accumulated points"
+                  >
+                    clear
+                  </button>
+                )}
+              </label>
+              <div>
+                <div className="flex items-center justify-between text-text-tertiary text-[10px] mb-1">
+                  <span>per-frame pts</span>
+                  <span className="text-text-secondary">
+                    {accumPerFrame >= 1000 ? `${(accumPerFrame / 1000).toFixed(0)}k` : accumPerFrame}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={1000}
+                  max={100000}
+                  step={1000}
+                  value={accumPerFrame}
+                  disabled={!accumulating}
+                  onChange={(e) => setAccumPerFrame(Number(e.target.value))}
+                  className="w-full accent-accent-blue disabled:opacity-40"
+                />
+              </div>
+              <div>
+                <div className="flex items-center justify-between text-text-tertiary text-[10px] mb-1">
+                  <span>budget</span>
+                  <span className="text-text-secondary">
+                    {(accumBudget / 1_000_000).toFixed(1)}M pts
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={250_000}
+                  max={5_000_000}
+                  step={250_000}
+                  value={accumBudget}
+                  onChange={(e) => setAccumBudget(Number(e.target.value))}
+                  className="w-full accent-accent-blue"
+                />
+              </div>
+              {accumulating && (
+                <div className="text-text-tertiary text-[10px] leading-tight">
+                  {accumStats.points.toLocaleString()} / {accumBudget.toLocaleString()} pts
+                  {accumStats.points >= accumBudget && (
+                    <span className="text-accent-amber ml-1">(oldest dropping)</span>
+                  )}
+                </div>
+              )}
+              {accumulating && noTf && (
+                <div className="text-accent-amber/80 text-[10px] leading-tight">
+                  no /tf — frames will overlap in the sensor frame
+                </div>
+              )}
+            </div>
+          )}
+          <div className="flex items-center justify-between pt-1 border-t border-border/60">
             <label className="flex items-center gap-1.5 text-text-secondary cursor-pointer">
               <input
                 type="checkbox"

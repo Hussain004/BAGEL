@@ -149,6 +149,7 @@ class ParserClient {
     timeNs: bigint,
     colorMode: ColorMode,
     maxPoints?: number,
+    maxRange?: number,
   ): Promise<DecodedPointCloud> {
     return this.request<DecodedPointCloud>('readPointCloudAtTime', {
       file,
@@ -157,6 +158,7 @@ class ParserClient {
       timeNs,
       colorMode,
       maxPoints,
+      maxRange,
     });
   }
 

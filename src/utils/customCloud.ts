@@ -68,6 +68,9 @@ export function looksLikeCustomCloud(value: Record<string, unknown> | null): boo
 interface DecodeOptions {
   colorMode?: ColorMode;
   maxPoints?: number;
+  /** Distance cap (metres) from sensor origin. Far returns are dropped before
+   *  bounds / colormap stats are taken so height coloring stays useful. */
+  maxRange?: number;
 }
 
 const DEFAULT_POINT_LIMIT = 250_000;
@@ -90,6 +93,10 @@ export function decodeCustomCloud(
   const cap = options.maxPoints ?? DEFAULT_POINT_LIMIT;
   const stride = Math.max(1, Math.ceil(pts.length / cap));
   const sampleCount = Math.ceil(pts.length / stride);
+  const rangeSqCap =
+    options.maxRange && options.maxRange > 0
+      ? options.maxRange * options.maxRange
+      : Infinity;
 
   const positions = new Float32Array(sampleCount * 3);
   const colors = new Float32Array(sampleCount * 3);
@@ -140,6 +147,7 @@ export function decodeCustomCloud(
     ) {
       continue;
     }
+    if (x * x + y * y + z * z > rangeSqCap) continue;
     const idx = validCount * 3;
     positions[idx] = x;
     positions[idx + 1] = y;
