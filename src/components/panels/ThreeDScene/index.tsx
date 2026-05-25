@@ -38,6 +38,54 @@ interface ThreeDSceneProps {
 
 type SceneKind = 'pointcloud' | 'laserscan' | 'pose';
 
+/**
+ * Which source-frame axis points up in the rendered scene. ROS standard is
+ * "z+", but bags from Livox, drone NED frames, or camera-aligned LiDAR rigs
+ * sometimes emit clouds with X-up, Y-up, or an inverted Z. The selector
+ * applies a fixed rotation that maps the chosen axis onto render-space +Z,
+ * which is the direction `camera.up` always points.
+ */
+type UpAxis = 'z+' | 'z-' | 'y+' | 'y-' | 'x+' | 'x-';
+
+const UP_AXIS_OPTIONS: { value: UpAxis; label: string }[] = [
+  { value: 'z+', label: '+Z up (ROS default)' },
+  { value: 'z-', label: '-Z up (flipped)' },
+  { value: 'y+', label: '+Y up' },
+  { value: 'y-', label: '-Y up' },
+  { value: 'x+', label: '+X up' },
+  { value: 'x-', label: '-X up' },
+];
+
+/**
+ * Build the source→render rotation matrix that puts the chosen source axis
+ * onto render-space +Z. Identity for the default "z+". All other cases are
+ * a single 90°/180° rotation around X or Y so the math is exact and the
+ * resulting matrix is orthonormal.
+ */
+function makeUpFix(axis: UpAxis): THREE.Matrix4 {
+  const m = new THREE.Matrix4();
+  switch (axis) {
+    case 'z+':
+      break; // identity
+    case 'z-':
+      m.makeRotationX(Math.PI);
+      break;
+    case 'y+':
+      m.makeRotationX(Math.PI / 2);
+      break;
+    case 'y-':
+      m.makeRotationX(-Math.PI / 2);
+      break;
+    case 'x+':
+      m.makeRotationY(-Math.PI / 2);
+      break;
+    case 'x-':
+      m.makeRotationY(Math.PI / 2);
+      break;
+  }
+  return m;
+}
+
 function detectKind(type: string): SceneKind {
   // Both sensor_msgs/PointCloud2 and list-of-points clouds (Livox CustomMsg
   // etc.) take the 'pointcloud' branch — they share the same render
@@ -91,6 +139,12 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
 
   // Pivot — Shift+Click sets a custom orbit centre; null means "auto-fit centre".
   const [pivot, setPivot] = useState<{ x: number; y: number; z: number } | null>(null);
+
+  // Up-axis fix — rotates the cloud so the chosen source axis points up in
+  // the rendered scene. Cleared accumulator + pivot are forced on change
+  // because both store positions in render-space coordinates.
+  const [upAxis, setUpAxis] = useState<UpAxis>('z+');
+  const upFixMatrix = useMemo(() => makeUpFix(upAxis), [upAxis]);
 
   // Cloud topics use the worker-decoded fast path; pose topics stay on the
   // generic message-at-time hook because their messages are tiny.
@@ -276,18 +330,22 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
     refs.renderOnce();
   }, [accumBudget, sceneRef]);
 
-  // Clear the accumulator whenever the world frame the panel renders into
-  // changes, or the topic changes — old accumulated points are expressed in
-  // the previous world frame's coordinates and would float misaligned.
+  // Clear the accumulator + custom pivot whenever the coordinate system the
+  // panel renders into changes — world frame, topic, or up-axis. Both the
+  // accumulator's stored points and the pivot are expressed in render-space
+  // coordinates that get invalidated by any of these changes.
   useEffect(() => {
-    const owned = objectsRef.current;
     const refs = sceneRef.current;
-    if (!refs || !owned?.accumulator) return;
-    owned.accumulator.clear();
-    lastAppendedTsRef.current = null;
-    setAccumStats({ points: 0, frames: 0 });
+    const owned = objectsRef.current;
+    if (!refs) return;
+    if (owned?.accumulator) {
+      owned.accumulator.clear();
+      lastAppendedTsRef.current = null;
+      setAccumStats({ points: 0, frames: 0 });
+    }
+    setPivot(null);
     refs.renderOnce();
-  }, [worldFrame, topicName, sceneRef]);
+  }, [worldFrame, topicName, upAxis, sceneRef]);
 
   const handleClearAccumulator = () => {
     const owned = objectsRef.current;
@@ -404,7 +462,15 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
     if (!refs || !owned?.cloud || !cloud) return;
 
     const sourceFrame = cloud.frameId ?? null;
-    applyTransform(refs.userGroup, graph, sourceFrame, worldFrame, cloud.timestamp, cachedTransformRef);
+    applyTransform(
+      refs.userGroup,
+      graph,
+      sourceFrame,
+      worldFrame,
+      cloud.timestamp,
+      cachedTransformRef,
+      upFixMatrix,
+    );
 
     updateCloud(owned.cloud, {
       positions: cloud.positions,
@@ -419,16 +485,16 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
       timestamp: cloud.timestamp,
     });
 
-    // Accumulator append. We use the same source→world matrix that's now on
-    // userGroup so the appended points land in world coordinates and stay put
-    // when subsequent frames apply a different TF chain.
+    // Accumulator append. userGroup.matrix is now `upFix * tfChain` so using
+    // it directly as the worldMatrix puts appended points in render-space
+    // coordinates — consistent with the live frame and with previously
+    // accumulated points for as long as upAxis stays the same.
     if (
       accumulating &&
       owned.accumulator &&
       sceneKind === 'pointcloud' &&
       lastAppendedTsRef.current !== cloud.timestamp
     ) {
-      const worldMatrix = cachedTransformRef.current?.matrix ?? new THREE.Matrix4();
       const stride = Math.max(
         1,
         Math.ceil(cloud.pointCount / Math.max(1, accumPerFrame)),
@@ -437,7 +503,7 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
         cloud.positions,
         cloud.colors,
         cloud.pointCount,
-        worldMatrix,
+        refs.userGroup.matrix,
         stride,
       );
       lastAppendedTsRef.current = cloud.timestamp;
@@ -445,7 +511,7 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
       setAccumStats({ points: stats.pointCount, frames: stats.framesAccumulated });
     }
     refs.renderOnce();
-  }, [cloud, graph, worldFrame, sceneRef, accumulating, accumPerFrame, sceneKind]);
+  }, [cloud, graph, worldFrame, sceneRef, accumulating, accumPerFrame, sceneKind, upFixMatrix]);
 
   useEffect(() => {
     const refs = sceneRef.current;
@@ -460,6 +526,7 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
       worldFrame,
       poseMessage.timestamp,
       cachedTransformRef,
+      upFixMatrix,
     );
 
     const pose = extractPose(poseMessage.value, type);
@@ -477,7 +544,7 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
       });
     }
     refs.renderOnce();
-  }, [poseMessage, graph, worldFrame, type, sceneRef]);
+  }, [poseMessage, graph, worldFrame, type, sceneRef, upFixMatrix]);
 
   // First-frame autofit. Subsequent frames leave the camera alone so playback
   // doesn't yank the view around.
@@ -605,6 +672,8 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
               setAccumPerFrame={setAccumPerFrame}
               onClearAccumulator={handleClearAccumulator}
               accumStats={accumStats}
+              upAxis={upAxis}
+              setUpAxis={setUpAxis}
             />
           </div>
 
@@ -729,6 +798,8 @@ interface ControlsCardProps {
   setAccumPerFrame: (n: number) => void;
   onClearAccumulator: () => void;
   accumStats: { points: number; frames: number };
+  upAxis: UpAxis;
+  setUpAxis: (a: UpAxis) => void;
 }
 
 function ControlsCard({
@@ -757,6 +828,8 @@ function ControlsCard({
   setAccumPerFrame,
   onClearAccumulator,
   accumStats,
+  upAxis,
+  setUpAxis,
 }: ControlsCardProps) {
   const [open, setOpen] = useState(false);
   const allFrames = useMemo(() => (graph ? Array.from(graph.frames).sort() : []), [graph]);
@@ -870,8 +943,8 @@ function ControlsCard({
                 <input
                   type="range"
                   min={1000}
-                  max={100000}
-                  step={1000}
+                  max={500_000}
+                  step={5000}
                   value={accumPerFrame}
                   disabled={!accumulating}
                   onChange={(e) => setAccumPerFrame(Number(e.target.value))}
@@ -888,7 +961,7 @@ function ControlsCard({
                 <input
                   type="range"
                   min={250_000}
-                  max={5_000_000}
+                  max={10_000_000}
                   step={250_000}
                   value={accumBudget}
                   onChange={(e) => setAccumBudget(Number(e.target.value))}
@@ -930,6 +1003,21 @@ function ControlsCard({
               axes
             </label>
           </div>
+          <div className="pt-1 border-t border-border/60">
+            <div className="text-text-tertiary text-[10px] mb-1">up axis</div>
+            <select
+              value={upAxis}
+              onChange={(e) => setUpAxis(e.target.value as UpAxis)}
+              className="w-full px-2 py-1 rounded-md bg-surface border border-border text-text-primary text-xs mono focus:outline-none focus:border-accent-blue/50"
+              title="Rotates the cloud so the chosen source-frame axis points up in the rendered scene"
+            >
+              {UP_AXIS_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
           {!noTf && allFrames.length > 0 && (
             <div>
               <div className="text-text-tertiary text-[10px] mb-1">world frame</div>
@@ -960,9 +1048,13 @@ function pickFrameId(value: Record<string, unknown> | null | undefined): string 
 }
 
 /**
- * Set the user-group's matrix to the TF transform from sourceFrame → worldFrame
- * at `timeNs`. Reuses the cached Matrix4 when nothing material has changed,
- * which is the common case during playback within the same chunk of TF data.
+ * Set the user-group's matrix to `postMul * TFChain(source → world)` at
+ * `timeNs`. The cache stores the bare TF chain so the post-multiplier (the
+ * panel's up-axis fix) can change cheaply without invalidating the chain
+ * lookup.
+ *
+ * If `postMul` is omitted the result is just the TF chain — preserves the
+ * pre-up-axis behaviour for callers that don't need it.
  */
 function applyTransform(
   userGroup: THREE.Group,
@@ -971,10 +1063,12 @@ function applyTransform(
   worldFrame: string | null,
   timeNs: bigint,
   cache: React.MutableRefObject<{ key: string; matrix: THREE.Matrix4 } | null>,
+  postMul?: THREE.Matrix4,
 ): void {
   userGroup.matrixAutoUpdate = false;
   if (!graph || !sourceFrame || !worldFrame || sourceFrame === worldFrame) {
-    userGroup.matrix.identity();
+    if (postMul) userGroup.matrix.copy(postMul);
+    else userGroup.matrix.identity();
     cache.current = null;
     return;
   }
@@ -983,15 +1077,18 @@ function applyTransform(
   const bucket = timeNs / 100_000_000n;
   const key = `${sourceFrame}>${worldFrame}@${bucket.toString()}`;
   if (cache.current && cache.current.key === key) {
-    userGroup.matrix.copy(cache.current.matrix);
+    if (postMul) userGroup.matrix.multiplyMatrices(postMul, cache.current.matrix);
+    else userGroup.matrix.copy(cache.current.matrix);
     return;
   }
   const m = composeTFChain(graph, sourceFrame, worldFrame, timeNs);
   if (m) {
-    userGroup.matrix.copy(m);
     cache.current = { key, matrix: m };
+    if (postMul) userGroup.matrix.multiplyMatrices(postMul, m);
+    else userGroup.matrix.copy(m);
   } else {
-    userGroup.matrix.identity();
+    if (postMul) userGroup.matrix.copy(postMul);
+    else userGroup.matrix.identity();
     cache.current = null;
   }
 }
