@@ -81,9 +81,11 @@ body {
 
 /* Native <select> popup options don't reliably pick up the page's
    color-scheme on every browser/OS — set option colours explicitly so the
-   dropdown list stays readable on the dark theme. */
+   dropdown list stays readable on the dark theme.
+   Must be an OPAQUE dark; --color-surface is rgba white@3% which composites
+   to white over the browser's default white popup background. */
 select option {
-  background-color: var(--color-surface);
+  background-color: var(--color-bg-secondary);
   color: var(--color-text-primary);
 }
 
