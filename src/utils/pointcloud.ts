@@ -173,6 +173,13 @@ export interface DecodeOptions {
   reuse?: CloudBuffers | null;
   /** Hard cap on decoded point count. */
   maxPoints?: number;
+  /**
+   * Drop points whose Euclidean distance from the sensor origin exceeds this
+   * radius (metres). Applied before bounds + height-color min/max are taken,
+   * so the colormap stretches across the kept points rather than being
+   * compressed by a handful of long-range returns.
+   */
+  maxRange?: number;
 }
 
 /**
@@ -205,6 +212,12 @@ export function decodePointCloud2(
   if (!xReader || !yReader || !zReader) return null;
 
   const colorMode: ColorMode = options.colorMode ?? 'height';
+  // Squared cap avoids a sqrt per point in the hot loop. 0 / undefined / NaN
+  // disables the filter (rangeSqCap === Infinity passes everything).
+  const rangeSqCap =
+    options.maxRange && options.maxRange > 0
+      ? options.maxRange * options.maxRange
+      : Infinity;
   const intensityField =
     fields.find((f) => f.name === 'intensity') ?? fields.find((f) => f.name === 'i');
   const rgbField = fields.find((f) => f.name === 'rgb' || f.name === 'rgba');
@@ -284,6 +297,7 @@ export function decodePointCloud2(
       ) {
         continue;
       }
+      if (x * x + y * y + z * z > rangeSqCap) continue;
       const idx = validCount * 3;
       positions[idx] = x;
       positions[idx + 1] = y;
@@ -336,6 +350,7 @@ export function decodePointCloud2(
       ) {
         continue;
       }
+      if (x * x + y * y + z * z > rangeSqCap) continue;
       const idx = validCount * 3;
       positions[idx] = x;
       positions[idx + 1] = y;

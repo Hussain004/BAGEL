@@ -32,6 +32,12 @@ export interface SceneRefs {
     target?: THREE.Vector3,
     radius?: number,
   ) => void;
+  /**
+   * Move the orbit pivot without changing the camera position. Use for
+   * "Shift+Click here" interactions where the user wants to keep the same
+   * viewpoint but pivot around a different scene point.
+   */
+  setOrbitTarget: (target: THREE.Vector3) => void;
 }
 
 export function useScene(): {
@@ -138,6 +144,12 @@ export function useScene(): {
       needsRender = true;
     };
 
+    const setOrbitTarget = (target: THREE.Vector3) => {
+      controls.target.copy(target);
+      controls.update();
+      needsRender = true;
+    };
+
     sceneRef.current = {
       renderer,
       scene,
@@ -147,6 +159,7 @@ export function useScene(): {
       worldGroup,
       renderOnce,
       resetCamera,
+      setOrbitTarget,
     };
 
     return () => {
