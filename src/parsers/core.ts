@@ -31,6 +31,7 @@ import {
   type PointCloud2Message,
 } from '../utils/pointcloud';
 import { decodeLaserScan, type LaserScanExtraction, type LaserScanMessage } from '../utils/laserscan';
+import { decodeCustomCloud, looksLikeCustomCloud } from '../utils/customCloud';
 
 const MCAP_MAGIC = [0x89, 0x4d, 0x43, 0x41, 0x50, 0x30, 0x0d, 0x0a];
 const SQLITE_MAGIC = [0x53, 0x51, 0x4c, 0x69, 0x74, 0x65];
@@ -139,10 +140,24 @@ export async function readPointCloudAtTime(
       ? await readMessageAtTimeMcap(file, topicName, timeNs)
       : await readMessageAtTimeDb3(file, topicName, timeNs);
   if (!message || !message.value) return null;
-  const decoded = decodePointCloud2(message.value as PointCloud2Message, {
-    colorMode,
-    maxPoints,
-  });
+  // Dispatch by message shape: sensor_msgs/PointCloud2 carries `fields` + a
+  // packed `data` buffer, whereas list-of-structs clouds (Livox CustomMsg
+  // and similar) carry a `points: []` array of {x,y,z,...}. Most bags only
+  // produce one or the other for a given topic, but checking shape rather
+  // than type name means converted bags with non-standard names still work.
+  const value = message.value;
+  const hasPointCloud2Fields = Array.isArray((value as { fields?: unknown[] }).fields);
+  // Try the PointCloud2 path first when the shape matches, otherwise the
+  // list-of-points path (Livox CustomMsg and similar). Fall back to the
+  // other decoder if the preferred one returns null — a few converted bags
+  // carry both shapes side-by-side, and one of them will succeed.
+  const decoded = hasPointCloud2Fields
+    ? (decodePointCloud2(value as PointCloud2Message, { colorMode, maxPoints }) ??
+      decodeCustomCloud(value, { colorMode, maxPoints }))
+    : looksLikeCustomCloud(value)
+      ? (decodeCustomCloud(value, { colorMode, maxPoints }) ??
+        decodePointCloud2(value as PointCloud2Message, { colorMode, maxPoints }))
+      : null;
   if (!decoded) return null;
   return { ...decoded, timestamp: message.timestamp };
 }

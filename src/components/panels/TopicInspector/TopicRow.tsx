@@ -1,8 +1,8 @@
 import { getTopicColor, getTypeCategory } from '../../../utils/color';
 import {
+  isCloudType,
   isImageType,
   isLaserScanType,
-  isPointCloud2Type,
   isTfTopic,
   isTrajectoryCapableType,
 } from '../../../utils/messages';
@@ -28,8 +28,8 @@ interface TopicRowProps {
 function suggestPanelKind(topic: TopicInfo): PanelKind {
   if (isTfTopic(topic.name, topic.type)) return 'tf';
   if (isImageType(topic.type)) return 'image';
-  // PointCloud2 / LaserScan default to the 3D view — that's the whole point.
-  if (isPointCloud2Type(topic.type) || isLaserScanType(topic.type)) return '3d';
+  // Point cloud-ish topics default to the 3D view — that's the whole point.
+  if (isCloudType(topic.type) || isLaserScanType(topic.type)) return '3d';
   // For pose-only types (Pose, Point, TransformStamped) plot has nothing
   // useful to show; jump straight to the trajectory view.
   if (
@@ -48,7 +48,7 @@ function suggestPanelKind(topic: TopicInfo): PanelKind {
 function panelOptionsFor(topic: TopicInfo): PanelKind[] {
   if (isTfTopic(topic.name, topic.type)) return ['tf', 'raw'];
   if (isImageType(topic.type)) return ['image', 'raw'];
-  if (isPointCloud2Type(topic.type)) return ['3d', 'raw'];
+  if (isCloudType(topic.type)) return ['3d', 'raw'];
   if (isLaserScanType(topic.type)) return ['3d', 'plot', 'raw'];
   if (
     isTrajectoryCapableType(topic.type) &&
