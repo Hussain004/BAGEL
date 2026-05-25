@@ -420,7 +420,7 @@ export function decodePointCloud2(
  * into the LUT directly. The hot inner loop is just LUT reads + writes —
  * no per-point function calls, no math beyond one subtract + divide.
  */
-function fillColorsByScalar(
+export function fillColorsByScalar(
   out: Float32Array,
   pointCount: number,
   read: (i: number) => number,

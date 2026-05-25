@@ -11,6 +11,12 @@
  *
  * Compared with `useMessageAtTime` + main-thread decode, this is typically
  * 5-10× faster on a Velodyne-64 / Ouster-OS-1 frame.
+ *
+ * Cancellation is **session-scoped** (see useMessageAtTime for the full
+ * rationale). Per-tick effect cleanup is fatal here: when the playhead
+ * is moving, every in-flight request would be invalidated by the next
+ * 16 ms tick and its decoded cloud would never reach state — the scene
+ * froze until the user paused.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -62,22 +68,46 @@ export function useDecodedCloud({
   const inflightRef = useRef(false);
   const pendingRef = useRef<{ timeNs: bigint; colorMode: ColorMode; maxPoints: number | undefined } | null>(null);
   const fireRef = useRef<() => void>(() => {});
+  // Session id keyed on (bag, file, topic, kind). Bumped only when one of
+  // these changes — never on timeNs ticks, so playback doesn't cancel its
+  // own decodes.
+  const sessionRef = useRef(0);
   // Dedupe: don't re-decode the same (topic, timestamp, colorMode) we already
   // have. We compare the decoded message's timestamp against the last result,
   // not the requested timeNs, since readers snap to the nearest sample.
   const lastResultKeyRef = useRef<string | null>(null);
 
+  // Each (bag, file, topic, kind) tuple is a session. Bump on entry and exit
+  // so any in-flight decode from the previous session bails before it calls
+  // setState (which would either land on the wrong topic or — on unmount —
+  // poke an already-torn-down component).
   useEffect(() => {
+    sessionRef.current++;
+    pendingRef.current = null;
+    inflightRef.current = false;
+    lastResultKeyRef.current = null;
     if (!bag || !file) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setState({ cloud: null, loading: false, error: null });
-      return;
     }
+    return () => {
+      // Intentional: bumping the session ref on unmount is what invalidates
+      // in-flight decodes so their `.then` doesn't poke setState after we
+      // tear down. The "ref will have changed" lint targets ref-to-DOM
+      // cleanup; that warning isn't applicable here.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      sessionRef.current++;
+    };
+  }, [bag, file, topicName, kind]);
 
-    let cancelled = false;
+  useEffect(() => {
+    if (!bag || !file) return;
+
+    const mySession = sessionRef.current;
 
     const fire = (): void => {
-      if (cancelled || inflightRef.current || pendingRef.current === null) return;
+      if (inflightRef.current || pendingRef.current === null) return;
+      if (sessionRef.current !== mySession) return;
       const target = pendingRef.current;
       pendingRef.current = null;
       inflightRef.current = true;
@@ -90,7 +120,7 @@ export function useDecodedCloud({
       promise
         .then((cloud) => {
           inflightRef.current = false;
-          if (cancelled) {
+          if (sessionRef.current !== mySession) {
             if (pendingRef.current !== null) fireRef.current();
             return;
           }
@@ -111,7 +141,7 @@ export function useDecodedCloud({
         })
         .catch((err: unknown) => {
           inflightRef.current = false;
-          if (cancelled) {
+          if (sessionRef.current !== mySession) {
             if (pendingRef.current !== null) fireRef.current();
             return;
           }
@@ -129,17 +159,7 @@ export function useDecodedCloud({
       setState((s) => ({ ...s, loading: true, error: null }));
     }
     fire();
-
-    return () => {
-      cancelled = true;
-    };
   }, [bag, file, topicName, timeNs, colorMode, maxPoints, kind]);
-
-  // When the topic / kind changes, drop the dedupe key so the next decode
-  // always emits a new result.
-  useEffect(() => {
-    lastResultKeyRef.current = null;
-  }, [topicName, kind]);
 
   return state;
 }

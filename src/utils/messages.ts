@@ -105,6 +105,25 @@ export function isPointCloud2Type(type: string): boolean {
   return type.endsWith('/PointCloud2');
 }
 
+/**
+ * True if a type is a "custom" list-of-points cloud — Livox CustomMsg and
+ * any other vendor message that carries per-point x/y/z in a `points[]`
+ * array of structs instead of PointCloud2's packed binary layout.
+ *
+ * Common cases:
+ *   - livox_ros_driver2/msg/CustomMsg  (Livox MID/HAP/AVIA)
+ *   - livox_ros_driver/msg/CustomMsg   (older Livox SDK)
+ */
+export function isCustomLidarType(type: string): boolean {
+  if (!type) return false;
+  return type.endsWith('/CustomMsg');
+}
+
+/** True if a type is any point cloud the 3D scene can render. */
+export function isCloudType(type: string): boolean {
+  return isPointCloud2Type(type) || isCustomLidarType(type);
+}
+
 /** True if a ROS2 type is sensor_msgs/LaserScan. */
 export function isLaserScanType(type: string): boolean {
   return type.endsWith('/LaserScan');
@@ -113,12 +132,13 @@ export function isLaserScanType(type: string): boolean {
 /**
  * True if the topic carries spatial data the ThreeDScene panel can render.
  *
- * Anything that produces a position in 3D space counts: full point clouds,
- * LaserScans (we lift the polar ring into XY at z=0), and pose / odometry
- * topics (rendered as coordinate frame axes).
+ * Anything that produces a position in 3D space counts: full point clouds
+ * (PointCloud2 and Livox-style list-of-points), LaserScans (we lift the
+ * polar ring into XY at z=0), and pose / odometry topics (rendered as
+ * coordinate frame axes).
  */
 export function is3DCapableType(type: string): boolean {
-  if (isPointCloud2Type(type) || isLaserScanType(type)) return true;
+  if (isCloudType(type) || isLaserScanType(type)) return true;
   // Pose-bearing types — we'll render them as a coordinate frame triad.
   return (
     type.endsWith('/Odometry') ||

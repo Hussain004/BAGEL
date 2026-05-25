@@ -6,8 +6,8 @@ import { PanelShell } from '../PanelShell';
 import { getTopicColor } from '../../../utils/color';
 import { nsToSeconds } from '../../../utils/time';
 import {
+  isCloudType,
   isLaserScanType,
-  isPointCloud2Type,
 } from '../../../utils/messages';
 import { useMessageAtTime } from '../../../hooks/useMessageAtTime';
 import { useTFGraph, type TFGraph } from '../TFTree/useTFGraph';
@@ -38,7 +38,10 @@ interface ThreeDSceneProps {
 type SceneKind = 'pointcloud' | 'laserscan' | 'pose';
 
 function detectKind(type: string): SceneKind {
-  if (isPointCloud2Type(type)) return 'pointcloud';
+  // Both sensor_msgs/PointCloud2 and list-of-points clouds (Livox CustomMsg
+  // etc.) take the 'pointcloud' branch — they share the same render
+  // pipeline once the worker has produced Float32Array positions + colors.
+  if (isCloudType(type)) return 'pointcloud';
   if (isLaserScanType(type)) return 'laserscan';
   return 'pose';
 }
