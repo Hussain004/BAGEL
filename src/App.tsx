@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import { useBagStore } from './store/bagStore';
 import { useLayoutStore } from './store/layoutStore';
@@ -7,7 +7,10 @@ import { Toolbar } from './components/layout/Toolbar';
 import { Timeline } from './components/layout/Timeline';
 import { PanelGrid } from './components/layout/PanelGrid';
 import { TopicInspector } from './components/panels/TopicInspector';
+import { ModalHost } from './components/modals/ModalHost';
 import { clearTopicMessageCache } from './hooks/useTopicMessages';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { useUrlState } from './hooks/useUrlState';
 import { formatDuration } from './utils/time';
 import type { BagSummary } from './types/bag';
 
@@ -16,26 +19,44 @@ import type { BagSummary } from './types/bag';
  *
  * - No bag → DropZone landing page.
  * - Bag loaded → Toolbar + Sidebar + PanelGrid + Timeline.
+ *
+ * Global cross-cutting hooks (keyboard shortcuts, URL hash sync) live here
+ * so they survive bag changes and are torn down only when the app unmounts.
  */
 export default function App() {
   const bag = useBagStore((s) => s.bag);
   const closeAllPanels = useLayoutStore((s) => s.closeAllPanels);
 
-  // When a different bag is loaded, drop any panels + cached messages from
-  // the previous one.
-  useEffect(() => {
-    closeAllPanels();
-    clearTopicMessageCache();
-  }, [bag?.fileName, bag?.fileSize, closeAllPanels]);
+  // Global shortcuts (Space/Arrows/T/O/Esc/?/A) + URL hash sync.
+  useKeyboardShortcuts();
+  useUrlState();
 
-  if (!bag) return <DropZone />;
+  // When a *different* bag is loaded, drop any panels + cached messages from
+  // the previous one. We track the previous identity by ref so the very
+  // first bag load doesn't blow away panels that useUrlState just restored.
+  const lastBagKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    const key = bag ? `${bag.fileName}::${bag.fileSize}` : null;
+    if (lastBagKeyRef.current !== null && lastBagKeyRef.current !== key) {
+      closeAllPanels();
+      clearTopicMessageCache();
+    }
+    lastBagKeyRef.current = key;
+  }, [bag?.fileName, bag?.fileSize, bag, closeAllPanels]);
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-bg-primary">
-      <Toolbar />
-      <MainView />
-      <Timeline />
-    </div>
+    <>
+      {!bag ? (
+        <DropZone />
+      ) : (
+        <div className="h-screen flex flex-col overflow-hidden bg-bg-primary">
+          <Toolbar />
+          <MainView />
+          <Timeline />
+        </div>
+      )}
+      <ModalHost />
+    </>
   );
 }
 
