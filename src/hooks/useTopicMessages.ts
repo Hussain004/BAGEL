@@ -61,13 +61,11 @@ export function useTopicMessages(topicName: string, limit?: number): TopicMessag
     });
     const cached = cache.get(cacheKey);
     if (cached) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setState({ messages: cached, loading: false, progress: cached.length, error: null });
       return;
     }
 
     let cancelled = false;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setState({ messages: null, loading: true, progress: 0, error: null });
 
     readDeserializedMessages(file, bag.format, topicName, limit, (decoded) => {

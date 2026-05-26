@@ -1,6 +1,8 @@
 import { useBagStore } from '../../store/bagStore';
+import { useUiStore } from '../../store/uiStore';
 import { formatFileSize } from '../../utils/bytes';
 import { formatDuration } from '../../utils/time';
+import { APP_VERSION } from '../../utils/version';
 
 /**
  * Toolbar — Top bar showing bag file info, stats, and controls.
@@ -8,6 +10,7 @@ import { formatDuration } from '../../utils/time';
  */
 export function Toolbar() {
   const { bag, clearBag } = useBagStore();
+  const setModal = useUiStore((s) => s.setModal);
 
   if (!bag) return null;
 
@@ -15,10 +18,15 @@ export function Toolbar() {
     <header className="glass-strong px-6 py-3 flex items-center justify-between animate-fade-in flex-shrink-0 z-50">
       {/* Left: Logo + File Name */}
       <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2">
+        <button
+          onClick={() => setModal('about')}
+          className="flex items-center gap-2 rounded-md px-1 -mx-1 hover:bg-surface-hover transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
+          title={`BAGEL v${APP_VERSION} — About`}
+          aria-label="About BAGEL"
+        >
           <BagelIconSmall />
           <span className="text-lg font-bold text-gradient">BAGEL</span>
-        </div>
+        </button>
 
         <div className="w-px h-6 bg-border" />
 
@@ -35,26 +43,49 @@ export function Toolbar() {
         </div>
       </div>
 
-      {/* Center: Stats */}
-      <div className="hidden md:flex items-center gap-6">
+      {/* Center: Stats. Hidden on narrow viewports — the data is still
+          available in the empty panel-grid summary card. */}
+      <div className="hidden lg:flex items-center gap-6">
         <Stat label="Duration" value={formatDuration(bag.duration)} icon="clock" />
         <Stat label="Messages" value={formatNumber(bag.totalMessageCount)} icon="messages" />
         <Stat label="Topics" value={bag.topics.length.toString()} icon="topics" />
         <Stat label="Size" value={formatFileSize(bag.fileSize)} icon="size" />
       </div>
+      {/* Compact stat strip for tablet/medium viewports where the full stats
+          would overflow but a single-line summary still fits. */}
+      <div className="hidden md:flex lg:hidden items-center gap-3 text-xs text-text-tertiary mono">
+        <span>{formatDuration(bag.duration)}</span>
+        <span className="text-text-muted">·</span>
+        <span>{formatNumber(bag.totalMessageCount)} msgs</span>
+        <span className="text-text-muted">·</span>
+        <span>{bag.topics.length} topics</span>
+      </div>
 
-      {/* Right: Close */}
-      <button
-        onClick={clearBag}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-surface-hover transition-all text-sm"
-        title="Close bag file"
-        id="close-bag-button"
-      >
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-        </svg>
-        <span className="hidden lg:inline">Close</span>
-      </button>
+      {/* Right: Help + Close */}
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => setModal('shortcuts')}
+          className="w-9 h-9 rounded-lg flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-surface-hover transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
+          title="Keyboard shortcuts (?)"
+          aria-label="Keyboard shortcuts"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.5M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+          </svg>
+        </button>
+        <button
+          onClick={clearBag}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-surface-hover transition-all text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
+          title="Close bag file (O for open another)"
+          aria-label="Close bag file"
+          id="close-bag-button"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+          <span className="hidden lg:inline">Close</span>
+        </button>
+      </div>
     </header>
   );
 }

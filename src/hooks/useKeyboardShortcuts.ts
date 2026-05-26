@@ -1,0 +1,146 @@
+/**
+ * Global keyboard shortcuts.
+ *
+ * Centralises every binding in one place so they don't drift across the
+ * codebase, and so the Shortcuts modal can be generated from the same source
+ * the handler consumes (single source of truth).
+ *
+ * All bindings ignore events that originate in <input>, <textarea>, or
+ * contentEditable elements — the Topic search box would otherwise eat every
+ * keystroke as a global action.
+ */
+
+import { useEffect } from 'react';
+import { useBagStore } from '../store/bagStore';
+import { usePlayheadStore } from '../store/playheadStore';
+import { useLayoutStore } from '../store/layoutStore';
+import { useUiStore } from '../store/uiStore';
+
+/** Single source of truth for the Shortcuts modal + the handler. */
+export interface ShortcutDescription {
+  keys: string;
+  description: string;
+  /** Optional grouping label, used by the modal. */
+  group: 'Playback' | 'Panels' | 'Navigation' | 'Help';
+}
+
+export const SHORTCUTS: ShortcutDescription[] = [
+  { keys: 'Space', description: 'Play / pause the playhead', group: 'Playback' },
+  { keys: '←  →', description: 'Step the playhead by ~1% of the bag', group: 'Playback' },
+  { keys: 'Shift + ←  →', description: 'Step by ~5% (coarse jump)', group: 'Playback' },
+  { keys: 'Home  End', description: 'Jump to bag start / end', group: 'Playback' },
+  { keys: 'T', description: 'Focus the topic search box', group: 'Navigation' },
+  { keys: 'Esc', description: 'Close the most recently opened panel', group: 'Panels' },
+  { keys: 'Shift + Esc', description: 'Close every open panel', group: 'Panels' },
+  { keys: 'O', description: 'Open a different bag file', group: 'Navigation' },
+  { keys: '?', description: 'Show this shortcuts list', group: 'Help' },
+  { keys: 'A', description: 'About BAGEL', group: 'Help' },
+];
+
+/**
+ * Should a key event be ignored because the user is typing in a field?
+ *
+ * We allow Esc to escape — most users expect Esc to unfocus an input, and the
+ * caller can decide whether to close a panel after that.
+ */
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  const tag = target.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+}
+
+export function useKeyboardShortcuts(): void {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const bag = useBagStore.getState().bag;
+      if (!bag) return;
+      const typing = isTypingTarget(e.target);
+
+      // Esc always works — even when typing — but unblurs first if you're
+      // in an input. Otherwise it closes the most recent panel.
+      if (e.key === 'Escape') {
+        if (typing) {
+          (e.target as HTMLElement).blur();
+          return;
+        }
+        if (useUiStore.getState().modal) {
+          e.preventDefault();
+          useUiStore.getState().setModal(null);
+          return;
+        }
+        e.preventDefault();
+        const layout = useLayoutStore.getState();
+        if (e.shiftKey) {
+          layout.closeAllPanels();
+        } else if (layout.panels.length > 0) {
+          layout.closePanel(layout.panels[layout.panels.length - 1].id);
+        }
+        return;
+      }
+
+      if (typing) return;
+
+      // Help / About modals — fire before the playback bindings so '?' isn't
+      // swallowed by anything else.
+      if (e.key === '?') {
+        e.preventDefault();
+        useUiStore.getState().setModal('shortcuts');
+        return;
+      }
+      if (e.key === 'a' || e.key === 'A') {
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        e.preventDefault();
+        useUiStore.getState().setModal('about');
+        return;
+      }
+
+      if (e.key === 't' || e.key === 'T') {
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        e.preventDefault();
+        const input = document.getElementById('topic-search-input') as HTMLInputElement | null;
+        input?.focus();
+        input?.select();
+        return;
+      }
+
+      if (e.key === 'o' || e.key === 'O') {
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        e.preventDefault();
+        useBagStore.getState().clearBag();
+        return;
+      }
+
+      // Playback bindings — operate against the playhead store.
+      const playhead = usePlayheadStore.getState();
+      const range = playhead.endNs - playhead.startNs;
+      if (range <= 0n) return;
+      const step = e.shiftKey ? 0.05 : 0.01; // fraction of bag duration
+      const stepNs = BigInt(Math.max(1, Math.floor(Number(range) * step)));
+
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        playhead.seek(playhead.timeNs - stepNs);
+        return;
+      }
+      if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        playhead.seek(playhead.timeNs + stepNs);
+        return;
+      }
+      if (e.key === 'Home') {
+        e.preventDefault();
+        playhead.seek(playhead.startNs);
+        return;
+      }
+      if (e.key === 'End') {
+        e.preventDefault();
+        playhead.seek(playhead.endNs);
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+}

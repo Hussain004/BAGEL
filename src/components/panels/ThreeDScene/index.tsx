@@ -28,7 +28,7 @@ import {
 } from './sceneObjects';
 import { composeTFChain, pickWorldFrame } from './tfTransform';
 import { useDecodedCloud } from './useDecodedPointCloud';
-import { CloudAccumulator } from './accumulator';
+import { CloudAccumulator, type AccumulationMode } from './accumulator';
 
 interface ThreeDSceneProps {
   panelId: string;
@@ -126,11 +126,15 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
   const [rangeLimitOn, setRangeLimitOn] = useState(false);
   const [maxRange, setMaxRange] = useState(30);
 
-  // Accumulation — keep a ring buffer of world-frame points across frames so
-  // the user can build up a running "map" view from a drone flight or SLAM run.
+  // Accumulation — build up a running "map" view across frames. Ring mode
+  // keeps the last N points in a FIFO buffer; voxel mode buckets points
+  // into a regular grid (one point per cell) so revisited ground doesn't
+  // explode the count.
   const [accumulating, setAccumulating] = useState(false);
+  const [accumMode, setAccumMode] = useState<AccumulationMode>('ring');
   const [accumBudget, setAccumBudget] = useState(1_000_000);
   const [accumPerFrame, setAccumPerFrame] = useState(25_000);
+  const [voxelSize, setVoxelSize] = useState(0.2);
   // Footer stats for the accumulator. Updated on every successful append.
   const [accumStats, setAccumStats] = useState<{ points: number; frames: number }>({
     points: 0,
@@ -329,6 +333,29 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
     setAccumStats({ points: 0, frames: 0 });
     refs.renderOnce();
   }, [accumBudget, sceneRef]);
+
+  // Mode + voxel-size changes clear the accumulator (the storage layout for
+  // voxel mode differs from ring mode, and a new voxel size invalidates the
+  // existing voxel index).
+  useEffect(() => {
+    const owned = objectsRef.current;
+    const refs = sceneRef.current;
+    if (!refs || !owned?.accumulator) return;
+    owned.accumulator.setMode(accumMode);
+    lastAppendedTsRef.current = null;
+    setAccumStats({ points: 0, frames: 0 });
+    refs.renderOnce();
+  }, [accumMode, sceneRef]);
+
+  useEffect(() => {
+    const owned = objectsRef.current;
+    const refs = sceneRef.current;
+    if (!refs || !owned?.accumulator) return;
+    owned.accumulator.setVoxelSize(voxelSize);
+    lastAppendedTsRef.current = null;
+    setAccumStats({ points: 0, frames: 0 });
+    refs.renderOnce();
+  }, [voxelSize, sceneRef]);
 
   // Clear the accumulator + custom pivot whenever the coordinate system the
   // panel renders into changes — world frame, topic, or up-axis. Both the
@@ -666,10 +693,14 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
               setMaxRange={setMaxRange}
               accumulating={accumulating}
               setAccumulating={setAccumulating}
+              accumMode={accumMode}
+              setAccumMode={setAccumMode}
               accumBudget={accumBudget}
               setAccumBudget={setAccumBudget}
               accumPerFrame={accumPerFrame}
               setAccumPerFrame={setAccumPerFrame}
+              voxelSize={voxelSize}
+              setVoxelSize={setVoxelSize}
               onClearAccumulator={handleClearAccumulator}
               accumStats={accumStats}
               upAxis={upAxis}
@@ -792,10 +823,14 @@ interface ControlsCardProps {
   setMaxRange: (n: number) => void;
   accumulating: boolean;
   setAccumulating: (v: boolean) => void;
+  accumMode: AccumulationMode;
+  setAccumMode: (m: AccumulationMode) => void;
   accumBudget: number;
   setAccumBudget: (n: number) => void;
   accumPerFrame: number;
   setAccumPerFrame: (n: number) => void;
+  voxelSize: number;
+  setVoxelSize: (n: number) => void;
   onClearAccumulator: () => void;
   accumStats: { points: number; frames: number };
   upAxis: UpAxis;
@@ -822,10 +857,14 @@ function ControlsCard({
   setMaxRange,
   accumulating,
   setAccumulating,
+  accumMode,
+  setAccumMode,
   accumBudget,
   setAccumBudget,
   accumPerFrame,
   setAccumPerFrame,
+  voxelSize,
+  setVoxelSize,
   onClearAccumulator,
   accumStats,
   upAxis,
@@ -933,6 +972,49 @@ function ControlsCard({
                   </button>
                 )}
               </label>
+              {/* Mode toggle — ring keeps the last N points, voxel deduplicates
+                  by grid cell for a true downsampled map. */}
+              <div className="flex gap-1">
+                {(['ring', 'voxel'] as AccumulationMode[]).map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setAccumMode(m)}
+                    disabled={!accumulating}
+                    title={
+                      m === 'ring'
+                        ? 'FIFO ring buffer — most recent N points'
+                        : 'Voxel grid downsample — one point per cell'
+                    }
+                    className={`flex-1 px-2 py-0.5 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                      accumMode === m
+                        ? 'bg-accent-blue/15 text-accent-blue border border-accent-blue/40'
+                        : 'border border-border text-text-secondary hover:border-accent-blue/40'
+                    }`}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+              {accumMode === 'voxel' && (
+                <div>
+                  <div className="flex items-center justify-between text-text-tertiary text-[10px] mb-1">
+                    <span>voxel size</span>
+                    <span className="text-text-secondary">
+                      {voxelSize < 1 ? `${(voxelSize * 100).toFixed(0)} cm` : `${voxelSize.toFixed(2)} m`}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.05}
+                    max={2.0}
+                    step={0.05}
+                    value={voxelSize}
+                    disabled={!accumulating}
+                    onChange={(e) => setVoxelSize(Number(e.target.value))}
+                    className="w-full accent-accent-blue disabled:opacity-40"
+                  />
+                </div>
+              )}
               <div>
                 <div className="flex items-center justify-between text-text-tertiary text-[10px] mb-1">
                   <span>per-frame pts</span>
@@ -972,7 +1054,9 @@ function ControlsCard({
                 <div className="text-text-tertiary text-[10px] leading-tight">
                   {accumStats.points.toLocaleString()} / {accumBudget.toLocaleString()} pts
                   {accumStats.points >= accumBudget && (
-                    <span className="text-accent-amber ml-1">(oldest dropping)</span>
+                    <span className="text-accent-amber ml-1">
+                      ({accumMode === 'voxel' ? 'oldest cells dropping' : 'oldest dropping'})
+                    </span>
                   )}
                 </div>
               )}
