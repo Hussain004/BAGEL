@@ -27,6 +27,7 @@ import { checkMagicBytes } from '../utils/bytes';
 import {
   decodePointCloud2,
   type ColorMode,
+  type HeightAxis,
   type PointCloudExtraction,
   type PointCloud2Message,
 } from '../utils/pointcloud';
@@ -135,6 +136,7 @@ export async function readPointCloudAtTime(
   colorMode: ColorMode = 'height',
   maxPoints?: number,
   maxRange?: number,
+  heightAxis: HeightAxis = '+z',
 ): Promise<(PointCloudExtraction & { timestamp: bigint }) | null> {
   const message =
     format === 'mcap'
@@ -148,7 +150,7 @@ export async function readPointCloudAtTime(
   // than type name means converted bags with non-standard names still work.
   const value = message.value;
   const hasPointCloud2Fields = Array.isArray((value as { fields?: unknown[] }).fields);
-  const opts = { colorMode, maxPoints, maxRange };
+  const opts = { colorMode, maxPoints, maxRange, heightAxis };
   // Try the PointCloud2 path first when the shape matches, otherwise the
   // list-of-points path (Livox CustomMsg and similar). Fall back to the
   // other decoder if the preferred one returns null — a few converted bags

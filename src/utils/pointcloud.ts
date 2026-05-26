@@ -50,6 +50,16 @@ export interface PointCloud2Message {
 
 export type ColorMode = 'intensity' | 'height' | 'rgb' | 'single';
 
+/**
+ * Which source-frame axis (and sign) the height colormap samples.
+ *
+ * Defaults to `+z` (ROS standard). The 3D panel's up-axis selector picks
+ * one of these so the Turbo gradient tracks whatever the user has chosen
+ * as "up" — e.g. `-x` for a drone NED rig means the most negative source X
+ * paints reddest, the most positive paints bluest.
+ */
+export type HeightAxis = '+x' | '-x' | '+y' | '-y' | '+z' | '-z';
+
 export interface PointCloudExtraction {
   /** Flat Float32Array of [x0, y0, z0, x1, y1, z1, ...] in the message's local frame. */
   positions: Float32Array;
@@ -180,6 +190,42 @@ export interface DecodeOptions {
    * compressed by a handful of long-range returns.
    */
   maxRange?: number;
+  /**
+   * Source-frame axis (with sign) the height colormap samples. Defaults to
+   * `+z`. Tied to the panel's up-axis so the colour gradient tracks the
+   * user-perceived "up" direction even when the rig publishes non-ROS
+   * conventions (Y-up cameras, NED drones, upside-down PCDs).
+   */
+  heightAxis?: HeightAxis;
+}
+
+/**
+ * Decode a HeightAxis string into the (positions array offset, sign) pair the
+ * decoder loops use. Centralised so the PointCloud2 and CustomCloud decoders
+ * stay in sync.
+ */
+export function heightAxisToReader(axis: HeightAxis): { offset: 0 | 1 | 2; sign: 1 | -1 } {
+  const sign: 1 | -1 = axis.charCodeAt(0) === 45 /* '-' */ ? -1 : 1;
+  const ch = axis.charCodeAt(1);
+  // 'x' = 120, 'y' = 121, 'z' = 122
+  const offset: 0 | 1 | 2 = ch === 120 ? 0 : ch === 121 ? 1 : 2;
+  return { offset, sign };
+}
+
+/**
+ * Pick the (min, max) of the height colormap given an axis and the per-axis
+ * bounds that came out of the decode pre-pass. Inverts the bounds when the
+ * sign is negative so the colormap covers the actual range of height values
+ * the user perceives.
+ */
+export function heightRangeForAxis(
+  axis: HeightAxis,
+  bounds: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } },
+): { min: number; max: number } {
+  const { offset, sign } = heightAxisToReader(axis);
+  const minVal = offset === 0 ? bounds.min.x : offset === 1 ? bounds.min.y : bounds.min.z;
+  const maxVal = offset === 0 ? bounds.max.x : offset === 1 ? bounds.max.y : bounds.max.z;
+  return sign > 0 ? { min: minVal, max: maxVal } : { min: -maxVal, max: -minVal };
 }
 
 /**
@@ -397,15 +443,25 @@ export function decodePointCloud2(
     validCount === sampleCount ? colors : colors.slice(0, validCount * 3);
 
   // Color the cloud based on the chosen mode.
+  const heightAxis: HeightAxis = options.heightAxis ?? '+z';
+  const { offset: heightOff, sign: heightSign } = heightAxisToReader(heightAxis);
+  const heightRange = heightRangeForAxis(heightAxis, {
+    min: { x: minX, y: minY, z: minZ },
+    max: { x: maxX, y: maxY, z: maxZ },
+  });
+  const readHeight = (i: number): number => heightSign * finalPositions[i * 3 + heightOff];
+
   if (colorMode === 'height') {
-    fillColorsByScalar(finalColors, validCount, (i) => finalPositions[i * 3 + 2], minZ, maxZ);
+    fillColorsByScalar(finalColors, validCount, readHeight, heightRange.min, heightRange.max);
   } else if (colorMode === 'intensity') {
     if (intensities && Number.isFinite(minIntensity) && maxIntensity > minIntensity) {
       fillColorsByScalar(finalColors, validCount, (i) => intensities[i], minIntensity, maxIntensity);
     } else if (rings && Number.isFinite(minRing) && maxRing > minRing) {
       fillColorsByScalar(finalColors, validCount, (i) => rings[i], minRing, maxRing);
     } else {
-      fillColorsByScalar(finalColors, validCount, (i) => finalPositions[i * 3 + 2], minZ, maxZ);
+      // No intensity / ring field — fall back to height, which also needs to
+      // track the user's up-axis.
+      fillColorsByScalar(finalColors, validCount, readHeight, heightRange.min, heightRange.max);
     }
   } else if (colorMode === 'single') {
     const c = options.singleColor ?? { r: 0.6, g: 0.85, b: 1.0 };

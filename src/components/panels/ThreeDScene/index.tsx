@@ -11,7 +11,7 @@ import {
 } from '../../../utils/messages';
 import { useMessageAtTime } from '../../../hooks/useMessageAtTime';
 import { useTFGraph, type TFGraph } from '../TFTree/useTFGraph';
-import type { ColorMode } from '../../../utils/pointcloud';
+import type { ColorMode, HeightAxis } from '../../../utils/pointcloud';
 import { useScene } from './useScene';
 import {
   createGroundGrid,
@@ -55,6 +55,18 @@ const UP_AXIS_OPTIONS: { value: UpAxis; label: string }[] = [
   { value: 'x+', label: '+X up' },
   { value: 'x-', label: '-X up' },
 ];
+
+/**
+ * Translate the panel's UpAxis (e.g. `z+`, `x-`) into the decoder's HeightAxis
+ * ('+z', '-x'). The two enums use different conventions because the panel's
+ * UI strings predate the colormap fix; rather than renaming everywhere this
+ * adapter keeps the change local.
+ */
+function upAxisToHeightAxis(axis: UpAxis): HeightAxis {
+  const sign = axis.endsWith('-') ? '-' : '+';
+  const letter = axis[0]; // 'x' | 'y' | 'z'
+  return `${sign}${letter}` as HeightAxis;
+}
 
 /**
  * Build the source→render rotation matrix that puts the chosen source axis
@@ -149,6 +161,9 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
   // because both store positions in render-space coordinates.
   const [upAxis, setUpAxis] = useState<UpAxis>('z+');
   const upFixMatrix = useMemo(() => makeUpFix(upAxis), [upAxis]);
+  // Height colormap follows the up-axis — picking "-X up" means the most
+  // negative source X paints reddest (highest in render space).
+  const heightAxis = useMemo(() => upAxisToHeightAxis(upAxis), [upAxis]);
 
   // Cloud topics use the worker-decoded fast path; pose topics stay on the
   // generic message-at-time hook because their messages are tiny.
@@ -162,6 +177,10 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
     // PointCloud2 keeps the hook's request key tight for scans.
     maxRange:
       sceneKind === 'pointcloud' && rangeLimitOn && maxRange > 0 ? maxRange : undefined,
+    // LaserScan colours by range, so heightAxis is only meaningful for
+    // PointCloud2 / CustomCloud — pass it conditionally to keep scans' cache
+    // key minimal.
+    heightAxis: sceneKind === 'pointcloud' ? heightAxis : undefined,
   });
   const poseState = useMessageAtTime(topicName, playheadNs);
 

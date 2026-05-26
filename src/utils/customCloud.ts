@@ -14,7 +14,10 @@
 
 import {
   fillColorsByScalar,
+  heightAxisToReader,
+  heightRangeForAxis,
   type ColorMode,
+  type HeightAxis,
   type PointCloudExtraction,
 } from './pointcloud';
 
@@ -71,6 +74,8 @@ interface DecodeOptions {
   /** Distance cap (metres) from sensor origin. Far returns are dropped before
    *  bounds / colormap stats are taken so height coloring stays useful. */
   maxRange?: number;
+  /** Source-frame axis (with sign) the height colormap samples. Defaults to `+z`. */
+  heightAxis?: HeightAxis;
 }
 
 const DEFAULT_POINT_LIMIT = 250_000;
@@ -177,12 +182,18 @@ export function decodeCustomCloud(
     validCount === sampleCount ? colors : colors.slice(0, validCount * 3);
 
   if (colorMode === 'height') {
+    const heightAxis: HeightAxis = options.heightAxis ?? '+z';
+    const { offset: heightOff, sign: heightSign } = heightAxisToReader(heightAxis);
+    const heightRange = heightRangeForAxis(heightAxis, {
+      min: { x: minX, y: minY, z: minZ },
+      max: { x: maxX, y: maxY, z: maxZ },
+    });
     fillColorsByScalar(
       finalColors,
       validCount,
-      (i) => finalPositions[i * 3 + 2],
-      minZ,
-      maxZ,
+      (i) => heightSign * finalPositions[i * 3 + heightOff],
+      heightRange.min,
+      heightRange.max,
     );
   } else if (
     colorMode === 'intensity' &&

@@ -24,7 +24,7 @@ import {
   getTopicType,
   disposeParserCaches,
 } from '../parsers/core';
-import type { ColorMode, PointCloudExtraction } from '../utils/pointcloud';
+import type { ColorMode, HeightAxis, PointCloudExtraction } from '../utils/pointcloud';
 import type { LaserScanExtraction } from '../utils/laserscan';
 
 type DecodedMessage = { timestamp: bigint; value: Record<string, unknown> | null };
@@ -69,6 +69,7 @@ interface ReadPointCloudAtTimeParams {
   colorMode: ColorMode;
   maxPoints?: number;
   maxRange?: number;
+  heightAxis?: HeightAxis;
 }
 interface ReadLaserScanAtTimeParams {
   file: File;
@@ -168,7 +169,7 @@ ctx.addEventListener('message', async (e: MessageEvent<WorkerRequest>) => {
         return;
       }
       case 'readPointCloudAtTime': {
-        const { file, format, topicName, timeNs, colorMode, maxPoints, maxRange } =
+        const { file, format, topicName, timeNs, colorMode, maxPoints, maxRange, heightAxis } =
           req.params as ReadPointCloudAtTimeParams;
         const result = await readPointCloudAtTime(
           file,
@@ -178,6 +179,7 @@ ctx.addEventListener('message', async (e: MessageEvent<WorkerRequest>) => {
           colorMode,
           maxPoints,
           maxRange,
+          heightAxis,
         );
         // Transfer the Float32Array backing buffers — zero copy to the main
         // thread. positions / colors are unique per decode, never shared.

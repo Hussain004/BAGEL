@@ -13,7 +13,7 @@
 
 import type { BagFormat, BagSummary, RawMessage } from '../types/bag';
 import { getParserClient } from '../workers/parserClient';
-import type { ColorMode, PointCloudExtraction } from '../utils/pointcloud';
+import type { ColorMode, HeightAxis, PointCloudExtraction } from '../utils/pointcloud';
 import type { LaserScanExtraction } from '../utils/laserscan';
 
 type DecodedMessage = { timestamp: bigint; value: Record<string, unknown> | null };
@@ -58,6 +58,7 @@ export async function readPointCloudAtTime(
   colorMode: ColorMode,
   maxPoints?: number,
   maxRange?: number,
+  heightAxis?: HeightAxis,
 ): Promise<(PointCloudExtraction & { timestamp: bigint }) | null> {
   return getParserClient().readPointCloudAtTime(
     file,
@@ -67,6 +68,7 @@ export async function readPointCloudAtTime(
     colorMode,
     maxPoints,
     maxRange,
+    heightAxis,
   );
 }
 

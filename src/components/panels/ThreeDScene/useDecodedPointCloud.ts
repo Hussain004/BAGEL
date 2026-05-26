@@ -22,7 +22,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useBagStore } from '../../../store/bagStore';
 import { readLaserScanAtTime, readPointCloudAtTime } from '../../../parsers';
-import type { ColorMode, PointCloudExtraction } from '../../../utils/pointcloud';
+import type { ColorMode, HeightAxis, PointCloudExtraction } from '../../../utils/pointcloud';
 import type { LaserScanExtraction } from '../../../utils/laserscan';
 
 export type DecodedCloud =
@@ -46,6 +46,12 @@ interface Options {
   maxPoints?: number;
   /** Drop points farther than this from the sensor origin (PointCloud2 only). */
   maxRange?: number;
+  /**
+   * Source-frame axis the height colormap samples. Tied to the panel's
+   * up-axis selector so flipping up redirects the gradient too.
+   * (PointCloud2 / CustomCloud only — LaserScan is colored by range.)
+   */
+  heightAxis?: HeightAxis;
 }
 
 export function useDecodedCloud({
@@ -55,6 +61,7 @@ export function useDecodedCloud({
   colorMode = 'height',
   maxPoints,
   maxRange,
+  heightAxis,
 }: Options): DecodedCloudState {
   const bag = useBagStore((s) => s.bag);
   const file = useBagStore((s) => s.file);
@@ -74,6 +81,7 @@ export function useDecodedCloud({
     colorMode: ColorMode;
     maxPoints: number | undefined;
     maxRange: number | undefined;
+    heightAxis: HeightAxis | undefined;
   } | null>(null);
   const fireRef = useRef<() => void>(() => {});
   // Session id keyed on (bag, file, topic, kind). Bumped only when one of
@@ -130,6 +138,7 @@ export function useDecodedCloud({
               target.colorMode,
               target.maxPoints,
               target.maxRange,
+              target.heightAxis,
             )
           : readLaserScanAtTime(file, bag.format, topicName, target.timeNs);
 
@@ -141,7 +150,9 @@ export function useDecodedCloud({
             return;
           }
           if (cloud) {
-            const key = `${target.colorMode}|${target.maxRange ?? 0}|${cloud.timestamp.toString()}`;
+            // heightAxis is in the cache key so flipping the up-axis triggers
+            // a re-decode (otherwise the same-timestamp dedupe would suppress it).
+            const key = `${target.colorMode}|${target.maxRange ?? 0}|${target.heightAxis ?? '+z'}|${cloud.timestamp.toString()}`;
             if (lastResultKeyRef.current === key) {
               // Same frame + same color settings; don't notify React (avoids
               // a redundant scene rebuild on the same data).
@@ -167,7 +178,7 @@ export function useDecodedCloud({
         });
     };
 
-    pendingRef.current = { timeNs, colorMode, maxPoints, maxRange };
+    pendingRef.current = { timeNs, colorMode, maxPoints, maxRange, heightAxis };
     fireRef.current = fire;
     // Only flip the spinner when nothing is in flight, so during playback the
     // existing frame stays painted until the next one arrives (no flicker).
@@ -175,7 +186,7 @@ export function useDecodedCloud({
       setState((s) => ({ ...s, loading: true, error: null }));
     }
     fire();
-  }, [bag, file, topicName, timeNs, colorMode, maxPoints, maxRange, kind]);
+  }, [bag, file, topicName, timeNs, colorMode, maxPoints, maxRange, heightAxis, kind]);
 
   return state;
 }
