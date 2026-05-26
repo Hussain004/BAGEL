@@ -93,8 +93,9 @@ export function Timeline() {
     <div className="border-t border-border bg-bg-secondary/70 backdrop-blur-md px-4 py-3 flex items-center gap-4 animate-fade-in flex-shrink-0">
       <button
         onClick={() => setPlaying(!playing)}
-        className="w-9 h-9 rounded-full flex items-center justify-center bg-accent-blue/15 hover:bg-accent-blue/25 border border-accent-blue/30 text-accent-blue transition-all"
+        className="w-9 h-9 rounded-full flex items-center justify-center bg-accent-blue/15 hover:bg-accent-blue/25 border border-accent-blue/30 text-accent-blue transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
         title={playing ? 'Pause (Space)' : 'Play (Space)'}
+        aria-label={playing ? 'Pause playback' : 'Start playback'}
         id="timeline-play-pause"
       >
         {playing ? (
@@ -125,6 +126,12 @@ export function Timeline() {
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
         id="timeline-track"
+        role="slider"
+        aria-label="Playhead — drag or use arrow keys to scrub"
+        aria-valuemin={0}
+        aria-valuemax={Math.round(duration * 1000) / 1000}
+        aria-valuenow={Math.round(elapsed * 1000) / 1000}
+        aria-valuetext={`${elapsed.toFixed(2)} of ${duration.toFixed(2)} seconds`}
       >
         <div className="w-full h-1.5 rounded-full bg-surface overflow-hidden relative">
           <div

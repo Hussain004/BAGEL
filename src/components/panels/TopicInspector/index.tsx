@@ -104,9 +104,11 @@ export function TopicInspector() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Filter topics or types..."
+            placeholder="Filter topics or types... (T)"
             className="w-full pl-10 pr-9 py-2 rounded-lg bg-surface border border-border text-text-primary placeholder:text-text-muted text-sm focus:outline-none focus:border-accent-blue/50 focus:ring-1 focus:ring-accent-blue/20 transition-all"
             id="topic-search-input"
+            aria-label="Filter topics"
+            aria-controls="topic-list"
           />
           {searchQuery && (
             <button
@@ -122,7 +124,12 @@ export function TopicInspector() {
       </div>
 
       {/* Topic List */}
-      <div className="flex-1 overflow-y-auto px-4 py-2 space-y-0.5">
+      <div
+        className="flex-1 overflow-y-auto px-4 py-2 space-y-0.5"
+        id="topic-list"
+        role="list"
+        aria-label={`${filteredTopics.length} topics`}
+      >
         {filteredTopics.length > 0 ? (
           filteredTopics.map((topic, i) => (
             <TopicRow key={topic.name} topic={topic} index={i} />

@@ -411,3 +411,67 @@ select option {
   background: rgba(59, 130, 246, 0.3);
   color: white;
 }
+
+/* ── Focus rings ──
+   Tailwind's focus-visible utilities work per-element, but the global default
+   for any interactive element should still show a visible ring on keyboard
+   focus. We rely on focus-visible (not focus) so mouse clicks don't pin a
+   ring on every button. */
+*:focus {
+  outline: none;
+}
+
+*:focus-visible {
+  outline: 2px solid rgba(59, 130, 246, 0.7);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Inputs already render a focus border themselves — suppress the global ring
+   to avoid double-rings stacking. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+}
+
+/* ── Screen-reader only utility ──
+   Hides content visually but keeps it readable by assistive tech. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── Reduced motion ──
+   Users with motion sensitivity get static UI: animations are stripped to a
+   single opacity transition so nothing's invisible, but nothing pulses or
+   shifts either. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── Tablet adjustments ──
+   The default layout assumes a desktop viewport. Below 900px we let the
+   toolbar wrap so the stats don't overflow off the right edge and the
+   close button doesn't get pushed off-screen on portrait tablets. */
+@media (max-width: 900px) {
+  .glass-strong {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    row-gap: 0.5rem;
+  }
+}
