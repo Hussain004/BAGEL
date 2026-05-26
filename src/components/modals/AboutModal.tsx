@@ -22,7 +22,7 @@ export function AboutModal() {
           fully static, browser-native viewer for ROS2 bag files (
           <span className="mono text-text-primary">.mcap</span> and{' '}
           <span className="mono text-text-primary">.db3</span>). No server, no
-          installation, no account — every byte stays on your machine.
+          installation, no account. Every byte stays on your machine.
         </p>
 
         <div className="grid grid-cols-2 gap-3 text-xs">
@@ -59,9 +59,9 @@ export function AboutModal() {
         <div className="border-t border-border pt-4 text-xs text-text-tertiary">
           Built by{' '}
           <span className="text-text-secondary">
-            Muhammad Hussain Habib Chaudhry
+            Muhammad Hussain Habib
           </span>{' '}
-          for the robotics community. ROS Discourse · r/ROS · awesome-ros2.
+          for the robotics community.
         </div>
       </div>
     </ModalShell>
