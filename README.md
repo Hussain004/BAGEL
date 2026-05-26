@@ -60,15 +60,15 @@ Everything in v0.4, plus:
 Everything in v0.3, plus:
 
 - **ThreeDScene panel**: a Three.js-powered 3D viewer that opens on `sensor_msgs/PointCloud2`, `sensor_msgs/LaserScan`, and pose-bearing topics (`Odometry`, `PoseStamped`, `PoseWithCovarianceStamped`, `TransformStamped`). Orbit controls (drag to rotate, wheel to zoom, right-drag to pan) with damping; ROS Z-up convention so "up" actually points up. A faint ground grid in the XY plane and a world-axis triad keep the user oriented at all zoom levels.
-- **PointCloud2 rendering**: decodes the packed binary layout from each message's `fields` array — supports `FLOAT32 / FLOAT64 / INT8…INT32 / UINT8…UINT32` datatypes, the RGB-packed-in-a-float ROS convention, and intensity / ring fields. Colormaps: **height** (z), **intensity** (or ring index if no intensity), and **single colour**. Sub-samples to 250k points per frame so a full 1 M-point sweep doesn't lock the page; reuses GPU buffers across playhead ticks when the point count is stable. A FLOAT32 fast path reads x/y/z through a typed-array view (no DataView dispatch) for typical Velodyne / Ouster / RealSense streams.
-- **Livox CustomMsg support**: list-of-struct point clouds (`livox_ros_driver2/msg/CustomMsg` and similar) share the same render pipeline — detected by shape, not by hard-coded type name, so converted bags with non-standard package names still work.
+- **PointCloud2 rendering**: decodes the packed binary layout from each message's `fields` array which supports `FLOAT32 / FLOAT64 / INT8…INT32 / UINT8…UINT32` datatypes, the RGB-packed-in-a-float ROS convention, and intensity / ring fields. Colormaps: **height** (z), **intensity** (or ring index if no intensity), and **single colour**. Sub-samples to 250k points per frame so a full 1 M-point sweep doesn't lock the page; reuses GPU buffers across playhead ticks when the point count is stable. A FLOAT32 fast path reads x/y/z through a typed-array view (no DataView dispatch) for typical Velodyne / Ouster / RealSense streams.
+- **Livox CustomMsg support**: list-of-struct point clouds (`livox_ros_driver2/msg/CustomMsg` and similar) share the same render pipeline which gets detected by shape, not by hard-coded type name, so converted bags with non-standard package names still work.
 - **LaserScan overlay**: lifts the polar `(range, angle)` ring into 3D at `z=0` so it sits naturally on top of the ground grid. Coloured by distance from the sensor (Turbo colormap) so depth is visible at a glance.
 - **Pose / Odometry markers**: rendered as a coordinate-frame axes triad with a forward-pointing arrow, oriented by the message's quaternion. Track a robot's pose through the scene in real time as the playhead advances.
 - **TF-aware rendering**: when the bag has `/tf` and `/tf_static`, every panel composes the chain from the source topic's `header.frame_id` up to a chosen *world frame* (`map` or `odom` by default) and applies it to the rendered geometry. A dropdown in the panel's Display card lets you switch the world frame at any time. Without TF, panels render directly in the topic's local frame and surface that fact.
 - **Custom orbit pivot**: `Shift+Click` anywhere in the 3D viewport sets the orbit centre to that scene point. Raycasts the live cloud (and the accumulator) with a pick threshold tied to the camera view radius, falls back to the `z=0` ground plane when nothing is hit. A wireframe sphere marks the chosen pivot; a `Reset pivot` button reverts to the auto-fit centre without disturbing the camera angle. Solves the case where the cloud isn't centred on its sensor origin and orbit feels off-axis.
 - **Range filter**: a `limit range` slider (1–200 m) in the Display card drops returns farther than the cap before bounds + height-colour stats are computed. Recovers useful height colouring on long-range Velodyne / Ouster scans where a handful of 100 m returns would otherwise compress the colormap into a thin slab.
-- **Point accumulation**: a ring-buffer mode that builds up a running "map" view from many frames — drone flights, SLAM runs, vehicle traversals. New frames are sub-sampled (`per-frame pts`, 1k–500k) and appended in world frame via the cached source→world TF matrix; oldest points drop FIFO once the budget (0.25M–10M) is hit. Auto-clears on topic / world-frame / up-axis change, and warns when no `/tf` is present (frames will overlap in the sensor frame). Voxel-grid downsampling for "build a 60-second field map" workflows is slated for v0.5.
-- **Custom up-axis**: a 6-option selector (`±X / ±Y / ±Z up`) handles bags whose clouds aren't ROS-standard Z-up — upside-down PCDs, drone NED frames, camera-aligned LiDAR rigs. Applied as a pre-multiplication on the TF chain so it composes for free with the existing graph; no decoder changes.
+- **Point accumulation**: a ring-buffer mode that builds up a running "map" view from many frames (drone flights, SLAM runs, vehicle traversals). New frames are sub-sampled (`per-frame pts`, 1k–500k) and appended in world frame via the cached source→world TF matrix; oldest points drop FIFO once the budget (0.25M–10M) is hit. Auto-clears on topic / world-frame / up-axis change, and warns when no `/tf` is present (frames will overlap in the sensor frame). Voxel-grid downsampling for "build a 60-second field map" workflows is slated for v0.5.
+- **Custom up-axis**: a 6-option selector (`±X / ±Y / ±Z up`) handles bags whose clouds aren't ROS-standard Z-up for upside-down PCDs, drone NED frames, camera-aligned LiDAR rigs. Applied as a pre-multiplication on the TF chain so it composes for free with the existing graph; no decoder changes.
 - **Display controls**: per-panel pop-out card with color-mode buttons (PointCloud2), point-size slider, range filter, accumulation controls, grid / axes toggles, up-axis selector, and the world-frame selector.
 - **3D quick-button**: `PointCloud2` and `LaserScan` topics expose a `3D` button in the sidebar and default-open the 3D panel on click. Pose-bearing topics gain a `3D` option alongside their existing `Path` and `Plot` buttons.
 
@@ -78,7 +78,7 @@ Everything in v0.2, plus:
 
 - **TrajectoryPlot** panel: click any pose-bearing topic to render its 2D path. Supports `nav_msgs/Odometry`, `geometry_msgs/PoseStamped`, `PoseWithCovarianceStamped`, `Pose`, `Point(Stamped)`, `TransformStamped`, and `sensor_msgs/NavSatFix` (equirectangular projection from the first GPS fix). The polyline runs blue → red along the path, with a playhead marker that follows the bag time and a heading arrow when the source message has an orientation quaternion. Mouse-wheel zoom, drag-to-pan, and a dynamic scale bar in metres / km.
 - **TFTree** panel: parses `/tf` and `/tf_static` into a single graph and renders the frame hierarchy as an interactive top-down tree. Click any frame to see its current transform (translation, quaternion, Euler angles in degrees) at the playhead time, and to highlight the root → frame chain. Static and dynamic edges are visually distinct (dashed vs solid).
-- **Web Worker parsing**: every heavy operation — initial bag parse, MCAP chunk zstd-decompression, sql.js queries, CDR deserialization — now runs in a dedicated parser worker. The React render loop stays responsive while a topic decodes; scrubbing the timeline, toggling panels, and resizing the layout no longer block on the bag. `@mcap/core`, `sql.js`, `fzstd`, and the `@foxglove/*` libraries live entirely in the worker chunk and never touch the UI thread.
+- **Web Worker parsing**: every heavy operation like initial bag parse, MCAP chunk zstd-decompression, sql.js queries, CDR deserialization which now runs in a dedicated parser worker. The React render loop stays responsive while a topic decodes; scrubbing the timeline, toggling panels, and resizing the layout no longer block on the bag. `@mcap/core`, `sql.js`, `fzstd`, and the `@foxglove/*` libraries live entirely in the worker chunk and never touch the UI thread.
 - **Smarter sidebar panel buttons**: each topic row now offers exactly the panel kinds that fit its type. Pose topics get a `Path` button, `/tf` and `/tf_static` get a `TF` button, image topics keep `Image`, and `Raw` is always available. The default-click panel matches the topic's nature (TF → tf, pose-only → trajectory, image → image, otherwise → plot).
 
 ### v0.2: Plotting, Image Viewer & Playhead
@@ -110,7 +110,7 @@ BAGEL v0.5 closes the original five-version plan. Possible future directions:
 | Light theme | Dark is intentional (data viz reads better on dark backgrounds), but a toggle would help in bright field conditions. |
 | Plugin panels | Lets users build custom views (e.g. depth-image colorisation, GPS overlay) against a stable panel API. |
 | Multi-bag overlay | Drag two bags in to compare runs side-by-side on the same timeline. |
-| Cloud-hosted shareable URLs | The local hash is great for personal reuse — a tiny backend would unlock real link-sharing. |
+| Cloud-hosted shareable URLs | The local hash is great for personal reuse like a tiny backend would unlock real link-sharing. |
 
 ---
 
@@ -119,7 +119,7 @@ BAGEL v0.5 closes the original five-version plan. Possible future directions:
 ### Use the Live Demo
 
 1. Open [**bagel-ros2.vercel.app**](https://bagel-ros2.vercel.app)
-2. Drag your `.db3` or `.mcap` file onto the page — or click **Try a sample bag** for a quick tour
+2. Drag your `.db3` or `.mcap` file onto the page or click **Try a sample bag** for a quick tour
 3. Explore!
 
 ### Run Locally
@@ -132,7 +132,7 @@ cd BAGEL
 # Install dependencies
 pnpm install
 
-# (Optional) regenerate the bundled sample bag — already checked in
+# (Optional) regenerate the bundled sample bag
 node scripts/build-sample-bag.mjs
 
 # Start dev server
@@ -156,7 +156,7 @@ Then open [http://localhost:5173](http://localhost:5173) in your browser.
 | `?` | Show the shortcuts cheat-sheet |
 | `A` | Show the about modal |
 
-The shortcuts modal (`?`) lists everything at runtime — adding a binding in `src/hooks/useKeyboardShortcuts.ts` auto-populates the modal.
+The shortcuts modal (`?`) lists everything at runtime (adding a binding in `src/hooks/useKeyboardShortcuts.ts` auto-populates the modal).
 
 ---
 
@@ -222,7 +222,7 @@ User's Browser
 ```
 
 The main bundle no longer ships `@mcap/core`, `sql.js`, `fzstd`, or the
-`@foxglove/*` libraries — those are bundled into the worker chunk that
+`@foxglove/*` libraries which are bundled into the worker chunk that
 Vite emits as a sibling of `index.js`. The worker's MCAP reader and
 sql.js database are held in module-level caches that survive across
 panel reads, so opening a second panel on the same topic doesn't re-pay
@@ -242,7 +242,7 @@ BAGEL's built-in type registry covers all standard ROS2 packages:
 | `rcl_interfaces` | Log, ParameterEvent |
 | `builtin_interfaces` | Time, Duration |
 
-> **MCAP files** embed their schemas — so *any* message type in an MCAP file is supported, including custom types.
+> **MCAP files** embed their schemas so that *any* message type in an MCAP file is supported, including custom types.
 
 ---
 
@@ -259,7 +259,7 @@ src/
 │   └── typeRegistry.ts   # ROS2 message definitions
 │
 ├── workers/
-│   ├── parser.worker.ts  # Web Worker entry — owns the parser caches
+│   ├── parser.worker.ts  # Web Worker entry which owns the parser caches
 │   └── parserClient.ts   # Main-thread RPC client (promise-based)
 │
 ├── store/
@@ -328,9 +328,9 @@ ThreeDScene/
 
 ### Build-time scripts
 
-- `scripts/build-sample-bag.mjs` — generates `public/sample-bags/tour.mcap`, a 1.7 MB synthetic bag with `/odom`, `/imu/data`, `/scan`, and `/tf` topics over 30 seconds. Idempotent; rerun only if the synthetic data needs changing. The output is committed so a fresh checkout serves the sample without a Node build step.
-- `scripts/verify-sample-bag.mjs` — parses the generated bag with `McapIndexedReader` and prints the topic table; smoke-test the writer when you change the synthesiser.
-- `scripts/verify-parsers.mjs` — Node-side verification of the `.db3` and `.mcap` parser paths against the real test fixtures in `test_files/`.
+- `scripts/build-sample-bag.mjs`: generates `public/sample-bags/tour.mcap`, a 1.7 MB synthetic bag with `/odom`, `/imu/data`, `/scan`, and `/tf` topics over 30 seconds. Idempotent; rerun only if the synthetic data needs changing. The output is committed so a fresh checkout serves the sample without a Node build step.
+- `scripts/verify-sample-bag.mjs`: parses the generated bag with `McapIndexedReader` and prints the topic table; smoke-test the writer when you change the synthesiser.
+- `scripts/verify-parsers.mjs`: Node-side verification of the `.db3` and `.mcap` parser paths against the real test fixtures in `test_files/`.
 
 ---
 
