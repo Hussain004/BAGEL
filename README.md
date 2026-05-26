@@ -12,6 +12,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-8-646cff.svg)](https://vite.dev/)
+[![Version](https://img.shields.io/badge/version-0.5.0-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
 
 [**→ Live Demo**](https://bagel-ros2.vercel.app) · [Report Bug](https://github.com/Hussain004/BAGEL/issues) · [Request Feature](https://github.com/Hussain004/BAGEL/issues)
 
@@ -41,7 +42,20 @@ BAGEL eliminates this friction.
 
 ## Features
 
-### v0.4: 3D Visualization *(Current)*
+### v0.5: Polish & Launch *(Current)*
+
+Everything in v0.4, plus:
+
+- **Keyboard shortcuts** — `Space` to play/pause, `← / →` to step by 1% of the bag (`Shift + ← / →` for 5%), `Home / End` to jump to the bag's start or end, `T` to focus the topic search box, `O` to open a different bag, `Esc` to close the most recent panel (`Shift + Esc` closes them all), `?` for the shortcuts cheat-sheet, `A` for the about modal. Bindings ignore text inputs so they never eat keystrokes you meant for the search box.
+- **Sharable URL state** — the open panels and the playhead position are written to `location.hash` on every change (rAF-coalesced, so playback at 60 Hz isn't writing 60 times a second). Re-opening the same bag with the same URL restores the exact layout and time cursor. Panels for topics that no longer exist are silently dropped.
+- **Per-topic export** — every panel header now has an Export menu that downloads the topic as CSV (flattened numeric leaves, one row per message — exactly what `plot.csv` looked like in `rqt_bag`) or NDJSON (the full deserialized message stream, one object per line, with `BigInt` timestamps stringified and `Uint8Array` fields base64-encoded so the file is valid JSON). Caps at 250k messages per topic to keep the in-browser exporter from OOMing on multi-million-message logs.
+- **Voxel-grid point accumulation** — the v0.4 ring buffer is now joined by a true voxel-grid downsample mode. Each appended point is snapped to a regular 3D grid keyed by `(floor(x/v), floor(y/v), floor(z/v))` and only the most recent point per cell is kept. The result is a stable map of the visited ground rather than ten ring-buffer copies of the same area. Voxel size is exposed as a 5 cm – 2 m slider in the Display card. Switching modes or voxel size mid-flight clears the accumulator (storage layouts differ).
+- **About + Shortcuts modals** — reachable from the BAGEL logo (top-left of the toolbar), the `?` icon in the toolbar, or the keyboard. Generated from the same `SHORTCUTS` table the handler uses, so new bindings auto-appear.
+- **Try a sample bag** — a 1.7 MB bundled `tour.mcap` ships in `public/sample-bags/`. It's generated from `scripts/build-sample-bag.mjs` (an idempotent Node script that uses `@mcap/core` + `@foxglove/rosmsg2-serialization` to write a 30-second synthetic `/odom + /imu + /scan + /tf` set), so first-time visitors can exercise every panel without supplying their own data.
+- **Accessibility pass** — `role="dialog"` + `aria-modal` on every modal with focus management (close button gets initial focus, previously-focused element restored on dismissal); `aria-label` / `aria-valuemin/now/max` on the timeline scrubber; `role="list"` + per-row `aria-label` on the topic inspector; focus-visible rings on every interactive control via a single CSS pass that suppresses the default outline only on `:focus` (mouse) while keeping it on `:focus-visible` (keyboard); `prefers-reduced-motion` strips animations to a single static frame.
+- **Responsive toolbar** — the full stats row collapses to a compact `duration · msgs · topics` strip on tablet-width viewports and stacks below 900 px so portrait iPads no longer push the close button off-screen.
+
+### v0.4: 3D Visualization
 
 Everything in v0.3, plus:
 
@@ -89,9 +103,14 @@ Everything in v0.2, plus:
 
 ### Roadmap
 
-| Version | Features |
+BAGEL v0.5 closes the original five-version plan. Possible future directions:
+
+| Idea | Notes |
 |---|---|
-| **v0.5** | CSV/JSON export, keyboard shortcuts, URL state, sample bag loader, polish & launch |
+| Light theme | Dark is intentional (data viz reads better on dark backgrounds), but a toggle would help in bright field conditions. |
+| Plugin panels | Lets users build custom views (e.g. depth-image colorisation, GPS overlay) against a stable panel API. |
+| Multi-bag overlay | Drag two bags in to compare runs side-by-side on the same timeline. |
+| Cloud-hosted shareable URLs | The local hash is great for personal reuse — a tiny backend would unlock real link-sharing. |
 
 ---
 
@@ -100,7 +119,7 @@ Everything in v0.2, plus:
 ### Use the Live Demo
 
 1. Open [**bagel-ros2.vercel.app**](https://bagel-ros2.vercel.app)
-2. Drag your `.db3` or `.mcap` file onto the page
+2. Drag your `.db3` or `.mcap` file onto the page — or click **Try a sample bag** for a quick tour
 3. Explore!
 
 ### Run Locally
@@ -113,11 +132,31 @@ cd BAGEL
 # Install dependencies
 pnpm install
 
+# (Optional) regenerate the bundled sample bag — already checked in
+node scripts/build-sample-bag.mjs
+
 # Start dev server
 pnpm dev
 ```
 
 Then open [http://localhost:5173](http://localhost:5173) in your browser.
+
+### Keyboard Shortcuts
+
+| Key | Action |
+|---|---|
+| `Space` | Play / pause the playhead |
+| `← / →` | Step the playhead by ~1% of the bag |
+| `Shift + ← / →` | Step by ~5% |
+| `Home / End` | Jump to bag start / end |
+| `T` | Focus the topic search box |
+| `O` | Open a different bag file |
+| `Esc` | Close the most recent panel |
+| `Shift + Esc` | Close every panel |
+| `?` | Show the shortcuts cheat-sheet |
+| `A` | Show the about modal |
+
+The shortcuts modal (`?`) lists everything at runtime — adding a binding in `src/hooks/useKeyboardShortcuts.ts` auto-populates the modal.
 
 ---
 
@@ -226,20 +265,28 @@ src/
 ├── store/
 │   ├── bagStore.ts        # Bag summary + source File
 │   ├── playheadStore.ts   # Time cursor, play/pause, speed
-│   └── layoutStore.ts     # Open panels keyed by kind:topic
+│   ├── layoutStore.ts     # Open panels keyed by kind:topic
+│   └── uiStore.ts         # Modal overlays (about / shortcuts)
 │
 ├── hooks/
-│   ├── useTopicMessages.ts   # Eager load all messages (for plot; capped)
-│   └── useMessageAtTime.ts   # Lazy load one message at playhead (for image/raw)
+│   ├── useTopicMessages.ts        # Eager load all messages (for plot; capped)
+│   ├── useMessageAtTime.ts        # Lazy load one message at playhead (for image/raw)
+│   ├── useKeyboardShortcuts.ts    # Global keymap, single source of truth for shortcuts
+│   └── useUrlState.ts             # location.hash <-> panels + playhead sync
 │
 ├── components/
 │   ├── layout/
-│   │   ├── DropZone.tsx    # Drag & drop landing page
-│   │   ├── Toolbar.tsx     # Top info bar
+│   │   ├── DropZone.tsx    # Drag & drop landing page + sample bag loader
+│   │   ├── Toolbar.tsx     # Top info bar + help / close
 │   │   ├── Timeline.tsx    # Global playhead scrubber
 │   │   └── PanelGrid.tsx   # Resizable visualization grid
+│   ├── modals/
+│   │   ├── ModalHost.tsx     # Renders whichever modal uiStore selected
+│   │   ├── ModalShell.tsx    # Dialog chrome, Esc-to-close, focus restore
+│   │   ├── AboutModal.tsx    # Project info + tech stack + links
+│   │   └── ShortcutsModal.tsx# Generated from SHORTCUTS table
 │   └── panels/
-│       ├── PanelShell.tsx          # Header + close chrome shared by panels
+│       ├── PanelShell.tsx          # Header + export menu + close chrome
 │       ├── TopicInspector/         # Sidebar topic list with search/sort
 │       ├── TimeSeriesPlot/         # uPlot-based time-series chart
 │       ├── ImageViewer/            # Raw + Compressed image decoder
@@ -260,7 +307,9 @@ src/
     ├── trajectory.ts     # Pose / NavSatFix → x/y extraction + bounds
     ├── pointcloud.ts     # PointCloud2 binary decode + Turbo colormap + range filter
     ├── customCloud.ts    # Livox CustomMsg / list-of-struct cloud decoder
-    └── laserscan.ts      # LaserScan polar-ring → 3D positions
+    ├── laserscan.ts      # LaserScan polar-ring → 3D positions
+    ├── export.ts         # CSV + NDJSON encoders + download trigger
+    └── version.ts        # APP_VERSION constant
 ```
 
 ### Inside `components/panels/ThreeDScene/`
@@ -273,9 +322,15 @@ ThreeDScene/
 ├── useScene.ts               # Renderer / scene / camera / orbit-controls lifetime
 ├── useDecodedPointCloud.ts   # Lazy worker-decoded single-frame loader
 ├── sceneObjects.ts           # Factories for PointCloud / LaserScan / PoseAxes / grid
-├── accumulator.ts            # Pre-allocated ring-buffer Points for accumulation
+├── accumulator.ts            # Ring buffer + voxel-grid downsample for accumulation
 └── tfTransform.ts            # composeTFChain + pickWorldFrame helpers
 ```
+
+### Build-time scripts
+
+- `scripts/build-sample-bag.mjs` — generates `public/sample-bags/tour.mcap`, a 1.7 MB synthetic bag with `/odom`, `/imu/data`, `/scan`, and `/tf` topics over 30 seconds. Idempotent; rerun only if the synthetic data needs changing. The output is committed so a fresh checkout serves the sample without a Node build step.
+- `scripts/verify-sample-bag.mjs` — parses the generated bag with `McapIndexedReader` and prints the topic table; smoke-test the writer when you change the synthesiser.
+- `scripts/verify-parsers.mjs` — Node-side verification of the `.db3` and `.mcap` parser paths against the real test fixtures in `test_files/`.
 
 ---
 
