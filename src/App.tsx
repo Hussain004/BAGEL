@@ -62,7 +62,7 @@ export default function App() {
 
 function MainView() {
   const bag = useBagStore((s) => s.bag);
-  const panels = useLayoutStore((s) => s.panels);
+  const hasPanels = useLayoutStore((s) => s.root !== null);
   if (!bag) return null;
 
   return (
@@ -80,12 +80,12 @@ function MainView() {
           <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-border group-hover:bg-accent-blue/60 transition-colors" />
         </Separator>
         <Panel className="flex flex-col min-h-0 min-w-0">
-          {panels.length === 0 ? (
+          {hasPanels ? (
+            <PanelGrid />
+          ) : (
             <div className="flex-1 flex items-center justify-center p-8 bg-grid bg-gradient-radial">
               <EmptyPanelState bag={bag} />
             </div>
-          ) : (
-            <PanelGrid />
           )}
         </Panel>
       </Group>

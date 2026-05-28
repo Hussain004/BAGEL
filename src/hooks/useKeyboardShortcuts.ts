@@ -73,8 +73,12 @@ export function useKeyboardShortcuts(): void {
         const layout = useLayoutStore.getState();
         if (e.shiftKey) {
           layout.closeAllPanels();
-        } else if (layout.panels.length > 0) {
-          layout.closePanel(layout.panels[layout.panels.length - 1].id);
+        } else if (layout.openOrder.length > 0) {
+          // Close most-recently-opened panel. `openOrder` is the tree-aware
+          // replacement for the v0.5 flat `panels` array — it tracks insert
+          // order independently of where the panel ended up in the tree
+          // after docking.
+          layout.closePanel(layout.openOrder[layout.openOrder.length - 1]);
         }
         return;
       }

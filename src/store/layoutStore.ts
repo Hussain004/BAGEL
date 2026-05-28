@@ -1,50 +1,269 @@
 /**
  * Zustand store for the panel layout.
  *
- * v0.2 supports three panel kinds (plot / image / raw) and a single shared
- * main area that tiles the open panels in a flex grid. Panels are keyed by
- * `${kind}:${topicName}` so opening the same view twice is a no-op.
+ * The layout is a tree of two node kinds:
+ *
+ *   - `PanelLeaf`  — an open visualisation panel (kind + topic + ROS type).
+ *   - `SplitNode`  — a horizontal or vertical container with N children.
+ *                    Each child is itself a leaf or another split.
+ *
+ * Trees stay normalised:
+ *   - splits with one child collapse into that child;
+ *   - splits with zero children disappear;
+ *   - we don't nest same-orientation splits — `openPanel` and `dockPanel`
+ *     append to an existing horizontal/vertical container when the dock
+ *     direction matches it.
+ *
+ * Public API kept stable from the v0.5 flat-array store:
+ *   - `openPanel`, `closePanel`, `closeAllPanels`, `hasPanelForTopic`.
+ *   - `dockPanel(sourceId, targetId, edge)` is new (v0.7).
+ *   - `panels` is replaced with `root: LayoutNode | null`; consumers that
+ *     want the flat list call the exported `getAllPanels(root)` helper.
+ *   - `openOrder: string[]` is new — tracks insertion order so the Esc
+ *     shortcut (`close most recent`) still has a sensible target now that
+ *     "the last entry in the array" no longer maps onto a tree.
  */
 
 import { create } from 'zustand';
 
 export type PanelKind = 'plot' | 'image' | 'raw' | 'trajectory' | 'tf' | '3d';
 
-export interface PanelInstance {
+export interface PanelLeaf {
+  node: 'panel';
   id: string;
   kind: PanelKind;
   topicName: string;
   type: string;
 }
 
+export type SplitOrientation = 'horizontal' | 'vertical';
+
+export interface SplitNode {
+  node: 'split';
+  id: string;
+  orientation: SplitOrientation;
+  children: LayoutNode[];
+}
+
+export type LayoutNode = PanelLeaf | SplitNode;
+
+/** The four panel edges a drag-source can be docked onto. */
+export type DropEdge = 'top' | 'right' | 'bottom' | 'left';
+
+/**
+ * Back-compat alias for the v0.5 flat-store name. PanelGrid and a few panel
+ * components imported `PanelInstance` directly; the alias means we don't
+ * have to rename every site to `PanelLeaf` in a single sweep.
+ */
+export type PanelInstance = PanelLeaf;
+
 interface LayoutState {
-  panels: PanelInstance[];
-  openPanel: (panel: Omit<PanelInstance, 'id'>) => void;
+  /** Layout tree, or null when no panels are open. */
+  root: LayoutNode | null;
+  /**
+   * Panel ids in the order they were opened. `closePanel` filters this list;
+   * `dockPanel` doesn't touch it (docking is a move, not an open/close).
+   */
+  openOrder: string[];
+
+  openPanel: (panel: Omit<PanelLeaf, 'id' | 'node'>) => void;
   closePanel: (id: string) => void;
   closeAllPanels: () => void;
-  /** True if any panel for this topic is currently open. */
+  /** Move `sourceId` so that it sits on the given `edge` of `targetId`. */
+  dockPanel: (sourceId: string, targetId: string, edge: DropEdge) => void;
+  /**
+   * Replace the entire layout tree wholesale. Used by `useUrlState` on bag
+   * load to restore the saved layout in one shot — going through
+   * `openPanel`/`dockPanel` would work but synthesises a less faithful
+   * tree and churns the URL hash with intermediate states.
+   *
+   * `openOrder` is recomputed from a left-to-right traversal of the new
+   * tree, since the URL doesn't preserve the original open order.
+   */
+  restoreLayout: (root: LayoutNode | null) => void;
   hasPanelForTopic: (topicName: string) => boolean;
 }
 
-function panelId(kind: PanelKind, topicName: string): string {
+function panelLeafId(kind: PanelKind, topicName: string): string {
   return `${kind}:${topicName}`;
 }
 
+// Split-node ids are opaque to consumers — they just need to be unique within
+// the lifetime of the page so React's reconciler can tell two splits apart.
+let splitIdCounter = 0;
+function makeSplitId(): string {
+  splitIdCounter++;
+  return `split:${splitIdCounter}`;
+}
+
+function orientationFromEdge(edge: DropEdge): SplitOrientation {
+  return edge === 'top' || edge === 'bottom' ? 'vertical' : 'horizontal';
+}
+
+/** Recursively walk the tree, returning every leaf in left-to-right order. */
+export function getAllPanels(node: LayoutNode | null): PanelLeaf[] {
+  if (!node) return [];
+  if (node.node === 'panel') return [node];
+  return node.children.flatMap(getAllPanels);
+}
+
+/** Find a leaf by id. Returns null if no such leaf exists in the tree. */
+export function findPanel(node: LayoutNode | null, id: string): PanelLeaf | null {
+  if (!node) return null;
+  if (node.node === 'panel') return node.id === id ? node : null;
+  for (const c of node.children) {
+    const f = findPanel(c, id);
+    if (f) return f;
+  }
+  return null;
+}
+
+/**
+ * Remove the leaf with the given id from the tree and return a normalised
+ * copy: empty splits become null, single-child splits collapse to that child.
+ * Returns the original node when the target isn't present (no copy made).
+ */
+function removeLeafById(tree: LayoutNode, id: string): LayoutNode | null {
+  if (tree.node === 'panel') return tree.id === id ? null : tree;
+  let changed = false;
+  const newChildren: LayoutNode[] = [];
+  for (const c of tree.children) {
+    const after = removeLeafById(c, id);
+    if (after !== c) changed = true;
+    if (after !== null) newChildren.push(after);
+  }
+  if (!changed) return tree;
+  if (newChildren.length === 0) return null;
+  if (newChildren.length === 1) return newChildren[0];
+  return { ...tree, children: newChildren };
+}
+
+/**
+ * Wrap a target leaf in a fresh split with `source` placed on the chosen edge.
+ * Used when `insertAt` reaches the target leaf without finding a parent split
+ * it can append to.
+ */
+function wrapLeafWithSource(
+  target: PanelLeaf,
+  source: LayoutNode,
+  edge: DropEdge,
+): SplitNode {
+  const orientation = orientationFromEdge(edge);
+  const sourceFirst = edge === 'top' || edge === 'left';
+  return {
+    node: 'split',
+    id: makeSplitId(),
+    orientation,
+    children: sourceFirst ? [source, target] : [target, source],
+  };
+}
+
+/**
+ * Find the target leaf in `tree` and place `source` adjacent to it on `edge`.
+ *
+ * When the target's direct parent split already matches the requested
+ * orientation, the source is added as a sibling at the right position — this
+ * avoids growing nested same-orientation splits, which would render the same
+ * way but bloat the tree.
+ */
+function insertAt(
+  tree: LayoutNode,
+  targetId: string,
+  source: LayoutNode,
+  edge: DropEdge,
+): LayoutNode {
+  if (tree.node === 'panel') {
+    if (tree.id !== targetId) return tree;
+    return wrapLeafWithSource(tree, source, edge);
+  }
+  // tree is a split — check whether one of its direct children is the target
+  // and we can flatten by inserting source as a sibling.
+  const desiredOrientation = orientationFromEdge(edge);
+  const sourceFirst = edge === 'top' || edge === 'left';
+  if (tree.orientation === desiredOrientation) {
+    for (let i = 0; i < tree.children.length; i++) {
+      const c = tree.children[i];
+      if (c.node === 'panel' && c.id === targetId) {
+        const newChildren = [...tree.children];
+        newChildren.splice(sourceFirst ? i : i + 1, 0, source);
+        return { ...tree, children: newChildren };
+      }
+    }
+  }
+  // Otherwise recurse — only one child can contain the target.
+  let touched = false;
+  const newChildren = tree.children.map((c) => {
+    if (touched) return c;
+    const updated = insertAt(c, targetId, source, edge);
+    if (updated !== c) touched = true;
+    return updated;
+  });
+  if (!touched) return tree;
+  return { ...tree, children: newChildren };
+}
+
+/**
+ * Append `leaf` to the right edge of the existing tree.
+ *
+ * Used by `openPanel` so the first-opened panel lives at the left and each
+ * subsequent open appears to its right — matching the v0.5 behaviour and
+ * keeping the empty-tree case trivial. Users can drag-dock to reorganise.
+ */
+function appendLeafRight(root: LayoutNode, leaf: PanelLeaf): LayoutNode {
+  if (root.node === 'split' && root.orientation === 'horizontal') {
+    return { ...root, children: [...root.children, leaf] };
+  }
+  return {
+    node: 'split',
+    id: makeSplitId(),
+    orientation: 'horizontal',
+    children: [root, leaf],
+  };
+}
+
 export const useLayoutStore = create<LayoutState>((set, get) => ({
-  panels: [],
+  root: null,
+  openOrder: [],
 
   openPanel: ({ kind, topicName, type }) => {
-    const id = panelId(kind, topicName);
-    if (get().panels.some((p) => p.id === id)) return;
-    set({ panels: [...get().panels, { id, kind, topicName, type }] });
+    const id = panelLeafId(kind, topicName);
+    const state = get();
+    if (findPanel(state.root, id)) return;
+    const leaf: PanelLeaf = { node: 'panel', id, kind, topicName, type };
+    const newRoot = state.root ? appendLeafRight(state.root, leaf) : leaf;
+    set({ root: newRoot, openOrder: [...state.openOrder, id] });
   },
 
   closePanel: (id) => {
-    set({ panels: get().panels.filter((p) => p.id !== id) });
+    const state = get();
+    if (!state.root) return;
+    const newRoot = removeLeafById(state.root, id);
+    set({
+      root: newRoot,
+      openOrder: state.openOrder.filter((x) => x !== id),
+    });
   },
 
-  closeAllPanels: () => set({ panels: [] }),
+  closeAllPanels: () => set({ root: null, openOrder: [] }),
+
+  dockPanel: (sourceId, targetId, edge) => {
+    if (sourceId === targetId) return;
+    const state = get();
+    if (!state.root) return;
+    const source = findPanel(state.root, sourceId);
+    if (!source) return;
+    const withoutSource = removeLeafById(state.root, sourceId);
+    if (!withoutSource || !findPanel(withoutSource, targetId)) return;
+    const newRoot = insertAt(withoutSource, targetId, source, edge);
+    // openOrder unchanged — docking is a move, not an open/close.
+    set({ root: newRoot });
+  },
+
+  restoreLayout: (root) => {
+    const openOrder = getAllPanels(root).map((p) => p.id);
+    set({ root, openOrder });
+  },
 
   hasPanelForTopic: (topicName) =>
-    get().panels.some((p) => p.topicName === topicName),
+    getAllPanels(get().root).some((p) => p.topicName === topicName),
 }));

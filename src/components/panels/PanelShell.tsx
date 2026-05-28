@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { useLayoutStore, type PanelKind } from '../../store/layoutStore';
+import { useDragDockStore } from '../../store/dragDockStore';
 import { useBagStore } from '../../store/bagStore';
 import { readDeserializedMessages } from '../../parsers';
 import {
@@ -52,13 +53,62 @@ export function PanelShell({
   children,
 }: PanelShellProps) {
   const closePanel = useLayoutStore((s) => s.closePanel);
+  const startDrag = useDragDockStore((s) => s.startDrag);
+  const endDrag = useDragDockStore((s) => s.endDrag);
+  const isDragging = useDragDockStore((s) => s.sourceId === panelId);
   const parts = type.split('/');
   const shortType = parts[parts.length - 1] || type;
   const pkg = parts[0] || '';
 
+  /**
+   * The whole header is a drag handle. We opt out when the pointer-down
+   * lands on an interactive descendant (close button, export menu) — those
+   * have their own click behaviour, and the user almost certainly didn't
+   * mean to start a drag.
+   *
+   * Global pointerup/cancel/Esc end the drag, so a release outside any drop
+   * zone is treated as "cancel" and the panel stays put.
+   *
+   * Touch/pen inputs implicitly capture the pointer to the down-target per
+   * the Pointer Events spec, which would route pointerenter/up events at
+   * the drop zones away from them and back to the header. Release the
+   * capture explicitly so the drop zones receive the events.
+   */
+  const handleHeaderPointerDown = (e: React.PointerEvent<HTMLElement>) => {
+    if (e.button !== 0) return; // left-click only
+    const target = e.target as HTMLElement;
+    if (target.closest('button, input, select, a, [role="menu"], [role="menuitem"]')) {
+      return;
+    }
+    if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    startDrag(panelId);
+    const cleanup = () => {
+      endDrag();
+      window.removeEventListener('pointerup', cleanup);
+      window.removeEventListener('pointercancel', cleanup);
+      window.removeEventListener('keydown', onKey);
+    };
+    const onKey = (ke: KeyboardEvent) => {
+      if (ke.key === 'Escape') cleanup();
+    };
+    window.addEventListener('pointerup', cleanup);
+    window.addEventListener('pointercancel', cleanup);
+    window.addEventListener('keydown', onKey);
+  };
+
   return (
-    <div className="flex-1 flex flex-col min-h-0 rounded-xl border border-border bg-bg-secondary/60 backdrop-blur-md shadow-panel overflow-hidden animate-fade-in-scale">
-      <header className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-surface/60">
+    <div
+      className={`flex-1 flex flex-col min-h-0 rounded-xl border border-border bg-bg-secondary/60 backdrop-blur-md shadow-panel overflow-hidden animate-fade-in-scale ${
+        isDragging ? 'opacity-60 ring-2 ring-accent-blue/60' : ''
+      }`}
+    >
+      <header
+        onPointerDown={handleHeaderPointerDown}
+        className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-surface/60 cursor-grab active:cursor-grabbing select-none"
+        title="Drag to dock this panel"
+      >
         <span
           className="w-2 h-2 rounded-full flex-shrink-0"
           style={{ backgroundColor: accentColor ?? '#94a3b8' }}
