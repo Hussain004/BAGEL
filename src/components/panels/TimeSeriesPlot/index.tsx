@@ -83,18 +83,34 @@ export function TimeSeriesPlot({ panelId, topicName, type }: TimeSeriesPlotProps
 
   const containerRef = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
+  // Latest series stashed for the mount effect's closure — the mount only
+  // re-runs when the field set changes, but it needs whatever series we
+  // have at that moment to build initial opts/data.
+  const seriesRef = useRef(series);
+  seriesRef.current = series;
 
-  // Mount uPlot when series data is ready.
+  // Stable key over the set of fields. Re-mount uPlot only when this
+  // changes; during streaming the fields are stable from the first batch
+  // so the plot mounts once and grows in place via `setData` below.
+  const fieldNamesKey = useMemo(
+    () => series?.fieldNames.join('|') ?? '',
+    [series],
+  );
+
+  // Mount / unmount effect: depends only on fieldNamesKey so the chart
+  // canvas isn't torn down every time a streaming batch arrives.
   useEffect(() => {
-    if (!series || !containerRef.current) return;
+    if (!fieldNamesKey || !containerRef.current) return;
+    const current = seriesRef.current;
+    if (!current) return;
 
-    const colors = series.fieldNames.map(
+    const colors = current.fieldNames.map(
       (_, i) => SERIES_PALETTE[i % SERIES_PALETTE.length],
     );
 
     const data: uPlot.AlignedData = [
-      series.time,
-      ...series.fieldNames.map((f) => series.values[f] as (number | null)[]),
+      current.time,
+      ...current.fieldNames.map((f) => current.values[f] as (number | null)[]),
     ];
 
     const opts: uPlot.Options = {
@@ -119,7 +135,7 @@ export function TimeSeriesPlot({ panelId, topicName, type }: TimeSeriesPlotProps
       ],
       series: [
         { label: 't' },
-        ...series.fieldNames.map((f, i) => ({
+        ...current.fieldNames.map((f, i) => ({
           label: f,
           stroke: colors[i],
           width: 1.5,
@@ -149,6 +165,19 @@ export function TimeSeriesPlot({ panelId, topicName, type }: TimeSeriesPlotProps
     };
     // visibility intentionally excluded — handled via setSeries below
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fieldNamesKey]);
+
+  // In-place data update: runs every time series identity changes, but
+  // doesn't tear down the canvas. `setData` triggers uPlot's internal
+  // redraw with the new arrays — orders of magnitude cheaper than a
+  // remount during the streaming decode.
+  useEffect(() => {
+    if (!plotRef.current || !series) return;
+    const data: uPlot.AlignedData = [
+      series.time,
+      ...series.fieldNames.map((f) => series.values[f] as (number | null)[]),
+    ];
+    plotRef.current.setData(data);
   }, [series]);
 
   // Toggle series visibility without rebuilding the plot.

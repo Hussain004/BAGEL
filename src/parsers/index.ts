@@ -37,8 +37,16 @@ export async function readDeserializedMessages(
   topicName: string,
   limit?: number,
   onProgress?: (decoded: number) => void,
+  onBatch?: (batch: DecodedMessage[]) => void,
 ): Promise<DecodedMessage[]> {
-  return getParserClient().readDeserializedMessages(file, format, topicName, limit, onProgress);
+  return getParserClient().readDeserializedMessages(
+    file,
+    format,
+    topicName,
+    limit,
+    onProgress,
+    onBatch,
+  );
 }
 
 export async function readMessageAtTime(
