@@ -2,6 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useBagStore } from '../../../store/bagStore';
 import { usePlayheadStore } from '../../../store/playheadStore';
+import {
+  DEFAULT_THREE_D_SETTINGS,
+  useThreeDPanelStore,
+  type UpAxis,
+} from '../../../store/threeDPanelStore';
 import { PanelShell } from '../PanelShell';
 import { getTopicColor } from '../../../utils/color';
 import { nsToSeconds } from '../../../utils/time';
@@ -44,8 +49,10 @@ type SceneKind = 'pointcloud' | 'laserscan' | 'pose';
  * sometimes emit clouds with X-up, Y-up, or an inverted Z. The selector
  * applies a fixed rotation that maps the chosen axis onto render-space +Z,
  * which is the direction `camera.up` always points.
+ *
+ * The `UpAxis` type lives in the per-panel settings store; we import it
+ * here so the panel and the persisted settings share one source of truth.
  */
-type UpAxis = 'z+' | 'z-' | 'y+' | 'y-' | 'x+' | 'x-';
 
 const UP_AXIS_OPTIONS: { value: UpAxis; label: string }[] = [
   { value: 'z+', label: '+Z up (ROS default)' },
@@ -127,39 +134,57 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
   const playheadNs = usePlayheadStore((s) => s.timeNs);
   const sceneKind = useMemo(() => detectKind(type), [type]);
 
-  const [colorMode, setColorMode] = useState<ColorMode>('height');
-  const [pointSize, setPointSize] = useState(2.5);
-  const [showGrid, setShowGrid] = useState(true);
-  const [showWorldAxes, setShowWorldAxes] = useState(true);
-  const [worldFrame, setWorldFrame] = useState<string | null>(null);
+  // Persistent display settings live in a per-panelId zustand store rather
+  // than local useState. `PanelGrid` puts a `key` on its <Group> that
+  // includes every open panel id, so adding or closing any sibling panel
+  // forces a remount of this panel — local useState would reset to defaults
+  // every time. Lifting to the store also makes settings survive close +
+  // reopen of the same 3D panel as a side benefit. `accumStats` stays as
+  // local state because it's a derived view of the live accumulator object,
+  // not a user preference.
+  const settings = useThreeDPanelStore((s) => s.byId[panelId] ?? DEFAULT_THREE_D_SETTINGS);
+  const updateSettings = useThreeDPanelStore((s) => s.update);
+  const {
+    colorMode,
+    pointSize,
+    showGrid,
+    showWorldAxes,
+    worldFrame,
+    rangeLimitOn,
+    maxRange,
+    accumulating,
+    accumMode,
+    accumBudget,
+    accumPerFrame,
+    voxelSize,
+    upAxis,
+    pivot,
+  } = settings;
 
-  // Range filter — drop returns farther than `maxRange` metres from the
-  // sensor origin before bounds + height-colour are computed.
-  const [rangeLimitOn, setRangeLimitOn] = useState(false);
-  const [maxRange, setMaxRange] = useState(30);
+  const setColorMode = (v: ColorMode) => updateSettings(panelId, { colorMode: v });
+  const setPointSize = (v: number) => updateSettings(panelId, { pointSize: v });
+  const setShowGrid = (v: boolean) => updateSettings(panelId, { showGrid: v });
+  const setShowWorldAxes = (v: boolean) => updateSettings(panelId, { showWorldAxes: v });
+  const setWorldFrame = (v: string) => updateSettings(panelId, { worldFrame: v });
+  const setRangeLimitOn = (v: boolean) => updateSettings(panelId, { rangeLimitOn: v });
+  const setMaxRange = (v: number) => updateSettings(panelId, { maxRange: v });
+  const setAccumulating = (v: boolean) => updateSettings(panelId, { accumulating: v });
+  const setAccumMode = (v: AccumulationMode) => updateSettings(panelId, { accumMode: v });
+  const setAccumBudget = (v: number) => updateSettings(panelId, { accumBudget: v });
+  const setAccumPerFrame = (v: number) => updateSettings(panelId, { accumPerFrame: v });
+  const setVoxelSize = (v: number) => updateSettings(panelId, { voxelSize: v });
+  const setUpAxis = (v: UpAxis) => updateSettings(panelId, { upAxis: v });
+  const setPivot = (v: { x: number; y: number; z: number } | null) =>
+    updateSettings(panelId, { pivot: v });
 
-  // Accumulation — build up a running "map" view across frames. Ring mode
-  // keeps the last N points in a FIFO buffer; voxel mode buckets points
-  // into a regular grid (one point per cell) so revisited ground doesn't
-  // explode the count.
-  const [accumulating, setAccumulating] = useState(false);
-  const [accumMode, setAccumMode] = useState<AccumulationMode>('ring');
-  const [accumBudget, setAccumBudget] = useState(1_000_000);
-  const [accumPerFrame, setAccumPerFrame] = useState(25_000);
-  const [voxelSize, setVoxelSize] = useState(0.2);
-  // Footer stats for the accumulator. Updated on every successful append.
+  // Footer stats for the accumulator. Updated on every successful append;
+  // derived from the THREE.js accumulator state which is recreated on every
+  // panel mount, so this resetting to {0, 0} on remount is the correct
+  // behaviour (the accumulator object itself is empty after the remount).
   const [accumStats, setAccumStats] = useState<{ points: number; frames: number }>({
     points: 0,
     frames: 0,
   });
-
-  // Pivot — Shift+Click sets a custom orbit centre; null means "auto-fit centre".
-  const [pivot, setPivot] = useState<{ x: number; y: number; z: number } | null>(null);
-
-  // Up-axis fix — rotates the cloud so the chosen source axis points up in
-  // the rendered scene. Cleared accumulator + pivot are forced on change
-  // because both store positions in render-space coordinates.
-  const [upAxis, setUpAxis] = useState<UpAxis>('z+');
   const upFixMatrix = useMemo(() => makeUpFix(upAxis), [upAxis]);
   // Height colormap follows the up-axis — picking "-X up" means the most
   // negative source X paints reddest (highest in render space).
@@ -377,13 +402,26 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
   }, [voxelSize, sceneRef]);
 
   // Clear the accumulator + custom pivot whenever the coordinate system the
-  // panel renders into changes — world frame, topic, or up-axis. Both the
-  // accumulator's stored points and the pivot are expressed in render-space
-  // coordinates that get invalidated by any of these changes.
+  // panel renders into actually *changes* — world frame, topic, or up-axis.
+  // Both the accumulator's stored points and the pivot are expressed in
+  // render-space coordinates that get invalidated by any of these changes.
+  //
+  // We compare against the previous deps via a ref so we don't clear on the
+  // initial mount (or on a remount, when settings are being restored from
+  // the per-panel store). Without this, a remount triggered by adding a
+  // sibling panel would silently null out the user's pivot.
+  const prevCoordDepsRef = useRef({ worldFrame, topicName, upAxis });
   useEffect(() => {
     const refs = sceneRef.current;
     const owned = objectsRef.current;
     if (!refs) return;
+    const prev = prevCoordDepsRef.current;
+    const changed =
+      prev.worldFrame !== worldFrame ||
+      prev.topicName !== topicName ||
+      prev.upAxis !== upAxis;
+    if (!changed) return;
+    prevCoordDepsRef.current = { worldFrame, topicName, upAxis };
     if (owned?.accumulator) {
       owned.accumulator.clear();
       lastAppendedTsRef.current = null;
