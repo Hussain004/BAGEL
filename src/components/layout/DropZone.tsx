@@ -92,7 +92,7 @@ export function DropZone() {
             </h1>
           </div>
           <p className="text-text-secondary text-lg font-light">
-            BAG ExpLoration — Explore ROS2 bag files in your browser
+            BAG ExpLoration — Explore ROS bag files in your browser
           </p>
           <p className="text-text-tertiary text-sm mt-2">
             No installation required. No data leaves your machine.
@@ -115,7 +115,7 @@ export function DropZone() {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".db3,.mcap"
+            accept=".db3,.mcap,.bag"
             onChange={handleFileInput}
             className="hidden"
             data-testid="file-input"
@@ -179,7 +179,11 @@ export function DropZone() {
           </span>
           <span className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-accent-violet/50" />
-            .db3 files (ROS2 SQLite)
+            .db3 (ROS2 SQLite)
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-accent-amber/50" />
+            .bag (ROS1)
           </span>
           <span className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-accent-emerald/50" />
@@ -277,7 +281,7 @@ function IdleState({ isDragOver }: { isDragOver: boolean }) {
           {isDragOver ? 'Release to explore' : 'Drop your bag file here'}
         </p>
         <p className="text-text-tertiary text-sm mt-1">
-          or click to browse • supports .db3 and .mcap
+          or click to browse • supports .mcap, .db3, .bag
         </p>
       </div>
     </div>

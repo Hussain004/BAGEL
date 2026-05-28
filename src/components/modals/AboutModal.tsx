@@ -12,21 +12,22 @@ export function AboutModal() {
   return (
     <ModalShell
       title="About BAGEL"
-      subtitle={`Version ${APP_VERSION} · BAG ExpLoration for ROS2`}
+      subtitle={`Version ${APP_VERSION} · BAG ExpLoration for ROS1 & ROS2`}
       onClose={() => setModal(null)}
       width="md"
     >
       <div className="px-6 py-5 space-y-5 text-sm text-text-secondary leading-relaxed">
         <p>
           <span className="text-text-primary font-medium">BAGEL</span> is a
-          fully static, browser-native viewer for ROS2 bag files (
-          <span className="mono text-text-primary">.mcap</span> and{' '}
-          <span className="mono text-text-primary">.db3</span>). No server, no
+          fully static, browser-native viewer for ROS bag files (
+          <span className="mono text-text-primary">.mcap</span>,{' '}
+          <span className="mono text-text-primary">.db3</span>, and{' '}
+          <span className="mono text-text-primary">.bag</span>). No server, no
           installation, no account. Every byte stays on your machine.
         </p>
 
         <div className="grid grid-cols-2 gap-3 text-xs">
-          <Fact label="Supported formats" value="MCAP · ROS2 SQLite (.db3)" />
+          <Fact label="Supported formats" value="MCAP · ROS2 SQLite · ROS1 .bag" />
           <Fact label="Visualizations" value="Plot · Image · Trajectory · TF · 3D" />
           <Fact label="Runs" value="100% in your browser" />
           <Fact label="Data leaves your machine" value="Never" />
@@ -36,7 +37,8 @@ export function AboutModal() {
           <h3 className="text-text-primary text-sm font-semibold">Built with</h3>
           <p className="text-xs text-text-tertiary">
             React 19, TypeScript, Vite 8, Tailwind v4, Three.js, uPlot,
-            @mcap/core, @foxglove/rosmsg2-serialization, sql.js (WASM),
+            @mcap/core, @foxglove/rosbag, @foxglove/rosmsg-serialization,
+            @foxglove/rosmsg2-serialization, sql.js (WASM),
             react-resizable-panels, Zustand.
           </p>
         </div>

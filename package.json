@@ -11,8 +11,10 @@
   },
   "dependencies": {
     "@foxglove/message-definition": "^0.5.0",
+    "@foxglove/rosbag": "^0.4.1",
     "@foxglove/rosmsg": "^5.0.5",
     "@foxglove/rosmsg-msgs-common": "^3.2.3",
+    "@foxglove/rosmsg-serialization": "^2.1.1",
     "@foxglove/rosmsg2-serialization": "^3.1.1",
     "@mcap/browser": "^1.1.0",
     "@mcap/core": "^2.2.1",
