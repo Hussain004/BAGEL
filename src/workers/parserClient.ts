@@ -23,6 +23,14 @@ interface PendingRequest {
   resolve: (value: unknown) => void;
   reject: (err: Error) => void;
   onProgress?: (decoded: number) => void;
+  onBatch?: (batch: DecodedMessage[]) => void;
+  /**
+   * Accumulator for streamed methods (`readDeserializedMessages`). Each
+   * `batch` message pushes into this array; on `result`, the promise
+   * resolves with the accumulated array. Non-streamed methods leave this
+   * undefined and resolve with `data.result` directly.
+   */
+  accumulator?: DecodedMessage[];
 }
 
 class ParserClient {
@@ -50,6 +58,7 @@ class ParserClient {
   private onMessage(e: MessageEvent) {
     const data = e.data as
       | { id: number; type: 'progress'; decoded: number }
+      | { id: number; type: 'batch'; batch: DecodedMessage[] }
       | { id: number; type: 'result'; result: unknown }
       | { id: number; type: 'error'; error: string };
     const pending = this.pending.get(data.id);
@@ -59,6 +68,15 @@ class ParserClient {
       pending.onProgress?.(data.decoded);
       return;
     }
+    if (data.type === 'batch') {
+      // Forward to the user-supplied streaming callback first so consumers
+      // that want incremental rendering get the batch on the same tick it
+      // arrives. The accumulator then preserves the data for the eventual
+      // promise resolution — needed even when no onBatch is provided.
+      pending.onBatch?.(data.batch);
+      pending.accumulator?.push(...data.batch);
+      return;
+    }
     if (data.type === 'error') {
       this.pending.delete(data.id);
       pending.reject(new Error(data.error));
@@ -66,7 +84,10 @@ class ParserClient {
     }
     if (data.type === 'result') {
       this.pending.delete(data.id);
-      pending.resolve(data.result);
+      // Streamed methods carry their data in the accumulator; non-streamed
+      // ones embed it in `data.result`. Picking by presence of accumulator
+      // avoids per-method conditionals.
+      pending.resolve(pending.accumulator ?? data.result);
     }
   }
 
@@ -87,7 +108,11 @@ class ParserClient {
   private request<T>(
     method: string,
     params: Record<string, unknown> | undefined,
-    onProgress?: (decoded: number) => void,
+    callbacks?: {
+      onProgress?: (decoded: number) => void;
+      onBatch?: (batch: DecodedMessage[]) => void;
+      streamed?: boolean;
+    },
   ): Promise<T> {
     const worker = this.ensureWorker();
     const id = this.nextId++;
@@ -95,7 +120,9 @@ class ParserClient {
       this.pending.set(id, {
         resolve: resolve as (value: unknown) => void,
         reject,
-        onProgress,
+        onProgress: callbacks?.onProgress,
+        onBatch: callbacks?.onBatch,
+        accumulator: callbacks?.streamed ? [] : undefined,
       });
       worker.postMessage({ id, method, params });
     });
@@ -120,11 +147,12 @@ class ParserClient {
     topicName: string,
     limit?: number,
     onProgress?: (decoded: number) => void,
+    onBatch?: (batch: DecodedMessage[]) => void,
   ): Promise<DecodedMessage[]> {
     return this.request<DecodedMessage[]>(
       'readDeserializedMessages',
       { file, format, topicName, limit },
-      onProgress,
+      { onProgress, onBatch, streamed: true },
     );
   }
 

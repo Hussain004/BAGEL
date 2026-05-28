@@ -64,6 +64,8 @@ export function AboutModal() {
             Muhammad Hussain Habib
           </span>{' '}
           for the robotics community.
+          {' '}
+          Special thanks to my <a href="https://www.linkedin.com/in/muneeb-pervez/" target="_blank" rel="noopener noreferrer" className="text-text-secondary">HB</a> for alpha testing and feedback!
         </div>
       </div>
     </ModalShell>

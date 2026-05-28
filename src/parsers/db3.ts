@@ -283,6 +283,7 @@ export async function readDeserializedMessagesDb3(
   topicName: string,
   limit?: number,
   onProgress?: (decoded: number) => void,
+  onBatch?: (batch: { timestamp: bigint; value: Record<string, unknown> | null }[]) => void,
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null }[]> {
   const { topicTypeByName } = await loadDb(file);
   const msgType = topicTypeByName.get(topicName);
@@ -290,6 +291,7 @@ export async function readDeserializedMessagesDb3(
 
   const raws = await readRawMessagesDb3(file, topicName, limit);
   const out: { timestamp: bigint; value: Record<string, unknown> | null }[] = [];
+  let lastFlushedIndex = 0;
   for (const raw of raws) {
     try {
       const value = await deserializeByType(msgType, raw.data);
@@ -299,10 +301,17 @@ export async function readDeserializedMessagesDb3(
     }
     if (out.length % DB3_YIELD_EVERY === 0) {
       onProgress?.(out.length);
+      if (onBatch && out.length > lastFlushedIndex) {
+        onBatch(out.slice(lastFlushedIndex));
+        lastFlushedIndex = out.length;
+      }
       await new Promise((r) => setTimeout(r, 0));
     }
   }
   onProgress?.(out.length);
+  if (onBatch && out.length > lastFlushedIndex) {
+    onBatch(out.slice(lastFlushedIndex));
+  }
   return out;
 }
 

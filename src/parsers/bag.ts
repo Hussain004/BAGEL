@@ -247,6 +247,7 @@ export async function readDeserializedMessagesBag(
   topicName: string,
   limit?: number,
   onProgress?: (decoded: number) => void,
+  onBatch?: (batch: { timestamp: bigint; value: Record<string, unknown> | null }[]) => void,
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null }[]> {
   const meta = await loadBag(file);
   const info = meta.topicMeta.get(topicName);
@@ -263,6 +264,7 @@ export async function readDeserializedMessagesBag(
   };
 
   const out: { timestamp: bigint; value: Record<string, unknown> | null }[] = [];
+  let lastFlushedIndex = 0;
   const iterator = meta.bag.messageIterator({ topics: [topicName] });
   for await (const event of iterator as AsyncIterable<{
     topic: string;
@@ -274,11 +276,18 @@ export async function readDeserializedMessagesBag(
     if (limit && out.length >= limit) break;
     if (out.length % YIELD_EVERY === 0) {
       onProgress?.(out.length);
+      if (onBatch && out.length > lastFlushedIndex) {
+        onBatch(out.slice(lastFlushedIndex));
+        lastFlushedIndex = out.length;
+      }
       // Yield to the worker event loop so progress messages flush.
       await new Promise((r) => setTimeout(r, 0));
     }
   }
   onProgress?.(out.length);
+  if (onBatch && out.length > lastFlushedIndex) {
+    onBatch(out.slice(lastFlushedIndex));
+  }
   return out;
 }
 

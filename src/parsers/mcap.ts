@@ -451,6 +451,7 @@ export async function readDeserializedMessagesMcap(
   topicName: string,
   limit?: number,
   onProgress?: (decoded: number) => void,
+  onBatch?: (batch: { timestamp: bigint; value: Record<string, unknown> | null }[]) => void,
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null }[]> {
   const meta = await loadMcap(file);
   const topicInfo = meta.topicMeta.get(topicName);
@@ -458,6 +459,11 @@ export async function readDeserializedMessagesMcap(
   const schemaText = topicInfo.schemaText;
 
   const out: { timestamp: bigint; value: Record<string, unknown> | null }[] = [];
+  // Tracks the boundary between "already streamed via onBatch" and the
+  // not-yet-flushed tail of `out`. We hand callers a slice rather than a
+  // running buffer so they own their batch lifetime (and so the worker
+  // can immediately ship it without worrying about future mutations).
+  let lastFlushedIndex = 0;
 
   const decodeOne = (raw: Uint8Array): Record<string, unknown> | null => {
     try {
@@ -470,8 +476,20 @@ export async function readDeserializedMessagesMcap(
   const tick = async () => {
     if (out.length % YIELD_EVERY === 0) {
       onProgress?.(out.length);
+      if (onBatch && out.length > lastFlushedIndex) {
+        onBatch(out.slice(lastFlushedIndex));
+        lastFlushedIndex = out.length;
+      }
       // Hand control back to the browser so layout / input / rAF can run.
       await new Promise((r) => setTimeout(r, 0));
+    }
+  };
+
+  const flushTail = () => {
+    onProgress?.(out.length);
+    if (onBatch && out.length > lastFlushedIndex) {
+      onBatch(out.slice(lastFlushedIndex));
+      lastFlushedIndex = out.length;
     }
   };
 
@@ -481,7 +499,7 @@ export async function readDeserializedMessagesMcap(
       if (limit && out.length >= limit) break;
       await tick();
     }
-    onProgress?.(out.length);
+    flushTail();
     return out;
   }
 
@@ -500,7 +518,7 @@ export async function readDeserializedMessagesMcap(
       if (limit && out.length >= limit) break;
       await tick();
     }
-    onProgress?.(out.length);
+    flushTail();
   }
   return out;
 }

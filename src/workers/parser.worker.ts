@@ -98,6 +98,16 @@ interface ProgressResponse {
   type: 'progress';
   decoded: number;
 }
+/**
+ * Streamed decoded-message batch for `readDeserializedMessages`. The client
+ * accumulates these into the full array; the final `result` for streamed
+ * methods carries no payload (the data is already on the main thread).
+ */
+interface BatchResponse {
+  id: number;
+  type: 'batch';
+  batch: DecodedMessage[];
+}
 interface ResultResponse<T> {
   id: number;
   type: 'result';
@@ -111,6 +121,7 @@ interface ErrorResponse {
 
 export type WorkerResponse =
   | ProgressResponse
+  | BatchResponse
   | ResultResponse<BagSummary>
   | ResultResponse<RawMessage[]>
   | ResultResponse<DecodedMessage[]>
@@ -152,15 +163,21 @@ ctx.addEventListener('message', async (e: MessageEvent<WorkerRequest>) => {
       }
       case 'readDeserializedMessages': {
         const { file, format, topicName, limit } = req.params as ReadDeserializedMessagesParams;
-        const out = await readDeserializedMessages(
+        // Stream batches to the client as they're decoded, then finish with
+        // an empty result that just signals completion. The client builds
+        // the final array from the batches — sending `out` here too would
+        // double-ship the full payload through structured clone.
+        await readDeserializedMessages(
           file,
           format,
           topicName,
           limit,
           (decoded) =>
             ctx.postMessage({ id: req.id, type: 'progress', decoded } satisfies ProgressResponse),
+          (batch) =>
+            ctx.postMessage({ id: req.id, type: 'batch', batch } satisfies BatchResponse),
         );
-        respond(out);
+        respond(undefined);
         return;
       }
       case 'readMessageAtTime': {

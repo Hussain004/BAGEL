@@ -102,12 +102,13 @@ export async function readDeserializedMessages(
   topicName: string,
   limit?: number,
   onProgress?: (decoded: number) => void,
+  onBatch?: (batch: { timestamp: bigint; value: Record<string, unknown> | null }[]) => void,
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null }[]> {
   if (format === 'mcap')
-    return readDeserializedMessagesMcap(file, topicName, limit, onProgress);
+    return readDeserializedMessagesMcap(file, topicName, limit, onProgress, onBatch);
   if (format === 'bag')
-    return readDeserializedMessagesBag(file, topicName, limit, onProgress);
-  return readDeserializedMessagesDb3(file, topicName, limit, onProgress);
+    return readDeserializedMessagesBag(file, topicName, limit, onProgress, onBatch);
+  return readDeserializedMessagesDb3(file, topicName, limit, onProgress, onBatch);
 }
 
 /**
