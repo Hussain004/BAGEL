@@ -4,15 +4,15 @@
 
 # BAGEL
 
-### BAG ExpLoration: ROS2 Bag File Web Visualizer
+### BAG ExpLoration: ROS Bag File Web Visualizer
 
-**Explore ROS2 bag files in your browser. No installation required.**
+**Explore ROS1 & ROS2 bag files in your browser. No installation required.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-8-646cff.svg)](https://vite.dev/)
-[![Version](https://img.shields.io/badge/version-0.5.0-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
+[![Version](https://img.shields.io/badge/version-0.6.0-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
 
 [**→ Live Demo**](https://bagel-ros2.vercel.app) · [Report Bug](https://github.com/Hussain004/BAGEL/issues) · [Request Feature](https://github.com/Hussain004/BAGEL/issues)
 
@@ -22,9 +22,9 @@
 
 ## What is BAGEL?
 
-**BAGEL** is a fully static web application that lets you explore ROS2 bag files (`.db3` and `.mcap`) entirely in your browser needing no server, no installation, no account. Just drag and drop!
+**BAGEL** is a fully static web application that lets you explore ROS bag files (`.mcap`, `.db3`, and `.bag`) entirely in your browser needing no server, no installation, no account. Just drag and drop!
 
-Robotics engineers and researchers frequently generate bag files during experiments, SLAM runs, and sensor calibration. Inspecting these files currently requires a full ROS2 installation, Foxglove Studio (increasingly commercial), or writing custom Python scripts for every inspection task.
+Robotics engineers and researchers frequently generate bag files during experiments, SLAM runs, and sensor calibration. Inspecting these files currently requires a full ROS1 or ROS2 installation, Foxglove Studio (increasingly commercial), or writing custom Python scripts for every inspection task.
 
 BAGEL eliminates this friction.
 
@@ -32,17 +32,29 @@ BAGEL eliminates this friction.
 
 | Problem | BAGEL Solution |
 |---|---|
-| Need ROS2 installed to inspect bag files | Works in any modern browser |
+| Need ROS1/ROS2 installed to inspect bag files | Works in any modern browser |
 | Foxglove Studio going commercial | 100% open source, MIT licensed |
 | `ros2 bag info` gives text-only output | Rich visual interface with search & filtering |
 | Can't share bag contents easily | Zero-install, you can send anyone the URL |
-| Students struggle with ROS2 tooling | No setup required, just drag and drop |
+| Students struggle with ROS tooling | No setup required, just drag and drop |
+| Legacy ROS1 bags require old toolchains | Drag the `.bag` straight in — no conversion needed |
 
 ---
 
 ## Features
 
-### v0.5: Polish & Launch *(Current)*
+### v0.6: ROS1 `.bag` Support *(Current)*
+
+Everything in v0.5, plus:
+
+- **Direct `.bag` parsing**: ROS1 bag files (`rosbag v2.0`) load through the same drag-and-drop flow as MCAP and DB3 — no more `mcap convert` or `rosbags-convert` round-trip, no more Python sidecar. Backed by `@foxglove/rosbag` with a `BlobReader` that range-reads the source `File`, so multi-GB ROS1 bags don't have to load into memory either.
+- **ROS1 message deserialization** via `@foxglove/rosmsg-serialization`: each connection record's embedded `.msg` text (primary type + every dependency block separated by `=====`) feeds a cached `MessageReader`. Schemas come from the bag itself, so the bundled type registry isn't a gating factor on ROS1 the way it is on `.db3` — any custom message that was running in the producing graph deserializes too.
+- **Cross-version field normalization**: ROS1 `time` and `duration` primitives decode as `{ sec, nsec }`; the rest of BAGEL assumes ROS2's `{ sec, nanosec }`. A single recursive walk per decoded message adds a `nanosec` alias on every embedded time field so the TF graph, image scrubber, and trajectory panel work identically across formats with zero per-panel changes.
+- **Type-name normalization**: ROS1 emits `sensor_msgs/Image`, ROS2 emits `sensor_msgs/msg/Image`. The bag parser normalizes to the ROS2 form at the topic-info layer so the existing dispatch logic (most of which already used `.endsWith('/Foo')` and tolerated both, but a few exact-match spots didn't) stays format-agnostic going forward.
+- **Format-aware drop-zone copy**: the landing screen now advertises `.mcap`, `.db3`, and `.bag` as first-class formats with distinct colour chips, and the `accept=` attribute on the underlying `<input>` opens the same set in the OS file picker.
+- **Compressed-chunk error handling**: `rosbag record` defaults to uncompressed chunks (the common case), so most ROS1 bags work out of the box. `bz2`- or `lz4`-compressed bags surface a clear "re-record without compression or run `mcap convert`" message instead of an opaque library error — pure-JS bz2/lz4 decompression is the obvious follow-up if real bags need it.
+
+### v0.5: Polish & Launch
 
 Everything in v0.4, plus:
 
@@ -103,13 +115,14 @@ Everything in v0.2, plus:
 
 ### Roadmap
 
-BAGEL v0.5 closes the original five-version plan. Possible future directions:
+v0.6 extends the original five-version plan with ROS1 support. Possible future directions:
 
 | Idea | Notes |
 |---|---|
+| Pure-JS bz2 / lz4 for compressed ROS1 chunks | `rosbag record --bz2` and `--lz4` are rare in modern workflows but real. A small worker-side decoder would close that gap without a dependency on the host environment. |
 | Light theme | Dark is intentional (data viz reads better on dark backgrounds), but a toggle would help in bright field conditions. |
 | Plugin panels | Lets users build custom views (e.g. depth-image colorisation, GPS overlay) against a stable panel API. |
-| Multi-bag overlay | Drag two bags in to compare runs side-by-side on the same timeline. |
+| Multi-bag overlay | Drag two bags in to compare runs side-by-side on the same timeline — including mixing a ROS1 `.bag` with a ROS2 `.mcap`. |
 | Cloud-hosted shareable URLs | The local hash is great for personal reuse like a tiny backend would unlock real link-sharing. |
 
 ---
@@ -119,7 +132,7 @@ BAGEL v0.5 closes the original five-version plan. Possible future directions:
 ### Use the Live Demo
 
 1. Open [**bagel-ros2.vercel.app**](https://bagel-ros2.vercel.app)
-2. Drag your `.db3` or `.mcap` file onto the page or click **Try a sample bag** for a quick tour
+2. Drag your `.mcap`, `.db3`, or `.bag` file onto the page or click **Try a sample bag** for a quick tour
 3. Explore!
 
 ### Run Locally
@@ -173,8 +186,10 @@ The shortcuts modal (`?`) lists everything at runtime (adding a binding in `src/
 | **MCAP Parsing** | @mcap/core + @mcap/browser | Official MCAP reader (range-read from File) |
 | **Zstd decode** | fzstd | Pure-JS zstd for compressed MCAP chunks |
 | **SQLite** | sql.js (WASM) | Parse .db3 files in-browser |
+| **ROS1 Parsing** | @foxglove/rosbag | Indexed reader for legacy .bag files (range-read from File) |
+| **ROS1 Deser.** | @foxglove/rosmsg-serialization | Pre-CDR ROS1 wire-format deserialization |
 | **CDR Deser.** | @foxglove/rosmsg2-serialization | ROS2 message deserialization |
-| **Type Registry** | @foxglove/rosmsg-msgs-common | Pre-built ROS2 message defs |
+| **Type Registry** | @foxglove/rosmsg-msgs-common | Pre-built ROS2 message defs (fallback for .db3 only) |
 | **3D** | three.js (WebGL) | Point clouds, scans, pose markers, orbit controls |
 | **Deployment** | Vercel | Static site hosting |
 
@@ -211,22 +226,28 @@ User's Browser
       ├── readMessageAtTime(...)          → one message
       └── disposeParserCaches()
       │
-      ├── Format detect (.db3 or .mcap?)
+      ├── Format detect (.db3, .mcap, or .bag?)
       │     ├── .mcap → @mcap/core IndexedReader (range reads via BlobReadable)
       │     │              └── fzstd (decompress zstd chunks)
-      │     └── .db3  → sql.js (SQLite compiled to WASM)
-      │                     └── nearest-row-at-time SQL
+      │     ├── .db3  → sql.js (SQLite compiled to WASM)
+      │     │              └── nearest-row-at-time SQL
+      │     └── .bag  → @foxglove/rosbag (range reads via BlobReader)
+      │                    └── chunk index + per-topic message iterator
       │
-      └── CDR Deserialization (@foxglove/rosmsg2-serialization)
-            Schemas from MCAP file or @foxglove/rosmsg-msgs-common
+      └── Deserialization
+            ├── CDR (.mcap / .db3) via @foxglove/rosmsg2-serialization
+            │     Schemas from MCAP file or @foxglove/rosmsg-msgs-common
+            └── ROS1 (.bag) via @foxglove/rosmsg-serialization
+                  Schemas from connection records' messageDefinition text
+                  + recursive { sec, nsec } → { sec, nsec, nanosec } alias pass
 ```
 
 The main bundle no longer ships `@mcap/core`, `sql.js`, `fzstd`, or the
 `@foxglove/*` libraries which are bundled into the worker chunk that
-Vite emits as a sibling of `index.js`. The worker's MCAP reader and
-sql.js database are held in module-level caches that survive across
-panel reads, so opening a second panel on the same topic doesn't re-pay
-the parse cost.
+Vite emits as a sibling of `index.js`. The worker's MCAP reader,
+sql.js database, and ROS1 `Bag` instance are held in module-level
+caches that survive across panel reads, so opening a second panel on
+the same topic doesn't re-pay the parse cost.
 
 ### Supported Message Types
 
@@ -242,7 +263,8 @@ BAGEL's built-in type registry covers all standard ROS2 packages:
 | `rcl_interfaces` | Log, ParameterEvent |
 | `builtin_interfaces` | Time, Duration |
 
-> **MCAP files** embed their schemas so that *any* message type in an MCAP file is supported, including custom types.
+> **MCAP files** embed their schemas, so *any* message type in an MCAP file is supported — including custom types.
+> **ROS1 `.bag` files** likewise embed schemas in connection records, so the same applies: any custom message that was alive in the producing ROS graph deserializes without bundling its definition.
 
 ---
 
@@ -255,8 +277,10 @@ src/
 │   ├── core.ts           # Worker-only: format detect + unified parse + read APIs
 │   ├── mcap.ts           # MCAP reader (range reads, fzstd decompress, lazy seek)
 │   ├── db3.ts            # SQLite reader (cached Database, nearest-at-time query)
+│   ├── bag.ts            # ROS1 .bag reader (cached Bag, type-name normalisation)
 │   ├── cdr.ts            # CDR deserializer (cached MessageReader per type)
-│   └── typeRegistry.ts   # ROS2 message definitions
+│   ├── rosbag1.ts        # ROS1 deserializer (cached reader + time-field alias pass)
+│   └── typeRegistry.ts   # ROS2 message definitions (.db3 fallback only)
 │
 ├── workers/
 │   ├── parser.worker.ts  # Web Worker entry which owns the parser caches

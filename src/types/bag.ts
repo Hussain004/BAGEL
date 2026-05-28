@@ -2,7 +2,7 @@
  * Core type definitions for BAGEL bag file handling
  */
 
-export type BagFormat = 'mcap' | 'db3';
+export type BagFormat = 'mcap' | 'db3' | 'bag';
 
 export interface TopicInfo {
   name: string;

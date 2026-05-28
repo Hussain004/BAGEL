@@ -23,6 +23,14 @@ import {
   getTopicTypeDb3,
   disposeDb3Cache,
 } from './db3';
+import {
+  parseBagFile,
+  readRawMessagesBag,
+  readDeserializedMessagesBag,
+  readMessageAtTimeBag,
+  getTopicTypeBag,
+  disposeBagCache,
+} from './bag';
 import { checkMagicBytes } from '../utils/bytes';
 import {
   decodePointCloud2,
@@ -36,15 +44,23 @@ import { decodeCustomCloud, looksLikeCustomCloud } from '../utils/customCloud';
 
 const MCAP_MAGIC = [0x89, 0x4d, 0x43, 0x41, 0x50, 0x30, 0x0d, 0x0a];
 const SQLITE_MAGIC = [0x53, 0x51, 0x4c, 0x69, 0x74, 0x65];
+// `#ROSBAG V2.0\n` — the rosbag v2.0 header. v1.x files start with `#ROSBAG V1.x`
+// and aren't supported by `@foxglove/rosbag`; we still detect them by extension
+// and surface a clearer error during parse instead of a misleading "unknown format".
+const ROSBAG_V2_MAGIC = [
+  0x23, 0x52, 0x4f, 0x53, 0x42, 0x41, 0x47, 0x20, 0x56, 0x32, 0x2e, 0x30, 0x0a,
+];
 
 export async function detectFormat(file: File): Promise<BagFormat | 'unknown'> {
   const ext = file.name.split('.').pop()?.toLowerCase();
   if (ext === 'mcap') return 'mcap';
   if (ext === 'db3') return 'db3';
+  if (ext === 'bag') return 'bag';
 
   const header = new Uint8Array(await file.slice(0, 16).arrayBuffer());
   if (checkMagicBytes(header, MCAP_MAGIC)) return 'mcap';
   if (checkMagicBytes(header, SQLITE_MAGIC)) return 'db3';
+  if (checkMagicBytes(header, ROSBAG_V2_MAGIC)) return 'bag';
 
   return 'unknown';
 }
@@ -57,15 +73,17 @@ export async function parseBag(file: File): Promise<BagSummary> {
       return parseMcap(file);
     case 'db3':
       return parseDb3(file);
+    case 'bag':
+      return parseBagFile(file);
     default:
       throw new Error(
         `Unsupported file format: "${file.name}". ` +
-          'BAGEL supports .db3 (ROS2 SQLite) and .mcap (MCAP) bag files.',
+          'BAGEL supports .mcap (MCAP), .db3 (ROS2 SQLite), and .bag (ROS1) bag files.',
       );
   }
 }
 
-/** Read raw CDR-encoded messages for a topic, in chronological order. */
+/** Read raw (still-serialized) messages for a topic, in chronological order. */
 export async function readRawMessages(
   file: File,
   format: BagFormat,
@@ -73,6 +91,7 @@ export async function readRawMessages(
   limit?: number,
 ): Promise<RawMessage[]> {
   if (format === 'mcap') return readRawMessagesMcap(file, topicName, limit);
+  if (format === 'bag') return readRawMessagesBag(file, topicName, limit);
   return readRawMessagesDb3(file, topicName, limit);
 }
 
@@ -86,6 +105,8 @@ export async function readDeserializedMessages(
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null }[]> {
   if (format === 'mcap')
     return readDeserializedMessagesMcap(file, topicName, limit, onProgress);
+  if (format === 'bag')
+    return readDeserializedMessagesBag(file, topicName, limit, onProgress);
   return readDeserializedMessagesDb3(file, topicName, limit, onProgress);
 }
 
@@ -103,6 +124,7 @@ export async function readMessageAtTime(
   timeNs: bigint,
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null } | null> {
   if (format === 'mcap') return readMessageAtTimeMcap(file, topicName, timeNs);
+  if (format === 'bag') return readMessageAtTimeBag(file, topicName, timeNs);
   return readMessageAtTimeDb3(file, topicName, timeNs);
 }
 
@@ -112,12 +134,14 @@ export async function getTopicType(
   topicName: string,
 ): Promise<string | undefined> {
   if (format === 'mcap') return getTopicTypeMcap(file, topicName);
+  if (format === 'bag') return getTopicTypeBag(file, topicName);
   return getTopicTypeDb3(file, topicName);
 }
 
 export function disposeParserCaches(): void {
   disposeMcapCache();
   disposeDb3Cache();
+  disposeBagCache();
 }
 
 /**
@@ -141,7 +165,9 @@ export async function readPointCloudAtTime(
   const message =
     format === 'mcap'
       ? await readMessageAtTimeMcap(file, topicName, timeNs)
-      : await readMessageAtTimeDb3(file, topicName, timeNs);
+      : format === 'bag'
+        ? await readMessageAtTimeBag(file, topicName, timeNs)
+        : await readMessageAtTimeDb3(file, topicName, timeNs);
   if (!message || !message.value) return null;
   // Dispatch by message shape: sensor_msgs/PointCloud2 carries `fields` + a
   // packed `data` buffer, whereas list-of-structs clouds (Livox CustomMsg
@@ -179,7 +205,9 @@ export async function readLaserScanAtTime(
   const message =
     format === 'mcap'
       ? await readMessageAtTimeMcap(file, topicName, timeNs)
-      : await readMessageAtTimeDb3(file, topicName, timeNs);
+      : format === 'bag'
+        ? await readMessageAtTimeBag(file, topicName, timeNs)
+        : await readMessageAtTimeDb3(file, topicName, timeNs);
   if (!message || !message.value) return null;
   const decoded = decodeLaserScan(message.value as LaserScanMessage);
   if (!decoded) return null;
