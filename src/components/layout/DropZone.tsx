@@ -92,7 +92,7 @@ export function DropZone() {
             </h1>
           </div>
           <p className="text-text-secondary text-lg font-light">
-            BAG ExpLoration — Explore ROS bag files in your browser
+            BAG ExpLoration: Explore ROS bag files in your browser
           </p>
           <p className="text-text-tertiary text-sm mt-2">
             No installation required. No data leaves your machine.
