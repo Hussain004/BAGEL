@@ -82,8 +82,17 @@ function SplitGroup({ node }: { node: SplitNode }) {
 }
 
 function PanelLeafContent({ leaf }: { leaf: PanelLeaf }) {
+  // min-w-0 is critical here: when there's only one panel open, the
+  // root layout node IS this leaf (no SplitGroup wraps it, so there's
+  // no react-resizable-panels <Panel> enforcing a width). Without
+  // min-w-0 a canvas inside the panel (e.g. uPlot) sets the
+  // min-content width of every flex ancestor — combined with uPlot's
+  // ResizeObserver reading clientWidth and feeding it back into
+  // setSize, the chart grows on every measurement and the plot
+  // "keeps extending to the right" until a sibling is added (which
+  // wraps both panels in width-bounded <Panel> nodes).
   return (
-    <div className="relative flex-1 flex flex-col min-h-0">
+    <div className="relative flex-1 flex flex-col min-h-0 min-w-0">
       <Visualisation leaf={leaf} />
       <DropZoneOverlay panelId={leaf.id} />
     </div>
