@@ -37,7 +37,7 @@ BAGEL eliminates this friction.
 | `ros2 bag info` gives text-only output | Rich visual interface with search & filtering |
 | Can't share bag contents easily | Zero-install, you can send anyone the URL |
 | Students struggle with ROS tooling | No setup required, just drag and drop |
-| Legacy ROS1 bags require old toolchains | Drag the `.bag` straight in — no conversion needed |
+| Legacy ROS1 bags require old toolchains | Drag the `.bag` straight in (no conversion needed) |
 
 ---
 
@@ -53,20 +53,20 @@ Everything in v0.6, plus:
 - **Per-panel state survives docking**: panel ids are still `kind:topicName`, which docking doesn't touch so the 3D viewer's display settings, world frame, accumulator state, and orbit pivot all persist when you rearrange panels around the layout. v0.7.1 (above) extends this to the 2D panels.
 - **Touch/pen aware drag**: the header pointer-down explicitly releases pointer capture so the drop-zone overlays receive `pointerenter` / `pointerup` events on touch and stylus inputs, not just mouse. Field-iPad-on-a-bag-file is still the goal.
 - **Esc behaviour preserved**: closing the most-recent panel with `Esc` still works, even though "last item in a flat array" no longer maps onto a tree. The store keeps a small `openOrder: string[]` alongside the tree to track insertion order independently of where each panel ended up after docking.
-- **2D panels also now survive a dock**: when a drag changes the parent split's orientation, `react-resizable-panels` remounts the affected subtree — that's a `Group` identity change and there's no way around it from inside React. Up through v0.7 only the 3D panel kept its display settings across this remount (it already lifted state into a per-`panelId` zustand store). v0.7.1 does the same for the other panels: `TimeSeriesPlot` keeps its **series visibility toggles** and **x-axis zoom range**, `TrajectoryPlot` keeps its **pan + zoom view**, `TFTree` keeps the **selected frame**. Same store-keyed-by-id pattern, same close-and-reopen-restores-too bonus.
-- **Smart zoom-range capture**: uPlot fires `setScale` on every data update — the streaming plot path constantly auto-fits during decode so naively persisting on `setScale` would clobber any zoom the user just made. The new handler listens to native `pointerup` on the chart container instead, so only mouse-released gestures get saved. `dblclick` clears the saved range and snaps back to auto-fit.
-- **Auto-fit only when no view is saved**: `TrajectoryPlot`'s auto-fit effect used to unconditionally snap to data bounds whenever bounds changed (i.e. as the trajectory loaded). It now uses a functional setter to leave a saved view alone — so opening a bag with a hash-restored view doesn't get yanked back to fit on the next bounds update.
+- **2D panels also now survive a dock**: when a drag changes the parent split's orientation, `react-resizable-panels` remounts the affected subtree because that's a `Group` identity change and there's no way around it from inside React. Up through v0.7 only the 3D panel kept its display settings across this remount (it already lifted state into a per-`panelId` zustand store). v0.7.1 does the same for the other panels: `TimeSeriesPlot` keeps its **series visibility toggles** and **x-axis zoom range**, `TrajectoryPlot` keeps its **pan + zoom view**, `TFTree` keeps the **selected frame**. Same store-keyed-by-id pattern, same close-and-reopen-restores-too bonus.
+- **Smart zoom-range capture**: uPlot fires `setScale` on every data update which the streaming plot path constantly auto-fits during decode so naively persisting on `setScale` would clobber any zoom the user just made. The new handler listens to native `pointerup` on the chart container instead, so only mouse-released gestures get saved. `dblclick` clears the saved range and snaps back to auto-fit.
+- **Auto-fit only when no view is saved**: `TrajectoryPlot`'s auto-fit effect used to unconditionally snap to data bounds whenever bounds changed (i.e. as the trajectory loaded). It now uses a functional setter to leave a saved view alone and so opening a bag with a hash-restored view doesn't get yanked back to fit on the next bounds update.
 
 ### v0.6: ROS1 `.bag` Support
 
 Everything in v0.5, plus:
 
-- **Direct `.bag` parsing**: ROS1 bag files (`rosbag v2.0`) load through the same drag-and-drop flow as MCAP and DB3 — no more `mcap convert` or `rosbags-convert` round-trip, no more Python sidecar. Backed by `@foxglove/rosbag` with a `BlobReader` that range-reads the source `File`, so multi-GB ROS1 bags don't have to load into memory either.
-- **ROS1 message deserialization** via `@foxglove/rosmsg-serialization`: each connection record's embedded `.msg` text (primary type + every dependency block separated by `=====`) feeds a cached `MessageReader`. Schemas come from the bag itself, so the bundled type registry isn't a gating factor on ROS1 the way it is on `.db3` — any custom message that was running in the producing graph deserializes too.
+- **Direct `.bag` parsing**: ROS1 bag files (`rosbag v2.0`) load through the same drag-and-drop flow as MCAP and DB3 so no more `mcap convert` or `rosbags-convert` round-trip, no more Python sidecar. Backed by `@foxglove/rosbag` with a `BlobReader` that range-reads the source `File`, so multi-GB ROS1 bags don't have to load into memory either.
+- **ROS1 message deserialization** via `@foxglove/rosmsg-serialization`: each connection record's embedded `.msg` text (primary type + every dependency block separated by `=====`) feeds a cached `MessageReader`. Schemas come from the bag itself, so the bundled type registry isn't a gating factor on ROS1 the way it is on `.db3` where any custom message that was running in the producing graph deserializes too.
 - **Cross-version field normalization**: ROS1 `time` and `duration` primitives decode as `{ sec, nsec }`; the rest of BAGEL assumes ROS2's `{ sec, nanosec }`. A single recursive walk per decoded message adds a `nanosec` alias on every embedded time field so the TF graph, image scrubber, and trajectory panel work identically across formats with zero per-panel changes.
 - **Type-name normalization**: ROS1 emits `sensor_msgs/Image`, ROS2 emits `sensor_msgs/msg/Image`. The bag parser normalizes to the ROS2 form at the topic-info layer so the existing dispatch logic (most of which already used `.endsWith('/Foo')` and tolerated both, but a few exact-match spots didn't) stays format-agnostic going forward.
 - **Format-aware drop-zone copy**: the landing screen now advertises `.mcap`, `.db3`, and `.bag` as first-class formats with distinct colour chips, and the `accept=` attribute on the underlying `<input>` opens the same set in the OS file picker.
-- **Compressed-chunk error handling**: `rosbag record` defaults to uncompressed chunks (the common case), so most ROS1 bags work out of the box. `bz2`- or `lz4`-compressed bags surface a clear "re-record without compression or run `mcap convert`" message instead of an opaque library error — pure-JS bz2/lz4 decompression is the obvious follow-up if real bags need it.
+- **Compressed-chunk error handling**: `rosbag record` defaults to uncompressed chunks (the common case), so most ROS1 bags work out of the box. `bz2`- or `lz4`-compressed bags surface a clear "re-record without compression or run `mcap convert`" message instead of an opaque library error (pure-JS bz2/lz4 decompression is the obvious follow-up if real bags need it).
 
 ### v0.5: Polish & Launch
 
@@ -136,7 +136,7 @@ v0.6 extends the original five-version plan with ROS1 support. Possible future d
 | Pure-JS bz2 / lz4 for compressed ROS1 chunks | `rosbag record --bz2` and `--lz4` are rare in modern workflows but real. A small worker-side decoder would close that gap without a dependency on the host environment. |
 | Light theme | Dark is intentional (data viz reads better on dark backgrounds), but a toggle would help in bright field conditions. |
 | Plugin panels | Lets users build custom views (e.g. depth-image colorisation, GPS overlay) against a stable panel API. |
-| Multi-bag overlay | Drag two bags in to compare runs side-by-side on the same timeline — including mixing a ROS1 `.bag` with a ROS2 `.mcap`. |
+| Multi-bag overlay | Drag two bags in to compare runs side-by-side on the same timeline, including mixing a ROS1 `.bag` with a ROS2 `.mcap`. |
 | Cloud-hosted shareable URLs | The local hash is great for personal reuse like a tiny backend would unlock real link-sharing. |
 
 ---
@@ -277,7 +277,7 @@ BAGEL's built-in type registry covers all standard ROS2 packages:
 | `rcl_interfaces` | Log, ParameterEvent |
 | `builtin_interfaces` | Time, Duration |
 
-> **MCAP files** embed their schemas, so *any* message type in an MCAP file is supported — including custom types.
+> **MCAP files** embed their schemas, so *any* message type in an MCAP file is supported (including custom types).
 > **ROS1 `.bag` files** likewise embed schemas in connection records, so the same applies: any custom message that was alive in the producing ROS graph deserializes without bundling its definition.
 
 ---
