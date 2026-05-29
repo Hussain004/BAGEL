@@ -13,8 +13,11 @@ import { nsToSeconds } from '../../../utils/time';
 import {
   isCloudType,
   isLaserScanType,
+  isMarkerArrayType,
+  isMarkerType,
 } from '../../../utils/messages';
 import { useMessageAtTime } from '../../../hooks/useMessageAtTime';
+import { useTopicMessages, type DecodedMessage } from '../../../hooks/useTopicMessages';
 import { useTFGraph, type TFGraph } from '../TFTree/useTFGraph';
 import type { ColorMode, HeightAxis } from '../../../utils/pointcloud';
 import { useScene } from './useScene';
@@ -34,6 +37,8 @@ import {
 import { composeTFChain, pickWorldFrame } from './tfTransform';
 import { useDecodedCloud } from './useDecodedPointCloud';
 import { CloudAccumulator, type AccumulationMode } from './accumulator';
+import { extractMarkers } from './markerObjects';
+import { MarkerSet } from './markerSet';
 
 interface ThreeDSceneProps {
   panelId: string;
@@ -41,7 +46,16 @@ interface ThreeDSceneProps {
   type: string;
 }
 
-type SceneKind = 'pointcloud' | 'laserscan' | 'pose';
+type SceneKind = 'pointcloud' | 'laserscan' | 'pose' | 'markerarray';
+
+/**
+ * Hard cap on marker messages we decode for a panel. Real-world bags rarely
+ * exceed a few thousand MarkerArray messages per topic; the cap exists so a
+ * pathological bag (debug topic publishing at 100 Hz for an hour) doesn't
+ * OOM the worker. Hitting it just means later-than-cutoff markers won't
+ * appear when scrubbing past the limit.
+ */
+const MARKER_MESSAGE_LIMIT = 50_000;
 
 /**
  * Which source-frame axis points up in the rendered scene. ROS standard is
@@ -106,12 +120,115 @@ function makeUpFix(axis: UpAxis): THREE.Matrix4 {
 }
 
 function detectKind(type: string): SceneKind {
+  // MarkerArray (and the rare single Marker) get their own path — the
+  // primitives are heterogeneous and don't share the cloud/pose code at all.
+  if (isMarkerArrayType(type) || isMarkerType(type)) return 'markerarray';
   // Both sensor_msgs/PointCloud2 and list-of-points clouds (Livox CustomMsg
   // etc.) take the 'pointcloud' branch — they share the same render
   // pipeline once the worker has produced Float32Array positions + colors.
   if (isCloudType(type)) return 'pointcloud';
   if (isLaserScanType(type)) return 'laserscan';
   return 'pose';
+}
+
+/**
+ * Binary search the largest index `i` such that `messages[i].timestamp` is at
+ * or before `targetNs`. Returns -1 when no such message exists (the playhead
+ * is before the first marker). Used to find the cutoff for marker replay.
+ */
+function findCutoffIndex(messages: DecodedMessage[], targetNs: bigint): number {
+  if (messages.length === 0) return -1;
+  let lo = 0;
+  let hi = messages.length - 1;
+  let result = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (messages[mid].timestamp <= targetNs) {
+      result = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return result;
+}
+
+/**
+ * Pull the first marker's `header.frame_id` out of a MarkerArray message —
+ * used only to auto-pick a default world frame. Returns undefined when the
+ * message has no markers, or none of them carry a frame_id.
+ */
+function pickMarkerFrame(
+  messages: DecodedMessage[] | null,
+): string | undefined {
+  if (!messages) return undefined;
+  for (const msg of messages) {
+    if (!msg.value) continue;
+    const markers = extractMarkers(msg.value, msg.timestamp);
+    for (const m of markers) {
+      if (m.frameId) return m.frameId;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Compute a rough axis-aligned bounding box from every marker pose +
+ * every per-point position across messages 0..cutoff. Returned in source
+ * frame coordinates (TF chain is applied separately by the panel), so the
+ * resulting box is "wherever the markers say they live" — good enough for
+ * the once-per-panel auto-fit.
+ *
+ * Returns null when there are no positions to bound.
+ */
+function computeMarkerBounds(
+  messages: DecodedMessage[],
+  cutoff: number,
+): {
+  min: { x: number; y: number; z: number };
+  max: { x: number; y: number; z: number };
+} | null {
+  let hasPoint = false;
+  let minX = Infinity;
+  let minY = Infinity;
+  let minZ = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  let maxZ = -Infinity;
+  const consume = (x: number, y: number, z: number): void => {
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return;
+    hasPoint = true;
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (z < minZ) minZ = z;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+    if (z > maxZ) maxZ = z;
+  };
+  for (let i = 0; i <= cutoff; i++) {
+    const msg = messages[i];
+    if (!msg?.value) continue;
+    const markers = extractMarkers(msg.value, msg.timestamp);
+    for (const m of markers) {
+      consume(m.pose.position.x, m.pose.position.y, m.pose.position.z);
+      for (const p of m.points) consume(p.x, p.y, p.z);
+    }
+  }
+  if (!hasPoint) return null;
+  // Ensure a non-degenerate box so the auto-fit's radius doesn't snap to 0.
+  if (minX === maxX) {
+    minX -= 0.5;
+    maxX += 0.5;
+  }
+  if (minY === maxY) {
+    minY -= 0.5;
+    maxY += 0.5;
+  }
+  if (minZ === maxZ) {
+    minZ -= 0.5;
+    maxZ += 0.5;
+  }
+  return { min: { x: minX, y: minY, z: minZ }, max: { x: maxX, y: maxY, z: maxZ } };
 }
 
 /**
@@ -159,6 +276,7 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
     voxelSize,
     upAxis,
     pivot,
+    hiddenMarkerNamespaces,
   } = settings;
 
   const setColorMode = (v: ColorMode) => updateSettings(panelId, { colorMode: v });
@@ -176,6 +294,12 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
   const setUpAxis = (v: UpAxis) => updateSettings(panelId, { upAxis: v });
   const setPivot = (v: { x: number; y: number; z: number } | null) =>
     updateSettings(panelId, { pivot: v });
+  const toggleNamespaceHidden = (ns: string, hidden: boolean) => {
+    const cur = new Set(hiddenMarkerNamespaces);
+    if (hidden) cur.add(ns);
+    else cur.delete(ns);
+    updateSettings(panelId, { hiddenMarkerNamespaces: Array.from(cur).sort() });
+  };
 
   // Footer stats for the accumulator. Updated on every successful append;
   // derived from the THREE.js accumulator state which is recreated on every
@@ -193,6 +317,7 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
   // Cloud topics use the worker-decoded fast path; pose topics stay on the
   // generic message-at-time hook because their messages are tiny.
   const isCloud = sceneKind === 'pointcloud' || sceneKind === 'laserscan';
+  const isMarker = sceneKind === 'markerarray';
   const cloudState = useDecodedCloud({
     kind: sceneKind === 'pointcloud' ? 'pointcloud' : 'laserscan',
     topicName,
@@ -208,11 +333,24 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
     heightAxis: sceneKind === 'pointcloud' ? heightAxis : undefined,
   });
   const poseState = useMessageAtTime(topicName, playheadNs);
+  // Marker streams are unlike clouds and poses: every marker persists in the
+  // scene until DELETE or lifetime expiry, so we need the full history up to
+  // the playhead — not just the message at the playhead. The hook is gated
+  // on `isMarker` so it does nothing on cloud / pose panels.
+  const markerStream = useTopicMessages(topicName, MARKER_MESSAGE_LIMIT, isMarker);
 
   const cloud = isCloud ? cloudState.cloud : null;
-  const poseMessage = !isCloud ? poseState.message : null;
-  const loading = isCloud ? cloudState.loading : poseState.loading;
-  const error = isCloud ? cloudState.error : poseState.error;
+  const poseMessage = !isCloud && !isMarker ? poseState.message : null;
+  const loading = isMarker
+    ? markerStream.loading
+    : isCloud
+      ? cloudState.loading
+      : poseState.loading;
+  const error = isMarker
+    ? markerStream.error
+    : isCloud
+      ? cloudState.error
+      : poseState.error;
 
   const { graph, missing: noTf } = useTFGraph();
   const { containerRef, sceneRef } = useScene();
@@ -221,12 +359,14 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
   useEffect(() => {
     if (worldFrame || !graph) return;
     const srcFrame =
-      cloud?.frameId ?? (poseMessage ? pickFrameId(poseMessage.value) : undefined);
+      cloud?.frameId ??
+      (poseMessage ? pickFrameId(poseMessage.value) : undefined) ??
+      (isMarker ? pickMarkerFrame(markerStream.messages) : undefined);
     if (!srcFrame) return;
     const pick = pickWorldFrame(graph, srcFrame);
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (pick) setWorldFrame(pick);
-  }, [graph, cloud, poseMessage, worldFrame]);
+  }, [graph, cloud, poseMessage, worldFrame, isMarker, markerStream.messages]);
 
   // Build scene objects exactly once per panel mount. Stats are tracked in a
   // ref so per-frame updates don't trigger React renders.
@@ -239,6 +379,8 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
     accumulator: CloudAccumulator | null;
     /** Visual marker at the orbit pivot. Hidden when pivot is the auto-fit centre. */
     pivotMarker: THREE.Mesh | null;
+    /** Marker scene manager. MarkerArray panels only. */
+    markerSet: MarkerSet | null;
   } | null>(null);
 
   // Dedupe accumulator appends — the cloud-effect can fire on the same
@@ -256,6 +398,7 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
       worldAxes: null as THREE.AxesHelper | null,
       accumulator: null as CloudAccumulator | null,
       pivotMarker: null as THREE.Mesh | null,
+      markerSet: null as MarkerSet | null,
     };
 
     if (sceneKind === 'pointcloud') {
@@ -270,6 +413,12 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
     } else if (sceneKind === 'laserscan') {
       owned.cloud = createLaserScan(pointSize + 1);
       refs.userGroup.add(owned.cloud.object);
+    } else if (sceneKind === 'markerarray') {
+      // Markers handle their own per-frame TF inside the MarkerSet's frame
+      // subgroups, so the panel's userGroup only ends up carrying the
+      // up-axis fix (sourceFrame = null in applyTransform → matrix = upFix).
+      owned.markerSet = new MarkerSet();
+      refs.userGroup.add(owned.markerSet.root);
     } else {
       owned.poseAxes = createPoseAxes(1.0);
       refs.userGroup.add(owned.poseAxes.object);
@@ -331,6 +480,10 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
         const m = owned.pivotMarker.material as THREE.Material | THREE.Material[];
         if (Array.isArray(m)) m.forEach((mm) => mm.dispose());
         else m.dispose();
+      }
+      if (owned.markerSet) {
+        refs.userGroup.remove(owned.markerSet.root);
+        owned.markerSet.dispose();
       }
       objectsRef.current = null;
     };
@@ -630,6 +783,146 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
     refs.renderOnce();
   }, [poseMessage, graph, worldFrame, type, sceneRef, upFixMatrix]);
 
+  // ── Marker ingest + refresh ────────────────────────────────────────────
+  //
+  // Markers persist in the scene until DELETE or lifetime expiry, so we have
+  // to keep state synchronised with the messages stream. The watermark refs
+  // track how far we've ingested:
+  //
+  //   - `lastIngestedIndexRef`: index into `markerStream.messages` we last
+  //      processed. Lets a forward scrub append new ADDs without re-running
+  //      the whole history.
+  //   - `lastPlayheadRef`: previous playhead time, to detect backward scrub.
+  //      On scrub-back we wipe the MarkerSet and replay from message 0 up
+  //      to the new cutoff — replaying selected ranges is messier than it
+  //      sounds because a DELETE at index 50 only "undoes" an ADD at index
+  //      40 if we still know about it, which we wouldn't after partial
+  //      replay.
+  //
+  // The discovered namespaces list is mirrored to React state so the
+  // controls card can render the filter checklist. Live marker count goes
+  // into a separate state so the footer can show it.
+  const lastIngestedIndexRef = useRef(-1);
+  const lastPlayheadRef = useRef<bigint>(0n);
+  const [markerNamespaces, setMarkerNamespaces] = useState<string[]>([]);
+  const [markerCount, setMarkerCount] = useState(0);
+
+  // Clear the watermark when the topic / panel mounts — re-ingest happens
+  // automatically on the first messages effect tick. Setting React state in
+  // here is intentional: the watermark refs are the source of truth for the
+  // ingest loop, and the React state mirrors the MarkerSet's emitted view
+  // so the controls card / footer render in sync. Without this reset, a
+  // close+reopen of the same panel id would show stale namespace chips
+  // until the first new message arrived.
+  useEffect(() => {
+    if (!isMarker) return;
+    lastIngestedIndexRef.current = -1;
+    lastPlayheadRef.current = 0n;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMarkerNamespaces([]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMarkerCount(0);
+  }, [isMarker, topicName]);
+
+  useEffect(() => {
+    if (!isMarker) return;
+    const refs = sceneRef.current;
+    const owned = objectsRef.current;
+    const markerSet = owned?.markerSet;
+    const messages = markerStream.messages;
+    if (!refs || !markerSet || !messages) return;
+
+    const targetIndex = findCutoffIndex(messages, playheadNs);
+    const scrubBack = playheadNs < lastPlayheadRef.current;
+
+    if (scrubBack) {
+      markerSet.clear();
+      lastIngestedIndexRef.current = -1;
+    }
+
+    for (let i = lastIngestedIndexRef.current + 1; i <= targetIndex; i++) {
+      const msg = messages[i];
+      if (!msg.value) continue;
+      const markers = extractMarkers(msg.value, msg.timestamp);
+      for (const m of markers) {
+        markerSet.applyMarker(m);
+      }
+    }
+    lastIngestedIndexRef.current = targetIndex;
+    lastPlayheadRef.current = playheadNs;
+
+    // userGroup.matrix carries just the up-fix for marker panels; the per-
+    // frame TF chains live inside the MarkerSet's frame subgroups.
+    applyTransform(
+      refs.userGroup,
+      graph,
+      null,
+      worldFrame,
+      playheadNs,
+      cachedTransformRef,
+      upFixMatrix,
+    );
+
+    markerSet.refresh(playheadNs, graph, worldFrame);
+
+    // Surface the namespace list + live count to React only when they
+    // actually changed, so paused playback doesn't churn the controls card.
+    const nextNamespaces = markerSet.namespaces();
+    setMarkerNamespaces((prev) => {
+      if (prev.length === nextNamespaces.length && prev.every((n, i) => n === nextNamespaces[i])) {
+        return prev;
+      }
+      return nextNamespaces;
+    });
+    const liveCount = markerSet.size();
+    setMarkerCount((prev) => (prev === liveCount ? prev : liveCount));
+
+    // Bounds for autofit: derive a generous box from the first message's
+    // markers' positions, so the camera at least frames the scene.
+    if (!stats.bounds && targetIndex >= 0) {
+      const bounds = computeMarkerBounds(messages, targetIndex);
+      if (bounds) {
+        setStats({
+          points: liveCount,
+          bounds,
+          sourceFrame: pickMarkerFrame(messages) ?? null,
+          timestamp: messages[targetIndex].timestamp,
+        });
+      }
+    } else if (stats.timestamp !== (targetIndex >= 0 ? messages[targetIndex].timestamp : null)) {
+      // Footer "points" + timestamp updates without re-computing bounds.
+      setStats((s) => ({
+        ...s,
+        points: liveCount,
+        timestamp: targetIndex >= 0 ? messages[targetIndex].timestamp : null,
+      }));
+    }
+    refs.renderOnce();
+  }, [
+    isMarker,
+    markerStream.messages,
+    playheadNs,
+    graph,
+    worldFrame,
+    upFixMatrix,
+    sceneRef,
+    stats.bounds,
+    stats.timestamp,
+  ]);
+
+  // Sync hidden-namespace setting → MarkerSet visibility.
+  useEffect(() => {
+    if (!isMarker) return;
+    const owned = objectsRef.current;
+    const refs = sceneRef.current;
+    if (!refs || !owned?.markerSet) return;
+    const hidden = new Set(hiddenMarkerNamespaces);
+    for (const ns of markerNamespaces) {
+      owned.markerSet.setNamespaceVisible(ns, !hidden.has(ns));
+    }
+    refs.renderOnce();
+  }, [isMarker, hiddenMarkerNamespaces, markerNamespaces, sceneRef]);
+
   // First-frame autofit. Subsequent frames leave the camera alone so playback
   // doesn't yank the view around.
   const hasAutoFitRef = useRef(false);
@@ -697,7 +990,11 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
     setPivot(null);
   };
 
-  const showInitialSpinner = loading && !cloud && !poseMessage;
+  const showInitialSpinner =
+    loading &&
+    !cloud &&
+    !poseMessage &&
+    !(isMarker && markerStream.messages && markerStream.messages.length > 0);
 
   return (
     <PanelShell
@@ -762,6 +1059,9 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
               accumStats={accumStats}
               upAxis={upAxis}
               setUpAxis={setUpAxis}
+              markerNamespaces={markerNamespaces}
+              hiddenMarkerNamespaces={hiddenMarkerNamespaces}
+              onToggleNamespace={toggleNamespaceHidden}
             />
           </div>
 
@@ -771,7 +1071,9 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
                 ? 'PointCloud2'
                 : sceneKind === 'laserscan'
                   ? 'LaserScan'
-                  : 'Pose'}
+                  : sceneKind === 'markerarray'
+                    ? 'MarkerArray'
+                    : 'Pose'}
             </div>
             {stats.sourceFrame && (
               <div>
@@ -819,7 +1121,7 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
               <span className="text-text-secondary text-sm">Loading frame…</span>
             </div>
           )}
-          {error && !cloud && !poseMessage && (
+          {error && !cloud && !poseMessage && !(isMarker && markerCount > 0) && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-bg-primary/70 p-8 text-center">
               <div className="text-accent-rose text-sm font-medium">Failed to load frame</div>
               <div className="text-text-secondary text-xs max-w-md">{error}</div>
@@ -833,7 +1135,20 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
               ? poseMessage
                 ? '1 pose'
                 : 'no data'
-              : `${stats.points.toLocaleString()} pts`}
+              : sceneKind === 'markerarray'
+                ? `${markerCount.toLocaleString()} markers`
+                : `${stats.points.toLocaleString()} pts`}
+            {sceneKind === 'markerarray' && markerNamespaces.length > 0 && (
+              <span className="text-text-tertiary ml-3">
+                {markerNamespaces.length} ns
+                {hiddenMarkerNamespaces.length > 0 && (
+                  <span className="text-accent-amber/80">
+                    {' '}
+                    ({hiddenMarkerNamespaces.length} hidden)
+                  </span>
+                )}
+              </span>
+            )}
             {sceneKind === 'pointcloud' && stats.bounds && (
               <span className="text-text-tertiary ml-3">
                 z {stats.bounds.min.z.toFixed(2)}…{stats.bounds.max.z.toFixed(2)} m
@@ -892,6 +1207,11 @@ interface ControlsCardProps {
   accumStats: { points: number; frames: number };
   upAxis: UpAxis;
   setUpAxis: (a: UpAxis) => void;
+  /** Every namespace the marker stream has ever published — sorted. */
+  markerNamespaces: string[];
+  /** Namespaces the user has hidden from the marker filter. */
+  hiddenMarkerNamespaces: string[];
+  onToggleNamespace: (ns: string, hidden: boolean) => void;
 }
 
 function ControlsCard({
@@ -926,9 +1246,16 @@ function ControlsCard({
   accumStats,
   upAxis,
   setUpAxis,
+  markerNamespaces,
+  hiddenMarkerNamespaces,
+  onToggleNamespace,
 }: ControlsCardProps) {
   const [open, setOpen] = useState(false);
   const allFrames = useMemo(() => (graph ? Array.from(graph.frames).sort() : []), [graph]);
+  const hiddenSet = useMemo(
+    () => new Set(hiddenMarkerNamespaces),
+    [hiddenMarkerNamespaces],
+  );
 
   return (
     <div className="bg-bg-primary/85 backdrop-blur border border-border rounded-md text-xs mono shadow-panel">
@@ -1122,6 +1449,50 @@ function ControlsCard({
                   no /tf — frames will overlap in the sensor frame
                 </div>
               )}
+            </div>
+          )}
+          {sceneKind === 'markerarray' && markerNamespaces.length > 0 && (
+            <div className="pt-1 border-t border-border/60">
+              <div className="flex items-center justify-between text-text-tertiary text-[10px] mb-1">
+                <span>namespaces ({markerNamespaces.length})</span>
+                {hiddenSet.size > 0 && (
+                  <button
+                    onClick={() => {
+                      // "Show all" — flip every hidden ns visible.
+                      for (const ns of hiddenSet) onToggleNamespace(ns, false);
+                    }}
+                    className="text-text-tertiary hover:text-accent-blue underline decoration-dotted"
+                    title="Show every namespace again"
+                  >
+                    show all
+                  </button>
+                )}
+              </div>
+              <div className="max-h-32 overflow-y-auto space-y-0.5 pr-1">
+                {markerNamespaces.map((ns) => {
+                  const hidden = hiddenSet.has(ns);
+                  // Empty-string namespace shown as `<default>` so the row
+                  // doesn't render as an unclickable blank.
+                  const label = ns || '<default>';
+                  return (
+                    <label
+                      key={ns}
+                      className={`flex items-center gap-1.5 cursor-pointer ${
+                        hidden ? 'text-text-tertiary' : 'text-text-secondary'
+                      }`}
+                      title={ns || 'unnamed namespace'}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!hidden}
+                        onChange={(e) => onToggleNamespace(ns, !e.target.checked)}
+                        className="accent-accent-blue flex-shrink-0"
+                      />
+                      <span className="truncate">{label}</span>
+                    </label>
+                  );
+                })}
+              </div>
             </div>
           )}
           <div className="flex items-center justify-between pt-1 border-t border-border/60">

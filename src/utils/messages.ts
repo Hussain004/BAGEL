@@ -134,11 +134,13 @@ export function isLaserScanType(type: string): boolean {
  *
  * Anything that produces a position in 3D space counts: full point clouds
  * (PointCloud2 and Livox-style list-of-points), LaserScans (we lift the
- * polar ring into XY at z=0), and pose / odometry topics (rendered as
- * coordinate frame axes).
+ * polar ring into XY at z=0), pose / odometry topics (rendered as
+ * coordinate frame axes), and MarkerArray / Marker (the RViz primitive
+ * set: arrows, cubes, lines, text…).
  */
 export function is3DCapableType(type: string): boolean {
   if (isCloudType(type) || isLaserScanType(type)) return true;
+  if (isMarkerArrayType(type) || isMarkerType(type)) return true;
   // Pose-bearing types — we'll render them as a coordinate frame triad.
   return (
     type.endsWith('/Odometry') ||
@@ -146,4 +148,25 @@ export function is3DCapableType(type: string): boolean {
     type.endsWith('/PoseWithCovarianceStamped') ||
     type.endsWith('/TransformStamped')
   );
+}
+
+/**
+ * True if a ROS type is a `visualization_msgs/MarkerArray`. The package
+ * prefix is intentional — `MarkerArray` is rare enough as a name that an
+ * `endsWith` alone would catch typed registries from other packages too
+ * loosely, and the ROS Marker spec is what we know how to render.
+ */
+export function isMarkerArrayType(type: string): boolean {
+  if (!type) return false;
+  return type.includes('visualization_msgs') && type.endsWith('/MarkerArray');
+}
+
+/**
+ * True if a ROS type is a single `visualization_msgs/Marker`. Single
+ * markers are rare in practice (almost everything ships as MarkerArray)
+ * but they share the same render pipeline, so we accept either.
+ */
+export function isMarkerType(type: string): boolean {
+  if (!type) return false;
+  return type.includes('visualization_msgs') && type.endsWith('/Marker');
 }

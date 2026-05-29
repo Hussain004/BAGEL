@@ -3,6 +3,8 @@ import {
   isCloudType,
   isImageType,
   isLaserScanType,
+  isMarkerArrayType,
+  isMarkerType,
   isTfTopic,
   isTrajectoryCapableType,
 } from '../../../utils/messages';
@@ -15,6 +17,7 @@ const BADGE_CLASSES: Record<string, string> = {
   nav_msgs: 'badge-emerald',
   std_msgs: 'badge-blue',
   tf2_msgs: 'badge-amber',
+  visualization_msgs: 'badge-pink',
   rcl_interfaces: 'badge-slate',
   rosgraph_msgs: 'badge-slate',
 };
@@ -30,6 +33,8 @@ function suggestPanelKind(topic: TopicInfo): PanelKind {
   if (isImageType(topic.type)) return 'image';
   // Point cloud-ish topics default to the 3D view — that's the whole point.
   if (isCloudType(topic.type) || isLaserScanType(topic.type)) return '3d';
+  // MarkerArrays / Markers live in 3D space — there is no useful 2D view.
+  if (isMarkerArrayType(topic.type) || isMarkerType(topic.type)) return '3d';
   // For pose-only types (Pose, Point, TransformStamped) plot has nothing
   // useful to show; jump straight to the trajectory view.
   if (
@@ -50,6 +55,9 @@ function panelOptionsFor(topic: TopicInfo): PanelKind[] {
   if (isImageType(topic.type)) return ['image', 'raw'];
   if (isCloudType(topic.type)) return ['3d', 'raw'];
   if (isLaserScanType(topic.type)) return ['3d', 'plot', 'raw'];
+  if (isMarkerArrayType(topic.type) || isMarkerType(topic.type)) {
+    return ['3d', 'raw'];
+  }
   if (
     isTrajectoryCapableType(topic.type) &&
     (topic.type.endsWith('/Odometry') ||

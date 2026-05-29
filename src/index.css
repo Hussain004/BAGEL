@@ -337,6 +337,12 @@ select option {
   border: 1px solid rgba(245, 158, 11, 0.2);
 }
 
+.badge-pink {
+  background: rgba(236, 72, 153, 0.15);
+  color: #f9a8d4;
+  border: 1px solid rgba(236, 72, 153, 0.2);
+}
+
 .badge-slate {
   background: rgba(100, 116, 139, 0.15);
   color: #94a3b8;
