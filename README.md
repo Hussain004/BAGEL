@@ -12,7 +12,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-8-646cff.svg)](https://vite.dev/)
-[![Version](https://img.shields.io/badge/version-0.7.1-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
+[![Version](https://img.shields.io/badge/version-0.8.0-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
 
 [**→ Live Demo**](https://bagel-ros2.vercel.app) · [Report Bug](https://github.com/Hussain004/BAGEL/issues) · [Request Feature](https://github.com/Hussain004/BAGEL/issues)
 
@@ -57,6 +57,18 @@ BAGEL eliminates this friction.
 
 
 ## Features
+
+### v0.8: MarkerArray + ROS1 Compression
+
+Everything in v0.7, plus:
+
+- **`visualization_msgs/MarkerArray` rendering**: drop a MarkerArray topic into the existing 3D panel and ten of the twelve standard marker primitives render correctly — `CUBE`, `SPHERE`, `CYLINDER`, `ARROW` (both the pose form and the `points`-as-start-end form), `LINE_STRIP`, `LINE_LIST`, `CUBE_LIST`, `SPHERE_LIST`, `POINTS`, and `TEXT_VIEW_FACING` (a billboarded sprite that always faces the camera, sized by `marker.scale.z` in metres). `MESH_RESOURCE` and `TRIANGLE_LIST` aren't supported in v0.8.0 — external `package://` mesh URIs can't be resolved from a static viewer, and triangle lists are rare enough in published bags to defer — so they fall back to a pink wireframe placeholder with a console warning rather than crashing the scene.
+- **Per-frame TF chains**: each marker's `header.frame_id` composes through the existing `composeTFChain` infra so a debug arrow placed in `base_link` rides with the robot when the world frame is `map`, even when the surrounding MarkerArray includes other markers in `odom`. The new `MarkerSet` manager groups markers by source frame into per-frame Three.js subgroups so one matrix-write per frame replaces the N writes you'd otherwise pay. `frame_locked` is honored transparently — every refresh re-composes the chain at the current playhead time.
+- **Action + lifetime semantics**: `ADD`/`MODIFY` insert or update by `(ns, id)`; `DELETE` removes that key; `DELETEALL` clears the entire set. Markers with non-zero `lifetime` auto-vanish once `stamp + lifetime < playhead`, and re-appear when you scrub back across them. Type changes mid-stream (a debug arrow that flips into a cube on a later message) are detected on update and trigger a recreation of the underlying Object3D, since you can't feed a Mesh update into a Sprite.
+- **Namespace filter**: the Display card grows a checklist of every namespace the topic has ever published, persisted per-panel in the same store the v0.4 / v0.7.1 display settings live in. Real planner bags publish 5-10 namespaces in one MarkerArray (`/planner/expanded`, `/local_costmap/raw`, …); hiding the noisy ones makes the panel usable on bags from `move_base` or `nav2` without having to author topic-level filters upstream.
+- **Incremental ingest with backward-scrub safety**: marker state is persistent — every `ADD` lives until `DELETE` or lifetime expiry — which means a 60 Hz playhead can't just re-decode "the message at the playhead" the way clouds and poses do. The ingest effect binary-searches the cutoff index, incrementally applies new actions on forward scrub, and clears + replays from the start on backward scrub (replaying a sub-range is messier than it sounds because a DELETE at index 50 only "undoes" an ADD at index 40 if we still know about it). A small watermark ref tracks how far we've ingested so paused playback doesn't re-walk every message on each render.
+- **ROS1 `bz2` / `lz4` chunk decompression**: `rosbag record --bz2` and `--lz4` bags now load through the same drag-and-drop flow as uncompressed ones, closing the last "BAGEL can't open this ROS1 bag" gap from v0.6. Pure-JS decoders (`seek-bzip` and `lz4js`) live in the parser worker so even the slower bz2 path (~5-10 MB/s on a modern laptop) doesn't block the UI. Uncompressed bags (the `rosbag record` default and what most teams ship) still never hit the decoders at all.
+- **Bundled sample bag exercises every new primitive**: `public/sample-bags/tour.mcap` gains a `/markers` topic at 1 Hz with 8 markers across two namespaces — `status` (a cube body, sphere head, billboarded "robot" text label, forward arrow, and cylinder mast, all riding with the robot in `base_link`) and `planning` (a green line strip drawing the figure-eight path, yellow cube-list waypoints stepping ahead of the playhead, and scattered violet feature points fixed in `odom`). One drag exercises every supported primitive type and gives the namespace filter something to filter.
 
 ### v0.7: Dockable Panels
 
@@ -144,14 +156,15 @@ Everything in v0.2, plus:
 
 ### Roadmap
 
-v0.6 extends the original five-version plan with ROS1 support. Possible future directions:
+v0.8 closes out the ROS1 compatibility story (bz2 + lz4) and adds the marker primitives navigation users rely on. Possible future directions:
 
 | Idea | Notes |
 |---|---|
-| Pure-JS bz2 / lz4 for compressed ROS1 chunks | `rosbag record --bz2` and `--lz4` are rare in modern workflows but real. A small worker-side decoder would close that gap without a dependency on the host environment. |
+| Multi-bag overlay | Drag two bags in to compare runs side-by-side on the same timeline, including mixing a ROS1 `.bag` with a ROS2 `.mcap`. The architectural lift is per-bag parser workers, per-bag colour tints, and a time-alignment strategy (wall-clock / bag-start / user-anchor). Pencilled in as the v0.9 headline. |
+| `nav_msgs/OccupancyGrid` rendering | Render a SLAM-produced map as a textured plane in the 3D scene, posed by `info.origin` and TF-resolved to the world frame. Makes "load a SLAM bag, see the map" a one-drag operation. |
+| GPS-on-OpenStreetMap underlay | The existing `TrajectoryPlot` already projects `NavSatFix` to local x/y; an opt-in OSM tile underlay would give a GPS trace real spatial context. Off by default since fetching tiles breaks BAGEL's pure-offline pitch. |
 | Light theme | Dark is intentional (data viz reads better on dark backgrounds), but a toggle would help in bright field conditions. |
 | Plugin panels | Lets users build custom views (e.g. depth-image colorisation, GPS overlay) against a stable panel API. |
-| Multi-bag overlay | Drag two bags in to compare runs side-by-side on the same timeline, including mixing a ROS1 `.bag` with a ROS2 `.mcap`. |
 | Cloud-hosted shareable URLs | The local hash is great for personal reuse like a tiny backend would unlock real link-sharing. |
 
 ---
@@ -217,9 +230,11 @@ The shortcuts modal (`?`) lists everything at runtime (adding a binding in `src/
 | **SQLite** | sql.js (WASM) | Parse .db3 files in-browser |
 | **ROS1 Parsing** | @foxglove/rosbag | Indexed reader for legacy .bag files (range-read from File) |
 | **ROS1 Deser.** | @foxglove/rosmsg-serialization | Pre-CDR ROS1 wire-format deserialization |
+| **ROS1 bz2** | seek-bzip | Pure-JS bzip2 for `rosbag record --bz2` chunks |
+| **ROS1 lz4** | lz4js | Pure-JS LZ4 frame format for `rosbag record --lz4` chunks |
 | **CDR Deser.** | @foxglove/rosmsg2-serialization | ROS2 message deserialization |
 | **Type Registry** | @foxglove/rosmsg-msgs-common | Pre-built ROS2 message defs (fallback for .db3 only) |
-| **3D** | three.js (WebGL) | Point clouds, scans, pose markers, orbit controls |
+| **3D** | three.js (WebGL) | Point clouds, scans, pose markers, MarkerArray primitives, orbit controls |
 | **Deployment** | Vercel | Static site hosting |
 
 ---
@@ -261,7 +276,8 @@ User's Browser
       │     ├── .db3  → sql.js (SQLite compiled to WASM)
       │     │              └── nearest-row-at-time SQL
       │     └── .bag  → @foxglove/rosbag (range reads via BlobReader)
-      │                    └── chunk index + per-topic message iterator
+      │                    ├── chunk index + per-topic message iterator
+      │                    └── seek-bzip / lz4js (decompress bz2 / lz4 chunks)
       │
       └── Deserialization
             ├── CDR (.mcap / .db3) via @foxglove/rosmsg2-serialization
@@ -289,6 +305,7 @@ BAGEL's built-in type registry covers all standard ROS2 packages:
 | `sensor_msgs` | Image, Imu, LaserScan, NavSatFix, PointCloud2 |
 | `nav_msgs` | Odometry, Path, OccupancyGrid |
 | `tf2_msgs` | TFMessage |
+| `visualization_msgs` | Marker, MarkerArray (CUBE / SPHERE / CYLINDER / ARROW / LINE_STRIP / LINE_LIST / CUBE_LIST / SPHERE_LIST / POINTS / TEXT_VIEW_FACING) |
 | `rcl_interfaces` | Log, ParameterEvent |
 | `builtin_interfaces` | Time, Duration |
 
@@ -346,7 +363,7 @@ src/
 │       ├── RawMessageInspector/    # JSON tree at playhead time
 │       ├── TrajectoryPlot/         # 2D x/y path on a canvas
 │       ├── TFTree/                 # /tf + /tf_static graph view
-│       └── ThreeDScene/            # Three.js 3D viewer (PointCloud2, LaserScan, Pose)
+│       └── ThreeDScene/            # Three.js 3D viewer (PointCloud2, LaserScan, Pose, MarkerArray)
 │
 ├── types/                # TypeScript interfaces
 │   ├── bag.ts            # BagSummary, TopicInfo, RawMessage
@@ -375,13 +392,15 @@ ThreeDScene/
 ├── useScene.ts               # Renderer / scene / camera / orbit-controls lifetime
 ├── useDecodedPointCloud.ts   # Lazy worker-decoded single-frame loader
 ├── sceneObjects.ts           # Factories for PointCloud / LaserScan / PoseAxes / grid
+├── markerObjects.ts          # Per-type factories for visualization_msgs/Marker
+├── markerSet.ts              # (ns, id) → Object3D manager + frame-grouped TFs
 ├── accumulator.ts            # Ring buffer + voxel-grid downsample for accumulation
 └── tfTransform.ts            # composeTFChain + pickWorldFrame helpers
 ```
 
 ### Build-time scripts
 
-- `scripts/build-sample-bag.mjs`: generates `public/sample-bags/tour.mcap`, a 1.7 MB synthetic bag with `/odom`, `/imu/data`, `/scan`, and `/tf` topics over 30 seconds. Idempotent; rerun only if the synthetic data needs changing. The output is committed so a fresh checkout serves the sample without a Node build step.
+- `scripts/build-sample-bag.mjs`: generates `public/sample-bags/tour.mcap`, a ~1.8 MB synthetic bag with `/odom`, `/imu/data`, `/scan`, `/tf`, and `/markers` topics over 30 seconds. The `/markers` topic publishes 8 markers at 1 Hz across `status` (base_link, frame-locked) and `planning` (odom) namespaces, so a fresh checkout exercises the v0.8 MarkerArray renderer end-to-end. Idempotent; rerun only if the synthetic data needs changing. The output is committed so a fresh checkout serves the sample without a Node build step.
 - `scripts/verify-sample-bag.mjs`: parses the generated bag with `McapIndexedReader` and prints the topic table; smoke-test the writer when you change the synthesiser.
 - `scripts/verify-parsers.mjs`: Node-side verification of the `.db3` and `.mcap` parser paths against the real test fixtures in `test_files/`.
 
