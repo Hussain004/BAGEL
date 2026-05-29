@@ -5,15 +5,22 @@
  * to ship in the public web bundle. This script generates a self-contained
  * 30-second synthetic bag (~50 KB) with:
  *
- *   - /odom (nav_msgs/Odometry)      — 10 Hz figure-eight pose, gives the
- *                                       Trajectory + Plot panels something
- *                                       interesting to render.
- *   - /imu/data (sensor_msgs/Imu)     — 50 Hz angular velocity + accel, drives
- *                                       the Plot panel.
- *   - /scan (sensor_msgs/LaserScan)   — 10 Hz radial scan, exercises the
- *                                       LaserScan branch of the 3D panel.
- *   - /tf (tf2_msgs/TFMessage)        — 10 Hz odom→base_link, exercises the
- *                                       TF tree + TF-aware rendering.
+ *   - /odom (nav_msgs/Odometry)             — 10 Hz figure-eight pose, gives
+ *                                              the Trajectory + Plot panels
+ *                                              something interesting to render.
+ *   - /imu/data (sensor_msgs/Imu)            — 50 Hz angular velocity + accel,
+ *                                              drives the Plot panel.
+ *   - /scan (sensor_msgs/LaserScan)          — 10 Hz radial scan, exercises
+ *                                              the LaserScan branch of the
+ *                                              3D panel.
+ *   - /tf (tf2_msgs/TFMessage)               — 10 Hz odom→base_link, exercises
+ *                                              the TF tree + TF-aware rendering.
+ *   - /markers (visualization_msgs/MarkerArray) — 1 Hz set of debug primitives
+ *                                              in two namespaces (`status` in
+ *                                              base_link, `planning` in odom)
+ *                                              to exercise the v0.8 marker
+ *                                              renderer (cube/sphere/cylinder/
+ *                                              arrow/line_strip/points/text).
  *
  * Run:    node scripts/build-sample-bag.mjs
  * Output: public/sample-bags/tour.mcap
@@ -42,6 +49,10 @@ const ODOM_HZ = 10;
 const IMU_HZ = 50;
 const SCAN_HZ = 10;
 const TF_HZ = 10;
+// Markers tick slowly — they're persistent in the scene and the renderer just
+// MODIFYs the existing entries each tick, so 1 Hz is plenty for the demo while
+// keeping the bag tiny.
+const MARKER_HZ = 1;
 
 // Pick an absolute start time so timestamps look like real bag epochs but
 // don't change between runs (keeps the output bytes stable).
@@ -286,6 +297,166 @@ function buildTfMessage(timeNs) {
   };
 }
 
+/**
+ * Build a MarkerArray that demonstrates the v0.8 primitive renderer.
+ *
+ * Two namespaces:
+ *   - `status`   markers ride along with the robot (frame_id = base_link).
+ *                A cube body, a sphere head with a text label hovering above,
+ *                a forward-pointing arrow, a cylinder mast.
+ *   - `planning` markers sit in the world frame (frame_id = odom). A line
+ *                strip drawing the planned figure-eight path, plus a
+ *                cube-list of "waypoints" at sample points along it.
+ *
+ * Marker types covered: CUBE(1), SPHERE(2), CYLINDER(3), ARROW(0),
+ * LINE_STRIP(4), CUBE_LIST(6), POINTS(8), TEXT_VIEW_FACING(9).
+ *
+ * The same (ns, id) pairs are emitted on every tick — every message is an
+ * ADD/MODIFY so the renderer just updates positions in place. No DELETE
+ * is exercised here (lifetime expiry is fine for that on a real bag).
+ */
+function buildMarkerArrayMessage(timeNs) {
+  const t = Number(timeNs - START_TIME_NS) / 1e9;
+  const baseHeader = (frame) => header(frame, timeNs);
+
+  // ── status: rides with the robot ───────────────────────────────────────
+  const body = {
+    header: baseHeader('base_link'),
+    ns: 'status',
+    id: 0,
+    type: 1, // CUBE
+    action: 0,
+    pose: {
+      position: { x: 0, y: 0, z: 0.25 },
+      orientation: { x: 0, y: 0, z: 0, w: 1 },
+    },
+    scale: { x: 0.6, y: 0.4, z: 0.3 },
+    color: { r: 0.2, g: 0.7, b: 1.0, a: 0.9 },
+    lifetime: { sec: 0, nsec: 0 },
+    frame_locked: true,
+    points: [],
+    colors: [],
+    text: '',
+    mesh_resource: '',
+    mesh_use_embedded_materials: false,
+  };
+
+  const head = {
+    ...body,
+    id: 1,
+    type: 2, // SPHERE
+    pose: {
+      position: { x: 0.1, y: 0, z: 0.55 },
+      orientation: { x: 0, y: 0, z: 0, w: 1 },
+    },
+    scale: { x: 0.3, y: 0.3, z: 0.3 },
+    color: { r: 1.0, g: 0.6, b: 0.2, a: 0.95 },
+  };
+
+  const label = {
+    ...body,
+    id: 2,
+    type: 9, // TEXT_VIEW_FACING
+    pose: {
+      position: { x: 0, y: 0, z: 0.85 },
+      orientation: { x: 0, y: 0, z: 0, w: 1 },
+    },
+    scale: { x: 0, y: 0, z: 0.2 },
+    color: { r: 1.0, g: 1.0, b: 1.0, a: 1.0 },
+    text: 'robot',
+  };
+
+  const arrow = {
+    ...body,
+    id: 3,
+    type: 0, // ARROW
+    pose: {
+      position: { x: 0.35, y: 0, z: 0.25 },
+      orientation: { x: 0, y: 0, z: 0, w: 1 },
+    },
+    scale: { x: 0.5, y: 0.06, z: 0.12 },
+    color: { r: 1.0, g: 0.2, b: 0.2, a: 1.0 },
+  };
+
+  const mast = {
+    ...body,
+    id: 4,
+    type: 3, // CYLINDER
+    pose: {
+      position: { x: -0.2, y: 0, z: 0.45 },
+      orientation: { x: 0, y: 0, z: 0, w: 1 },
+    },
+    scale: { x: 0.05, y: 0.05, z: 0.5 },
+    color: { r: 0.6, g: 0.6, b: 0.6, a: 1.0 },
+  };
+
+  // ── planning: world-frame path + waypoints ─────────────────────────────
+  // Path runs through the entire 30-second lemniscate — sampled at 0.5s.
+  const pathPoints = [];
+  for (let s = 0; s <= 30; s += 0.5) {
+    const p = figureEightPose(s);
+    pathPoints.push({ x: p.x, y: p.y, z: 0.02 });
+  }
+  const path = {
+    header: baseHeader('odom'),
+    ns: 'planning',
+    id: 0,
+    type: 4, // LINE_STRIP
+    action: 0,
+    pose: {
+      position: { x: 0, y: 0, z: 0 },
+      orientation: { x: 0, y: 0, z: 0, w: 1 },
+    },
+    scale: { x: 0.08, y: 0, z: 0 },
+    color: { r: 0.4, g: 1.0, b: 0.6, a: 0.9 },
+    lifetime: { sec: 0, nsec: 0 },
+    frame_locked: false,
+    points: pathPoints,
+    colors: [],
+    text: '',
+    mesh_resource: '',
+    mesh_use_embedded_materials: false,
+  };
+
+  // Highlight the next ~5 seconds of path as a cube-list of waypoints.
+  const waypointPoints = [];
+  for (let dt = 0; dt <= 5; dt += 1) {
+    const p = figureEightPose(t + dt);
+    waypointPoints.push({ x: p.x, y: p.y, z: 0.1 });
+  }
+  const waypoints = {
+    ...path,
+    id: 1,
+    type: 6, // CUBE_LIST
+    scale: { x: 0.2, y: 0.2, z: 0.2 },
+    color: { r: 1.0, g: 0.9, b: 0.2, a: 0.85 },
+    points: waypointPoints,
+  };
+
+  // Scattered "feature" points around the path centre, fixed across the run.
+  const featurePoints = [];
+  for (let i = 0; i < 25; i++) {
+    const a = i * 0.42; // deterministic spread
+    featurePoints.push({
+      x: 7 * Math.cos(a) + 0.3 * (i % 3),
+      y: 5 * Math.sin(a * 1.3),
+      z: 0.05,
+    });
+  }
+  const features = {
+    ...path,
+    id: 2,
+    type: 8, // POINTS
+    scale: { x: 0.08, y: 0.08, z: 0 },
+    color: { r: 0.8, g: 0.4, b: 1.0, a: 0.9 },
+    points: featurePoints,
+  };
+
+  return {
+    markers: [body, head, label, arrow, mast, path, waypoints, features],
+  };
+}
+
 // ── Drive the writer ────────────────────────────────────────────────────
 async function main() {
   const writable = makeMemoryWritable();
@@ -324,6 +495,12 @@ async function main() {
       type: 'tf2_msgs/msg/TFMessage',
       hz: TF_HZ,
       build: buildTfMessage,
+    },
+    {
+      topic: '/markers',
+      type: 'visualization_msgs/msg/MarkerArray',
+      hz: MARKER_HZ,
+      build: buildMarkerArrayMessage,
     },
   ];
 
