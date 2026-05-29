@@ -101,3 +101,23 @@ export function disposeParserCaches(): void {
   // Fire-and-forget: cache disposal doesn't need to block the caller.
   void getParserClient().disposeParserCaches();
 }
+
+/** Every type name the bundled `ros2galactic` registry knows about. */
+export async function getSupportedTypes(): Promise<string[]> {
+  return getParserClient().getSupportedTypes();
+}
+
+/**
+ * Replace the worker's custom-schema map. Call on app boot (from the saved
+ * localStorage state) and after every paste/delete in the schema modal.
+ */
+export async function setCustomSchemas(schemas: Record<string, string>): Promise<void> {
+  return getParserClient().setCustomSchemas(schemas);
+}
+
+/** Dry-run a `.msg` text through the parser — used by the paste modal. */
+export async function validateSchema(
+  schemaText: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  return getParserClient().validateSchema(schemaText);
+}
