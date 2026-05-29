@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
 import { useBagStore } from '../../../store/bagStore';
@@ -7,6 +7,10 @@ import { useTopicMessages } from '../../../hooks/useTopicMessages';
 import { flattenNumeric } from '../../../utils/messages';
 import { PanelShell } from '../PanelShell';
 import { getTopicColor } from '../../../utils/color';
+import {
+  DEFAULT_TIMESERIES_SETTINGS,
+  useTimeSeriesPanelStore,
+} from '../../../store/panelUiStores';
 
 /**
  * Series palette used when the topic doesn't fall into a known category.
@@ -78,8 +82,17 @@ export function TimeSeriesPlot({ panelId, topicName, type }: TimeSeriesPlotProps
     return { time, values, fieldNames, baseNs };
   }, [messages]);
 
-  // User-toggled visibility per field. Missing entries mean "visible".
-  const [visibility, setVisibility] = useState<Record<string, boolean>>({});
+  // Per-panel UI state — visibility toggles + saved x-axis zoom range.
+  // Lives in a store so a dock-induced remount (v0.7) doesn't reset what
+  // the user just clicked / dragged. Settings keyed by `panelId` survive
+  // close + reopen of the same panel too.
+  const settings = useTimeSeriesPanelStore(
+    (s) => s.byId[panelId] ?? DEFAULT_TIMESERIES_SETTINGS,
+  );
+  const updateSettings = useTimeSeriesPanelStore((s) => s.update);
+  const visibility = settings.visibility;
+  const setVisibility = (next: Record<string, boolean>) =>
+    updateSettings(panelId, { visibility: next });
 
   const containerRef = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
@@ -88,6 +101,10 @@ export function TimeSeriesPlot({ panelId, topicName, type }: TimeSeriesPlotProps
   // have at that moment to build initial opts/data.
   const seriesRef = useRef(series);
   seriesRef.current = series;
+  // Mirror saved xRange in a ref so the mouseup handler can read the latest
+  // scale state without needing to be reattached on every settings change.
+  const savedXRangeRef = useRef(settings.xRange);
+  savedXRangeRef.current = settings.xRange;
 
   // Stable key over the set of fields. Re-mount uPlot only when this
   // changes; during streaming the fields are stable from the first batch
@@ -113,12 +130,20 @@ export function TimeSeriesPlot({ panelId, topicName, type }: TimeSeriesPlotProps
       ...current.fieldNames.map((f) => current.values[f] as (number | null)[]),
     ];
 
+    // Pre-mount restoration of saved x-axis zoom (after a dock-induced
+    // remount, after close+reopen, or on a hash-restore session). If
+    // `xRange` is null the user has not zoomed, so we leave it unset and
+    // let uPlot auto-fit to the streamed data.
+    const initialXRange = savedXRangeRef.current;
+
     const opts: uPlot.Options = {
       width: containerRef.current.clientWidth,
       height: Math.max(220, containerRef.current.clientHeight - 110),
       cursor: { drag: { x: true, y: false, uni: 50 } },
       scales: {
-        x: { time: false },
+        x: initialXRange
+          ? { time: false, min: initialXRange.min, max: initialXRange.max }
+          : { time: false },
       },
       axes: [
         {
@@ -149,6 +174,35 @@ export function TimeSeriesPlot({ panelId, topicName, type }: TimeSeriesPlotProps
     const u = new uPlot(opts, data, containerRef.current);
     plotRef.current = u;
 
+    // Persist the x-axis range *only* on user-driven gestures. uPlot fires
+    // `setScale` on every data update (the streaming path is constant),
+    // so naively storing on every scale change would overwrite the user's
+    // zoom on the very next batch. Listening to native pointerup/dblclick
+    // on the container filters out programmatic updates — those don't
+    // generate any input events.
+    const container = containerRef.current;
+    const handlePointerUp = () => {
+      if (!plotRef.current) return;
+      const sx = plotRef.current.scales.x;
+      if (sx.min == null || sx.max == null) return;
+      const next = { min: sx.min, max: sx.max };
+      const prev = savedXRangeRef.current;
+      if (prev && prev.min === next.min && prev.max === next.max) return;
+      updateSettings(panelId, { xRange: next });
+    };
+    const handleDblClick = () => {
+      // Reset zoom: clear the saved range and let uPlot auto-fit to data.
+      updateSettings(panelId, { xRange: null });
+      if (plotRef.current && seriesRef.current) {
+        const s = seriesRef.current;
+        const lo = s.time[0] ?? 0;
+        const hi = s.time[s.time.length - 1] ?? 0;
+        plotRef.current.setScale('x', { min: lo, max: hi });
+      }
+    };
+    container.addEventListener('pointerup', handlePointerUp);
+    container.addEventListener('dblclick', handleDblClick);
+
     const resizeObserver = new ResizeObserver(() => {
       if (!containerRef.current || !plotRef.current) return;
       plotRef.current.setSize({
@@ -160,10 +214,14 @@ export function TimeSeriesPlot({ panelId, topicName, type }: TimeSeriesPlotProps
 
     return () => {
       resizeObserver.disconnect();
+      container.removeEventListener('pointerup', handlePointerUp);
+      container.removeEventListener('dblclick', handleDblClick);
       u.destroy();
       plotRef.current = null;
     };
-    // visibility intentionally excluded — handled via setSeries below
+    // visibility / panelId / updateSettings intentionally excluded —
+    // visibility is applied via setSeries below; panelId is stable; the
+    // store action ref is stable across renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fieldNamesKey]);
 
@@ -238,7 +296,7 @@ export function TimeSeriesPlot({ panelId, topicName, type }: TimeSeriesPlotProps
                 <button
                   key={f}
                   onClick={() =>
-                    setVisibility((v) => ({ ...v, [f]: !visible }))
+                    setVisibility({ ...visibility, [f]: !visible })
                   }
                   className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs mono transition-all border ${
                     visible

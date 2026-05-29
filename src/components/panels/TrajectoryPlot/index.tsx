@@ -6,6 +6,10 @@ import { getTopicColor } from '../../../utils/color';
 import { nsToSeconds } from '../../../utils/time';
 import { nearestPointIndex } from '../../../utils/trajectory';
 import { useTrajectory } from './useTrajectory';
+import {
+  DEFAULT_TRAJECTORY_SETTINGS,
+  useTrajectoryPanelStore,
+} from '../../../store/panelUiStores';
 
 interface TrajectoryPlotProps {
   panelId: string;
@@ -49,7 +53,28 @@ export function TrajectoryPlot({ panelId, topicName, type }: TrajectoryPlotProps
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [view, setView] = useState<View | null>(null);
+  // Pan/zoom view persisted per panelId so a dock-induced remount doesn't
+  // throw away the user's current viewport. Reading the slice with a
+  // fallback to the module-level DEFAULT keeps the reference stable on
+  // first-paint (avoids a tear-down loop).
+  const settings = useTrajectoryPanelStore(
+    (s) => s.byId[panelId] ?? DEFAULT_TRAJECTORY_SETTINGS,
+  );
+  const updateSettings = useTrajectoryPanelStore((s) => s.update);
+  const view = settings.view;
+  const setView = useCallback(
+    (next: View | null | ((current: View | null) => View | null)) => {
+      if (typeof next === 'function') {
+        // Functional setter compat for the resize-observer effect below.
+        const current = useTrajectoryPanelStore.getState().byId[panelId]?.view ?? null;
+        const computed = next(current);
+        updateSettings(panelId, { view: computed });
+      } else {
+        updateSettings(panelId, { view: next });
+      }
+    },
+    [panelId, updateSettings],
+  );
   // Stash the auto-fit view so the reset button can snap back without re-deriving.
   const autoFitRef = useRef<View | null>(null);
   const [hoverPoint, setHoverPoint] = useState<{ x: number; y: number } | null>(null);
@@ -77,9 +102,12 @@ export function TrajectoryPlot({ panelId, topicName, type }: TrajectoryPlotProps
     const fit = recomputeFit();
     if (!fit) return;
     autoFitRef.current = fit;
+    // Only snap to the new fit if the user has not customised the view.
+    // A saved view in the store means we're rehydrating after a remount
+    // (dock, close+reopen, hash restore) — preserve what the user had.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setView(fit);
-  }, [recomputeFit]);
+    setView((current) => (current == null ? fit : current));
+  }, [recomputeFit, setView]);
 
   // Keep the canvas backing store in sync with its CSS size and re-fit on
   // resize (only when the view is still on the auto-fit; manual zoom is left
