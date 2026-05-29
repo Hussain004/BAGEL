@@ -1,68 +1,130 @@
 /**
  * ROS2 Message Type Registry
- * 
- * Wraps @foxglove/rosmsg-msgs-common to provide pre-built message definitions
- * for standard ROS2 message types. Used by the CDR deserializer to interpret
- * raw message bytes from .db3 files.
- * 
- * For .mcap files, schemas are embedded in the file itself.
+ *
+ * Two-layer lookup keyed by type name:
+ *
+ *   1. **Custom overrides** — user-supplied `.msg` schemas the main thread
+ *      has pushed into the worker via `setCustomSchemas`. These take
+ *      priority so a user can override even a bundled definition (e.g. to
+ *      shim a vendor fork of a stock package). Persisted in localStorage
+ *      on the main thread; the worker only holds the parsed form.
+ *
+ *   2. **Bundled `ros2galactic`** — pre-built `MessageDefinition[]`s for the
+ *      standard ROS2 packages (std_msgs, geometry_msgs, sensor_msgs,
+ *      nav_msgs, tf2_msgs, visualization_msgs, builtin_interfaces,
+ *      rcl_interfaces, …). Lazily imported on first lookup so the worker
+ *      chunk doesn't pay for it on a pure-MCAP session.
+ *
+ * `.mcap` and ROS1 `.bag` files supply their own schemas inside the file,
+ * so this registry only matters for `.db3` bags — but the override layer
+ * works for any format, so a user can paste a corrected schema if a bag
+ * is mis-tagged.
  */
 
 import type { MessageDefinition } from '@foxglove/message-definition';
+import { parse as parseMessageDefinition } from '@foxglove/rosmsg';
+import { clearReaderCache } from './cdr';
 
-// Import pre-built definitions for ROS2 (Galactic+)
-// This covers: std_msgs, geometry_msgs, sensor_msgs, nav_msgs,
-// tf2_msgs, builtin_interfaces, rcl_interfaces, unique_identifier_msgs, etc.
+// Bundled definitions — laid down on first lookup.
 let ros2Definitions: Record<string, MessageDefinition[]> | null = null;
 
 /**
- * Lazily load the ROS2 message definitions to avoid bloating initial bundle.
+ * User-supplied schemas. Keys are the type names as the user typed them
+ * (e.g. `px4_msgs/msg/VehicleLocalPosition`); we also normalise to the
+ * `pkg/Type` form for lookups so callers using either string find the
+ * same entry.
  */
-async function loadDefinitions(): Promise<Record<string, MessageDefinition[]>> {
-  if (ros2Definitions) return ros2Definitions;
-  
-  const { ros2galactic } = await import('@foxglove/rosmsg-msgs-common');
-  ros2Definitions = ros2galactic as unknown as Record<string, MessageDefinition[]>;
-  return ros2Definitions;
+const customDefinitions = new Map<string, MessageDefinition[]>();
+
+function loadDefinitions(): Promise<Record<string, MessageDefinition[]>> {
+  if (ros2Definitions) return Promise.resolve(ros2Definitions);
+  return import('@foxglove/rosmsg-msgs-common').then((mod) => {
+    ros2Definitions = mod.ros2galactic as unknown as Record<string, MessageDefinition[]>;
+    return ros2Definitions;
+  });
+}
+
+/** Returns every key form we recognise for a given type name. */
+function aliasesFor(typeName: string): string[] {
+  if (!typeName) return [];
+  const out = [typeName];
+  if (typeName.includes('/msg/')) {
+    out.push(typeName.replace('/msg/', '/'));
+  } else {
+    const parts = typeName.split('/');
+    if (parts.length === 2) out.push(`${parts[0]}/msg/${parts[1]}`);
+  }
+  return out;
 }
 
 /**
- * Get the message definition for a given ROS2 message type.
- * 
- * @param typeName - Fully qualified type name, e.g. "sensor_msgs/msg/Imu"
- * @returns MessageDefinition array if found, undefined otherwise
- * 
- * @example
- * const def = await getMessageDefinition('geometry_msgs/msg/Twist');
- * if (def) {
- *   const reader = new MessageReader(def);
- *   const msg = reader.readMessage(data);
- * }
+ * Replace the entire custom-schema map with `schemas` (raw `.msg` text,
+ * keyed by type name). Parses each entry up-front so subsequent decode
+ * calls hit a ready MessageDefinition[] rather than re-parsing. Invalid
+ * entries are skipped with a console warning and don't poison the rest.
+ *
+ * Also invalidates the CDR reader cache — entries cached against the old
+ * (possibly missing or stale) definition would otherwise keep returning
+ * garbage / null until the worker restarts.
+ */
+export function setCustomSchemas(schemas: Record<string, string>): void {
+  customDefinitions.clear();
+  for (const [typeName, text] of Object.entries(schemas)) {
+    if (typeof text !== 'string' || text.trim().length === 0) continue;
+    try {
+      const parsed = parseMessageDefinition(text, { ros2: true });
+      // Index under every alias of the user-supplied name so a topic typed
+      // as `px4_msgs/msg/X` finds a schema saved as `px4_msgs/X` and vice
+      // versa.
+      for (const alias of aliasesFor(typeName)) {
+        customDefinitions.set(alias, parsed);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(`[typeRegistry] failed to parse custom schema for ${typeName}: ${message}`);
+    }
+  }
+  // Drop cached readers so any topic that was previously failing to decode
+  // (or decoding against an outdated schema) gets a fresh reader on next read.
+  clearReaderCache();
+}
+
+/**
+ * Parse `text` as a ROS2 `.msg` schema *without* mutating the custom map.
+ * Used by the worker's `validateSchema` RPC so the paste modal can show a
+ * useful error before the user commits.
+ */
+export function validateSchemaText(text: string): { ok: true } | { ok: false; error: string } {
+  try {
+    parseMessageDefinition(text, { ros2: true });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Get the message definition for a given ROS2 message type, preferring
+ * user-supplied custom schemas over the bundled ones.
  */
 export async function getMessageDefinition(
-  typeName: string
+  typeName: string,
 ): Promise<MessageDefinition[] | undefined> {
-  const defs = await loadDefinitions();
-  
-  // Try exact match first
-  if (defs[typeName]) return defs[typeName];
-  
-  // Try without /msg/ prefix (some formats use "sensor_msgs/Imu" instead of "sensor_msgs/msg/Imu")
-  const withoutMsg = typeName.replace('/msg/', '/');
-  if (defs[withoutMsg]) return defs[withoutMsg];
-  
-  // Try with /msg/ inserted
-  const parts = typeName.split('/');
-  if (parts.length === 2) {
-    const withMsg = `${parts[0]}/msg/${parts[1]}`;
-    if (defs[withMsg]) return defs[withMsg];
+  // Custom schemas first — the override semantic is the entire point.
+  for (const alias of aliasesFor(typeName)) {
+    const hit = customDefinitions.get(alias);
+    if (hit) return hit;
   }
-  
+  const defs = await loadDefinitions();
+  for (const alias of aliasesFor(typeName)) {
+    if (defs[alias]) return defs[alias];
+  }
   return undefined;
 }
 
 /**
- * Check if a message type is supported by the built-in type registry.
+ * Check if a message type is supported by either the bundled registry or
+ * the current custom-schema overrides.
  */
 export async function isTypeSupported(typeName: string): Promise<boolean> {
   const def = await getMessageDefinition(typeName);
@@ -70,7 +132,12 @@ export async function isTypeSupported(typeName: string): Promise<boolean> {
 }
 
 /**
- * Get all supported message type names.
+ * Every type name the bundled registry knows about. The main thread uses
+ * this on app load (one round-trip) to decide which `.db3` topics need a
+ * "schema missing" affordance without having to round-trip per-topic.
+ *
+ * Custom-schema names aren't included here — the main thread already knows
+ * them (it owns the localStorage source of truth).
  */
 export async function getSupportedTypes(): Promise<string[]> {
   const defs = await loadDefinitions();

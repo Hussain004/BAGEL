@@ -24,6 +24,12 @@ import {
   getTopicType,
   disposeParserCaches,
 } from '../parsers/core';
+import {
+  getSupportedTypes,
+  setCustomSchemas,
+  validateSchemaText,
+} from '../parsers/typeRegistry';
+import { clearDb3DecodedCache } from '../parsers/db3';
 import type { ColorMode, HeightAxis, PointCloudExtraction } from '../utils/pointcloud';
 import type { LaserScanExtraction } from '../utils/laserscan';
 
@@ -37,7 +43,10 @@ type Method =
   | 'readPointCloudAtTime'
   | 'readLaserScanAtTime'
   | 'getTopicType'
-  | 'disposeParserCaches';
+  | 'disposeParserCaches'
+  | 'getSupportedTypes'
+  | 'setCustomSchemas'
+  | 'validateSchema';
 
 interface BaseRequest<P> {
   id: number;
@@ -82,6 +91,14 @@ interface GetTopicTypeParams {
   format: BagFormat;
   topicName: string;
 }
+interface SetCustomSchemasParams {
+  /** typeName -> raw .msg text (concatenated dependencies separated by `=====`). */
+  schemas: Record<string, string>;
+}
+interface ValidateSchemaParams {
+  /** Raw `.msg` text to dry-run through the parser. */
+  schemaText: string;
+}
 
 type WorkerRequest =
   | BaseRequest<ParseBagParams>
@@ -91,6 +108,8 @@ type WorkerRequest =
   | BaseRequest<ReadPointCloudAtTimeParams>
   | BaseRequest<ReadLaserScanAtTimeParams>
   | BaseRequest<GetTopicTypeParams>
+  | BaseRequest<SetCustomSchemasParams>
+  | BaseRequest<ValidateSchemaParams>
   | BaseRequest<undefined>;
 
 interface ProgressResponse {
@@ -129,6 +148,8 @@ export type WorkerResponse =
   | ResultResponse<(PointCloudExtraction & { timestamp: bigint }) | null>
   | ResultResponse<(LaserScanExtraction & { timestamp: bigint }) | null>
   | ResultResponse<string | undefined>
+  | ResultResponse<string[]>
+  | ResultResponse<{ ok: true } | { ok: false; error: string }>
   | ResultResponse<void>
   | ErrorResponse;
 
@@ -224,6 +245,25 @@ ctx.addEventListener('message', async (e: MessageEvent<WorkerRequest>) => {
       case 'disposeParserCaches': {
         disposeParserCaches();
         respond(undefined);
+        return;
+      }
+      case 'getSupportedTypes': {
+        respond(await getSupportedTypes());
+        return;
+      }
+      case 'setCustomSchemas': {
+        const { schemas } = req.params as SetCustomSchemasParams;
+        setCustomSchemas(schemas);
+        // .db3 holds a per-(topic, timestamp) decoded LRU; entries cached as
+        // `null` while a schema was missing would still be returned after the
+        // user pastes the schema. Wipe them so the next read decodes fresh.
+        clearDb3DecodedCache();
+        respond(undefined);
+        return;
+      }
+      case 'validateSchema': {
+        const { schemaText } = req.params as ValidateSchemaParams;
+        respond(validateSchemaText(schemaText));
         return;
       }
       default:

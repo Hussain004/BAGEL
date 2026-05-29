@@ -217,6 +217,36 @@ class ParserClient {
   disposeParserCaches(): Promise<void> {
     return this.request<void>('disposeParserCaches', undefined);
   }
+
+  /** Return every type name the bundled `ros2galactic` registry knows. */
+  getSupportedTypes(): Promise<string[]> {
+    return this.request<string[]>('getSupportedTypes', undefined);
+  }
+
+  /**
+   * Push the full custom-schema map (raw `.msg` text per type) to the worker.
+   *
+   * Replaces the worker's existing custom-schema state wholesale and
+   * invalidates both the CDR reader cache and the .db3 decoded-message LRU
+   * so a topic whose type just became decodable produces fresh values on
+   * the next read. Sending the whole map (not a delta) keeps the protocol
+   * idempotent — the worker doesn't have to track ordering or partial state.
+   */
+  setCustomSchemas(schemas: Record<string, string>): Promise<void> {
+    return this.request<void>('setCustomSchemas', { schemas });
+  }
+
+  /**
+   * Try parsing `schemaText` as a ROS2 `.msg` definition. The paste modal
+   * uses this to surface a useful error inline before committing to the
+   * store, so the user never has to wonder why decoding stayed broken.
+   */
+  validateSchema(schemaText: string): Promise<{ ok: true } | { ok: false; error: string }> {
+    return this.request<{ ok: true } | { ok: false; error: string }>(
+      'validateSchema',
+      { schemaText },
+    );
+  }
 }
 
 let singleton: ParserClient | null = null;

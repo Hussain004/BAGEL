@@ -9,6 +9,9 @@ import {
   isTrajectoryCapableType,
 } from '../../../utils/messages';
 import { useLayoutStore, type PanelKind } from '../../../store/layoutStore';
+import { useBagStore } from '../../../store/bagStore';
+import { useUiStore } from '../../../store/uiStore';
+import { useSchemaResolution } from '../../../hooks/useSchemaResolution';
 import type { TopicInfo } from '../../../types/bag';
 
 const BADGE_CLASSES: Record<string, string> = {
@@ -100,8 +103,23 @@ export function TopicRow({ topic, index }: TopicRowProps) {
 
   const openPanel = useLayoutStore((s) => s.openPanel);
   const hasOpenPanel = useLayoutStore((s) => s.hasPanelForTopic(topic.name));
+  const format = useBagStore((s) => s.bag?.format);
+  const openSchemaPaste = useUiStore((s) => s.openSchemaPaste);
+
+  // Schema availability check — only `.db3` topics can be schema-missing.
+  // mcap / bag short-circuit to resolved.
+  const { resolved, loading: schemaLoading } = useSchemaResolution(topic.type, format);
+  const schemaMissing = !resolved && !schemaLoading;
 
   const handleOpen = (kind: PanelKind) => {
+    if (schemaMissing) {
+      openSchemaPaste({
+        typeName: topic.type,
+        topicName: topic.name,
+        followupPanelKind: kind,
+      });
+      return;
+    }
     openPanel({ kind, topicName: topic.name, type: topic.type });
   };
 
@@ -115,7 +133,11 @@ export function TopicRow({ topic, index }: TopicRowProps) {
       className="topic-row relative flex items-center gap-3 opacity-0 animate-fade-in group cursor-pointer"
       style={{ animationDelay: `${Math.min(index * 0.04, 0.6)}s` }}
       id={`topic-row-${topic.name.replace(/\//g, '-')}`}
-      title={`${topic.name}\n${topic.type}`}
+      title={
+        schemaMissing
+          ? `${topic.name}\n${topic.type}\n\nSchema missing — click to paste the .msg definition.`
+          : `${topic.name}\n${topic.type}`
+      }
       onClick={() => handleOpen(defaultKind)}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -127,16 +149,22 @@ export function TopicRow({ topic, index }: TopicRowProps) {
       tabIndex={0}
       aria-label={`${topic.name}, ${topic.type}, ${topic.messageCount} messages${
         hasFrequency ? `, ${topic.frequency!.toFixed(1)} Hz` : ''
-      }`}
+      }${schemaMissing ? ', schema missing' : ''}`}
     >
       <div
-        className="w-1.5 h-8 rounded-full flex-shrink-0 transition-all"
+        className={`w-1.5 h-8 rounded-full flex-shrink-0 transition-all ${
+          schemaMissing ? 'opacity-30' : ''
+        }`}
         style={{ backgroundColor: color }}
       />
 
       <div className="flex-1 min-w-0 overflow-hidden">
         <div className="flex items-center gap-2">
-          <span className="mono text-text-primary text-sm font-medium truncate block">
+          <span
+            className={`mono text-sm font-medium truncate block ${
+              schemaMissing ? 'text-text-tertiary' : 'text-text-primary'
+            }`}
+          >
             {topic.name}
           </span>
           {hasOpenPanel && (
@@ -144,6 +172,14 @@ export function TopicRow({ topic, index }: TopicRowProps) {
               className="w-1.5 h-1.5 rounded-full bg-accent-blue flex-shrink-0"
               title="Panel open for this topic"
             />
+          )}
+          {schemaMissing && (
+            <span
+              className="badge badge-amber flex-shrink-0 cursor-pointer"
+              title="No .msg definition for this type. Click to paste one."
+            >
+              schema missing
+            </span>
           )}
         </div>
         <div className="flex items-center gap-2 mt-0.5 overflow-hidden">
@@ -176,20 +212,37 @@ export function TopicRow({ topic, index }: TopicRowProps) {
 
       {/* Hover-only panel buttons. Absolute so they never push the stats
           column left — the data stays anchored to the right edge while the
-          buttons fade in on top of it. */}
+          buttons fade in on top of it. Schema-missing topics show a single
+          "Add schema" affordance instead of the panel set, since opening
+          panels with no decoder is just confusing. */}
       <div
         className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10"
         onClick={(e) => e.stopPropagation()}
       >
-        {buttonKinds.map((kind) => (
+        {schemaMissing ? (
           <PanelButton
-            key={kind}
-            label={KIND_BUTTON_LABEL[kind]}
-            title={KIND_BUTTON_TITLE[kind]}
-            onClick={() => handleOpen(kind)}
-            accent={kind === defaultKind}
+            label="Add schema"
+            title="Paste the .msg definition for this type"
+            onClick={() =>
+              openSchemaPaste({
+                typeName: topic.type,
+                topicName: topic.name,
+                followupPanelKind: defaultKind,
+              })
+            }
+            accent
           />
-        ))}
+        ) : (
+          buttonKinds.map((kind) => (
+            <PanelButton
+              key={kind}
+              label={KIND_BUTTON_LABEL[kind]}
+              title={KIND_BUTTON_TITLE[kind]}
+              onClick={() => handleOpen(kind)}
+              accent={kind === defaultKind}
+            />
+          ))
+        )}
       </div>
     </div>
   );
