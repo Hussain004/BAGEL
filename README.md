@@ -41,6 +41,21 @@ BAGEL eliminates this friction.
 
 ---
 
+## Demo
+
+### Quick tour with the bundled sample bag
+
+<video src="https://github.com/user-attachments/assets/5fed57a9-50d8-41e3-aefe-58a18987f57e" controls width="100%"></video>
+
+### Stress test with a real-world SLAM dataset
+
+<video src="https://github.com/user-attachments/assets/d7ae858e-5e8e-40c2-90bd-a296c3991d06" controls width="100%"></video>
+
+> Data featured in this demo is from the excellent open-access **M2DGR dataset** provided by the **SJTU-ViSYS team**, which was instrumental in stress-testing this visualizer's spatial rendering capabilities.
+
+---
+
+
 ## Features
 
 ### v0.7: Dockable Panels
