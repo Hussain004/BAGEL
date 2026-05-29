@@ -99,8 +99,12 @@ export function PanelShell({
   };
 
   return (
+    // min-w-0 paired with overflow-hidden so a canvas-bearing child
+    // (TimeSeriesPlot's uPlot) can't push the shell wider than its
+    // allocated parent width. See PanelLeafContent comment for the
+    // full story on the single-panel resize loop.
     <div
-      className={`flex-1 flex flex-col min-h-0 rounded-xl border border-border bg-bg-secondary/60 backdrop-blur-md shadow-panel overflow-hidden animate-fade-in-scale ${
+      className={`flex-1 flex flex-col min-h-0 min-w-0 rounded-xl border border-border bg-bg-secondary/60 backdrop-blur-md shadow-panel overflow-hidden animate-fade-in-scale ${
         isDragging ? 'opacity-60 ring-2 ring-accent-blue/60' : ''
       }`}
     >

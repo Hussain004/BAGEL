@@ -203,12 +203,22 @@ export function TimeSeriesPlot({ panelId, topicName, type }: TimeSeriesPlotProps
     container.addEventListener('pointerup', handlePointerUp);
     container.addEventListener('dblclick', handleDblClick);
 
+    // No-op guard: ResizeObserver can fire spuriously (e.g. during the
+    // panel mount animation, or when a sibling layout change ripples
+    // without actually changing this container). Without the early-out,
+    // calling setSize with unchanged dims still triggers a uPlot redraw
+    // and another ResizeObserver tick — visible as a noticeable hitch
+    // during streaming when batches are landing every frame.
+    let lastW = 0;
+    let lastH = 0;
     const resizeObserver = new ResizeObserver(() => {
       if (!containerRef.current || !plotRef.current) return;
-      plotRef.current.setSize({
-        width: containerRef.current.clientWidth,
-        height: Math.max(220, containerRef.current.clientHeight - 110),
-      });
+      const w = containerRef.current.clientWidth;
+      const h = Math.max(220, containerRef.current.clientHeight - 110);
+      if (w === lastW && h === lastH) return;
+      lastW = w;
+      lastH = h;
+      plotRef.current.setSize({ width: w, height: h });
     });
     resizeObserver.observe(containerRef.current);
 
@@ -286,8 +296,15 @@ export function TimeSeriesPlot({ panelId, topicName, type }: TimeSeriesPlotProps
         />
       )}
       {series && (
-        <div className="flex-1 flex flex-col min-h-0">
-          <div ref={containerRef} className="flex-1 min-h-[240px] px-2 pt-2" />
+        <div className="flex-1 flex flex-col min-h-0 min-w-0">
+          {/* min-w-0 + no horizontal padding on the uPlot host: clientWidth
+              includes padding, and feeding padded clientWidth into uPlot's
+              setSize was part of the single-panel "extends to the right"
+              amplification — even with min-w-0 above, each measurement
+              would still grow by the padding amount per tick. pt-2 stays
+              for top breathing room; horizontal spacing comes from the
+              panel border. */}
+          <div ref={containerRef} className="flex-1 min-h-[240px] pt-2 min-w-0" />
           <div className="px-4 py-2 border-t border-border flex flex-wrap gap-2 max-h-24 overflow-y-auto">
             {series.fieldNames.map((f, i) => {
               const color = SERIES_PALETTE[i % SERIES_PALETTE.length];
