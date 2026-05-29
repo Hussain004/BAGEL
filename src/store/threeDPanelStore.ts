@@ -44,6 +44,15 @@ export interface ThreeDPanelSettings {
   upAxis: UpAxis;
   /** Custom orbit pivot in render-space coordinates, or `null` for auto-fit centre. */
   pivot: { x: number; y: number; z: number } | null;
+  /**
+   * Namespaces the user has hidden in the MarkerArray filter card. Stored as
+   * a sorted array (not a Set) so the persisted state round-trips through
+   * zustand's structural-equality bailout without mutating in place.
+   *
+   * Only meaningful for marker-typed 3D panels; cloud/pose panels ignore
+   * this field.
+   */
+  hiddenMarkerNamespaces: string[];
 }
 
 /**
@@ -66,6 +75,7 @@ export const DEFAULT_THREE_D_SETTINGS: ThreeDPanelSettings = {
   voxelSize: 0.2,
   upAxis: 'z+',
   pivot: null,
+  hiddenMarkerNamespaces: [],
 };
 
 interface ThreeDPanelState {

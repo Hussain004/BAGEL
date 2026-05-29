@@ -49,7 +49,11 @@ export interface TopicMessagesState {
   error: string | null;
 }
 
-export function useTopicMessages(topicName: string, limit?: number): TopicMessagesState {
+export function useTopicMessages(
+  topicName: string,
+  limit?: number,
+  enabled: boolean = true,
+): TopicMessagesState {
   const bag = useBagStore((s) => s.bag);
   const file = useBagStore((s) => s.file);
   const [state, setState] = useState<TopicMessagesState>({
@@ -67,7 +71,13 @@ export function useTopicMessages(topicName: string, limit?: number): TopicMessag
   const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!bag || !file) {
+    if (!bag || !file || !enabled || !topicName) {
+      // Idle state — the caller has either not supplied a bag, opted out via
+      // `enabled`, or passed an empty topic name. Suppressing the fetch here
+      // is what makes it safe to install this hook conditionally on whether
+      // the panel actually wants the topic stream (e.g. the 3D panel only
+      // wants it for MarkerArray topics, not for the PointCloud2 / pose
+      // cases that have their own per-frame readers).
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setState({ messages: null, loading: false, progress: 0, error: null });
       return;
@@ -159,7 +169,7 @@ export function useTopicMessages(topicName: string, limit?: number): TopicMessag
       }
       bufferRef.current = null;
     };
-  }, [bag, file, topicName, limit]);
+  }, [bag, file, topicName, limit, enabled]);
 
   return state;
 }

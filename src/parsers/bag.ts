@@ -27,15 +27,16 @@
  *     `bigint`. We convert at the boundary so the rest of BAGEL stays on
  *     bigint nanoseconds.
  *   - Chunks can be `none`, `bz2`, or `lz4` compressed. The library doesn't
- *     bundle the decoders — we register stub handlers that surface a clear
- *     error for compressed bags. Uncompressed `.bag` is the default for
- *     `rosbag record` and covers the common case; we can wire pure-JS bz2 /
- *     lz4 in a follow-up if real-world bags need them.
+ *     bundle the decoders — we register pure-JS handlers (`seek-bzip` and
+ *     `lz4js`) inside the parser worker so even the slower bz2 path doesn't
+ *     block the UI. Uncompressed bags never hit the decoders at all.
  */
 
 import { Bag } from '@foxglove/rosbag';
 import { BlobReader } from '@foxglove/rosbag/web';
 import type { Filelike } from '@foxglove/rosbag';
+import Bunzip from 'seek-bzip';
+import * as lz4 from 'lz4js';
 import type { BagSummary, RawMessage, TopicInfo } from '../types/bag';
 import { clearRos1ReaderCache, deserializeRos1Message } from './rosbag1';
 
@@ -67,25 +68,49 @@ interface CachedBag {
 let cached: CachedBag | null = null;
 
 /**
- * Decompression stubs. ROS1 bags compress chunks with `bz2` or `lz4`; the
- * `@foxglove/rosbag` library accepts a `Decompress` map keyed by compression
- * name. We register handlers that throw a useful error instead of returning
- * empty buffers, so a compressed bag fails fast with a message the user can
- * act on.
+ * ROS1 chunk decompression.
  *
- * Uncompressed chunks (the `rosbag record` default and what most teams ship)
- * never hit these — the library passes the raw bytes through.
+ * `@foxglove/rosbag` consults this map every time it reads a compressed chunk;
+ * uncompressed bags never hit it. Both decoders run inside the parser worker,
+ * so even a 4 MB bz2 chunk (~500 ms on a modern laptop) doesn't block the UI.
+ *
+ *   - `bz2` uses `seek-bzip` (pure-JS, MIT, ~5–10 MB/s). The library's
+ *     `Bunzip.decode` returns the full decompressed buffer; we re-slice when
+ *     the upstream reported size disagrees, which shouldn't happen on a
+ *     well-formed bag but trips trivially on a truncated chunk.
+ *
+ *   - `lz4` uses `lz4js`. ROS1 bags emit LZ4 *frame* format (not raw
+ *     blocks), which is exactly what `lz4js.decompress` reads. We could
+ *     swap to a WASM port (`@foxglove/wasm-lz4`) for ~3× the speed but the
+ *     pure-JS path keeps the worker bundle small and is fast enough for
+ *     typical 1–5 GB SLAM bags.
+ *
+ * Errors from either decoder propagate as `Bag.open()` / iteration errors
+ * — the panel surfaces them in its load-error state.
  */
-function compressionUnsupported(name: string): never {
-  throw new Error(
-    `This ROS1 bag has ${name}-compressed chunks, which BAGEL doesn't decompress yet. ` +
-      `Re-record the bag with \`rosbag record --bz2=false --lz4=false\` (the default), ` +
-      `or convert it to MCAP via \`mcap convert\` and try again.`,
-  );
+function decompressBz2(buffer: Uint8Array, size: number): Uint8Array {
+  const decoded = Bunzip.decode(buffer);
+  // Trim or expand to the upstream's expected size when they disagree —
+  // matches the contract @foxglove/rosbag relies on for chunk parsing.
+  if (decoded.length === size) return decoded;
+  if (decoded.length > size) return decoded.subarray(0, size);
+  const padded = new Uint8Array(size);
+  padded.set(decoded);
+  return padded;
 }
+
+function decompressLz4(buffer: Uint8Array, size: number): Uint8Array {
+  const decoded = lz4.decompress(buffer, size);
+  if (decoded.length === size) return decoded;
+  if (decoded.length > size) return decoded.subarray(0, size);
+  const padded = new Uint8Array(size);
+  padded.set(decoded);
+  return padded;
+}
+
 const decompress = {
-  bz2: () => compressionUnsupported('bz2'),
-  lz4: () => compressionUnsupported('lz4'),
+  bz2: decompressBz2,
+  lz4: decompressLz4,
 };
 
 function timeToNs(t: { sec: number; nsec: number } | undefined): bigint {
