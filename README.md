@@ -12,7 +12,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-8-646cff.svg)](https://vite.dev/)
-[![Version](https://img.shields.io/badge/version-0.6.0-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
+[![Version](https://img.shields.io/badge/version-0.7.1-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
 
 [**→ Live Demo**](https://bagel-ros2.vercel.app) · [Report Bug](https://github.com/Hussain004/BAGEL/issues) · [Request Feature](https://github.com/Hussain004/BAGEL/issues)
 
@@ -43,7 +43,26 @@ BAGEL eliminates this friction.
 
 ## Features
 
-### v0.6: ROS1 `.bag` Support *(Current)*
+### v0.7.1: Panel State Persistence *(Current)*
+
+Everything in v0.7, plus:
+
+- **2D panels now survive a dock**: when a drag changes the parent split's orientation, `react-resizable-panels` remounts the affected subtree — that's a `Group` identity change and there's no way around it from inside React. Up through v0.7 only the 3D panel kept its display settings across this remount (it already lifted state into a per-`panelId` zustand store). v0.7.1 does the same for the other panels: `TimeSeriesPlot` keeps its **series visibility toggles** and **x-axis zoom range**, `TrajectoryPlot` keeps its **pan + zoom view**, `TFTree` keeps the **selected frame**. Same store-keyed-by-id pattern, same close-and-reopen-restores-too bonus.
+- **Smart zoom-range capture**: uPlot fires `setScale` on every data update — the streaming plot path constantly auto-fits during decode — so naively persisting on `setScale` would clobber any zoom the user just made. The new handler listens to native `pointerup` on the chart container instead, so only mouse-released gestures get saved. `dblclick` clears the saved range and snaps back to auto-fit.
+- **Auto-fit only when no view is saved**: `TrajectoryPlot`'s auto-fit effect used to unconditionally snap to data bounds whenever bounds changed (i.e. as the trajectory loaded). It now uses a functional setter to leave a saved view alone — so opening a bag with a hash-restored view doesn't get yanked back to fit on the next bounds update.
+
+### v0.7: Dockable Panels
+
+Everything in v0.6, plus:
+
+- **Drag-to-dock layout**: every panel header is now a drag handle. Pick up a panel and drop it on another panel's top / right / bottom / left edge to split that panel into a horizontal or vertical pair — same UX convention as VSCode and Foxglove. The drop targets are pointer-event overlays that light up the destination half on hover; a release on the panel's centre cancels the drag. Image topics in particular finally get to live above a TF / plot row instead of being squeezed into a landscape strip.
+- **Recursive split tree**: `layoutStore` is no longer a flat array; it's a tree of `SplitNode | PanelLeaf` with normalisation invariants. Single-child splits collapse into their child, empty splits disappear, and same-orientation parents absorb new siblings rather than nesting — so dragging a third panel into an existing horizontal row keeps the row flat instead of growing a `H(A, H(B, C))` tower. `react-resizable-panels` continues to handle the actual resize chrome, so drag handles between siblings still work in both axes.
+- **Tree-aware URL hashes**: the share link now encodes the layout as a tiny `P/H/V` recursive form (e.g. `H(Pplot:%2Fodom,V(Pimage:%2Fcam,Pplot:%2Fimu))`). v0.5 / v0.6 flat hashes (`p=plot:topic1,image:topic2`) are still accepted and lift into a single horizontal split, so existing share links keep working.
+- **Per-panel state survives docking**: panel ids are still `kind:topicName`, which docking doesn't touch — so the 3D viewer's display settings, world frame, accumulator state, and orbit pivot all persist when you rearrange panels around the layout. v0.7.1 (above) extends this to the 2D panels.
+- **Touch/pen aware drag**: the header pointer-down explicitly releases pointer capture so the drop-zone overlays receive `pointerenter` / `pointerup` events on touch and stylus inputs, not just mouse. Field-iPad-on-a-bag-file is still the goal.
+- **Esc behaviour preserved**: closing the most-recent panel with `Esc` still works, even though "last item in a flat array" no longer maps onto a tree. The store keeps a small `openOrder: string[]` alongside the tree to track insertion order independently of where each panel ended up after docking.
+
+### v0.6: ROS1 `.bag` Support
 
 Everything in v0.5, plus:
 

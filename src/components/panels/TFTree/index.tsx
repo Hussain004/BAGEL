@@ -11,6 +11,10 @@ import {
   type Quat,
   type TFGraph,
 } from './useTFGraph';
+import {
+  DEFAULT_TFTREE_SETTINGS,
+  useTFTreePanelStore,
+} from '../../../store/panelUiStores';
 
 interface TFTreeProps {
   panelId: string;
@@ -52,7 +56,15 @@ export function TFTree({ panelId, topicName, type }: TFTreeProps) {
   const { graph, loading, error, missing, progress } = useTFGraph();
 
   const layout = useMemo(() => (graph ? layoutTree(graph) : null), [graph]);
-  const [selected, setSelected] = useState<string | null>(null);
+  // Selected frame persisted per panelId so a dock-induced remount or a
+  // close + reopen keeps the user's chosen frame highlighted.
+  const settings = useTFTreePanelStore(
+    (s) => s.byId[panelId] ?? DEFAULT_TFTREE_SETTINGS,
+  );
+  const updateSettings = useTFTreePanelStore((s) => s.update);
+  const selected = settings.selected;
+  const setSelected = (next: string | null) =>
+    updateSettings(panelId, { selected: next });
 
   // When the graph loads, default the selected frame to the first leaf so
   // the right panel isn't empty.
