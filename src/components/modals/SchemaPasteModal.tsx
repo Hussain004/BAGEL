@@ -22,7 +22,7 @@ import { validateSchema } from '../../parsers';
  *     have to click again.
  *
  * Format: concatenated `.msg` text matching the convention `mcap convert`
- * uses — primary type at the top, then each dependency separated by an
+ * uses i.e., primary type at the top, then each dependency separated by an
  * `=====` line followed by `MSG: pkg/Type` and that type's fields. This is
  * the same shape `@foxglove/rosmsg.parse(... { ros2: true })` expects.
  */
@@ -121,7 +121,7 @@ export function SchemaPasteModal() {
           bundled <code className="mono text-text-primary">ros2galactic</code>{' '}
           set (std/geometry/sensor/nav/tf2/visualization/etc.) without one.
           Paste the <code className="mono text-text-primary">.msg</code>{' '}
-          definition for this type — primary type at the top, then every
+          definition for this type i.e., primary type at the top, then every
           dependency block separated by{' '}
           <code className="mono text-text-primary">=====</code>, the same form{' '}
           <code className="mono text-text-primary">mcap convert</code> writes.
