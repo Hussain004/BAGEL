@@ -1,7 +1,7 @@
 /**
  * useTopicMessages — Read every deserialized message for a single topic and
- * cache the result keyed by (fileName, fileSize, topicName) so re-opening a
- * panel reuses the prior parse.
+ * cache the result keyed by (bagId, source, topicName) so re-opening a panel
+ * reuses the prior parse.
  *
  * v0.5.1: streaming. Instead of waiting for the worker to finish decoding the
  * whole topic before showing anything, batches are surfaced as they arrive.
@@ -10,13 +10,26 @@
  *
  * Updates are coalesced through `requestAnimationFrame` so React re-renders
  * at most once per paint regardless of how fast the worker streams batches.
- * The final array is committed to the topic-level cache only after the
- * promise resolves — partial decodes aren't cached so cancelled streams
- * don't poison subsequent panel opens.
+ *
+ * v0.9.x: decodes are shared across React mount cycles. The parser worker
+ * can't be cancelled, so when a panel unmounts during a layout rearrange
+ * the underlying decode keeps running. Without this sharing, the cleanup
+ * would discard the partial buffer and a remount would kick off a *second*
+ * decode for the same (source, topic) pair — observable on /tf with 100k
+ * messages as a full re-decode every time a sibling panel is added or
+ * removed. Now: an `InFlightDecode` entry is keyed by (source, topic) and
+ * any new subscriber attaches to the same buffer, gets a replay of what's
+ * arrived so far, and finalises when the underlying decode does. The cache
+ * write happens unconditionally on completion regardless of whether any
+ * particular React listener is still attached.
+ *
+ * v0.9 multi-bag: callers pass a `bagId` to read from a specific bag. When
+ * omitted, the hook falls back to the focused bag (back-compat path for
+ * existing single-bag panels).
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { useBagStore } from '../store/bagStore';
+import { useBagStore, resolveBagEntry } from '../store/bagStore';
 import { readDeserializedMessages } from '../parsers';
 import { sourceKey } from '../parsers/source';
 
@@ -26,6 +39,25 @@ export interface DecodedMessage {
 }
 
 const cache = new Map<string, DecodedMessage[]>();
+
+interface InFlightDecode {
+  /** Everything decoded so far. Subscribers replay this on attach. */
+  buffer: DecodedMessage[];
+  /** Final message count reported by the worker's progress callback. */
+  progress: number;
+  /** Each attached subscriber gets a callback per arrival of new batches. */
+  listeners: Set<InFlightListener>;
+  /** Resolved when the decode completes; null if still running. */
+  completed: { result: DecodedMessage[] } | { error: string } | null;
+}
+
+interface InFlightListener {
+  onBatch: (batch: DecodedMessage[]) => void;
+  onProgress: (progress: number) => void;
+  onComplete: (result: { result: DecodedMessage[] } | { error: string }) => void;
+}
+
+const inFlight = new Map<string, InFlightDecode>();
 
 export interface TopicMessagesState {
   /**
@@ -44,9 +76,11 @@ export function useTopicMessages(
   topicName: string,
   limit?: number,
   enabled: boolean = true,
+  bagId?: string,
 ): TopicMessagesState {
-  const bag = useBagStore((s) => s.bag);
-  const source = useBagStore((s) => s.source);
+  // Resolve the bag entry on every render — the resolveBagEntry helper picks
+  // the explicit bagId when supplied, falling back to the focused bag.
+  const entry = useBagStore((s) => resolveBagEntry(s, bagId));
   const [state, setState] = useState<TopicMessagesState>({
     messages: null,
     loading: true,
@@ -62,7 +96,7 @@ export function useTopicMessages(
   const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!bag || !source || !enabled || !topicName) {
+    if (!entry || !enabled || !topicName) {
       // Idle state — the caller has either not supplied a bag, opted out via
       // `enabled`, or passed an empty topic name. Suppressing the fetch here
       // is what makes it safe to install this hook conditionally on whether
@@ -74,21 +108,22 @@ export function useTopicMessages(
       return;
     }
 
-    const cacheKey = `${sourceKey(source)}::${topicName}`;
+    const { id: workerBagId, summary: bag, source } = entry;
+    const cacheKey = `${workerBagId}::${sourceKey(source)}::${topicName}::${limit ?? 'all'}`;
     const cached = cache.get(cacheKey);
     if (cached) {
       setState({ messages: cached, loading: false, progress: cached.length, error: null });
       return;
     }
 
-    let cancelled = false;
+    let detached = false;
     bufferRef.current = [];
     progressRef.current = 0;
     setState({ messages: null, loading: true, progress: 0, error: null });
 
     const flush = () => {
       rafRef.current = null;
-      if (cancelled || !bufferRef.current) return;
+      if (detached || !bufferRef.current) return;
       const next = bufferRef.current;
       // Swap to a fresh buffer for the next coalescing window so batches
       // arriving between this flush and the next paint don't get dropped.
@@ -108,60 +143,121 @@ export function useTopicMessages(
       rafRef.current = requestAnimationFrame(flush);
     };
 
-    readDeserializedMessages(
-      source,
-      bag.format,
-      topicName,
-      limit,
-      (decoded) => {
-        if (cancelled) return;
-        progressRef.current = decoded;
-      },
-      (batch) => {
-        if (cancelled) return;
+    const listener: InFlightListener = {
+      onBatch: (batch) => {
+        if (detached) return;
         bufferRef.current?.push(...batch);
         scheduleFlush();
       },
-    )
-      .then((msgs) => {
-        if (cancelled) return;
-        // Final commit: cache the authoritative array (the streamed buffer
-        // and `msgs` should match, but the worker's array is the source
-        // of truth — picking it avoids a quiet drift if a batch was ever
-        // dropped on the wire).
-        cache.set(cacheKey, msgs);
+      onProgress: (p) => {
+        if (detached) return;
+        progressRef.current = p;
+      },
+      onComplete: (final) => {
+        if (detached) return;
         if (rafRef.current !== null) {
           cancelAnimationFrame(rafRef.current);
           rafRef.current = null;
         }
         bufferRef.current = null;
-        setState({ messages: msgs, loading: false, progress: msgs.length, error: null });
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        const msg = err instanceof Error ? err.message : String(err);
-        if (rafRef.current !== null) {
-          cancelAnimationFrame(rafRef.current);
-          rafRef.current = null;
+        if ('error' in final) {
+          setState((s) => ({ ...s, loading: false, error: final.error }));
+        } else {
+          setState({
+            messages: final.result,
+            loading: false,
+            progress: final.result.length,
+            error: null,
+          });
         }
-        bufferRef.current = null;
-        setState((s) => ({ ...s, loading: false, error: msg }));
-      });
+      },
+    };
+
+    const existing = inFlight.get(cacheKey);
+    if (existing) {
+      // Replay everything that's already been decoded — a new subscriber
+      // sees the partial buffer instantly, then matches subsequent batches
+      // tick-by-tick with everyone else.
+      if (existing.buffer.length > 0) {
+        bufferRef.current?.push(...existing.buffer);
+        progressRef.current = existing.progress;
+        scheduleFlush();
+      }
+      if (existing.completed) {
+        listener.onComplete(existing.completed);
+      } else {
+        existing.listeners.add(listener);
+      }
+    } else {
+      const newEntry: InFlightDecode = {
+        buffer: [],
+        progress: 0,
+        listeners: new Set([listener]),
+        completed: null,
+      };
+      inFlight.set(cacheKey, newEntry);
+
+      readDeserializedMessages(
+        workerBagId,
+        source,
+        bag.format,
+        topicName,
+        limit,
+        (decoded) => {
+          newEntry.progress = decoded;
+          for (const l of newEntry.listeners) l.onProgress(decoded);
+        },
+        (batch) => {
+          newEntry.buffer.push(...batch);
+          for (const l of newEntry.listeners) l.onBatch(batch);
+        },
+      )
+        .then((msgs) => {
+          // The worker's array is the source of truth — picking it (instead
+          // of the locally-accumulated buffer) avoids any drift if a batch
+          // were ever dropped on the wire.
+          cache.set(cacheKey, msgs);
+          const final = { result: msgs };
+          newEntry.completed = final;
+          for (const l of newEntry.listeners) l.onComplete(final);
+          newEntry.listeners.clear();
+          inFlight.delete(cacheKey);
+        })
+        .catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          const final = { error: msg };
+          newEntry.completed = final;
+          for (const l of newEntry.listeners) l.onComplete(final);
+          newEntry.listeners.clear();
+          inFlight.delete(cacheKey);
+        });
+    }
 
     return () => {
-      cancelled = true;
+      detached = true;
+      // Detach this React listener but leave the underlying decode running.
+      // The cache will still be populated on completion so the next mount
+      // for the same (source, topic) gets it for free.
+      const entry = inFlight.get(cacheKey);
+      entry?.listeners.delete(listener);
       if (rafRef.current !== null) {
         cancelAnimationFrame(rafRef.current);
         rafRef.current = null;
       }
       bufferRef.current = null;
     };
-  }, [bag, source, topicName, limit, enabled]);
+  }, [entry, topicName, limit, enabled]);
 
   return state;
 }
 
-/** Drop everything from the message cache (used when the bag changes). */
+/** Drop everything from the message cache (used when bags change). */
 export function clearTopicMessageCache(): void {
   cache.clear();
+  // Orphan any in-flight decodes — their cache writes will land under keys
+  // that will never be queried again, but the listeners are gone so no UI
+  // state will be touched. Memory is reclaimed when the worker promise
+  // resolves and the closure drops.
+  for (const entry of inFlight.values()) entry.listeners.clear();
+  inFlight.clear();
 }

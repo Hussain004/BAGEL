@@ -15,12 +15,10 @@ export function Timeline() {
   const trackRef = useRef<HTMLDivElement>(null);
   const isDraggingRef = useRef(false);
   const lastFrameRef = useRef<number | null>(null);
-
-  // Initialize playhead bounds whenever the loaded bag changes.
-  useEffect(() => {
-    if (!bag) return;
-    usePlayheadStore.getState().initFromBag(bag.startTime, bag.endTime);
-  }, [bag]);
+  // Note: the playhead range is owned by bagStore now (it varies with
+  // alignment mode + the union of every loaded bag's range). The Timeline
+  // used to reset it on every `bag` change; that's no longer necessary —
+  // bagStore.syncPlayheadRange is the single source of truth.
 
   // RAF loop for playback.
   useEffect(() => {
@@ -85,7 +83,10 @@ export function Timeline() {
 
   if (!bag) return null;
 
-  const duration = bag.duration;
+  // Use the playhead range (set by bagStore.syncPlayheadRange) rather than
+  // bag.duration directly — multi-bag with bag-start alignment gives a
+  // range equal to max(bag1, bag2) which may differ from any single bag.
+  const duration = Number(endNs - startNs) / 1e9;
   const elapsed = Number(timeNs - startNs) / 1e9;
   const fraction = endNs > startNs ? elapsed / duration : 0;
 

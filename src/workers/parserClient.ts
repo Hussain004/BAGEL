@@ -6,9 +6,19 @@
  * so we can multiplex many in-flight reads (image scrubs + a plot decode
  * + a TF load can all run concurrently against the same worker).
  *
- * The worker is created on first use and kept alive for the lifetime of
- * the page — its MCAP reader / sql.js Database caches are what make
- * subsequent reads cheap, so tearing it down would defeat that.
+ * v0.9 multi-bag: there is now one worker *per bagId*. Each worker owns its
+ * own MCAP reader / sql.js Database / ROS1 Bag caches, so:
+ *   - parsing bag B doesn't queue behind a long /tf decode of bag A,
+ *   - disposing bag B tears down only its caches without disturbing bag A,
+ *   - the inFlight in `useTopicMessages` keys cleanly by (sourceKey, topic).
+ *
+ * Workers are spun up on first use and kept alive for the lifetime of the bag
+ * — disposal happens in `releaseBagWorker(bagId)` which both terminates the
+ * worker and drops the singleton entry.
+ *
+ * For non-bag-tied operations (validate a pasted schema, list supported
+ * types, push the custom-schema map) we have a singleton "shared" worker so
+ * those don't depend on having any bag loaded.
  */
 
 import type { BagFormat, BagSummary, RawMessage } from '../types/bag';
@@ -104,6 +114,13 @@ class ParserClient {
   private rejectAll(err: Error) {
     for (const p of this.pending.values()) p.reject(err);
     this.pending.clear();
+  }
+
+  /** Terminate this worker and reject all pending requests. */
+  terminate(): void {
+    this.rejectAll(new Error('Parser worker terminated.'));
+    this.worker?.terminate();
+    this.worker = null;
   }
 
   private request<T>(
@@ -250,9 +267,49 @@ class ParserClient {
   }
 }
 
-let singleton: ParserClient | null = null;
+// ─── Per-bag worker registry ───────────────────────────────────────────────
 
-export function getParserClient(): ParserClient {
-  if (!singleton) singleton = new ParserClient();
-  return singleton;
+const SHARED = '__shared__';
+const clients = new Map<string, ParserClient>();
+
+/**
+ * Resolve the worker for a given bagId (or `SHARED` for non-bag operations).
+ *
+ * The shared worker handles `setCustomSchemas`, `validateSchema`, and
+ * `getSupportedTypes` — none of which depend on a particular bag's caches.
+ * Bag-tied operations route through per-bag workers so they don't queue
+ * behind each other.
+ */
+export function getParserClient(bagId: string = SHARED): ParserClient {
+  let c = clients.get(bagId);
+  if (!c) {
+    c = new ParserClient();
+    clients.set(bagId, c);
+  }
+  return c;
+}
+
+/**
+ * Terminate the worker dedicated to a bagId. Called from `bagStore.removeBag`
+ * so the worker, its caches, and any pending requests are freed at once.
+ */
+export function releaseBagWorker(bagId: string): void {
+  const c = clients.get(bagId);
+  if (!c) return;
+  c.terminate();
+  clients.delete(bagId);
+}
+
+/**
+ * For the shared (non-bag) worker — used by `useCustomSchemaSync` on app boot
+ * before any bag is loaded. The shared worker also broadcasts custom-schema
+ * updates to every per-bag worker since they need the same schemas.
+ */
+export function getSharedParserClient(): ParserClient {
+  return getParserClient(SHARED);
+}
+
+/** Currently-registered per-bag workers (excluding shared). */
+export function activeBagWorkerIds(): string[] {
+  return Array.from(clients.keys()).filter((id) => id !== SHARED);
 }

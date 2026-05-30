@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { useBagStore } from '../../../store/bagStore';
-import { usePlayheadStore } from '../../../store/playheadStore';
+import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
+import { useBagLocalPlayhead } from '../../../hooks/useBagLocalPlayhead';
 import {
   DEFAULT_THREE_D_SETTINGS,
   useThreeDPanelStore,
@@ -56,6 +56,8 @@ interface ThreeDSceneProps {
   panelId: string;
   topicName: string;
   type: string;
+  /** Which bag the panel reads from (multi-bag). Defaults to focused bag. */
+  bagId?: string;
 }
 
 type SceneKind = 'pointcloud' | 'laserscan' | 'pose' | 'markerarray' | 'occupancygrid';
@@ -260,9 +262,9 @@ function computeMarkerBounds(
  * are cheap (a handful of binary searches), but we memoize when nothing
  * changes so the scene update doesn't redo unnecessary work.
  */
-export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
-  const bag = useBagStore((s) => s.bag);
-  const playheadNs = usePlayheadStore((s) => s.timeNs);
+export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProps) {
+  const bag = useBagStore((s) => resolveBagEntry(s, bagId))?.summary ?? null;
+  const playheadNs = useBagLocalPlayhead(bagId);
   const sceneKind = useMemo(() => detectKind(type), [type]);
 
   // Persistent display settings live in a per-panelId zustand store rather
@@ -350,13 +352,14 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
     // PointCloud2 / CustomCloud — pass it conditionally to keep scans' cache
     // key minimal.
     heightAxis: sceneKind === 'pointcloud' ? heightAxis : undefined,
+    bagId,
   });
-  const poseState = useMessageAtTime(topicName, playheadNs);
+  const poseState = useMessageAtTime(topicName, playheadNs, bagId);
   // Marker streams are unlike clouds and poses: every marker persists in the
   // scene until DELETE or lifetime expiry, so we need the full history up to
   // the playhead — not just the message at the playhead. The hook is gated
   // on `isMarker` so it does nothing on cloud / pose panels.
-  const markerStream = useTopicMessages(topicName, MARKER_MESSAGE_LIMIT, isMarker);
+  const markerStream = useTopicMessages(topicName, MARKER_MESSAGE_LIMIT, isMarker, bagId);
 
   const cloud = isCloud ? cloudState.cloud : null;
   // Pose-axes panels and OccupancyGrid panels share the same single-message
@@ -375,7 +378,7 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
       ? cloudState.error
       : poseState.error;
 
-  const { graph, missing: noTf } = useTFGraph();
+  const { graph, missing: noTf } = useTFGraph(bagId);
   const { containerRef, sceneRef } = useScene();
 
   // Auto-pick a world frame when the TF graph + first message arrive.

@@ -29,6 +29,13 @@ const BADGE_CLASSES: Record<string, string> = {
 interface TopicRowProps {
   topic: TopicInfo;
   index: number;
+  /**
+   * Which bag this row was rendered against. Drives the panel id when the
+   * user opens a visualization — multi-bag setups (>1 bag loaded) thread
+   * this in from the sidebar so the resulting panel reads from the right
+   * bag regardless of which one is currently focused.
+   */
+  bagId?: string;
 }
 
 /** Pick the panel kind to open when the user single-clicks a topic. */
@@ -116,7 +123,7 @@ function buttonTitleFor(topic: TopicInfo, kind: PanelKind): string {
   return KIND_BUTTON_TITLE[kind];
 }
 
-export function TopicRow({ topic, index }: TopicRowProps) {
+export function TopicRow({ topic, index, bagId }: TopicRowProps) {
   const color = getTopicColor(topic.name, topic.type);
   const category = getTypeCategory(topic.type);
   const badgeClass = BADGE_CLASSES[category] || 'badge-slate';
@@ -126,8 +133,15 @@ export function TopicRow({ topic, index }: TopicRowProps) {
   const packageName = parts[0] || '';
 
   const openPanel = useLayoutStore((s) => s.openPanel);
-  const hasOpenPanel = useLayoutStore((s) => s.hasPanelForTopic(topic.name));
-  const format = useBagStore((s) => s.bag?.format);
+  const hasOpenPanel = useLayoutStore((s) =>
+    s.hasPanelForTopic(topic.name, bagId),
+  );
+  // Look up the format from the specific bag this row was rendered against,
+  // not the focused bag — multi-bag setups can mix mcap/db3/bag.
+  const format = useBagStore(
+    (s) =>
+      (bagId ? s.bags.get(bagId)?.summary.format : null) ?? s.bag?.format,
+  );
   const openSchemaPaste = useUiStore((s) => s.openSchemaPaste);
 
   // Schema availability check — only `.db3` topics can be schema-missing.
@@ -141,10 +155,11 @@ export function TopicRow({ topic, index }: TopicRowProps) {
         typeName: topic.type,
         topicName: topic.name,
         followupPanelKind: kind,
+        bagId,
       });
       return;
     }
-    openPanel({ kind, topicName: topic.name, type: topic.type });
+    openPanel({ kind, topicName: topic.name, type: topic.type, bagId });
   };
 
   const defaultKind = suggestPanelKind(topic);
@@ -252,6 +267,7 @@ export function TopicRow({ topic, index }: TopicRowProps) {
                 typeName: topic.type,
                 topicName: topic.name,
                 followupPanelKind: defaultKind,
+                bagId,
               })
             }
             accent

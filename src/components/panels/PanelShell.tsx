@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { useLayoutStore, type PanelKind } from '../../store/layoutStore';
 import { useDragDockStore } from '../../store/dragDockStore';
-import { useBagStore } from '../../store/bagStore';
+import { useBagStore, resolveBagEntry } from '../../store/bagStore';
 import { readDeserializedMessages } from '../../parsers';
 import {
   downloadText,
@@ -17,6 +17,8 @@ interface PanelShellProps {
   topicName: string;
   type: string;
   accentColor?: string;
+  /** Multi-bag: which bag this panel reads from. Falls back to focused bag. */
+  bagId?: string;
   children: ReactNode;
 }
 
@@ -50,12 +52,15 @@ export function PanelShell({
   topicName,
   type,
   accentColor,
+  bagId,
   children,
 }: PanelShellProps) {
   const closePanel = useLayoutStore((s) => s.closePanel);
   const startDrag = useDragDockStore((s) => s.startDrag);
   const endDrag = useDragDockStore((s) => s.endDrag);
   const isDragging = useDragDockStore((s) => s.sourceId === panelId);
+  const bagCount = useBagStore((s) => s.bagOrder.length);
+  const entry = useBagStore((s) => resolveBagEntry(s, bagId));
   const parts = type.split('/');
   const shortType = parts[parts.length - 1] || type;
   const pkg = parts[0] || '';
@@ -119,6 +124,19 @@ export function PanelShell({
           aria-hidden="true"
         />
         <span className="badge badge-slate flex-shrink-0">{KIND_LABELS[kind]}</span>
+        {bagCount > 1 && entry && (
+          <span
+            className="badge flex-shrink-0 mono text-[10px] px-1.5 py-0.5 rounded"
+            style={{
+              backgroundColor: `${entry.color}22`,
+              color: entry.color,
+              border: `1px solid ${entry.color}44`,
+            }}
+            title={`Reading from ${entry.summary.fileName}`}
+          >
+            {entry.summary.fileName}
+          </span>
+        )}
         <span
           className="mono text-sm text-text-primary font-medium truncate flex-1"
           title={topicName}
@@ -129,7 +147,7 @@ export function PanelShell({
           {pkg && <span className="text-text-muted mono">{pkg}/</span>}
           <span className="text-text-secondary mono">{shortType}</span>
         </div>
-        <ExportMenu topicName={topicName} kind={kind} />
+        <ExportMenu topicName={topicName} kind={kind} bagId={bagId} />
         <button
           onClick={() => closePanel(panelId)}
           className="w-7 h-7 rounded-md flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-surface-hover transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
@@ -153,14 +171,22 @@ export function PanelShell({
  * interest), TF panels skip both because the raw `transforms[]` array
  * shape is meaningless without TF-graph context.
  */
-function ExportMenu({ topicName, kind }: { topicName: string; kind: PanelKind }) {
-  const bag = useBagStore((s) => s.bag);
-  const source = useBagStore((s) => s.source);
+function ExportMenu({
+  topicName,
+  kind,
+  bagId,
+}: {
+  topicName: string;
+  kind: PanelKind;
+  bagId?: string;
+}) {
+  const entry = useBagStore((s) => resolveBagEntry(s, bagId));
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<ExportFormat | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  if (!bag || !source) return null;
+  if (!entry) return null;
+  const { id: workerBagId, summary: bag, source } = entry;
   // TF tree exports are surprisingly complex (you really want a CSV per
   // edge), so opt them out of the generic exporter rather than serve a
   // half-broken one.
@@ -172,6 +198,7 @@ function ExportMenu({ topicName, kind }: { topicName: string; kind: PanelKind })
     setError(null);
     try {
       const messages = await readDeserializedMessages(
+        workerBagId,
         source,
         bag.format,
         topicName,

@@ -17,10 +17,12 @@
  * is moving, every in-flight request would be invalidated by the next
  * 16 ms tick and its decoded cloud would never reach state — the scene
  * froze until the user paused.
+ *
+ * v0.9 multi-bag: accepts an optional `bagId` to read from a specific bag.
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { useBagStore } from '../../../store/bagStore';
+import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
 import { readLaserScanAtTime, readPointCloudAtTime } from '../../../parsers';
 import type { ColorMode, HeightAxis, PointCloudExtraction } from '../../../utils/pointcloud';
 import type { LaserScanExtraction } from '../../../utils/laserscan';
@@ -52,6 +54,8 @@ interface Options {
    * (PointCloud2 / CustomCloud only — LaserScan is colored by range.)
    */
   heightAxis?: HeightAxis;
+  /** Optional bag id; defaults to the focused bag. */
+  bagId?: string;
 }
 
 export function useDecodedCloud({
@@ -62,9 +66,9 @@ export function useDecodedCloud({
   maxPoints,
   maxRange,
   heightAxis,
+  bagId,
 }: Options): DecodedCloudState {
-  const bag = useBagStore((s) => s.bag);
-  const source = useBagStore((s) => s.source);
+  const entry = useBagStore((s) => resolveBagEntry(s, bagId));
 
   const [state, setState] = useState<DecodedCloudState>({
     cloud: null,
@@ -102,7 +106,7 @@ export function useDecodedCloud({
     pendingRef.current = null;
     inflightRef.current = false;
     lastResultKeyRef.current = null;
-    if (!bag || !source) {
+    if (!entry) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setState({ cloud: null, loading: false, error: null });
     }
@@ -114,12 +118,12 @@ export function useDecodedCloud({
       // eslint-disable-next-line react-hooks/exhaustive-deps
       sessionRef.current++;
     };
-  }, [bag, source, topicName, kind]);
+  }, [entry, topicName, kind]);
 
   useEffect(() => {
-    if (!bag || !source) return;
-
+    if (!entry) return;
     const mySession = sessionRef.current;
+    const { id: workerBagId, summary: bag, source } = entry;
 
     const fire = (): void => {
       if (inflightRef.current || pendingRef.current === null) return;
@@ -131,6 +135,7 @@ export function useDecodedCloud({
       const promise: Promise<DecodedCloud | null> =
         kind === 'pointcloud'
           ? readPointCloudAtTime(
+              workerBagId,
               source,
               bag.format,
               topicName,
@@ -140,7 +145,7 @@ export function useDecodedCloud({
               target.maxRange,
               target.heightAxis,
             )
-          : readLaserScanAtTime(source, bag.format, topicName, target.timeNs);
+          : readLaserScanAtTime(workerBagId, source, bag.format, topicName, target.timeNs);
 
       promise
         .then((cloud) => {
@@ -186,7 +191,7 @@ export function useDecodedCloud({
       setState((s) => ({ ...s, loading: true, error: null }));
     }
     fire();
-  }, [bag, source, topicName, timeNs, colorMode, maxPoints, maxRange, heightAxis, kind]);
+  }, [entry, topicName, timeNs, colorMode, maxPoints, maxRange, heightAxis, kind]);
 
   return state;
 }

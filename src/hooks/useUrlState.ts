@@ -9,10 +9,12 @@
  * `key=value&...` form. Keys:
  *   - `t` — playhead time in seconds from bag start (3-digit precision)
  *   - `p` — the layout tree, encoded recursively:
- *           * `P<kind>:<URL-encoded topic>` for a panel leaf
+ *           * `P<kind>:<URL-encoded topic>` for a single-bag panel (v0.7/v0.8)
+ *           * `P<kind>:<bagId>:<URL-encoded topic>` for a multi-bag panel (v0.9)
  *           * `H(<child>,<child>,...)` for a horizontal split
  *           * `V(<child>,<child>,...)` for a vertical split
- *           e.g. `H(Pplot:%2Fodom,V(Pimage:%2Fcam,Pplot:%2Fimu))`.
+ *           e.g. `H(Pplot:%2Fodom,V(Pimage:%2Fcam,Pplot:b2:%2Fimu))`.
+ *   - `b` — first bag URL (v0.9) — restored on page open if no bag is loaded yet.
  *
  * Back-compat: v0.5 hashes used a flat `p=plot:topic1,image:topic2` form
  * without the `P/H/V` prefixes. We detect that shape (no leading `P/H/V`)
@@ -82,24 +84,39 @@ function parseTreeEncoding(input: string): LayoutNode | null {
     while (end < input.length && input[end] !== ',' && input[end] !== ')') end++;
     const raw = input.slice(pos, end);
     pos = end;
-    const colon = raw.indexOf(':');
-    if (colon < 1) return null;
-    const kind = raw.slice(0, colon);
+    // Split on `:` — two parts means single-bag (kind:topic), three+ parts
+    // means multi-bag (kind:bagId:topic). URL-decoded topic names don't
+    // contain literal colons; any colon in the original would be `%3A` in
+    // the encoded form, so this split is unambiguous.
+    const parts = raw.split(':');
+    if (parts.length < 2) return null;
+    const kind = parts[0];
     if (!PANEL_KIND_VALUES.has(kind)) return null;
+    let bagId: string | undefined;
+    let encodedTopic: string;
+    if (parts.length === 2) {
+      encodedTopic = parts[1];
+    } else {
+      bagId = parts[1] || undefined;
+      // Re-join in case a topic ever contains a literal `:` (it shouldn't,
+      // but encoding handles it via `%3A` so the parts.length check stays valid).
+      encodedTopic = parts.slice(2).join(':');
+    }
     let topicName: string;
     try {
-      topicName = decodeURIComponent(raw.slice(colon + 1));
+      topicName = decodeURIComponent(encodedTopic);
     } catch {
       return null;
     }
     if (!topicName) return null;
     return {
       node: 'panel',
-      id: `${kind}:${topicName}`,
+      id: bagId ? `${kind}:${bagId}:${topicName}` : `${kind}:${topicName}`,
       kind: kind as PanelKind,
       topicName,
       // Real ROS type filled in during restore from the bag's topic table.
       type: '',
+      bagId,
     };
   }
 
@@ -159,6 +176,7 @@ function parseFlatEncoding(input: string): LayoutNode | null {
       kind: kind as PanelKind,
       topicName,
       type: '',
+      // No bagId in v0.5 flat encoding — resolves to the focused bag at load time.
     });
   }
   if (leaves.length === 0) return null;
@@ -209,7 +227,12 @@ function parseHash(hash: string): ParsedHash {
 /** Serialise a layout tree back to the compact `P/H/V` form. */
 function encodeNode(node: LayoutNode): string {
   if (node.node === 'panel') {
-    return `P${node.kind}:${encodeURIComponent(node.topicName)}`;
+    // Single-bag shape stays as `Pkind:topic` so v0.7 / v0.8 shared links
+    // keep producing the exact same hash they did before.
+    if (!node.bagId) {
+      return `P${node.kind}:${encodeURIComponent(node.topicName)}`;
+    }
+    return `P${node.kind}:${node.bagId}:${encodeURIComponent(node.topicName)}`;
   }
   const tag = node.orientation === 'horizontal' ? 'H' : 'V';
   return `${tag}(${node.children.map(encodeNode).join(',')})`;
@@ -235,20 +258,35 @@ function encodeHash(
 /**
  * Walk the parsed tree, attaching real ROS types from the bag and dropping
  * leaves whose topics aren't in this bag. Returns null if nothing survives.
+ *
+ * Multi-bag-aware: a leaf with a `bagId` looks up its type in that bag if
+ * loaded, otherwise falls through to the focused bag's table. Saved hashes
+ * with stale bagIds (from a prior page session) thus degrade gracefully
+ * rather than dropping every leaf.
  */
 function attachTypesAndPrune(
   node: LayoutNode | null,
-  topicTypes: Map<string, string>,
+  bagTopicTypes: Map<string, Map<string, string>>,
+  focusBagId: string | null,
 ): LayoutNode | null {
   if (!node) return null;
   if (node.node === 'panel') {
-    const type = topicTypes.get(node.topicName);
+    let type: string | undefined;
+    let resolvedBagId: string | undefined = node.bagId;
+    if (node.bagId && bagTopicTypes.has(node.bagId)) {
+      type = bagTopicTypes.get(node.bagId)!.get(node.topicName);
+    }
+    if (!type && focusBagId && bagTopicTypes.has(focusBagId)) {
+      type = bagTopicTypes.get(focusBagId)!.get(node.topicName);
+      // Stale bagId → adopt focused bag so subsequent reads route correctly.
+      if (type) resolvedBagId = focusBagId;
+    }
     if (!type) return null;
-    return { ...node, type };
+    return { ...node, type, bagId: resolvedBagId };
   }
   const survivors: LayoutNode[] = [];
   for (const c of node.children) {
-    const after = attachTypesAndPrune(c, topicTypes);
+    const after = attachTypesAndPrune(c, bagTopicTypes, focusBagId);
     if (after) survivors.push(after);
   }
   if (survivors.length === 0) return null;
@@ -305,20 +343,28 @@ export function useUrlState(): void {
     const parsed = parseHash(window.location.hash);
 
     // Apply playhead first so any panels that mount with the playhead read
-    // the restored time immediately.
+    // the restored time immediately. The hash encodes seconds from the
+    // playhead range start (aligned time under multi-bag); under v0.7/v0.8
+    // single-bag wall-clock alignment this is identical to seconds from
+    // bag.startTime, so existing share links round-trip exactly.
     if (parsed.timeSec !== undefined) {
-      const startNs = bag.startTime;
-      const endNs = bag.endTime;
+      const phState = usePlayheadStore.getState();
+      const startNs = phState.startNs;
+      const endNs = phState.endNs;
       const targetNs = startNs + BigInt(Math.round(parsed.timeSec * 1e9));
       const clamped =
         targetNs < startNs ? startNs : targetNs > endNs ? endNs : targetNs;
-      usePlayheadStore.getState().seek(clamped);
+      phState.seek(clamped);
     }
 
     if (!parsed.root) return;
 
-    const topicTypes = new Map(bag.topics.map((t) => [t.name, t.type]));
-    const restoredTree = attachTypesAndPrune(parsed.root, topicTypes);
+    const bagState = useBagStore.getState();
+    const bagTopicTypes = new Map<string, Map<string, string>>();
+    for (const [id, entry] of bagState.bags) {
+      bagTopicTypes.set(id, new Map(entry.summary.topics.map((t) => [t.name, t.type])));
+    }
+    const restoredTree = attachTypesAndPrune(parsed.root, bagTopicTypes, bagState.focusBagId);
     if (!restoredTree) return;
 
     useLayoutStore.getState().restoreLayout(restoredTree);
@@ -334,7 +380,6 @@ export function useUrlState(): void {
       return;
     }
 
-    const startNs = bag.startTime;
     // Only URL-loaded bags persist their source in the hash — there's no way
     // to encode a local File handle. The source ref is captured here and used
     // on every write below; it changes infrequently (only on load/clear).
@@ -347,7 +392,10 @@ export function useUrlState(): void {
       pendingFrame = null;
       const playhead = usePlayheadStore.getState();
       const root = useLayoutStore.getState().root;
-      const timeSec = Math.max(0, Number(playhead.timeNs - startNs) / 1e9);
+      // Encode time relative to the playhead range start (the multi-bag
+      // aligned window). Under single-bag wall-clock this still equals
+      // `timeNs - bag.startTime` so v0.7/v0.8 share links round-trip.
+      const timeSec = Math.max(0, Number(playhead.timeNs - playhead.startNs) / 1e9);
       const next = encodeHash(timeSec, root, bagUrl);
       if (next === last) return;
       last = next;

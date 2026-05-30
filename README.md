@@ -12,7 +12,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-8-646cff.svg)](https://vite.dev/)
-[![Version](https://img.shields.io/badge/version-0.9.0-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
+[![Version](https://img.shields.io/badge/version-0.9.1-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
 
 [**→ Live Demo**](https://bagel-ros2.vercel.app) · [Report Bug](https://github.com/Hussain004/BAGEL/issues) · [Request Feature](https://github.com/Hussain004/BAGEL/issues)
 
@@ -58,10 +58,11 @@ BAGEL eliminates this friction.
 
 ## Features
 
-### v0.9: OccupancyGrid + GPS Tile Underlay + Remote URL Loading
+### v0.9: Multi-Bag Overlay + OccupancyGrid + GPS Tile Underlay + Remote URL Loading
 
 Everything in v0.8.1, plus:
 
+- **Multi-bag overlay**: drag a second bag onto the toolbar's `Add bag` button (or hit the file picker) and BAGEL holds both bags simultaneously instead of replacing the first. The toolbar grows a chip per loaded bag (with a colour swatch + remove button), the sidebar groups topics under collapsible per-bag headers, and panel ids embed a `bagId` so opening `/odom` from bag A and `/odom` from bag B docks them as distinct panels you can stack side-by-side. **Per-bag parser worker**: each bag owns its own Web Worker (per-bagId `parserClient`) so parsing bag B doesn't queue behind a long /tf decode of bag A, and tearing down bag B disposes only its caches. **Three time-alignment modes** in the toolbar: `wall-clock` (use `header.stamp` directly across bags, right when bags share a synced clock), `bag-start` (subtract each bag's `startTime` so `t=0` lines up, right for offline replays where absolute time is meaningless), and `anchor` (subtract each bag's user-picked anchor time, right when a physical event aligns runs). The playhead operates in aligned time; each bag's read path converts to bag-local ns via the inverse offset. **Per-bag colour tints** flow through the visualizations — TrajectoryPlot polylines tint by bag colour (lightness ramps along the path so direction of travel still reads) when more than one bag is loaded, the PanelShell header gets a per-bag chip so you can tell at a glance which bag a panel reads from, and the topic-row "Add schema" path threads the bagId through to the modal so per-bag schemas decode correctly. URL hashes gain an optional `bagId:` segment in the panel encoding (`Pplot:b2:%2Fodom`) — v0.7 / v0.8 hashes (no `bagId`) still parse and resolve to the focused bag at load time, so existing share links keep working.
 - **`nav_msgs/OccupancyGrid` rendering**: SLAM-produced maps (`gmapping`, `slam_toolbox`, `cartographer`, every nav stack costmap publisher) render as a textured plane in the 3D scene. The map is posed by `info.origin` and TF-resolved against the chosen world frame, so a map in `map` stays put as the robot moves through `odom`. Colour map: `-1` (unknown) → transparent, `0` (free) → light grey at 60% alpha so the ground grid bleeds through, `1…99` → linear ramp from white to dark grey at 85% alpha (cost-map publishers fill the whole range), `100` (occupied) → near-black at 95% alpha. `NearestFilter` keeps cell edges crisp instead of smearing free-space pixels into occupied ones. A `map alpha` slider in the Display card fades the whole plane without losing the per-cell ramp. Texture rebuilds short-circuit on a content-fingerprint match so the 1 Hz SLAM publisher doesn't re-upload to the GPU on every playhead tick. Topic sidebar grows a `Map` quick-button on `/map`-style topics.
 - **OpenStreetMap tile underlay for NavSatFix**: the existing `TrajectoryPlot` projects `sensor_msgs/NavSatFix` to local x/y using equirectangular projection from the first GPS fix. The result is a polyline on a blank canvas — useful but missing the spatial context that makes a GPS trace cool to look at. v0.9 adds an opt-in `map tiles` toggle in the panel: viewport corners get back-projected to lat/lon, the appropriate slippy-map zoom is picked from the current screen scale (1 ≈ tile-pixel = screen-pixel), and the covering tile range is fetched from OSM with a 200-entry in-memory LRU cache. Default off — fetching tiles breaks BAGEL's "no data leaves your machine" pitch, so we make the user opt in explicitly. OSM attribution is shown when the underlay is on, per their tile-usage policy.
 - **Remote URL loading via HTTP Range**: paste a bag URL into the DropZone (alongside the existing drag-and-drop) to load `.mcap` / `.bag` / `.db3` files hosted on public buckets, GitHub release assets, OSF dataset mirrors, or your own server. MCAP and ROS1 `.bag` honour partial reads — only the chunks the user actually scrubs through ever hit the network, so a multi-GB SLAM bag opens in under a second and the rest streams on demand. `.db3` eager-fetches the whole file (sql.js needs it in memory). Format auto-detect handles extensionless URLs by sniffing 16 magic bytes from a single Range request. Specific error messages for every failure mode the spec lets us distinguish: a CORS rejection says "the remote server doesn't allow cross-origin requests" instead of `TypeError: Failed to fetch`; a server without Content-Length says "try a host that supports it (S3, GitHub releases, …)"; a server that ignores Range and returns 200+the-whole-body falls back transparently but flags the symptom; a 416 Range Not Satisfiable says "the bag may be truncated or the wrong content length was advertised". The `BagSource` abstraction (`{ kind: 'file' | 'url' }`) flows through every parser API — panels and hooks don't know whether bytes come from a local Blob or an HTTP Range request.
@@ -118,7 +119,7 @@ Everything in v0.4, plus:
 - **Per-topic export**: every panel header now has an Export menu that downloads the topic as CSV (flattened numeric leaves, one row per message: exactly what `plot.csv` looked like in `rqt_bag`) or NDJSON (the full deserialized message stream, one object per line, with `BigInt` timestamps stringified and `Uint8Array` fields base64-encoded so the file is valid JSON). Caps at 250k messages per topic to keep the in-browser exporter from OOMing on multi-million-message logs.
 - **Voxel-grid point accumulation**: the v0.4 ring buffer is now joined by a true voxel-grid downsample mode. Each appended point is snapped to a regular 3D grid keyed by `(floor(x/v), floor(y/v), floor(z/v))` and only the most recent point per cell is kept. The result is a stable map of the visited ground rather than ten ring-buffer copies of the same area. Voxel size is exposed as a 5 cm – 2 m slider in the Display card. Switching modes or voxel size mid-flight clears the accumulator (storage layouts differ).
 - **About + Shortcuts modals**: reachable from the BAGEL logo (top-left of the toolbar), the `?` icon in the toolbar, or the keyboard. Generated from the same `SHORTCUTS` table the handler uses, so new bindings auto-appear.
-- **Try a sample bag**: a 1.7 MB bundled `tour.mcap` ships in `public/sample-bags/`. It's generated from `scripts/build-sample-bag.mjs` (an idempotent Node script that uses `@mcap/core` + `@foxglove/rosmsg2-serialization` to write a 30-second synthetic `/odom + /imu + /scan + /tf` set), so first-time visitors can exercise every panel without supplying their own data.
+- **Try a sample bag**: a ~2 MB bundled `tour.mcap` ships in `public/sample-bags/`. It's generated from `scripts/build-sample-bag.mjs` (an idempotent Node script that uses `@mcap/core` + `@foxglove/rosmsg2-serialization` to write a 30-second synthetic `/odom + /imu + /scan + /tf + /markers + /map + /gps/fix` set), so first-time visitors can exercise every panel — including the v0.8 MarkerArray renderer and the v0.9 OccupancyGrid + GPS-on-OSM-tile underlay — without supplying their own data.
 - **Accessibility pass**: `role="dialog"` + `aria-modal` on every modal with focus management (close button gets initial focus, previously-focused element restored on dismissal); `aria-label` / `aria-valuemin/now/max` on the timeline scrubber; `role="list"` + per-row `aria-label` on the topic inspector; focus-visible rings on every interactive control via a single CSS pass that suppresses the default outline only on `:focus` (mouse) while keeping it on `:focus-visible` (keyboard); `prefers-reduced-motion` strips animations to a single static frame.
 - **Responsive toolbar**: the full stats row collapses to a compact `duration · msgs · topics` strip on tablet-width viewports and stacks below 900 px so portrait iPads no longer push the close button off-screen.
 
@@ -170,15 +171,15 @@ Everything in v0.2, plus:
 
 ### Roadmap
 
-v0.9 ships the SLAM-map render, the GPS spatial context, and the remote-URL load that together make BAGEL useful for shareable demos. Possible future directions:
+v0.9 ships the multi-bag overlay (with per-bag parser workers + three time-alignment modes), the SLAM-map render, the GPS spatial context, and the remote-URL load that together make BAGEL useful for comparison workflows and shareable demos. Possible future directions:
 
 | Idea | Notes |
 |---|---|
-| Multi-bag overlay | Drag two bags in to compare runs side-by-side on the same timeline, including mixing a ROS1 `.bag` with a ROS2 `.mcap`. The architectural lift is per-bag parser workers, per-bag colour tints, and a time-alignment strategy (wall-clock / bag-start / user-anchor). The deferred v0.9 headline — split out of this release to keep the diff reviewable. |
 | Light theme | Dark is intentional (data viz reads better on dark backgrounds), but a toggle would help in bright field conditions. |
 | Plugin panels | Lets users build custom views (e.g. depth-image colorisation, GPS overlay) against a stable panel API. |
 | Cloud-hosted shareable URLs | The local hash is great for personal reuse — a tiny backend would unlock real link-sharing with layouts that survive a bag move. |
 | Streaming `.db3` over HTTP Range | `sql.js-httpvfs` would do real partial reads via a custom SQLite VFS — current URL loading eager-fetches the whole `.db3` because sql.js needs it in memory. Deferred until someone hits the practical ~250 MB cap in the wild. |
+| User-picked anchor UI for multi-bag | The `anchor` alignment mode currently uses `bag.startTime` as a default until anchors are set, but BAGEL doesn't yet ship UI to pick the per-bag anchor time (the store method exists). Surface a "Set anchor here" button at the playhead so a `race start` / `flag drop` can sync runs. |
 
 ---
 
@@ -262,21 +263,22 @@ User's Browser
 │   ├── DropZone / Toolbar / Timeline / Sidebar / PanelGrid
 │   │
 │   ├── Zustand stores
-│   │     ├── bagStore       (BagSummary + source File handle)
-│   │     ├── playheadStore  (timeNs, playing, speed, seek)
-│   │     └── layoutStore    (open panels keyed by kind:topic)
+│   │     ├── bagStore       (Map<bagId, BagEntry> + focusBagId + alignment)
+│   │     ├── playheadStore  (aligned-time cursor + playing + speed)
+│   │     └── layoutStore    (open panels keyed by kind:bagId:topic)
 │   │
 │   ├── Hooks (lazy fetch + cache decoded messages)
-│   │     ├── useTopicMessages
-│   │     ├── useMessageAtTime
+│   │     ├── useTopicMessages       (cache keyed by bagId + source + topic)
+│   │     ├── useMessageAtTime       (single-flight per panel)
+│   │     ├── useBagLocalPlayhead    (aligned → bag-local time conversion)
 │   │     ├── useTrajectory
 │   │     └── useTFGraph
 │   │
-│   └── parsers/index.ts  → tiny shim that talks to the worker
+│   └── parsers/index.ts  → tiny shim that talks to the per-bag worker
 │         │
-│         │  postMessage({ id, method, params })
+│         │  getParserClient(bagId).request({ id, method, params })
 │         ▼
-└── Parser Web Worker (off-thread)
+└── Parser Web Worker (off-thread, one per loaded bagId)
       │
       ├── parseBag(source)                → BagSummary
       ├── readDeserializedMessages(...)   → decoded[]   (streams progress)
@@ -306,10 +308,12 @@ User's Browser
 
 The main bundle no longer ships `@mcap/core`, `sql.js`, `fzstd`, or the
 `@foxglove/*` libraries which are bundled into the worker chunk that
-Vite emits as a sibling of `index.js`. The worker's MCAP reader,
-sql.js database, and ROS1 `Bag` instance are held in module-level
-caches that survive across panel reads, so opening a second panel on
-the same topic doesn't re-pay the parse cost.
+Vite emits as a sibling of `index.js`. Each loaded bag owns its own
+worker instance (v0.9 multi-bag), so the worker's MCAP reader, sql.js
+database, and ROS1 `Bag` instance are held in module-level caches
+*per bag* — opening a second panel on the same topic doesn't re-pay
+the parse cost, and parsing bag B doesn't queue behind bag A's
+in-flight decode.
 
 ### Supported Message Types
 
@@ -421,7 +425,7 @@ ThreeDScene/
 
 ### Build-time scripts
 
-- `scripts/build-sample-bag.mjs`: generates `public/sample-bags/tour.mcap`, a ~1.8 MB synthetic bag with `/odom`, `/imu/data`, `/scan`, `/tf`, and `/markers` topics over 30 seconds. The `/markers` topic publishes 8 markers at 1 Hz across `status` (base_link, frame-locked) and `planning` (odom) namespaces, so a fresh checkout exercises the v0.8 MarkerArray renderer end-to-end. Idempotent; rerun only if the synthetic data needs changing. The output is committed so a fresh checkout serves the sample without a Node build step.
+- `scripts/build-sample-bag.mjs`: generates `public/sample-bags/tour.mcap`, a ~2 MB synthetic bag with `/odom`, `/imu/data`, `/scan`, `/tf`, `/markers`, `/map`, and `/gps/fix` topics over 30 seconds. The `/markers` topic publishes 8 markers at 1 Hz across `status` (base_link, frame-locked) and `planning` (odom) namespaces to exercise the v0.8 MarkerArray renderer end-to-end. `/map` publishes a 100×100 `nav_msgs/OccupancyGrid` that expands outward over the bag, mimicking an incremental SLAM run with outer walls, two pillars, and a mid-cost diagonal corridor to exercise the v0.9 cost ramp. `/gps/fix` projects the figure-eight onto realistic lat/lon around Cambridge UK so the v0.9 OSM tile underlay shows familiar streets when toggled on. Idempotent; rerun only if the synthetic data needs changing. The output is committed so a fresh checkout serves the sample without a Node build step.
 - `scripts/verify-sample-bag.mjs`: parses the generated bag with `McapIndexedReader` and prints the topic table; smoke-test the writer when you change the synthesiser.
 - `scripts/verify-parsers.mjs`: Node-side verification of the `.db3` and `.mcap` parser paths against the real test fixtures in `test_files/`.
 
