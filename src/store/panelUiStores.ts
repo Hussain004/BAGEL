@@ -77,10 +77,19 @@ export interface TrajectoryPanelSettings {
    * recomputing immediately — the data effect handles it.
    */
   view: TrajectoryView | null;
+  /**
+   * Toggle the OpenStreetMap tile underlay for NavSatFix trajectories.
+   * Off by default — fetching tiles breaks BAGEL's "no data leaves your
+   * machine" pitch, so we make the user opt in explicitly.
+   *
+   * Ignored on non-GPS trajectories (no anchor lat/lon to project from).
+   */
+  showMapTiles: boolean;
 }
 
 export const DEFAULT_TRAJECTORY_SETTINGS: TrajectoryPanelSettings = {
   view: null,
+  showMapTiles: false,
 };
 
 interface TrajectoryPanelState {

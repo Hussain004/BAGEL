@@ -53,6 +53,13 @@ export interface ThreeDPanelSettings {
    * this field.
    */
   hiddenMarkerNamespaces: string[];
+  /**
+   * Global alpha multiplier for `nav_msgs/OccupancyGrid` panels (0…1). Sits
+   * on top of the per-cell alpha ramp in the colour map so the user can
+   * fade the whole plane in or out without losing the unknown/free/occupied
+   * gradient. Only meaningful for occupancygrid panels.
+   */
+  mapAlpha: number;
 }
 
 /**
@@ -76,6 +83,7 @@ export const DEFAULT_THREE_D_SETTINGS: ThreeDPanelSettings = {
   upAxis: 'z+',
   pivot: null,
   hiddenMarkerNamespaces: [],
+  mapAlpha: 0.85,
 };
 
 interface ThreeDPanelState {

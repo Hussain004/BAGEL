@@ -10,6 +10,13 @@ import {
   DEFAULT_TRAJECTORY_SETTINGS,
   useTrajectoryPanelStore,
 } from '../../../store/panelUiStores';
+import {
+  DEFAULT_TILE_URL,
+  TILE_SIZE,
+  getTileLoader,
+  latLonToWorldPx,
+  pickZoomForScale,
+} from '../../../utils/gpsTiles';
 
 interface TrajectoryPlotProps {
   panelId: string;
@@ -46,6 +53,7 @@ export function TrajectoryPlot({ panelId, topicName, type }: TrajectoryPlotProps
     bounds,
     source,
     projected,
+    navSatRef,
     loading,
     progress,
     error,
@@ -62,6 +70,8 @@ export function TrajectoryPlot({ panelId, topicName, type }: TrajectoryPlotProps
   );
   const updateSettings = useTrajectoryPanelStore((s) => s.update);
   const view = settings.view;
+  const showMapTiles = settings.showMapTiles;
+  const setShowMapTiles = (v: boolean) => updateSettings(panelId, { showMapTiles: v });
   const setView = useCallback(
     (next: View | null | ((current: View | null) => View | null)) => {
       if (typeof next === 'function') {
@@ -78,6 +88,11 @@ export function TrajectoryPlot({ panelId, topicName, type }: TrajectoryPlotProps
   // Stash the auto-fit view so the reset button can snap back without re-deriving.
   const autoFitRef = useRef<View | null>(null);
   const [hoverPoint, setHoverPoint] = useState<{ x: number; y: number } | null>(null);
+  // Bumped whenever a newly-fetched tile arrives so the render effect re-runs
+  // and paints it into the canvas. Counters compose cleanly with the existing
+  // [points, view, playheadNs] dependency list without needing an imperative
+  // mid-async repaint path.
+  const [tileGeneration, setTileGeneration] = useState(0);
 
   // (Re)compute the auto-fit view whenever the data bounds change.
   const recomputeFit = useCallback(() => {
@@ -105,7 +120,6 @@ export function TrajectoryPlot({ panelId, topicName, type }: TrajectoryPlotProps
     // Only snap to the new fit if the user has not customised the view.
     // A saved view in the store means we're rehydrating after a remount
     // (dock, close+reopen, hash restore) — preserve what the user had.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setView((current) => (current == null ? fit : current));
   }, [recomputeFit, setView]);
 
@@ -223,6 +237,17 @@ export function TrajectoryPlot({ panelId, topicName, type }: TrajectoryPlotProps
     }
   };
 
+  // Wire the tile loader's "new tile" callback to our render trigger. The
+  // loader is a singleton keyed by URL pattern; we install our callback on
+  // mount and clear it on unmount so a closed panel doesn't keep ticking
+  // the now-defunct component's setState.
+  useEffect(() => {
+    if (!projected || !showMapTiles) return;
+    const loader = getTileLoader(DEFAULT_TILE_URL);
+    loader.setOnNewTile(() => setTileGeneration((g) => g + 1));
+    return () => loader.setOnNewTile(null);
+  }, [projected, showMapTiles]);
+
   // Render the trajectory + markers. Runs on every view / playhead / data
   // change; canvas redraws are cheap at trajectory sizes (< 10k points).
   useEffect(() => {
@@ -235,6 +260,12 @@ export function TrajectoryPlot({ panelId, topicName, type }: TrajectoryPlotProps
     const cw = canvas.width / dpr;
     const ch = canvas.height / dpr;
     ctx.clearRect(0, 0, cw, ch);
+
+    // Tile underlay (NavSatFix + user opt-in only). Draws first so the
+    // polyline / playhead always sit on top.
+    if (projected && showMapTiles && navSatRef) {
+      drawTileUnderlay(ctx, cw, ch, view, navSatRef);
+    }
 
     drawGrid(ctx, cw, ch, view);
 
@@ -316,7 +347,7 @@ export function TrajectoryPlot({ panelId, topicName, type }: TrajectoryPlotProps
     }
 
     drawScaleBar(ctx, cw, ch, view);
-  }, [points, view, playheadNs]);
+  }, [points, view, playheadNs, projected, showMapTiles, navSatRef, tileGeneration]);
 
   const accent = getTopicColor(topicName, type);
   const startNs = bag?.startTime ?? 0n;
@@ -362,19 +393,40 @@ export function TrajectoryPlot({ panelId, topicName, type }: TrajectoryPlotProps
               onPointerUp={handlePointerUp}
               onPointerCancel={handlePointerUp}
             />
-            <div className="absolute top-2 right-2 flex gap-1">
-              <button
-                onClick={resetView}
-                className="px-2 py-1 rounded-md text-xs mono bg-surface/80 border border-border hover:border-accent-blue/40 hover:text-accent-blue text-text-secondary transition-all"
-                title="Reset view"
-              >
-                Fit
-              </button>
+            <div className="absolute top-2 right-2 flex flex-col items-end gap-1.5">
+              <div className="flex gap-1">
+                <button
+                  onClick={resetView}
+                  className="px-2 py-1 rounded-md text-xs mono bg-surface/80 border border-border hover:border-accent-blue/40 hover:text-accent-blue text-text-secondary transition-all"
+                  title="Reset view"
+                >
+                  Fit
+                </button>
+              </div>
+              {projected && navSatRef && (
+                <label
+                  className="flex items-center gap-1.5 text-text-secondary text-xs mono bg-bg-primary/85 backdrop-blur px-2 py-1 rounded-md border border-border cursor-pointer hover:border-accent-blue/40"
+                  title="Toggle an OpenStreetMap tile underlay (fetches tiles from osm.org)"
+                >
+                  <input
+                    type="checkbox"
+                    checked={showMapTiles}
+                    onChange={(e) => setShowMapTiles(e.target.checked)}
+                    className="accent-accent-blue"
+                  />
+                  map tiles
+                </label>
+              )}
             </div>
             <div className="absolute top-2 left-2 text-text-muted text-[10px] mono leading-tight bg-bg-primary/60 backdrop-blur px-2 py-1 rounded-md border border-border">
               <div>{source}</div>
               {projected && (
                 <div className="text-accent-amber">x/y in metres from first GPS fix</div>
+              )}
+              {projected && showMapTiles && (
+                <div className="text-text-tertiary">
+                  © OpenStreetMap contributors
+                </div>
               )}
             </div>
           </div>
@@ -402,6 +454,126 @@ export function TrajectoryPlot({ panelId, topicName, type }: TrajectoryPlotProps
       )}
     </PanelShell>
   );
+}
+
+/**
+ * OSM tile underlay for a NavSatFix trajectory.
+ *
+ * Strategy:
+ *   1. The panel's view.scale is in "screen px per metre". Convert that to a
+ *      slippy-map zoom level by way of metres-per-pixel — bigger zoom = more
+ *      detail, smaller covered area per tile.
+ *   2. Project the canvas corners back to lat/lon (via the local
+ *      equirectangular projection around `navSatRef`), then world-pixel.
+ *   3. Iterate the covered tile range, draw each cached tile, fire missing
+ *      tiles into the loader (the panel will re-render when they arrive).
+ *
+ * Tiles drawn at the chosen zoom's *native* pixel scale, then translated +
+ * scaled to fit the canvas — this avoids re-sampling when the view scale
+ * happens to match an integer zoom level, which is the common case.
+ */
+function drawTileUnderlay(
+  ctx: CanvasRenderingContext2D,
+  cw: number,
+  ch: number,
+  view: View,
+  ref: { lat: number; lon: number },
+): void {
+  const EARTH_RADIUS_M = 6378137;
+  const refLatRad = (ref.lat * Math.PI) / 180;
+  // Pick zoom from the local screen scale. Match the equirectangular
+  // projection's metres-per-degree at the anchor latitude.
+  const metresPerPx = 1 / view.scale;
+  const zoom = pickZoomForScale(metresPerPx, refLatRad);
+
+  // Convert canvas corner → world coords (metres east/north of ref) → lat/lon
+  // → world tile pixels at the chosen zoom. We do all four corners and take
+  // the bounding box so a rotated polyline doesn't drop tiles near the edges.
+  const corners = [
+    { sx: 0, sy: 0 },
+    { sx: cw, sy: 0 },
+    { sx: 0, sy: ch },
+    { sx: cw, sy: ch },
+  ];
+  let minTileX = Infinity;
+  let maxTileX = -Infinity;
+  let minTileY = Infinity;
+  let maxTileY = -Infinity;
+  // Anchor's world-pixel position at the chosen zoom — needed to translate
+  // from "world pixels relative to anchor" back to absolute world pixels.
+  const anchorWorld = latLonToWorldPx(ref.lat, ref.lon, zoom);
+  for (const c of corners) {
+    const wx = (c.sx - view.offsetX) / view.scale; // east metres from anchor
+    const wy = -(c.sy - view.offsetY) / view.scale; // north metres from anchor
+    const dLat = (wy / EARTH_RADIUS_M) * (180 / Math.PI);
+    const dLon =
+      ((wx / (EARTH_RADIUS_M * Math.cos(refLatRad))) * 180) / Math.PI;
+    const corner = latLonToWorldPx(ref.lat + dLat, ref.lon + dLon, zoom);
+    if (corner.x < minTileX) minTileX = corner.x;
+    if (corner.x > maxTileX) maxTileX = corner.x;
+    if (corner.y < minTileY) minTileY = corner.y;
+    if (corner.y > maxTileY) maxTileY = corner.y;
+  }
+
+  // Convert tile-pixel bounds → tile-index bounds.
+  const tileXStart = Math.max(0, Math.floor(minTileX / TILE_SIZE));
+  const tileXEnd = Math.min(2 ** zoom - 1, Math.floor(maxTileX / TILE_SIZE));
+  const tileYStart = Math.max(0, Math.floor(minTileY / TILE_SIZE));
+  const tileYEnd = Math.min(2 ** zoom - 1, Math.floor(maxTileY / TILE_SIZE));
+
+  // Hard cap the tile count so a wild zoom-out doesn't fan out into thousands
+  // of fetches. 200 tiles covers a typical 4K viewport comfortably.
+  const tileCount = (tileXEnd - tileXStart + 1) * (tileYEnd - tileYStart + 1);
+  if (tileCount > 200) return;
+
+  const loader = getTileLoader(DEFAULT_TILE_URL);
+  // Tile world-pixel size (always 256 px at native zoom) translated into
+  // canvas pixels using the local screen scale. One world-tile-px ≈ one
+  // metre-per-pixel-at-this-zoom in screen space, which we already have via
+  // the corner projection ratio. Just compute the per-tile size by sampling
+  // two adjacent world points.
+  const sampleA = anchorWorld;
+  // 1 tile east of the anchor, same y. Convert back via inverse equirect.
+  const oneTileEastWorldX = anchorWorld.x + TILE_SIZE;
+  // Equivalent dLon = ((oneTileEastWorldX / 2^zoom / TILE_SIZE) * 360) - 180 - ref.lon
+  const n = 2 ** zoom;
+  const newLon = (oneTileEastWorldX / TILE_SIZE / n) * 360 - 180;
+  const dLonDeg = newLon - ref.lon;
+  const tileEastMetres =
+    ((dLonDeg * Math.PI) / 180) * EARTH_RADIUS_M * Math.cos(refLatRad);
+  // Screen px per tile (east direction). Symmetric for the y direction at
+  // the same zoom because slippy-map tiles are square in world space.
+  const tilePxX = tileEastMetres * view.scale;
+
+  for (let tx = tileXStart; tx <= tileXEnd; tx++) {
+    for (let ty = tileYStart; ty <= tileYEnd; ty++) {
+      const bitmap = loader.get(zoom, tx, ty);
+      if (!bitmap) {
+        // Fire and forget — re-render fires when the tile lands.
+        void loader.request(zoom, tx, ty);
+        continue;
+      }
+      // Project the tile's NW corner (tile world pixels → lat/lon → canvas).
+      const tileNWWorldX = tx * TILE_SIZE;
+      const tileNWWorldY = ty * TILE_SIZE;
+      const dxWorld = tileNWWorldX - sampleA.x;
+      const dyWorld = tileNWWorldY - sampleA.y;
+      // dxWorld worldPx east of anchor = dxWorld * (tileEastMetres / TILE_SIZE) metres east
+      const dxMetres = dxWorld * (tileEastMetres / TILE_SIZE);
+      const dyMetres = -dyWorld * (tileEastMetres / TILE_SIZE);
+      const sx = dxMetres * view.scale + view.offsetX;
+      const sy = -dyMetres * view.scale + view.offsetY;
+      // Round to nearest pixel to avoid sub-pixel rendering blur between
+      // adjacent tiles.
+      ctx.drawImage(
+        bitmap,
+        Math.round(sx),
+        Math.round(sy),
+        Math.ceil(tilePxX),
+        Math.ceil(tilePxX),
+      );
+    }
+  }
 }
 
 function drawGrid(ctx: CanvasRenderingContext2D, w: number, h: number, view: View) {

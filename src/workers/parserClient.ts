@@ -14,6 +14,7 @@
 import type { BagFormat, BagSummary, RawMessage } from '../types/bag';
 import type { ColorMode, HeightAxis, PointCloudExtraction } from '../utils/pointcloud';
 import type { LaserScanExtraction } from '../utils/laserscan';
+import type { BagSource } from '../parsers/source';
 
 type DecodedMessage = { timestamp: bigint; value: Record<string, unknown> | null };
 type DecodedPointCloud = (PointCloudExtraction & { timestamp: bigint }) | null;
@@ -128,21 +129,21 @@ class ParserClient {
     });
   }
 
-  parseBag(file: File): Promise<BagSummary> {
-    return this.request<BagSummary>('parseBag', { file });
+  parseBag(source: BagSource): Promise<BagSummary> {
+    return this.request<BagSummary>('parseBag', { source });
   }
 
   readRawMessages(
-    file: File,
+    source: BagSource,
     format: BagFormat,
     topicName: string,
     limit?: number,
   ): Promise<RawMessage[]> {
-    return this.request<RawMessage[]>('readRawMessages', { file, format, topicName, limit });
+    return this.request<RawMessage[]>('readRawMessages', { source, format, topicName, limit });
   }
 
   readDeserializedMessages(
-    file: File,
+    source: BagSource,
     format: BagFormat,
     topicName: string,
     limit?: number,
@@ -151,19 +152,19 @@ class ParserClient {
   ): Promise<DecodedMessage[]> {
     return this.request<DecodedMessage[]>(
       'readDeserializedMessages',
-      { file, format, topicName, limit },
+      { source, format, topicName, limit },
       { onProgress, onBatch, streamed: true },
     );
   }
 
   readMessageAtTime(
-    file: File,
+    source: BagSource,
     format: BagFormat,
     topicName: string,
     timeNs: bigint,
   ): Promise<DecodedMessage | null> {
     return this.request<DecodedMessage | null>('readMessageAtTime', {
-      file,
+      source,
       format,
       topicName,
       timeNs,
@@ -171,7 +172,7 @@ class ParserClient {
   }
 
   readPointCloudAtTime(
-    file: File,
+    source: BagSource,
     format: BagFormat,
     topicName: string,
     timeNs: bigint,
@@ -181,7 +182,7 @@ class ParserClient {
     heightAxis?: HeightAxis,
   ): Promise<DecodedPointCloud> {
     return this.request<DecodedPointCloud>('readPointCloudAtTime', {
-      file,
+      source,
       format,
       topicName,
       timeNs,
@@ -193,13 +194,13 @@ class ParserClient {
   }
 
   readLaserScanAtTime(
-    file: File,
+    source: BagSource,
     format: BagFormat,
     topicName: string,
     timeNs: bigint,
   ): Promise<DecodedLaserScan> {
     return this.request<DecodedLaserScan>('readLaserScanAtTime', {
-      file,
+      source,
       format,
       topicName,
       timeNs,
@@ -207,11 +208,11 @@ class ParserClient {
   }
 
   getTopicType(
-    file: File,
+    source: BagSource,
     format: BagFormat,
     topicName: string,
   ): Promise<string | undefined> {
-    return this.request<string | undefined>('getTopicType', { file, format, topicName });
+    return this.request<string | undefined>('getTopicType', { source, format, topicName });
   }
 
   disposeParserCaches(): Promise<void> {

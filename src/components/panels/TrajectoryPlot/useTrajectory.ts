@@ -21,6 +21,12 @@ export interface UseTrajectoryResult {
   bounds: TrajectoryBounds | null;
   source: string;
   projected: boolean;
+  /**
+   * Anchor lat/lon for NavSatFix trajectories — null otherwise. The map
+   * tile underlay uses it to back-project canvas-pixel coords to lat/lon
+   * when figuring out which tile range covers the viewport.
+   */
+  navSatRef: { lat: number; lon: number } | null;
   loading: boolean;
   progress: number;
   error: string | null;
@@ -51,6 +57,7 @@ export function useTrajectory(topicName: string, type: string): UseTrajectoryRes
     bounds,
     source: extraction?.source ?? '',
     projected: extraction?.projected ?? false,
+    navSatRef: extraction?.navSatRef ?? null,
     loading,
     progress,
     error,

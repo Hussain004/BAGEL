@@ -64,7 +64,7 @@ export function useDecodedCloud({
   heightAxis,
 }: Options): DecodedCloudState {
   const bag = useBagStore((s) => s.bag);
-  const file = useBagStore((s) => s.file);
+  const source = useBagStore((s) => s.source);
 
   const [state, setState] = useState<DecodedCloudState>({
     cloud: null,
@@ -102,7 +102,7 @@ export function useDecodedCloud({
     pendingRef.current = null;
     inflightRef.current = false;
     lastResultKeyRef.current = null;
-    if (!bag || !file) {
+    if (!bag || !source) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setState({ cloud: null, loading: false, error: null });
     }
@@ -114,10 +114,10 @@ export function useDecodedCloud({
       // eslint-disable-next-line react-hooks/exhaustive-deps
       sessionRef.current++;
     };
-  }, [bag, file, topicName, kind]);
+  }, [bag, source, topicName, kind]);
 
   useEffect(() => {
-    if (!bag || !file) return;
+    if (!bag || !source) return;
 
     const mySession = sessionRef.current;
 
@@ -131,7 +131,7 @@ export function useDecodedCloud({
       const promise: Promise<DecodedCloud | null> =
         kind === 'pointcloud'
           ? readPointCloudAtTime(
-              file,
+              source,
               bag.format,
               topicName,
               target.timeNs,
@@ -140,7 +140,7 @@ export function useDecodedCloud({
               target.maxRange,
               target.heightAxis,
             )
-          : readLaserScanAtTime(file, bag.format, topicName, target.timeNs);
+          : readLaserScanAtTime(source, bag.format, topicName, target.timeNs);
 
       promise
         .then((cloud) => {
@@ -186,7 +186,7 @@ export function useDecodedCloud({
       setState((s) => ({ ...s, loading: true, error: null }));
     }
     fire();
-  }, [bag, file, topicName, timeNs, colorMode, maxPoints, maxRange, heightAxis, kind]);
+  }, [bag, source, topicName, timeNs, colorMode, maxPoints, maxRange, heightAxis, kind]);
 
   return state;
 }

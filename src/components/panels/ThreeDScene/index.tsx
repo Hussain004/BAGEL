@@ -15,6 +15,7 @@ import {
   isLaserScanType,
   isMarkerArrayType,
   isMarkerType,
+  isOccupancyGridType,
 } from '../../../utils/messages';
 import { useMessageAtTime } from '../../../hooks/useMessageAtTime';
 import { useTopicMessages, type DecodedMessage } from '../../../hooks/useTopicMessages';
@@ -39,6 +40,17 @@ import { useDecodedCloud } from './useDecodedPointCloud';
 import { CloudAccumulator, type AccumulationMode } from './accumulator';
 import { extractMarkers } from './markerObjects';
 import { MarkerSet } from './markerSet';
+import {
+  createMapPlane,
+  disposeMapPlane,
+  setMapPlaneOpacity,
+  updateMapPlane,
+  type MapPlaneObject,
+} from './mapPlane';
+import {
+  decodeOccupancyGrid,
+  type OccupancyGridMessage,
+} from '../../../utils/occupancyGrid';
 
 interface ThreeDSceneProps {
   panelId: string;
@@ -46,7 +58,7 @@ interface ThreeDSceneProps {
   type: string;
 }
 
-type SceneKind = 'pointcloud' | 'laserscan' | 'pose' | 'markerarray';
+type SceneKind = 'pointcloud' | 'laserscan' | 'pose' | 'markerarray' | 'occupancygrid';
 
 /**
  * Hard cap on marker messages we decode for a panel. Real-world bags rarely
@@ -128,6 +140,8 @@ function detectKind(type: string): SceneKind {
   // pipeline once the worker has produced Float32Array positions + colors.
   if (isCloudType(type)) return 'pointcloud';
   if (isLaserScanType(type)) return 'laserscan';
+  // SLAM-produced maps render as a textured plane in the world frame.
+  if (isOccupancyGridType(type)) return 'occupancygrid';
   return 'pose';
 }
 
@@ -277,6 +291,7 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
     upAxis,
     pivot,
     hiddenMarkerNamespaces,
+    mapAlpha,
   } = settings;
 
   const setColorMode = (v: ColorMode) => updateSettings(panelId, { colorMode: v });
@@ -300,6 +315,7 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
     else cur.delete(ns);
     updateSettings(panelId, { hiddenMarkerNamespaces: Array.from(cur).sort() });
   };
+  const setMapAlpha = (v: number) => updateSettings(panelId, { mapAlpha: v });
 
   // Footer stats for the accumulator. Updated on every successful append;
   // derived from the THREE.js accumulator state which is recreated on every
@@ -314,10 +330,13 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
   // negative source X paints reddest (highest in render space).
   const heightAxis = useMemo(() => upAxisToHeightAxis(upAxis), [upAxis]);
 
-  // Cloud topics use the worker-decoded fast path; pose topics stay on the
-  // generic message-at-time hook because their messages are tiny.
+  // Cloud topics use the worker-decoded fast path; pose / map topics stay on
+  // the generic message-at-time hook because their messages are small enough
+  // for main-thread CDR decode (and OccupancyGrid publishers tick at ≤ 1 Hz
+  // so it doesn't matter even when the message hits a few MB).
   const isCloud = sceneKind === 'pointcloud' || sceneKind === 'laserscan';
   const isMarker = sceneKind === 'markerarray';
+  const isMap = sceneKind === 'occupancygrid';
   const cloudState = useDecodedCloud({
     kind: sceneKind === 'pointcloud' ? 'pointcloud' : 'laserscan',
     topicName,
@@ -340,7 +359,11 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
   const markerStream = useTopicMessages(topicName, MARKER_MESSAGE_LIMIT, isMarker);
 
   const cloud = isCloud ? cloudState.cloud : null;
-  const poseMessage = !isCloud && !isMarker ? poseState.message : null;
+  // Pose-axes panels and OccupancyGrid panels share the same single-message
+  // hook (their messages are small enough). We keep them separate downstream
+  // so the pose-only auto-fit / pose-axes update doesn't fire on a map.
+  const poseMessage = !isCloud && !isMarker && !isMap ? poseState.message : null;
+  const mapMessage = isMap ? poseState.message : null;
   const loading = isMarker
     ? markerStream.loading
     : isCloud
@@ -361,12 +384,12 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
     const srcFrame =
       cloud?.frameId ??
       (poseMessage ? pickFrameId(poseMessage.value) : undefined) ??
+      (mapMessage ? pickFrameId(mapMessage.value) : undefined) ??
       (isMarker ? pickMarkerFrame(markerStream.messages) : undefined);
     if (!srcFrame) return;
     const pick = pickWorldFrame(graph, srcFrame);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (pick) setWorldFrame(pick);
-  }, [graph, cloud, poseMessage, worldFrame, isMarker, markerStream.messages]);
+  }, [graph, cloud, poseMessage, mapMessage, worldFrame, isMarker, markerStream.messages]);
 
   // Build scene objects exactly once per panel mount. Stats are tracked in a
   // ref so per-frame updates don't trigger React renders.
@@ -381,6 +404,8 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
     pivotMarker: THREE.Mesh | null;
     /** Marker scene manager. MarkerArray panels only. */
     markerSet: MarkerSet | null;
+    /** Textured plane for nav_msgs/OccupancyGrid. occupancygrid panels only. */
+    mapPlane: MapPlaneObject | null;
   } | null>(null);
 
   // Dedupe accumulator appends — the cloud-effect can fire on the same
@@ -399,6 +424,7 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
       accumulator: null as CloudAccumulator | null,
       pivotMarker: null as THREE.Mesh | null,
       markerSet: null as MarkerSet | null,
+      mapPlane: null as MapPlaneObject | null,
     };
 
     if (sceneKind === 'pointcloud') {
@@ -419,6 +445,10 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
       // up-axis fix (sourceFrame = null in applyTransform → matrix = upFix).
       owned.markerSet = new MarkerSet();
       refs.userGroup.add(owned.markerSet.root);
+    } else if (sceneKind === 'occupancygrid') {
+      owned.mapPlane = createMapPlane();
+      setMapPlaneOpacity(owned.mapPlane, mapAlpha);
+      refs.userGroup.add(owned.mapPlane.object);
     } else {
       owned.poseAxes = createPoseAxes(1.0);
       refs.userGroup.add(owned.poseAxes.object);
@@ -484,6 +514,10 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
       if (owned.markerSet) {
         refs.userGroup.remove(owned.markerSet.root);
         owned.markerSet.dispose();
+      }
+      if (owned.mapPlane) {
+        refs.userGroup.remove(owned.mapPlane.object);
+        disposeMapPlane(owned.mapPlane);
       }
       objectsRef.current = null;
     };
@@ -750,6 +784,50 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
     refs.renderOnce();
   }, [cloud, graph, worldFrame, sceneRef, accumulating, accumPerFrame, sceneKind, upFixMatrix]);
 
+  // OccupancyGrid map update. Texture is keyed by a content fingerprint so
+  // playhead ticks that hit the same map message don't re-upload — typical
+  // SLAM publishers tick at ≤ 1 Hz, so most ticks are no-ops here.
+  useEffect(() => {
+    const refs = sceneRef.current;
+    const owned = objectsRef.current;
+    if (!refs || !owned?.mapPlane || !mapMessage?.value) return;
+
+    const decoded = decodeOccupancyGrid(mapMessage.value as OccupancyGridMessage);
+    if (!decoded) return;
+
+    const sourceFrame = pickFrameId(mapMessage.value) ?? null;
+    applyTransform(
+      refs.userGroup,
+      graph,
+      sourceFrame,
+      worldFrame,
+      mapMessage.timestamp,
+      cachedTransformRef,
+      upFixMatrix,
+    );
+
+    updateMapPlane(owned.mapPlane, decoded);
+    if (owned.mapPlane.bounds) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setStats({
+        points: decoded.width * decoded.height,
+        bounds: owned.mapPlane.bounds,
+        sourceFrame,
+        timestamp: mapMessage.timestamp,
+      });
+    }
+    refs.renderOnce();
+  }, [mapMessage, graph, worldFrame, sceneRef, upFixMatrix]);
+
+  // Map alpha slider → material opacity. Cheap; no texture rebuild.
+  useEffect(() => {
+    const owned = objectsRef.current;
+    const refs = sceneRef.current;
+    if (!refs || !owned?.mapPlane) return;
+    setMapPlaneOpacity(owned.mapPlane, mapAlpha);
+    refs.renderOnce();
+  }, [mapAlpha, sceneRef]);
+
   useEffect(() => {
     const refs = sceneRef.current;
     const owned = objectsRef.current;
@@ -994,6 +1072,7 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
     loading &&
     !cloud &&
     !poseMessage &&
+    !mapMessage &&
     !(isMarker && markerStream.messages && markerStream.messages.length > 0);
 
   return (
@@ -1062,6 +1141,8 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
               markerNamespaces={markerNamespaces}
               hiddenMarkerNamespaces={hiddenMarkerNamespaces}
               onToggleNamespace={toggleNamespaceHidden}
+              mapAlpha={mapAlpha}
+              setMapAlpha={setMapAlpha}
             />
           </div>
 
@@ -1073,7 +1154,9 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
                   ? 'LaserScan'
                   : sceneKind === 'markerarray'
                     ? 'MarkerArray'
-                    : 'Pose'}
+                    : sceneKind === 'occupancygrid'
+                      ? 'OccupancyGrid'
+                      : 'Pose'}
             </div>
             {stats.sourceFrame && (
               <div>
@@ -1121,7 +1204,7 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
               <span className="text-text-secondary text-sm">Loading frame…</span>
             </div>
           )}
-          {error && !cloud && !poseMessage && !(isMarker && markerCount > 0) && (
+          {error && !cloud && !poseMessage && !mapMessage && !(isMarker && markerCount > 0) && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-bg-primary/70 p-8 text-center">
               <div className="text-accent-rose text-sm font-medium">Failed to load frame</div>
               <div className="text-text-secondary text-xs max-w-md">{error}</div>
@@ -1137,7 +1220,11 @@ export function ThreeDScene({ panelId, topicName, type }: ThreeDSceneProps) {
                 : 'no data'
               : sceneKind === 'markerarray'
                 ? `${markerCount.toLocaleString()} markers`
-                : `${stats.points.toLocaleString()} pts`}
+                : sceneKind === 'occupancygrid'
+                  ? mapMessage
+                    ? `${stats.points.toLocaleString()} cells`
+                    : 'no map at playhead'
+                  : `${stats.points.toLocaleString()} pts`}
             {sceneKind === 'markerarray' && markerNamespaces.length > 0 && (
               <span className="text-text-tertiary ml-3">
                 {markerNamespaces.length} ns
@@ -1212,6 +1299,9 @@ interface ControlsCardProps {
   /** Namespaces the user has hidden from the marker filter. */
   hiddenMarkerNamespaces: string[];
   onToggleNamespace: (ns: string, hidden: boolean) => void;
+  /** Global alpha multiplier for OccupancyGrid panels (0…1). */
+  mapAlpha: number;
+  setMapAlpha: (a: number) => void;
 }
 
 function ControlsCard({
@@ -1249,6 +1339,8 @@ function ControlsCard({
   markerNamespaces,
   hiddenMarkerNamespaces,
   onToggleNamespace,
+  mapAlpha,
+  setMapAlpha,
 }: ControlsCardProps) {
   const [open, setOpen] = useState(false);
   const allFrames = useMemo(() => (graph ? Array.from(graph.frames).sort() : []), [graph]);
@@ -1291,21 +1383,41 @@ function ControlsCard({
               </div>
             </div>
           )}
-          <div>
-            <div className="flex items-center justify-between text-text-tertiary text-[10px] mb-1">
-              <span>point size</span>
-              <span className="text-text-secondary">{pointSize.toFixed(1)}px</span>
+          {sceneKind !== 'occupancygrid' && (
+            <div>
+              <div className="flex items-center justify-between text-text-tertiary text-[10px] mb-1">
+                <span>point size</span>
+                <span className="text-text-secondary">{pointSize.toFixed(1)}px</span>
+              </div>
+              <input
+                type="range"
+                min={1}
+                max={8}
+                step={0.5}
+                value={pointSize}
+                onChange={(e) => setPointSize(Number(e.target.value))}
+                className="w-full accent-accent-blue"
+              />
             </div>
-            <input
-              type="range"
-              min={1}
-              max={8}
-              step={0.5}
-              value={pointSize}
-              onChange={(e) => setPointSize(Number(e.target.value))}
-              className="w-full accent-accent-blue"
-            />
-          </div>
+          )}
+          {sceneKind === 'occupancygrid' && (
+            <div>
+              <div className="flex items-center justify-between text-text-tertiary text-[10px] mb-1">
+                <span>map alpha</span>
+                <span className="text-text-secondary">{Math.round(mapAlpha * 100)}%</span>
+              </div>
+              <input
+                type="range"
+                min={0.05}
+                max={1}
+                step={0.05}
+                value={mapAlpha}
+                onChange={(e) => setMapAlpha(Number(e.target.value))}
+                className="w-full accent-accent-blue"
+                title="Global fade on top of the per-cell unknown/free/occupied ramp"
+              />
+            </div>
+          )}
           {sceneKind === 'pointcloud' && (
             <div className="pt-1 border-t border-border/60">
               <label className="flex items-center justify-between text-text-secondary cursor-pointer mb-1">

@@ -18,23 +18,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useBagStore } from '../store/bagStore';
 import { readDeserializedMessages } from '../parsers';
+import { sourceKey } from '../parsers/source';
 
 export interface DecodedMessage {
   timestamp: bigint;
   value: Record<string, unknown> | null;
 }
 
-interface CacheKey {
-  fileName: string;
-  fileSize: number;
-  topicName: string;
-}
-
 const cache = new Map<string, DecodedMessage[]>();
-
-function keyOf(k: CacheKey): string {
-  return `${k.fileName}::${k.fileSize}::${k.topicName}`;
-}
 
 export interface TopicMessagesState {
   /**
@@ -55,7 +46,7 @@ export function useTopicMessages(
   enabled: boolean = true,
 ): TopicMessagesState {
   const bag = useBagStore((s) => s.bag);
-  const file = useBagStore((s) => s.file);
+  const source = useBagStore((s) => s.source);
   const [state, setState] = useState<TopicMessagesState>({
     messages: null,
     loading: true,
@@ -71,7 +62,7 @@ export function useTopicMessages(
   const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!bag || !file || !enabled || !topicName) {
+    if (!bag || !source || !enabled || !topicName) {
       // Idle state — the caller has either not supplied a bag, opted out via
       // `enabled`, or passed an empty topic name. Suppressing the fetch here
       // is what makes it safe to install this hook conditionally on whether
@@ -83,11 +74,7 @@ export function useTopicMessages(
       return;
     }
 
-    const cacheKey = keyOf({
-      fileName: file.name,
-      fileSize: file.size,
-      topicName,
-    });
+    const cacheKey = `${sourceKey(source)}::${topicName}`;
     const cached = cache.get(cacheKey);
     if (cached) {
       setState({ messages: cached, loading: false, progress: cached.length, error: null });
@@ -122,7 +109,7 @@ export function useTopicMessages(
     };
 
     readDeserializedMessages(
-      file,
+      source,
       bag.format,
       topicName,
       limit,
@@ -169,7 +156,7 @@ export function useTopicMessages(
       }
       bufferRef.current = null;
     };
-  }, [bag, file, topicName, limit, enabled]);
+  }, [bag, source, topicName, limit, enabled]);
 
   return state;
 }

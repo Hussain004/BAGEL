@@ -187,7 +187,7 @@ function ingestMessages(
 
 export function useTFGraph(): UseTFGraphResult {
   const bag = useBagStore((s) => s.bag);
-  const file = useBagStore((s) => s.file);
+  const source = useBagStore((s) => s.source);
 
   const tfTopics = useMemo(() => {
     if (!bag) return { dynamic: null as TopicMatch | null, staticTopic: null as TopicMatch | null };
@@ -205,7 +205,7 @@ export function useTFGraph(): UseTFGraphResult {
   const missing = !tfTopics.dynamic && !tfTopics.staticTopic;
 
   useEffect(() => {
-    if (!bag || !file) {
+    if (!bag || !source) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setGraph(null);
       return;
@@ -231,7 +231,7 @@ export function useTFGraph(): UseTFGraphResult {
         // /tf_static first so dynamic samples can overwrite where they exist.
         if (tfTopics.staticTopic) {
           const staticMsgs = await readDeserializedMessages(
-            file,
+            source,
             bag.format,
             tfTopics.staticTopic.name,
             TF_LIMIT,
@@ -242,7 +242,7 @@ export function useTFGraph(): UseTFGraphResult {
         }
         if (tfTopics.dynamic) {
           const dynMsgs = await readDeserializedMessages(
-            file,
+            source,
             bag.format,
             tfTopics.dynamic.name,
             TF_LIMIT,
@@ -285,7 +285,7 @@ export function useTFGraph(): UseTFGraphResult {
     return () => {
       cancelled = true;
     };
-  }, [bag, file, tfTopics.dynamic, tfTopics.staticTopic, missing]);
+  }, [bag, source, tfTopics.dynamic, tfTopics.staticTopic, missing]);
 
   return { graph, loading, error, missing, progress };
 }

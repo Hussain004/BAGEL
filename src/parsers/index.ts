@@ -15,24 +15,28 @@ import type { BagFormat, BagSummary, RawMessage } from '../types/bag';
 import { getParserClient } from '../workers/parserClient';
 import type { ColorMode, HeightAxis, PointCloudExtraction } from '../utils/pointcloud';
 import type { LaserScanExtraction } from '../utils/laserscan';
+import type { BagSource } from './source';
 
 type DecodedMessage = { timestamp: bigint; value: Record<string, unknown> | null };
 
-export async function parseBag(file: File): Promise<BagSummary> {
-  return getParserClient().parseBag(file);
+export type { BagSource } from './source';
+export { createFileSource, createUrlSource } from './source';
+
+export async function parseBag(source: BagSource): Promise<BagSummary> {
+  return getParserClient().parseBag(source);
 }
 
 export async function readRawMessages(
-  file: File,
+  source: BagSource,
   format: BagFormat,
   topicName: string,
   limit?: number,
 ): Promise<RawMessage[]> {
-  return getParserClient().readRawMessages(file, format, topicName, limit);
+  return getParserClient().readRawMessages(source, format, topicName, limit);
 }
 
 export async function readDeserializedMessages(
-  file: File,
+  source: BagSource,
   format: BagFormat,
   topicName: string,
   limit?: number,
@@ -40,7 +44,7 @@ export async function readDeserializedMessages(
   onBatch?: (batch: DecodedMessage[]) => void,
 ): Promise<DecodedMessage[]> {
   return getParserClient().readDeserializedMessages(
-    file,
+    source,
     format,
     topicName,
     limit,
@@ -50,16 +54,16 @@ export async function readDeserializedMessages(
 }
 
 export async function readMessageAtTime(
-  file: File,
+  source: BagSource,
   format: BagFormat,
   topicName: string,
   timeNs: bigint,
 ): Promise<DecodedMessage | null> {
-  return getParserClient().readMessageAtTime(file, format, topicName, timeNs);
+  return getParserClient().readMessageAtTime(source, format, topicName, timeNs);
 }
 
 export async function readPointCloudAtTime(
-  file: File,
+  source: BagSource,
   format: BagFormat,
   topicName: string,
   timeNs: bigint,
@@ -69,7 +73,7 @@ export async function readPointCloudAtTime(
   heightAxis?: HeightAxis,
 ): Promise<(PointCloudExtraction & { timestamp: bigint }) | null> {
   return getParserClient().readPointCloudAtTime(
-    file,
+    source,
     format,
     topicName,
     timeNs,
@@ -81,20 +85,20 @@ export async function readPointCloudAtTime(
 }
 
 export async function readLaserScanAtTime(
-  file: File,
+  source: BagSource,
   format: BagFormat,
   topicName: string,
   timeNs: bigint,
 ): Promise<(LaserScanExtraction & { timestamp: bigint }) | null> {
-  return getParserClient().readLaserScanAtTime(file, format, topicName, timeNs);
+  return getParserClient().readLaserScanAtTime(source, format, topicName, timeNs);
 }
 
 export async function getTopicType(
-  file: File,
+  source: BagSource,
   format: BagFormat,
   topicName: string,
 ): Promise<string | undefined> {
-  return getParserClient().getTopicType(file, format, topicName);
+  return getParserClient().getTopicType(source, format, topicName);
 }
 
 export function disposeParserCaches(): void {

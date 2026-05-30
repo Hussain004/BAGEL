@@ -12,6 +12,13 @@
 
 import type { BagSummary, RawMessage, TopicInfo } from '../types/bag';
 import { deserializeByType } from './cdr';
+import {
+  sourceDisplayName,
+  sourceKey,
+  sourceReadAll,
+  sourceSize,
+  type BagSource,
+} from './source';
 
 interface SqlDatabase {
   exec(sql: string): { columns: string[]; values: unknown[][] }[];
@@ -44,8 +51,9 @@ function getSqlJs() {
 }
 
 interface CachedDb {
-  fileName: string;
-  fileSize: number;
+  sourceKey: string;
+  displayName: string;
+  size: number;
   db: SqlDatabase;
   topicTypeByName: Map<string, string>;
   /** Per-topic LRU of decoded messages keyed by row timestamp. Skips the
@@ -86,20 +94,21 @@ export function clearDb3DecodedCache(): void {
   if (cachedDb) cachedDb.messageCache.clear();
 }
 
-async function loadDb(file: File): Promise<CachedDb> {
-  if (
-    cachedDb &&
-    cachedDb.fileName === file.name &&
-    cachedDb.fileSize === file.size
-  ) {
+async function loadDb(source: BagSource): Promise<CachedDb> {
+  const key = sourceKey(source);
+  if (cachedDb && cachedDb.sourceKey === key) {
     return cachedDb;
   }
 
   disposeCachedDb();
 
   const SQL = await getSqlJs();
-  const buffer = await file.arrayBuffer();
-  const db = new SQL.Database(new Uint8Array(buffer));
+  // sql.js needs the whole file in memory either way — for URL sources we
+  // pay a single eager GET. Practical cap is ~250 MB before the browser UX
+  // degrades; sql.js-httpvfs would do real partial reads via a custom
+  // SQLite VFS but adds ~70 KB plus a non-trivial amount of glue.
+  const buffer = await sourceReadAll(source);
+  const db = new SQL.Database(buffer);
 
   const topicTypeByName = new Map<string, string>();
   const topicsResult = db.exec(`SELECT name, type FROM topics`);
@@ -110,8 +119,9 @@ async function loadDb(file: File): Promise<CachedDb> {
   }
 
   cachedDb = {
-    fileName: file.name,
-    fileSize: file.size,
+    sourceKey: key,
+    displayName: sourceDisplayName(source),
+    size: sourceSize(source),
     db,
     topicTypeByName,
     messageCache: new Map(),
@@ -158,8 +168,9 @@ async function rememberDecodedDb3(
 /**
  * Parse a .db3 ROS2 bag file and return a BagSummary.
  */
-export async function parseDb3(file: File): Promise<BagSummary> {
-  const { db } = await loadDb(file);
+export async function parseDb3(source: BagSource): Promise<BagSummary> {
+  const meta = await loadDb(source);
+  const { db } = meta;
 
   const topics = queryTopics(db);
   const { startTime, endTime, messageCounts } = queryMessageStats(db);
@@ -180,8 +191,8 @@ export async function parseDb3(file: File): Promise<BagSummary> {
 
   return {
     format: 'db3',
-    fileName: file.name,
-    fileSize: file.size,
+    fileName: meta.displayName,
+    fileSize: meta.size,
     startTime,
     endTime,
     duration,
@@ -248,11 +259,11 @@ function queryMessageStats(db: SqlDatabase): {
  * every message would exhaust memory.
  */
 export async function readRawMessagesDb3(
-  file: File,
+  source: BagSource,
   topicName: string,
   limit?: number,
 ): Promise<RawMessage[]> {
-  const { db } = await loadDb(file);
+  const { db } = await loadDb(source);
 
   const sql = `
     SELECT m.timestamp, m.data
@@ -293,17 +304,17 @@ export async function readRawMessagesDb3(
 const DB3_YIELD_EVERY = 500;
 
 export async function readDeserializedMessagesDb3(
-  file: File,
+  source: BagSource,
   topicName: string,
   limit?: number,
   onProgress?: (decoded: number) => void,
   onBatch?: (batch: { timestamp: bigint; value: Record<string, unknown> | null }[]) => void,
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null }[]> {
-  const { topicTypeByName } = await loadDb(file);
+  const { topicTypeByName } = await loadDb(source);
   const msgType = topicTypeByName.get(topicName);
   if (!msgType) return [];
 
-  const raws = await readRawMessagesDb3(file, topicName, limit);
+  const raws = await readRawMessagesDb3(source, topicName, limit);
   const out: { timestamp: bigint; value: Record<string, unknown> | null }[] = [];
   let lastFlushedIndex = 0;
   for (const raw of raws) {
@@ -337,11 +348,11 @@ export async function readDeserializedMessagesDb3(
  * topic's blobs into memory.
  */
 export async function readMessageAtTimeDb3(
-  file: File,
+  source: BagSource,
   topicName: string,
   timeNs: bigint,
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null } | null> {
-  const cache = await loadDb(file);
+  const cache = await loadDb(source);
   const { db, topicTypeByName } = cache;
   const msgType = topicTypeByName.get(topicName);
   if (!msgType) return null;
@@ -408,9 +419,9 @@ export async function readMessageAtTimeDb3(
 
 /** Get the ROS2 type name for a topic in this db3 file. */
 export async function getTopicTypeDb3(
-  file: File,
+  source: BagSource,
   topicName: string,
 ): Promise<string | undefined> {
-  const { topicTypeByName } = await loadDb(file);
+  const { topicTypeByName } = await loadDb(source);
   return topicTypeByName.get(topicName);
 }

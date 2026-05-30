@@ -33,7 +33,7 @@ export interface MessageAtTimeState {
 
 export function useMessageAtTime(topicName: string, timeNs: bigint): MessageAtTimeState {
   const bag = useBagStore((s) => s.bag);
-  const file = useBagStore((s) => s.file);
+  const source = useBagStore((s) => s.source);
 
   const [state, setState] = useState<MessageAtTimeState>({
     message: null,
@@ -57,7 +57,7 @@ export function useMessageAtTime(topicName: string, timeNs: bigint): MessageAtTi
     sessionRef.current++;
     pendingTimeRef.current = null;
     inflightRef.current = false;
-    if (!bag || !file) {
+    if (!bag || !source) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setState({ message: null, loading: false, error: null });
     }
@@ -69,10 +69,10 @@ export function useMessageAtTime(topicName: string, timeNs: bigint): MessageAtTi
       // eslint-disable-next-line react-hooks/exhaustive-deps
       sessionRef.current++;
     };
-  }, [bag, file, topicName]);
+  }, [bag, source, topicName]);
 
   useEffect(() => {
-    if (!bag || !file) return;
+    if (!bag || !source) return;
 
     const mySession = sessionRef.current;
 
@@ -83,7 +83,7 @@ export function useMessageAtTime(topicName: string, timeNs: bigint): MessageAtTi
       pendingTimeRef.current = null;
       inflightRef.current = true;
 
-      readMessageAtTime(file, bag.format, topicName, target)
+      readMessageAtTime(source, bag.format, topicName, target)
         .then((msg) => {
           inflightRef.current = false;
           if (sessionRef.current !== mySession) {
@@ -116,7 +116,7 @@ export function useMessageAtTime(topicName: string, timeNs: bigint): MessageAtTi
       setState((s) => ({ ...s, loading: true, error: null }));
     }
     fire();
-  }, [bag, file, topicName, timeNs]);
+  }, [bag, source, topicName, timeNs]);
 
   return state;
 }

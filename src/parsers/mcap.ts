@@ -11,11 +11,30 @@
  * the reader on every panel read.
  */
 
-import { McapIndexedReader, McapStreamReader, type DecompressHandlers } from '@mcap/core';
+import { McapIndexedReader, McapStreamReader, type DecompressHandlers, type IReadable } from '@mcap/core';
 import { BlobReadable } from '@mcap/browser';
 import { decompress as fzstdDecompress } from 'fzstd';
 import type { BagSummary, RawMessage, TopicInfo } from '../types/bag';
 import { deserializeWithSchema } from './cdr';
+import {
+  HttpReadable,
+  sourceDisplayName,
+  sourceKey,
+  sourceReadAll,
+  sourceSize,
+  type BagSource,
+} from './source';
+
+/**
+ * Build the right `IReadable` for the MCAP indexed reader: `BlobReadable`
+ * for local File handles (range-reads against the Blob), `HttpReadable` for
+ * remote URLs (HTTP Range requests). Lives here rather than in `source.ts`
+ * so the `@mcap/browser` import doesn't get pulled into the main bundle.
+ */
+function readableFor(source: BagSource): IReadable {
+  if (source.kind === 'file') return new BlobReadable(source.file);
+  return new HttpReadable(source.url, BigInt(source.contentLength));
+}
 
 /**
  * Decompression handlers for MCAP chunks.
@@ -142,8 +161,12 @@ function makeDecompressHandlers(chunkCache: ChunkCache): DecompressHandlers {
 }
 
 interface CachedMcap {
-  fileName: string;
-  fileSize: number;
+  /** Stable source key (file name+size, or URL). */
+  sourceKey: string;
+  /** Display name for the eventual `BagSummary.fileName` field. */
+  displayName: string;
+  /** Total bytes (file size or HTTP Content-Length). */
+  size: number;
   reader: McapIndexedReader | null;
   buffer: Uint8Array | null;
   channelById: Map<number, { topic: string; schemaId: number }>;
@@ -181,12 +204,9 @@ export function disposeMcapCache(): void {
  */
 const STREAM_FALLBACK_MAX_BYTES = 512 * 1024 * 1024;
 
-async function loadMcap(file: File): Promise<CachedMcap> {
-  if (
-    cached &&
-    cached.fileName === file.name &&
-    cached.fileSize === file.size
-  ) {
+async function loadMcap(source: BagSource): Promise<CachedMcap> {
+  const key = sourceKey(source);
+  if (cached && cached.sourceKey === key) {
     return cached;
   }
 
@@ -196,9 +216,13 @@ async function loadMcap(file: File): Promise<CachedMcap> {
   const decompressHandlers = makeDecompressHandlers(chunkCache);
   const messageCache = new Map<string, Map<bigint, Record<string, unknown> | null>>();
 
-  // File extends Blob, so BlobReadable can range-read directly against it —
-  // no upfront arrayBuffer(), which would OOM on multi-GB files.
-  const readable = new BlobReadable(file);
+  const size = sourceSize(source);
+  const displayName = sourceDisplayName(source);
+
+  // BlobReadable for file sources (range-reads directly against the Blob),
+  // HttpReadable for URLs. Either way the IndexedReader sees the same
+  // `IReadable` interface.
+  const readable = readableFor(source);
 
   let reader: McapIndexedReader | null = null;
   let buffer: Uint8Array | null = null;
@@ -232,12 +256,12 @@ async function loadMcap(file: File): Promise<CachedMcap> {
   }
 
   if (!reader) {
-    if (file.size > STREAM_FALLBACK_MAX_BYTES) {
-      const sizeMb = (file.size / (1024 * 1024)).toFixed(0);
+    if (size > STREAM_FALLBACK_MAX_BYTES) {
+      const sizeMb = (size / (1024 * 1024)).toFixed(0);
       const detail =
         indexedError instanceof Error ? indexedError.message : String(indexedError);
       throw new Error(
-        `"${file.name}" (${sizeMb} MB) does not have an MCAP summary/index section, ` +
+        `"${displayName}" (${sizeMb} MB) does not have an MCAP summary/index section, ` +
           'so we would need to load the whole file into memory to scan it linearly. ' +
           'That is not supported for files over 512 MB in the browser. Re-record the ' +
           'bag with an index (the default for recent ros2_bag_mcap recorders) or run ' +
@@ -245,8 +269,7 @@ async function loadMcap(file: File): Promise<CachedMcap> {
       );
     }
 
-    const arrayBuffer = await file.arrayBuffer();
-    buffer = new Uint8Array(arrayBuffer);
+    buffer = await sourceReadAll(source);
     const streamReader = new McapStreamReader({ decompressHandlers });
     streamReader.append(buffer);
     for (let record; (record = streamReader.nextRecord()); ) {
@@ -273,8 +296,9 @@ async function loadMcap(file: File): Promise<CachedMcap> {
   }
 
   cached = {
-    fileName: file.name,
-    fileSize: file.size,
+    sourceKey: key,
+    displayName,
+    size,
     reader,
     buffer,
     channelById,
@@ -287,24 +311,24 @@ async function loadMcap(file: File): Promise<CachedMcap> {
   return cached;
 }
 
-export async function parseMcap(file: File): Promise<BagSummary> {
-  const meta = await loadMcap(file);
+export async function parseMcap(source: BagSource): Promise<BagSummary> {
+  const meta = await loadMcap(source);
 
   if (meta.reader) {
-    return extractSummaryFromIndexed(meta, file);
+    return extractSummaryFromIndexed(meta);
   }
   if (meta.buffer) {
-    return extractSummaryFromStream(meta, file);
+    return extractSummaryFromStream(meta);
   }
 
   throw new Error(
-    `"${file.name}" does not appear to be a valid MCAP file. ` +
+    `"${meta.displayName}" does not appear to be a valid MCAP file. ` +
       'The file header does not match the MCAP format. ' +
       'Please ensure you are uploading a .mcap bag file recorded by ROS2.',
   );
 }
 
-function extractSummaryFromIndexed(meta: CachedMcap, file: File): BagSummary {
+function extractSummaryFromIndexed(meta: CachedMcap): BagSummary {
   const reader = meta.reader!;
   const messageCounts = new Map<number, number>();
 
@@ -340,8 +364,8 @@ function extractSummaryFromIndexed(meta: CachedMcap, file: File): BagSummary {
 
   return {
     format: 'mcap',
-    fileName: file.name,
-    fileSize: file.size,
+    fileName: meta.displayName,
+    fileSize: meta.size,
     startTime,
     endTime,
     duration,
@@ -350,7 +374,7 @@ function extractSummaryFromIndexed(meta: CachedMcap, file: File): BagSummary {
   };
 }
 
-function extractSummaryFromStream(meta: CachedMcap, file: File): BagSummary {
+function extractSummaryFromStream(meta: CachedMcap): BagSummary {
   const reader = new McapStreamReader({ decompressHandlers: meta.decompressHandlers });
   reader.append(meta.buffer!);
 
@@ -385,8 +409,8 @@ function extractSummaryFromStream(meta: CachedMcap, file: File): BagSummary {
 
   return {
     format: 'mcap',
-    fileName: file.name,
-    fileSize: file.size,
+    fileName: meta.displayName,
+    fileSize: meta.size,
     startTime: minTimestamp,
     endTime: maxTimestamp,
     duration,
@@ -396,11 +420,11 @@ function extractSummaryFromStream(meta: CachedMcap, file: File): BagSummary {
 }
 
 export async function readRawMessagesMcap(
-  file: File,
+  source: BagSource,
   topicName: string,
   limit?: number,
 ): Promise<RawMessage[]> {
-  const meta = await loadMcap(file);
+  const meta = await loadMcap(source);
   const out: RawMessage[] = [];
 
   if (meta.reader) {
@@ -447,13 +471,13 @@ export async function readRawMessagesMcap(
 const YIELD_EVERY = 500;
 
 export async function readDeserializedMessagesMcap(
-  file: File,
+  source: BagSource,
   topicName: string,
   limit?: number,
   onProgress?: (decoded: number) => void,
   onBatch?: (batch: { timestamp: bigint; value: Record<string, unknown> | null }[]) => void,
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null }[]> {
-  const meta = await loadMcap(file);
+  const meta = await loadMcap(source);
   const topicInfo = meta.topicMeta.get(topicName);
   if (!topicInfo || !topicInfo.schemaText) return [];
   const schemaText = topicInfo.schemaText;
@@ -524,10 +548,10 @@ export async function readDeserializedMessagesMcap(
 }
 
 export async function getTopicTypeMcap(
-  file: File,
+  source: BagSource,
   topicName: string,
 ): Promise<string | undefined> {
-  const meta = await loadMcap(file);
+  const meta = await loadMcap(source);
   return meta.topicMeta.get(topicName)?.schemaName;
 }
 
@@ -586,11 +610,11 @@ function rememberDecoded(
  *    topic publishes).
  */
 export async function readMessageAtTimeMcap(
-  file: File,
+  source: BagSource,
   topicName: string,
   timeNs: bigint,
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null } | null> {
-  const meta = await loadMcap(file);
+  const meta = await loadMcap(source);
   const topicInfo = meta.topicMeta.get(topicName);
   if (!topicInfo || !topicInfo.schemaText) return null;
 

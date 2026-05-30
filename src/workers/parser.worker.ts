@@ -32,6 +32,7 @@ import {
 import { clearDb3DecodedCache } from '../parsers/db3';
 import type { ColorMode, HeightAxis, PointCloudExtraction } from '../utils/pointcloud';
 import type { LaserScanExtraction } from '../utils/laserscan';
+import type { BagSource } from '../parsers/source';
 
 type DecodedMessage = { timestamp: bigint; value: Record<string, unknown> | null };
 
@@ -55,23 +56,23 @@ interface BaseRequest<P> {
 }
 
 interface ParseBagParams {
-  file: File;
+  source: BagSource;
 }
 interface ReadRawMessagesParams {
-  file: File;
+  source: BagSource;
   format: BagFormat;
   topicName: string;
   limit?: number;
 }
 type ReadDeserializedMessagesParams = ReadRawMessagesParams;
 interface ReadMessageAtTimeParams {
-  file: File;
+  source: BagSource;
   format: BagFormat;
   topicName: string;
   timeNs: bigint;
 }
 interface ReadPointCloudAtTimeParams {
-  file: File;
+  source: BagSource;
   format: BagFormat;
   topicName: string;
   timeNs: bigint;
@@ -81,13 +82,13 @@ interface ReadPointCloudAtTimeParams {
   heightAxis?: HeightAxis;
 }
 interface ReadLaserScanAtTimeParams {
-  file: File;
+  source: BagSource;
   format: BagFormat;
   topicName: string;
   timeNs: bigint;
 }
 interface GetTopicTypeParams {
-  file: File;
+  source: BagSource;
   format: BagFormat;
   topicName: string;
 }
@@ -173,23 +174,23 @@ ctx.addEventListener('message', async (e: MessageEvent<WorkerRequest>) => {
   try {
     switch (req.method) {
       case 'parseBag': {
-        const { file } = req.params as ParseBagParams;
-        respond(await parseBag(file));
+        const { source } = req.params as ParseBagParams;
+        respond(await parseBag(source));
         return;
       }
       case 'readRawMessages': {
-        const { file, format, topicName, limit } = req.params as ReadRawMessagesParams;
-        respond(await readRawMessages(file, format, topicName, limit));
+        const { source, format, topicName, limit } = req.params as ReadRawMessagesParams;
+        respond(await readRawMessages(source, format, topicName, limit));
         return;
       }
       case 'readDeserializedMessages': {
-        const { file, format, topicName, limit } = req.params as ReadDeserializedMessagesParams;
+        const { source, format, topicName, limit } = req.params as ReadDeserializedMessagesParams;
         // Stream batches to the client as they're decoded, then finish with
         // an empty result that just signals completion. The client builds
         // the final array from the batches — sending `out` here too would
         // double-ship the full payload through structured clone.
         await readDeserializedMessages(
-          file,
+          source,
           format,
           topicName,
           limit,
@@ -202,15 +203,15 @@ ctx.addEventListener('message', async (e: MessageEvent<WorkerRequest>) => {
         return;
       }
       case 'readMessageAtTime': {
-        const { file, format, topicName, timeNs } = req.params as ReadMessageAtTimeParams;
-        respond(await readMessageAtTime(file, format, topicName, timeNs));
+        const { source, format, topicName, timeNs } = req.params as ReadMessageAtTimeParams;
+        respond(await readMessageAtTime(source, format, topicName, timeNs));
         return;
       }
       case 'readPointCloudAtTime': {
-        const { file, format, topicName, timeNs, colorMode, maxPoints, maxRange, heightAxis } =
+        const { source, format, topicName, timeNs, colorMode, maxPoints, maxRange, heightAxis } =
           req.params as ReadPointCloudAtTimeParams;
         const result = await readPointCloudAtTime(
-          file,
+          source,
           format,
           topicName,
           timeNs,
@@ -228,9 +229,9 @@ ctx.addEventListener('message', async (e: MessageEvent<WorkerRequest>) => {
         return;
       }
       case 'readLaserScanAtTime': {
-        const { file, format, topicName, timeNs } =
+        const { source, format, topicName, timeNs } =
           req.params as ReadLaserScanAtTimeParams;
-        const result = await readLaserScanAtTime(file, format, topicName, timeNs);
+        const result = await readLaserScanAtTime(source, format, topicName, timeNs);
         const transfer = result
           ? [result.positions.buffer, result.colors.buffer]
           : undefined;
@@ -238,8 +239,8 @@ ctx.addEventListener('message', async (e: MessageEvent<WorkerRequest>) => {
         return;
       }
       case 'getTopicType': {
-        const { file, format, topicName } = req.params as GetTopicTypeParams;
-        respond(await getTopicType(file, format, topicName));
+        const { source, format, topicName } = req.params as GetTopicTypeParams;
+        respond(await getTopicType(source, format, topicName));
         return;
       }
       case 'disposeParserCaches': {
