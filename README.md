@@ -12,7 +12,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-8-646cff.svg)](https://vite.dev/)
-[![Version](https://img.shields.io/badge/version-0.8.0-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
+[![Version](https://img.shields.io/badge/version-0.8.1-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
 
 [**→ Live Demo**](https://bagel-ros2.vercel.app) · [Report Bug](https://github.com/Hussain004/BAGEL/issues) · [Request Feature](https://github.com/Hussain004/BAGEL/issues)
 
@@ -57,6 +57,16 @@ BAGEL eliminates this friction.
 
 
 ## Features
+
+### v0.8.1: Custom Message Schemas for `.db3`
+
+Everything in v0.8, plus:
+
+- **Paste-your-own `.msg` definition for `.db3` topics**: ROS2 `.db3` bags don't embed message schemas, so historically anything outside the bundled `ros2galactic` set (std/geometry/sensor/nav/tf2/visualization/builtin_interfaces/rcl_interfaces) silently failed to decode — most painfully for `px4_msgs`, `autoware_msgs`, and every in-house planner / vendor package. v0.8.1 adds a paste flow: a topic with an unknown type now renders with a `schema missing` amber badge in the sidebar, and clicking the row opens a modal where you paste the type's `.msg` definition (primary type at the top, every dependency block separated by `=====`, the same form `mcap convert` writes). The schema is validated by parsing through `@foxglove/rosmsg` before commit, so a typo surfaces inline rather than silently shipping a broken decoder into your browser.
+- **Persisted across bags + sessions**: saved schemas live in `localStorage` under `bagel:custom-schemas:v1`, so you paste once per type and every future bag that mentions it decodes automatically. Roboticists tend to work with a stable set of message packages across many bags; this keeps the per-bag friction at zero after the first paste.
+- **Override priority**: user-supplied schemas win against the bundled registry, so you can shim a vendor fork of a stock package (e.g. a `sensor_msgs/Imu` with extra fields) without rebuilding BAGEL. The override map is keyed by every alias form (`pkg/Type` and `pkg/msg/Type`) so a topic tagged with either convention picks the right entry.
+- **Cache invalidation on edit**: when a schema is added, the worker drops its CDR `MessageReader` cache and the `.db3` per-(topic, timestamp) decoded LRU; the main thread drops the topic-message cache. Re-opening a panel on a previously broken topic produces fresh values rather than the cached `null` from the pre-schema attempt.
+- **Manage schemas from the About modal**: a new section lists every saved entry with `edit` and `delete` affordances. Hidden when no schemas are saved, so the modal stays compact for the common case.
 
 ### v0.8: MarkerArray + ROS1 Compression
 

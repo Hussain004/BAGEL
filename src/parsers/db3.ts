@@ -72,6 +72,20 @@ export function disposeDb3Cache(): void {
   disposeCachedDb();
 }
 
+/**
+ * Drop the per-topic decoded-message LRU but keep the loaded SQLite database.
+ *
+ * Used after the user adds a custom schema: any topic whose type just became
+ * decodable would otherwise keep returning the stale `value: null` cached
+ * from the pre-schema decode attempt. Wiping the decoded cache forces a
+ * fresh CDR pass against the new MessageReader on next read. The underlying
+ * raw bytes don't need to be re-fetched — sql.js stays cached, so this is
+ * cheap.
+ */
+export function clearDb3DecodedCache(): void {
+  if (cachedDb) cachedDb.messageCache.clear();
+}
+
 async function loadDb(file: File): Promise<CachedDb> {
   if (
     cachedDb &&

@@ -11,6 +11,7 @@ import { ModalHost } from './components/modals/ModalHost';
 import { clearTopicMessageCache } from './hooks/useTopicMessages';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useUrlState } from './hooks/useUrlState';
+import { useCustomSchemaSync } from './hooks/useCustomSchemaSync';
 import { formatDuration } from './utils/time';
 import type { BagSummary } from './types/bag';
 
@@ -27,9 +28,11 @@ export default function App() {
   const bag = useBagStore((s) => s.bag);
   const closeAllPanels = useLayoutStore((s) => s.closeAllPanels);
 
-  // Global shortcuts (Space/Arrows/T/O/Esc/?/A) + URL hash sync.
+  // Global shortcuts (Space/Arrows/T/O/Esc/?/A) + URL hash sync + sync
+  // user-supplied `.msg` schemas into the parser worker on boot and edits.
   useKeyboardShortcuts();
   useUrlState();
+  useCustomSchemaSync();
 
   // When a *different* bag is loaded, drop any panels + cached messages from
   // the previous one. We track the previous identity by ref so the very

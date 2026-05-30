@@ -1,15 +1,26 @@
 import { useUiStore } from '../../store/uiStore';
 import { AboutModal } from './AboutModal';
 import { ShortcutsModal } from './ShortcutsModal';
+import { SchemaPasteModal } from './SchemaPasteModal';
 
 /**
  * ModalHost — Renders whichever modal the UI store has selected. Mounted once
  * at the root so keyboard shortcuts can show modals from anywhere without
  * each page needing to wire them up.
+ *
+ * `schemaPaste` lives in its own slot rather than ModalKind so the modal
+ * can carry per-target context (which type, which topic to open after).
+ * It can coexist with `about` / `shortcuts` if needed, but in practice only
+ * one is open at a time.
  */
 export function ModalHost() {
   const modal = useUiStore((s) => s.modal);
-  if (modal === 'about') return <AboutModal />;
-  if (modal === 'shortcuts') return <ShortcutsModal />;
-  return null;
+  const schemaPaste = useUiStore((s) => s.schemaPaste);
+  return (
+    <>
+      {modal === 'about' && <AboutModal />}
+      {modal === 'shortcuts' && <ShortcutsModal />}
+      {schemaPaste && <SchemaPasteModal />}
+    </>
+  );
 }

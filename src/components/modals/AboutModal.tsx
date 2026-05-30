@@ -1,6 +1,7 @@
 import { useUiStore } from '../../store/uiStore';
 import { ModalShell } from './ModalShell';
 import { APP_VERSION } from '../../utils/version';
+import { useCustomSchemaStore } from '../../store/customSchemaStore';
 
 /**
  * AboutModal — Project description, version, links.
@@ -43,6 +44,8 @@ export function AboutModal() {
           </p>
         </div>
 
+        <CustomSchemasSection />
+
         <div className="border-t border-border pt-4 flex flex-wrap gap-2">
           <LinkButton href="https://github.com/Hussain004/BAGEL">
             <GithubIcon />
@@ -69,6 +72,81 @@ export function AboutModal() {
         </div>
       </div>
     </ModalShell>
+  );
+}
+
+/**
+ * Lists user-supplied custom message definitions with edit + delete
+ * affordances. Lives inside the About modal so it's reachable without an
+ * open bag (the user might just want to clean up after a typo). Hidden
+ * entirely when nothing has been saved, so the About modal stays compact
+ * for the common case.
+ */
+function CustomSchemasSection() {
+  const schemas = useCustomSchemaStore((s) => s.schemas);
+  const deleteSchema = useCustomSchemaStore((s) => s.deleteSchema);
+  const setModal = useUiStore((s) => s.setModal);
+  const openSchemaPaste = useUiStore((s) => s.openSchemaPaste);
+
+  const typeNames = Object.keys(schemas).sort();
+  if (typeNames.length === 0) return null;
+
+  const handleEdit = (typeName: string) => {
+    // Close the about modal so the paste modal isn't behind it. The paste
+    // modal lives in its own slot, so technically they can coexist, but
+    // dragging the about modal off-screen would be confusing UX.
+    setModal(null);
+    openSchemaPaste({ typeName });
+  };
+
+  return (
+    <div className="border-t border-border pt-4 space-y-2">
+      <div className="flex items-baseline justify-between">
+        <h3 className="text-text-primary text-sm font-semibold">
+          Custom message schemas
+        </h3>
+        <span className="text-text-tertiary text-[10px]">
+          {typeNames.length} saved
+        </span>
+      </div>
+      <p className="text-xs text-text-tertiary">
+        `.msg` definitions you've pasted for types outside the bundled
+        registry. Stored in your browser only.
+      </p>
+      <ul className="space-y-1 max-h-40 overflow-y-auto pr-1">
+        {typeNames.map((typeName) => (
+          <li
+            key={typeName}
+            className="flex items-center gap-2 px-2 py-1 rounded-md bg-surface/40 border border-border/60"
+          >
+            <span className="mono text-text-primary text-xs truncate flex-1" title={typeName}>
+              {typeName}
+            </span>
+            <button
+              onClick={() => handleEdit(typeName)}
+              className="text-text-tertiary hover:text-accent-blue text-[10px] underline decoration-dotted focus:outline-none focus-visible:text-accent-blue"
+              title="Edit this schema"
+            >
+              edit
+            </button>
+            <button
+              onClick={() => {
+                if (
+                  typeof window === 'undefined' ||
+                  window.confirm(`Delete the custom schema for ${typeName}?`)
+                ) {
+                  deleteSchema(typeName);
+                }
+              }}
+              className="text-text-tertiary hover:text-accent-rose text-[10px] underline decoration-dotted focus:outline-none focus-visible:text-accent-rose"
+              title="Forget this schema"
+            >
+              delete
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
