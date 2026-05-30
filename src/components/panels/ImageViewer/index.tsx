@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMessageAtTime } from '../../../hooks/useMessageAtTime';
-import { useBagStore } from '../../../store/bagStore';
-import { usePlayheadStore } from '../../../store/playheadStore';
+import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
+import { useBagLocalPlayhead } from '../../../hooks/useBagLocalPlayhead';
 import { isCompressedImageType } from '../../../utils/messages';
 import { nsToSeconds } from '../../../utils/time';
 import { PanelShell } from '../PanelShell';
@@ -11,6 +11,7 @@ interface ImageViewerProps {
   panelId: string;
   topicName: string;
   type: string;
+  bagId?: string;
 }
 
 /**
@@ -21,13 +22,14 @@ interface ImageViewerProps {
  * loading every frame. Image streams in compressed bags are gigabytes of
  * raw pixel data — preloading them would hang the UI for many minutes.
  */
-export function ImageViewer({ panelId, topicName, type }: ImageViewerProps) {
-  const bag = useBagStore((s) => s.bag);
-  const playheadNs = usePlayheadStore((s) => s.timeNs);
+export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProps) {
+  const entry = useBagStore((s) => resolveBagEntry(s, bagId));
+  const bag = entry?.summary ?? null;
+  const playheadNs = useBagLocalPlayhead(bagId);
   const compressed = isCompressedImageType(type);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const { message, loading, error } = useMessageAtTime(topicName, playheadNs);
+  const { message, loading, error } = useMessageAtTime(topicName, playheadNs, bagId);
 
   const [renderError, setRenderError] = useState<string | null>(null);
   const [meta, setMeta] = useState<{ width: number; height: number; encoding: string } | null>(
@@ -77,7 +79,7 @@ export function ImageViewer({ panelId, topicName, type }: ImageViewerProps) {
   const startNs = bag?.startTime ?? 0n;
 
   return (
-    <PanelShell panelId={panelId} kind="image" topicName={topicName} type={type} accentColor={accent}>
+    <PanelShell panelId={panelId} kind="image" topicName={topicName} type={type} accentColor={accent} bagId={bagId}>
       {showInitialLoading && <PanelLoadingState message="Loading frame…" />}
       {error && !message && <PanelErrorState message={error} />}
       {!loading && !error && !message && (

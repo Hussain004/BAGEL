@@ -34,13 +34,15 @@ export default function App() {
   useUrlState();
   useCustomSchemaSync();
 
-  // When a *different* bag is loaded, drop any panels + cached messages from
-  // the previous one. We track the previous identity by ref so the very
-  // first bag load doesn't blow away panels that useUrlState just restored.
+  // v0.8: when a *different* bag was loaded (single-bag flow), drop any
+  // panels + cached messages from the previous one. Multi-bag (v0.9) skips
+  // this: adding a second bag must not wipe panels from the first one.
+  // We continue to fire when the user goes back to zero bags (clearAll)
+  // since at that point there's nothing meaningful to render.
   const lastBagKeyRef = useRef<string | null>(null);
   useEffect(() => {
     const key = bag ? `${bag.fileName}::${bag.fileSize}` : null;
-    if (lastBagKeyRef.current !== null && lastBagKeyRef.current !== key) {
+    if (lastBagKeyRef.current !== null && lastBagKeyRef.current !== key && !bag) {
       closeAllPanels();
       clearTopicMessageCache();
     }

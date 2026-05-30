@@ -7,11 +7,16 @@
  * samples per edge. Lookups binary-search the per-edge list and pick the
  * nearest sample to the playhead, with static transforms always available
  * as a fallback when no dynamic data has been recorded yet.
+ *
+ * v0.9.x: decode goes through `useTopicMessages` so the per-topic message
+ * cache + shared in-flight decode protect against the panel-rearrange
+ * re-decode regression — a /tf with 100k messages used to fully re-decode
+ * every time a sibling panel was added/removed because the unmount cleanup
+ * threw away the worker's result before it could be cached.
  */
-
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useBagStore } from '../../../store/bagStore';
-import { readDeserializedMessages } from '../../../parsers';
+import { useTopicMessages, type DecodedMessage } from '../../../hooks/useTopicMessages';
 
 export interface Vec3 {
   x: number;
@@ -115,7 +120,7 @@ interface TopicMatch {
   type: string;
 }
 
-function findTfTopics(
+function findTfTopic(
   topicList: { name: string; type: string }[],
   candidates: string[],
 ): TopicMatch | null {
@@ -123,9 +128,7 @@ function findTfTopics(
     const match = topicList.find((t) => t.name === name && isTfMessageType(t.type));
     if (match) return match;
   }
-  // Last resort: any topic whose type is TFMessage.
-  const anyTf = topicList.find((t) => isTfMessageType(t.type));
-  return anyTf ? { name: anyTf.name, type: anyTf.type } : null;
+  return null;
 }
 
 /**
@@ -133,7 +136,7 @@ function findTfTopics(
  * return a graph the panel can lay out and query.
  */
 function ingestMessages(
-  messages: { timestamp: bigint; value: Record<string, unknown> | null }[],
+  messages: DecodedMessage[],
   edges: Map<string, TFEdge>,
   children: Map<string, string[]>,
   parentOf: Map<string, string | undefined>,
@@ -185,107 +188,91 @@ function ingestMessages(
   }
 }
 
-export function useTFGraph(): UseTFGraphResult {
-  const bag = useBagStore((s) => s.bag);
-  const source = useBagStore((s) => s.source);
+export function useTFGraph(bagId?: string): UseTFGraphResult {
+  const entry = useBagStore((s) => {
+    if (bagId) {
+      const explicit = s.bags.get(bagId);
+      if (explicit) return explicit;
+    }
+    return s.focusBagId ? s.bags.get(s.focusBagId) ?? null : null;
+  });
 
   const tfTopics = useMemo(() => {
-    if (!bag) return { dynamic: null as TopicMatch | null, staticTopic: null as TopicMatch | null };
+    if (!entry) {
+      return {
+        dynamic: null as TopicMatch | null,
+        staticTopic: null as TopicMatch | null,
+      };
+    }
     return {
-      dynamic: findTfTopics(bag.topics, DYNAMIC_TOPIC_NAMES),
-      staticTopic: findTfTopics(bag.topics, STATIC_TOPIC_NAMES),
+      dynamic: findTfTopic(entry.summary.topics, DYNAMIC_TOPIC_NAMES),
+      staticTopic: findTfTopic(entry.summary.topics, STATIC_TOPIC_NAMES),
     };
-  }, [bag]);
-
-  const [graph, setGraph] = useState<TFGraph | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [progress, setProgress] = useState({ tf: 0, tf_static: 0 });
+  }, [entry]);
 
   const missing = !tfTopics.dynamic && !tfTopics.staticTopic;
 
-  useEffect(() => {
-    if (!bag || !source) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setGraph(null);
-      return;
+  // Both topic streams go through useTopicMessages so the cache + shared
+  // in-flight decode survives panel rearrange remounts. Empty topic name +
+  // enabled=false stays inert when a bag has only one of the two.
+  const dynStream = useTopicMessages(
+    tfTopics.dynamic?.name ?? '',
+    TF_LIMIT,
+    !!tfTopics.dynamic,
+    bagId,
+  );
+  const staticStream = useTopicMessages(
+    tfTopics.staticTopic?.name ?? '',
+    TF_LIMIT,
+    !!tfTopics.staticTopic,
+    bagId,
+  );
+
+  const error = dynStream.error ?? staticStream.error ?? null;
+  // We only consider the graph ready once both sides have completed (or are
+  // intentionally absent). Building a partial graph mid-stream would force a
+  // full re-layout on every batch — not worth it for TF, which is typically
+  // bounded at a few thousand edges even on a 100k-message bag.
+  const dynReady = !tfTopics.dynamic || (!dynStream.loading && dynStream.messages !== null);
+  const staticReady =
+    !tfTopics.staticTopic || (!staticStream.loading && staticStream.messages !== null);
+  const loading = !missing && !error && !(dynReady && staticReady);
+
+  const progress = {
+    tf: dynStream.progress,
+    tf_static: staticStream.progress,
+  };
+
+  const graph = useMemo<TFGraph | null>(() => {
+    if (loading || missing || error) return null;
+    const edges = new Map<string, TFEdge>();
+    const childrenMap = new Map<string, string[]>();
+    const parentOf = new Map<string, string | undefined>();
+    const frames = new Set<string>();
+
+    // /tf_static first so dynamic samples never override the static fallback
+    // that newer ingest passes would otherwise displace.
+    if (staticStream.messages) {
+      ingestMessages(staticStream.messages, edges, childrenMap, parentOf, frames, true);
     }
-    if (missing) {
-      setGraph(null);
-      setLoading(false);
-      return;
+    if (dynStream.messages) {
+      ingestMessages(dynStream.messages, edges, childrenMap, parentOf, frames, false);
     }
 
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    setProgress({ tf: 0, tf_static: 0 });
+    // Per-edge samples are time-ordered (the bag usually emits in order, but
+    // /tf_static + /tf merging or out-of-order recording can break that).
+    for (const edge of edges.values()) {
+      edge.samples.sort((a, b) => (a.t < b.t ? -1 : a.t > b.t ? 1 : 0));
+    }
 
-    (async () => {
-      try {
-        const edges = new Map<string, TFEdge>();
-        const childrenMap = new Map<string, string[]>();
-        const parentOf = new Map<string, string | undefined>();
-        const frames = new Set<string>();
+    const roots: string[] = [];
+    for (const frame of frames) {
+      if (!parentOf.get(frame)) roots.push(frame);
+    }
+    roots.sort();
 
-        // /tf_static first so dynamic samples can overwrite where they exist.
-        if (tfTopics.staticTopic) {
-          const staticMsgs = await readDeserializedMessages(
-            source,
-            bag.format,
-            tfTopics.staticTopic.name,
-            TF_LIMIT,
-            (n) => !cancelled && setProgress((p) => ({ ...p, tf_static: n })),
-          );
-          if (cancelled) return;
-          ingestMessages(staticMsgs, edges, childrenMap, parentOf, frames, true);
-        }
-        if (tfTopics.dynamic) {
-          const dynMsgs = await readDeserializedMessages(
-            source,
-            bag.format,
-            tfTopics.dynamic.name,
-            TF_LIMIT,
-            (n) => !cancelled && setProgress((p) => ({ ...p, tf: n })),
-          );
-          if (cancelled) return;
-          ingestMessages(dynMsgs, edges, childrenMap, parentOf, frames, false);
-        }
-
-        // Ensure per-edge samples are time-ordered (the bag usually emits in
-        // order, but /tf_static + /tf merging or out-of-order recording can
-        // break that assumption).
-        for (const edge of edges.values()) {
-          edge.samples.sort((a, b) => (a.t < b.t ? -1 : a.t > b.t ? 1 : 0));
-        }
-
-        const roots: string[] = [];
-        for (const frame of frames) {
-          if (!parentOf.get(frame)) roots.push(frame);
-        }
-        roots.sort();
-
-        if (cancelled) return;
-        setGraph({
-          edges,
-          children: childrenMap,
-          parentOf,
-          frames,
-          roots,
-        });
-        setLoading(false);
-      } catch (err) {
-        if (cancelled) return;
-        const msg = err instanceof Error ? err.message : String(err);
-        setError(msg);
-        setLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [bag, source, tfTopics.dynamic, tfTopics.staticTopic, missing]);
+    return { edges, children: childrenMap, parentOf, frames, roots };
+  }, [loading, missing, error, dynStream.messages, staticStream.messages]);
 
   return { graph, loading, error, missing, progress };
 }

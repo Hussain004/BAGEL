@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import { useBagStore } from '../../../store/bagStore';
-import { usePlayheadStore } from '../../../store/playheadStore';
+import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
+import { useBagLocalPlayhead } from '../../../hooks/useBagLocalPlayhead';
 import { PanelShell } from '../PanelShell';
 import { getTopicColor } from '../../../utils/color';
 import { nsToSeconds } from '../../../utils/time';
@@ -20,6 +20,7 @@ interface TFTreeProps {
   panelId: string;
   topicName: string;
   type: string;
+  bagId?: string;
 }
 
 interface LayoutNode {
@@ -50,10 +51,10 @@ const TOP_PAD = 32;
  * current transform (translation + quaternion + Euler angles) at the
  * playhead time and highlights the chain from the root.
  */
-export function TFTree({ panelId, topicName, type }: TFTreeProps) {
-  const bag = useBagStore((s) => s.bag);
-  const playheadNs = usePlayheadStore((s) => s.timeNs);
-  const { graph, loading, error, missing, progress } = useTFGraph();
+export function TFTree({ panelId, topicName, type, bagId }: TFTreeProps) {
+  const bag = useBagStore((s) => resolveBagEntry(s, bagId))?.summary ?? null;
+  const playheadNs = useBagLocalPlayhead(bagId);
+  const { graph, loading, error, missing, progress } = useTFGraph(bagId);
 
   const layout = useMemo(() => (graph ? layoutTree(graph) : null), [graph]);
   // Selected frame persisted per panelId so a dock-induced remount or a
@@ -110,6 +111,7 @@ export function TFTree({ panelId, topicName, type }: TFTreeProps) {
       topicName={topicName}
       type={type}
       accentColor={accent}
+      bagId={bagId}
     >
       {loading && <Loading progress={progress} />}
       {error && <ErrorState message={error} />}

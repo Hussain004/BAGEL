@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMessageAtTime } from '../../../hooks/useMessageAtTime';
-import { useBagStore } from '../../../store/bagStore';
-import { usePlayheadStore } from '../../../store/playheadStore';
+import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
+import { useBagLocalPlayhead } from '../../../hooks/useBagLocalPlayhead';
 import { toHexDump } from '../../../utils/bytes';
 import { nsToSeconds } from '../../../utils/time';
 import { PanelShell } from '../PanelShell';
@@ -11,6 +11,7 @@ interface RawMessageInspectorProps {
   panelId: string;
   topicName: string;
   type: string;
+  bagId?: string;
 }
 
 /**
@@ -19,10 +20,11 @@ interface RawMessageInspectorProps {
  * the registry. Reads just the message at the playhead via
  * useMessageAtTime — never preloads the whole topic.
  */
-export function RawMessageInspector({ panelId, topicName, type }: RawMessageInspectorProps) {
-  const bag = useBagStore((s) => s.bag);
-  const playheadNs = usePlayheadStore((s) => s.timeNs);
-  const { message, loading, error } = useMessageAtTime(topicName, playheadNs);
+export function RawMessageInspector({ panelId, topicName, type, bagId }: RawMessageInspectorProps) {
+  const entry = useBagStore((s) => resolveBagEntry(s, bagId));
+  const bag = entry?.summary ?? null;
+  const playheadNs = useBagLocalPlayhead(bagId);
+  const { message, loading, error } = useMessageAtTime(topicName, playheadNs, bagId);
 
   const startNs = bag?.startTime ?? 0n;
   const showInitialLoading = loading && !message;
@@ -34,6 +36,7 @@ export function RawMessageInspector({ panelId, topicName, type }: RawMessageInsp
       topicName={topicName}
       type={type}
       accentColor={getTopicColor(topicName, type)}
+      bagId={bagId}
     >
       {showInitialLoading && <Loading />}
       {error && !message && <ErrorState message={error} />}

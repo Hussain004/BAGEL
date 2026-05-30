@@ -101,7 +101,12 @@ function PanelLeafContent({ leaf }: { leaf: PanelLeaf }) {
 
 /** Dispatch from leaf.kind to the actual visualisation component. */
 function Visualisation({ leaf }: { leaf: PanelLeaf }) {
-  const props = { panelId: leaf.id, topicName: leaf.topicName, type: leaf.type };
+  const props = {
+    panelId: leaf.id,
+    topicName: leaf.topicName,
+    type: leaf.type,
+    bagId: leaf.bagId,
+  };
   switch (leaf.kind) {
     case 'plot':
       return <TimeSeriesPlot {...props} />;

@@ -19,10 +19,13 @@
  * happily decode frames whose results we then refused to apply — the
  * panel would stay frozen until the user paused, which is exactly the
  * regression we hit in v0.4.
+ *
+ * v0.9 multi-bag: callers pass a `bagId` to read from a specific bag. When
+ * omitted, the hook falls back to the focused bag.
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { useBagStore } from '../store/bagStore';
+import { useBagStore, resolveBagEntry } from '../store/bagStore';
 import { readMessageAtTime } from '../parsers';
 
 export interface MessageAtTimeState {
@@ -31,9 +34,12 @@ export interface MessageAtTimeState {
   error: string | null;
 }
 
-export function useMessageAtTime(topicName: string, timeNs: bigint): MessageAtTimeState {
-  const bag = useBagStore((s) => s.bag);
-  const source = useBagStore((s) => s.source);
+export function useMessageAtTime(
+  topicName: string,
+  timeNs: bigint,
+  bagId?: string,
+): MessageAtTimeState {
+  const entry = useBagStore((s) => resolveBagEntry(s, bagId));
 
   const [state, setState] = useState<MessageAtTimeState>({
     message: null,
@@ -57,7 +63,7 @@ export function useMessageAtTime(topicName: string, timeNs: bigint): MessageAtTi
     sessionRef.current++;
     pendingTimeRef.current = null;
     inflightRef.current = false;
-    if (!bag || !source) {
+    if (!entry) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setState({ message: null, loading: false, error: null });
     }
@@ -69,12 +75,13 @@ export function useMessageAtTime(topicName: string, timeNs: bigint): MessageAtTi
       // eslint-disable-next-line react-hooks/exhaustive-deps
       sessionRef.current++;
     };
-  }, [bag, source, topicName]);
+  }, [entry, topicName]);
 
   useEffect(() => {
-    if (!bag || !source) return;
+    if (!entry) return;
 
     const mySession = sessionRef.current;
+    const { id: workerBagId, summary: bag, source } = entry;
 
     const fire = (): void => {
       if (inflightRef.current || pendingTimeRef.current === null) return;
@@ -83,7 +90,7 @@ export function useMessageAtTime(topicName: string, timeNs: bigint): MessageAtTi
       pendingTimeRef.current = null;
       inflightRef.current = true;
 
-      readMessageAtTime(source, bag.format, topicName, target)
+      readMessageAtTime(workerBagId, source, bag.format, topicName, target)
         .then((msg) => {
           inflightRef.current = false;
           if (sessionRef.current !== mySession) {
@@ -116,7 +123,7 @@ export function useMessageAtTime(topicName: string, timeNs: bigint): MessageAtTi
       setState((s) => ({ ...s, loading: true, error: null }));
     }
     fire();
-  }, [bag, source, topicName, timeNs]);
+  }, [entry, topicName, timeNs]);
 
   return state;
 }

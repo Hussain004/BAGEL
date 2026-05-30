@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useBagStore } from '../../../store/bagStore';
-import { usePlayheadStore } from '../../../store/playheadStore';
+import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
+import { useBagLocalPlayhead } from '../../../hooks/useBagLocalPlayhead';
 import { PanelShell } from '../PanelShell';
 import { getTopicColor } from '../../../utils/color';
 import { nsToSeconds } from '../../../utils/time';
@@ -22,6 +22,7 @@ interface TrajectoryPlotProps {
   panelId: string;
   topicName: string;
   type: string;
+  bagId?: string;
 }
 
 interface View {
@@ -44,9 +45,12 @@ const MARGIN = 30;
  * an arrow points along the heading when the source message carries an
  * orientation quaternion.
  */
-export function TrajectoryPlot({ panelId, topicName, type }: TrajectoryPlotProps) {
-  const bag = useBagStore((s) => s.bag);
-  const playheadNs = usePlayheadStore((s) => s.timeNs);
+export function TrajectoryPlot({ panelId, topicName, type, bagId }: TrajectoryPlotProps) {
+  const entry = useBagStore((s) => resolveBagEntry(s, bagId));
+  const bag = entry?.summary ?? null;
+  const bagCount = useBagStore((s) => s.bagOrder.length);
+  const bagColor = entry?.color ?? null;
+  const playheadNs = useBagLocalPlayhead(bagId);
 
   const {
     points,
@@ -57,7 +61,7 @@ export function TrajectoryPlot({ panelId, topicName, type }: TrajectoryPlotProps
     loading,
     progress,
     error,
-  } = useTrajectory(topicName, type);
+  } = useTrajectory(topicName, type, bagId);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -269,13 +273,29 @@ export function TrajectoryPlot({ panelId, topicName, type }: TrajectoryPlotProps
 
     drawGrid(ctx, cw, ch, view);
 
-    // The blue→red gradient: split into short colored segments so we don't
-    // need a per-vertex gradient (which Canvas2D doesn't natively support).
+    // Polyline tinting:
+    //   - Single bag: the v0.3 blue→red gradient (recognisable; direction
+    //     of travel reads at a glance).
+    //   - Multi-bag: tint by the bag's assigned color so two overlapping
+    //     trajectories stay visually distinguishable. We modulate the
+    //     color's lightness along the path so direction of travel is still
+    //     readable (start dim, end bright).
     const last = points.length - 1;
+    const useBagTint = bagCount > 1 && bagColor !== null;
+    const tintRgb = useBagTint ? hexToRgb(bagColor!) : null;
     for (let i = 1; i < points.length; i++) {
       const t = last > 0 ? (i - 1) / last : 0;
-      const hue = 220 - 200 * t; // 220 (blue) → 20 (red)
-      ctx.strokeStyle = `hsl(${hue}, 80%, 60%)`;
+      if (useBagTint && tintRgb) {
+        // Lerp from a darker variant (start) toward the bag's full color (end).
+        const k = 0.4 + 0.6 * t;
+        const r = Math.round(tintRgb.r * k);
+        const g = Math.round(tintRgb.g * k);
+        const b = Math.round(tintRgb.b * k);
+        ctx.strokeStyle = `rgb(${r},${g},${b})`;
+      } else {
+        const hue = 220 - 200 * t; // 220 (blue) → 20 (red)
+        ctx.strokeStyle = `hsl(${hue}, 80%, 60%)`;
+      }
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       const a = points[i - 1];
@@ -347,7 +367,7 @@ export function TrajectoryPlot({ panelId, topicName, type }: TrajectoryPlotProps
     }
 
     drawScaleBar(ctx, cw, ch, view);
-  }, [points, view, playheadNs, projected, showMapTiles, navSatRef, tileGeneration]);
+  }, [points, view, playheadNs, projected, showMapTiles, navSatRef, tileGeneration, bagColor, bagCount]);
 
   const accent = getTopicColor(topicName, type);
   const startNs = bag?.startTime ?? 0n;
@@ -362,6 +382,7 @@ export function TrajectoryPlot({ panelId, topicName, type }: TrajectoryPlotProps
       topicName={topicName}
       type={type}
       accentColor={accent}
+      bagId={bagId}
     >
       {loading && (
         <PanelLoadingState
@@ -677,6 +698,18 @@ function drawScaleBar(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'bottom';
   ctx.fillText(`${formatDistance(step)}`, x0 + px / 2, y0 - 6);
+}
+
+/**
+ * Parse a `#rrggbb` colour into an {r,g,b} 0-255 tuple. Returns black on a
+ * malformed input — the multi-bag path is the only caller and it always
+ * passes a palette colour, so the fallback is a defence-in-depth only.
+ */
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return { r: 0, g: 0, b: 0 };
+  const v = parseInt(m[1], 16);
+  return { r: (v >> 16) & 0xff, g: (v >> 8) & 0xff, b: v & 0xff };
 }
 
 function formatDistance(metres: number): string {

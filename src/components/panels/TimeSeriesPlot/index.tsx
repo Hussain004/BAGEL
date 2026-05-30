@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef } from 'react';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
-import { useBagStore } from '../../../store/bagStore';
-import { usePlayheadStore } from '../../../store/playheadStore';
+import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
+import { useBagLocalPlayhead } from '../../../hooks/useBagLocalPlayhead';
 import { useTopicMessages } from '../../../hooks/useTopicMessages';
 import { flattenNumeric } from '../../../utils/messages';
 import { PanelShell } from '../PanelShell';
@@ -33,6 +33,7 @@ interface TimeSeriesPlotProps {
   panelId: string;
   topicName: string;
   type: string;
+  bagId?: string;
 }
 
 /**
@@ -46,9 +47,15 @@ interface TimeSeriesPlotProps {
  */
 const PLOT_MESSAGE_LIMIT = 50_000;
 
-export function TimeSeriesPlot({ panelId, topicName, type }: TimeSeriesPlotProps) {
-  const bag = useBagStore((s) => s.bag);
-  const { messages, loading, progress, error } = useTopicMessages(topicName, PLOT_MESSAGE_LIMIT);
+export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPlotProps) {
+  const entry = useBagStore((s) => resolveBagEntry(s, bagId));
+  const bag = entry?.summary ?? null;
+  const { messages, loading, progress, error } = useTopicMessages(
+    topicName,
+    PLOT_MESSAGE_LIMIT,
+    true,
+    bagId,
+  );
   const totalMessages = useMemo(
     () => bag?.topics.find((t) => t.name === topicName)?.messageCount ?? 0,
     [bag, topicName],
@@ -256,8 +263,8 @@ export function TimeSeriesPlot({ panelId, topicName, type }: TimeSeriesPlotProps
     });
   }, [visibility, series]);
 
-  // Sync the cursor line with the global playhead.
-  const playheadNs = usePlayheadStore((s) => s.timeNs);
+  // Sync the cursor line with the global playhead (bag-local for multi-bag).
+  const playheadNs = useBagLocalPlayhead(bagId);
   useEffect(() => {
     if (!plotRef.current || !series) return;
     const xSec = Number(playheadNs - series.baseNs) / 1e9;
@@ -272,6 +279,7 @@ export function TimeSeriesPlot({ panelId, topicName, type }: TimeSeriesPlotProps
       topicName={topicName}
       type={type}
       accentColor={getTopicColor(topicName, type)}
+      bagId={bagId}
     >
       {loading && (
         <PanelLoadingState

@@ -24,6 +24,8 @@ export interface SchemaPasteTarget {
   topicName?: string;
   /** Panel kind to open after a successful save. Omit for "manage schemas" entry. */
   followupPanelKind?: PanelKind;
+  /** Multi-bag: which bag the follow-up panel should bind to. */
+  bagId?: string;
 }
 
 interface UiState {

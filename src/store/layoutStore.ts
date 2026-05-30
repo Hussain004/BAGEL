@@ -3,7 +3,8 @@
  *
  * The layout is a tree of two node kinds:
  *
- *   - `PanelLeaf`  — an open visualisation panel (kind + topic + ROS type).
+ *   - `PanelLeaf`  — an open visualisation panel (kind + topic + ROS type +
+ *                    optional bagId for multi-bag — see below).
  *   - `SplitNode`  — a horizontal or vertical container with N children.
  *                    Each child is itself a leaf or another split.
  *
@@ -14,14 +15,12 @@
  *     append to an existing horizontal/vertical container when the dock
  *     direction matches it.
  *
- * Public API kept stable from the v0.5 flat-array store:
- *   - `openPanel`, `closePanel`, `closeAllPanels`, `hasPanelForTopic`.
- *   - `dockPanel(sourceId, targetId, edge)` is new (v0.7).
- *   - `panels` is replaced with `root: LayoutNode | null`; consumers that
- *     want the flat list call the exported `getAllPanels(root)` helper.
- *   - `openOrder: string[]` is new — tracks insertion order so the Esc
- *     shortcut (`close most recent`) still has a sensible target now that
- *     "the last entry in the array" no longer maps onto a tree.
+ * v0.9 multi-bag: `PanelLeaf.bagId` records which bag the panel reads from.
+ * Panel ids embed the bagId (`kind:bagId:topicName`) so the same topic
+ * across two bags maps to two distinct panel ids — you can open `/odom` from
+ * bag A and `/odom` from bag B side-by-side. The URL hash carries the bagId
+ * via the same scheme. v0.7 / v0.8 hashes (no bagId) are still accepted and
+ * resolve to the focused bag at load time.
  */
 
 import { create } from 'zustand';
@@ -34,6 +33,12 @@ export interface PanelLeaf {
   kind: PanelKind;
   topicName: string;
   type: string;
+  /**
+   * The bag this panel reads from. Optional for back-compat: leaves restored
+   * from v0.7 / v0.8 URL hashes don't carry a bagId and fall back to the
+   * focused bag at read time. New panels always have it set.
+   */
+  bagId?: string;
 }
 
 export type SplitOrientation = 'horizontal' | 'vertical';
@@ -69,6 +74,8 @@ interface LayoutState {
   openPanel: (panel: Omit<PanelLeaf, 'id' | 'node'>) => void;
   closePanel: (id: string) => void;
   closeAllPanels: () => void;
+  /** Close every panel reading from a specific bag. Used on bag removal. */
+  closePanelsForBag: (bagId: string) => void;
   /** Move `sourceId` so that it sits on the given `edge` of `targetId`. */
   dockPanel: (sourceId: string, targetId: string, edge: DropEdge) => void;
   /**
@@ -81,10 +88,20 @@ interface LayoutState {
    * tree, since the URL doesn't preserve the original open order.
    */
   restoreLayout: (root: LayoutNode | null) => void;
-  hasPanelForTopic: (topicName: string) => boolean;
+  hasPanelForTopic: (topicName: string, bagId?: string) => boolean;
 }
 
-function panelLeafId(kind: PanelKind, topicName: string): string {
+/**
+ * Panel-leaf id format:
+ *   - `kind:topicName`            — v0.7 / v0.8 single-bag (back-compat).
+ *   - `kind:bagId:topicName`      — v0.9 multi-bag.
+ *
+ * The bagId is always included when known so two bags with the same topic
+ * have distinct ids. Leaves restored from old hashes lack a bagId; those
+ * use the back-compat form and the panel renders from the focused bag.
+ */
+function panelLeafId(kind: PanelKind, topicName: string, bagId?: string): string {
+  if (bagId) return `${kind}:${bagId}:${topicName}`;
   return `${kind}:${topicName}`;
 }
 
@@ -129,6 +146,25 @@ function removeLeafById(tree: LayoutNode, id: string): LayoutNode | null {
   const newChildren: LayoutNode[] = [];
   for (const c of tree.children) {
     const after = removeLeafById(c, id);
+    if (after !== c) changed = true;
+    if (after !== null) newChildren.push(after);
+  }
+  if (!changed) return tree;
+  if (newChildren.length === 0) return null;
+  if (newChildren.length === 1) return newChildren[0];
+  return { ...tree, children: newChildren };
+}
+
+/** Remove every leaf matching the predicate. Returns null if nothing remains. */
+function removeLeavesWhere(
+  tree: LayoutNode,
+  predicate: (leaf: PanelLeaf) => boolean,
+): LayoutNode | null {
+  if (tree.node === 'panel') return predicate(tree) ? null : tree;
+  const newChildren: LayoutNode[] = [];
+  let changed = false;
+  for (const c of tree.children) {
+    const after = removeLeavesWhere(c, predicate);
     if (after !== c) changed = true;
     if (after !== null) newChildren.push(after);
   }
@@ -225,11 +261,11 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   root: null,
   openOrder: [],
 
-  openPanel: ({ kind, topicName, type }) => {
-    const id = panelLeafId(kind, topicName);
+  openPanel: ({ kind, topicName, type, bagId }) => {
+    const id = panelLeafId(kind, topicName, bagId);
     const state = get();
     if (findPanel(state.root, id)) return;
-    const leaf: PanelLeaf = { node: 'panel', id, kind, topicName, type };
+    const leaf: PanelLeaf = { node: 'panel', id, kind, topicName, type, bagId };
     const newRoot = state.root ? appendLeafRight(state.root, leaf) : leaf;
     set({ root: newRoot, openOrder: [...state.openOrder, id] });
   },
@@ -245,6 +281,20 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   },
 
   closeAllPanels: () => set({ root: null, openOrder: [] }),
+
+  closePanelsForBag: (bagId) => {
+    const state = get();
+    if (!state.root) return;
+    const newRoot = removeLeavesWhere(state.root, (leaf) => leaf.bagId === bagId);
+    if (newRoot === state.root) return;
+    // Rebuild openOrder by walking the surviving tree — easier than tracking
+    // every dropped id since we just removed an unbounded number of leaves.
+    const survivingIds = new Set(getAllPanels(newRoot).map((p) => p.id));
+    set({
+      root: newRoot,
+      openOrder: state.openOrder.filter((id) => survivingIds.has(id)),
+    });
+  },
 
   dockPanel: (sourceId, targetId, edge) => {
     if (sourceId === targetId) return;
@@ -264,6 +314,13 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     set({ root, openOrder });
   },
 
-  hasPanelForTopic: (topicName) =>
-    getAllPanels(get().root).some((p) => p.topicName === topicName),
+  hasPanelForTopic: (topicName, bagId) =>
+    getAllPanels(get().root).some(
+      (p) =>
+        p.topicName === topicName &&
+        // bagId match: when caller passes one, it must match. When omitted,
+        // any panel for the topic counts (back-compat for the sidebar dot
+        // indicator that doesn't know about bagId).
+        (bagId === undefined || p.bagId === bagId),
+    ),
 }));

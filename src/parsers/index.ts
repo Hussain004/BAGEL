@@ -1,10 +1,15 @@
 /**
  * Public parser API used by the rest of the app.
  *
- * Routes every call through the parser Web Worker (see `workers/parser.worker.ts`)
- * so the heavy lifting — MCAP chunk decompression, sql.js queries, CDR
- * deserialization — runs off the UI thread. The function signatures match
- * the previous main-thread implementation so existing callers don't change.
+ * Routes every call through the per-bag parser Web Worker (see
+ * `workers/parserClient.ts`) so heavy lifting — MCAP chunk decompression,
+ * sql.js queries, CDR deserialization — runs off the UI thread *and* in a
+ * dedicated worker per bag so cross-bag reads don't queue behind each other.
+ *
+ * v0.9 multi-bag: each call accepts a `bagId`. Functions that exist for
+ * back-compat (no bagId) route through the shared worker — that's only used
+ * by main-thread schema management (`setCustomSchemas`, `validateSchema`,
+ * `getSupportedTypes`) since those don't depend on any one bag's state.
  *
  * The actual parser implementations live in `./core.ts`; only the worker
  * imports them, which keeps the main bundle slim (no @mcap/core, sql.js, or
@@ -12,7 +17,11 @@
  */
 
 import type { BagFormat, BagSummary, RawMessage } from '../types/bag';
-import { getParserClient } from '../workers/parserClient';
+import {
+  getParserClient,
+  getSharedParserClient,
+  activeBagWorkerIds,
+} from '../workers/parserClient';
 import type { ColorMode, HeightAxis, PointCloudExtraction } from '../utils/pointcloud';
 import type { LaserScanExtraction } from '../utils/laserscan';
 import type { BagSource } from './source';
@@ -21,21 +30,33 @@ type DecodedMessage = { timestamp: bigint; value: Record<string, unknown> | null
 
 export type { BagSource } from './source';
 export { createFileSource, createUrlSource } from './source';
+export { releaseBagWorker } from '../workers/parserClient';
 
-export async function parseBag(source: BagSource): Promise<BagSummary> {
-  return getParserClient().parseBag(source);
+/**
+ * Parse a bag's header / summary. The worker assigned to `bagId` owns the
+ * reader cache going forward — subsequent per-topic reads against the same
+ * bagId reuse it.
+ *
+ * `bagId` is optional for back-compat (`bagStore.loadBag` calls this with the
+ * id it just minted); when omitted we route through the shared worker, which
+ * is fine for a one-shot parse but won't benefit from per-bag isolation.
+ */
+export async function parseBag(source: BagSource, bagId?: string): Promise<BagSummary> {
+  return getParserClient(bagId).parseBag(source);
 }
 
 export async function readRawMessages(
+  bagId: string,
   source: BagSource,
   format: BagFormat,
   topicName: string,
   limit?: number,
 ): Promise<RawMessage[]> {
-  return getParserClient().readRawMessages(source, format, topicName, limit);
+  return getParserClient(bagId).readRawMessages(source, format, topicName, limit);
 }
 
 export async function readDeserializedMessages(
+  bagId: string,
   source: BagSource,
   format: BagFormat,
   topicName: string,
@@ -43,7 +64,7 @@ export async function readDeserializedMessages(
   onProgress?: (decoded: number) => void,
   onBatch?: (batch: DecodedMessage[]) => void,
 ): Promise<DecodedMessage[]> {
-  return getParserClient().readDeserializedMessages(
+  return getParserClient(bagId).readDeserializedMessages(
     source,
     format,
     topicName,
@@ -54,15 +75,17 @@ export async function readDeserializedMessages(
 }
 
 export async function readMessageAtTime(
+  bagId: string,
   source: BagSource,
   format: BagFormat,
   topicName: string,
   timeNs: bigint,
 ): Promise<DecodedMessage | null> {
-  return getParserClient().readMessageAtTime(source, format, topicName, timeNs);
+  return getParserClient(bagId).readMessageAtTime(source, format, topicName, timeNs);
 }
 
 export async function readPointCloudAtTime(
+  bagId: string,
   source: BagSource,
   format: BagFormat,
   topicName: string,
@@ -72,7 +95,7 @@ export async function readPointCloudAtTime(
   maxRange?: number,
   heightAxis?: HeightAxis,
 ): Promise<(PointCloudExtraction & { timestamp: bigint }) | null> {
-  return getParserClient().readPointCloudAtTime(
+  return getParserClient(bagId).readPointCloudAtTime(
     source,
     format,
     topicName,
@@ -85,43 +108,62 @@ export async function readPointCloudAtTime(
 }
 
 export async function readLaserScanAtTime(
+  bagId: string,
   source: BagSource,
   format: BagFormat,
   topicName: string,
   timeNs: bigint,
 ): Promise<(LaserScanExtraction & { timestamp: bigint }) | null> {
-  return getParserClient().readLaserScanAtTime(source, format, topicName, timeNs);
+  return getParserClient(bagId).readLaserScanAtTime(source, format, topicName, timeNs);
 }
 
 export async function getTopicType(
+  bagId: string,
   source: BagSource,
   format: BagFormat,
   topicName: string,
 ): Promise<string | undefined> {
-  return getParserClient().getTopicType(source, format, topicName);
+  return getParserClient(bagId).getTopicType(source, format, topicName);
 }
 
+/** Dispose every per-bag worker's caches at once. */
 export function disposeParserCaches(): void {
   // Fire-and-forget: cache disposal doesn't need to block the caller.
-  void getParserClient().disposeParserCaches();
+  for (const id of activeBagWorkerIds()) {
+    void getParserClient(id).disposeParserCaches();
+  }
+}
+
+/** Dispose a single bag worker's caches without terminating the worker. */
+export function disposeParserCachesFor(bagId: string): void {
+  void getParserClient(bagId).disposeParserCaches();
 }
 
 /** Every type name the bundled `ros2galactic` registry knows about. */
 export async function getSupportedTypes(): Promise<string[]> {
-  return getParserClient().getSupportedTypes();
+  return getSharedParserClient().getSupportedTypes();
 }
 
 /**
  * Replace the worker's custom-schema map. Call on app boot (from the saved
  * localStorage state) and after every paste/delete in the schema modal.
+ *
+ * Multi-bag: we need to broadcast to every per-bag worker since they each
+ * have their own CDR-reader cache. The shared worker also gets the update so
+ * future bags inherit the schemas.
  */
 export async function setCustomSchemas(schemas: Record<string, string>): Promise<void> {
-  return getParserClient().setCustomSchemas(schemas);
+  await Promise.all([
+    getSharedParserClient().setCustomSchemas(schemas),
+    ...activeBagWorkerIds().map((id) =>
+      getParserClient(id).setCustomSchemas(schemas),
+    ),
+  ]);
 }
 
 /** Dry-run a `.msg` text through the parser — used by the paste modal. */
 export async function validateSchema(
   schemaText: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  return getParserClient().validateSchema(schemaText);
+  return getSharedParserClient().validateSchema(schemaText);
 }

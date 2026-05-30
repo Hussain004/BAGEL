@@ -36,10 +36,16 @@ export interface UseTrajectoryResult {
  * topic doesn't lock the page. Trajectories rarely need that much resolution. */
 const TRAJECTORY_MESSAGE_LIMIT = 50_000;
 
-export function useTrajectory(topicName: string, type: string): UseTrajectoryResult {
+export function useTrajectory(
+  topicName: string,
+  type: string,
+  bagId?: string,
+): UseTrajectoryResult {
   const { messages, loading, progress, error } = useTopicMessages(
     topicName,
     TRAJECTORY_MESSAGE_LIMIT,
+    true,
+    bagId,
   );
 
   const extraction = useMemo(() => {

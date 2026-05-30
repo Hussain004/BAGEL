@@ -84,6 +84,7 @@ export function SchemaPasteModal() {
             kind: target.followupPanelKind,
             topicName: topic.name,
             type: topic.type,
+            bagId: target.bagId,
           });
         }
       }

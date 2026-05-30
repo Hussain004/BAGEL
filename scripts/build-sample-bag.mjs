@@ -21,6 +21,17 @@
  *                                              to exercise the v0.8 marker
  *                                              renderer (cube/sphere/cylinder/
  *                                              arrow/line_strip/points/text).
+ *   - /map (nav_msgs/OccupancyGrid)          — 0.5 Hz synthetic SLAM map that
+ *                                              expands outward over the bag.
+ *                                              Exercises the v0.9 map plane
+ *                                              renderer (cost ramp + origin
+ *                                              pose + TF-resolved placement).
+ *   - /gps/fix (sensor_msgs/NavSatFix)       — 1 Hz GPS trace, the figure-eight
+ *                                              projected onto realistic lat/lon
+ *                                              somewhere recognisable (around
+ *                                              Cambridge, UK so the OSM tile
+ *                                              underlay shows familiar streets
+ *                                              when the toggle is flipped on).
  *
  * Run:    node scripts/build-sample-bag.mjs
  * Output: public/sample-bags/tour.mcap
@@ -53,6 +64,29 @@ const TF_HZ = 10;
 // MODIFYs the existing entries each tick, so 1 Hz is plenty for the demo while
 // keeping the bag tiny.
 const MARKER_HZ = 1;
+// Maps publish even slower — SLAM toolboxes typically emit at 0.5-1 Hz and the
+// renderer only uploads to GPU when the content fingerprint changes.
+const MAP_HZ = 0.5;
+// GPS receivers are usually 1 Hz commodity units — match that.
+const GPS_HZ = 1;
+
+// Occupancy grid sizing: 10 m × 10 m at 0.1 m / cell.
+// Origin at (-5, -5) so the figure-eight (radius ~5) fits inside.
+const MAP_RESOLUTION = 0.1;
+const MAP_WIDTH = 100;
+const MAP_HEIGHT = 100;
+const MAP_ORIGIN_X = -5.0;
+const MAP_ORIGIN_Y = -5.0;
+
+// Anchor the GPS trace somewhere recognisable so the OSM tile underlay shows
+// familiar streets when toggled on. King's Parade, Cambridge UK — close enough
+// to King's College that the figure-eight straddles a couple of city blocks at
+// the demo zoom level.
+const GPS_ORIGIN_LAT = 52.2043;
+const GPS_ORIGIN_LON = 0.1149;
+// Earth radius at the equator, used for the local-cartesian → lat/lon back-
+// projection. Equirectangular is fine at this scale (sub-100m).
+const EARTH_RADIUS_M = 6378137.0;
 
 // Pick an absolute start time so timestamps look like real bag epochs but
 // don't change between runs (keeps the output bytes stable).
@@ -457,6 +491,112 @@ function buildMarkerArrayMessage(timeNs) {
   };
 }
 
+/**
+ * Build a synthetic OccupancyGrid that "grows" over the bag duration to
+ * mimic an incremental SLAM run.
+ *
+ * The map is a square room (outer walls = occupied, interior = free) with a
+ * couple of obstacles. Cells outside an exploration radius around the robot's
+ * current position are flagged unknown (-1). The exploration radius grows
+ * linearly with bag time so scrubbing forwards reveals more of the map — the
+ * classic "watching slam_toolbox build the map" experience that map rendering
+ * in v0.9 exists to make legible.
+ */
+function buildOccupancyGridMessage(timeNs) {
+  const t = Number(timeNs - START_TIME_NS) / 1e9;
+  const { x: robotX, y: robotY } = figureEightPose(t);
+  // Reveal a generous radius that fully covers the map by the end of the bag.
+  const exploredRadius = 1.5 + (t / DURATION_SEC) * 9.0;
+  const exploredR2 = exploredRadius * exploredRadius;
+
+  const data = new Array(MAP_WIDTH * MAP_HEIGHT);
+  for (let row = 0; row < MAP_HEIGHT; row++) {
+    for (let col = 0; col < MAP_WIDTH; col++) {
+      const idx = row * MAP_WIDTH + col;
+      const worldX = MAP_ORIGIN_X + (col + 0.5) * MAP_RESOLUTION;
+      const worldY = MAP_ORIGIN_Y + (row + 0.5) * MAP_RESOLUTION;
+      const dx = worldX - robotX;
+      const dy = worldY - robotY;
+      // Cells the robot hasn't "seen" yet stay unknown.
+      if (dx * dx + dy * dy > exploredR2) {
+        data[idx] = -1;
+        continue;
+      }
+      // Outer walls of the room (2 cells thick on each edge so they're visible
+      // at the chosen resolution).
+      const onOuterWall =
+        col < 2 || col >= MAP_WIDTH - 2 || row < 2 || row >= MAP_HEIGHT - 2;
+      // Two rectangular pillars in the interior.
+      const inPillarA =
+        col >= 30 && col < 38 && row >= 30 && row < 38;
+      const inPillarB =
+        col >= 65 && col < 72 && row >= 60 && row < 68;
+      // A diagonal corridor wall — exercises the linear-cost ramp.
+      const corridorDist = Math.abs((col - 50) + (row - 50));
+      const onCorridorWall = corridorDist === 25 && col > 50 && row > 30 && row < 70;
+
+      if (onOuterWall || inPillarA || inPillarB) {
+        data[idx] = 100; // fully occupied
+      } else if (onCorridorWall) {
+        // Mid-cost ramp to demonstrate the 1-99 gradient in the renderer.
+        data[idx] = 70;
+      } else {
+        data[idx] = 0; // free
+      }
+    }
+  }
+
+  return {
+    header: header('map', timeNs),
+    info: {
+      map_load_time: { sec: 0, nsec: 0 },
+      resolution: MAP_RESOLUTION,
+      width: MAP_WIDTH,
+      height: MAP_HEIGHT,
+      origin: {
+        position: { x: MAP_ORIGIN_X, y: MAP_ORIGIN_Y, z: 0 },
+        orientation: { x: 0, y: 0, z: 0, w: 1 },
+      },
+    },
+    data,
+  };
+}
+
+/**
+ * Project the figure-eight pose onto realistic lat/lon around the configured
+ * GPS origin so the OSM tile underlay can show a recognisable city layout.
+ * Equirectangular projection is fine at sub-100m scale.
+ */
+function buildNavSatFixMessage(timeNs) {
+  const t = Number(timeNs - START_TIME_NS) / 1e9;
+  const { x, y } = figureEightPose(t);
+  // The figure-eight has radius ~5 m; scale it up so it spans a few blocks on
+  // the OSM underlay (~120 m peak-to-peak) — large enough to actually see the
+  // shape against streets at the demo zoom level.
+  const scale = 12.0;
+  const dxMeters = x * scale;
+  const dyMeters = y * scale;
+  // y → latitude (north positive), x → longitude (east positive).
+  const lat = GPS_ORIGIN_LAT + (dyMeters / EARTH_RADIUS_M) * (180 / Math.PI);
+  const lon =
+    GPS_ORIGIN_LON +
+    (dxMeters / (EARTH_RADIUS_M * Math.cos((GPS_ORIGIN_LAT * Math.PI) / 180))) *
+      (180 / Math.PI);
+
+  return {
+    header: header('gps_link', timeNs),
+    status: {
+      status: 0, // STATUS_FIX
+      service: 1, // SERVICE_GPS
+    },
+    latitude: lat,
+    longitude: lon,
+    altitude: 25.0 + 0.2 * Math.sin(t * 0.5), // gentle altitude wobble
+    position_covariance: new Array(9).fill(0),
+    position_covariance_type: 0, // COVARIANCE_TYPE_UNKNOWN
+  };
+}
+
 // ── Drive the writer ────────────────────────────────────────────────────
 async function main() {
   const writable = makeMemoryWritable();
@@ -502,6 +642,18 @@ async function main() {
       hz: MARKER_HZ,
       build: buildMarkerArrayMessage,
     },
+    {
+      topic: '/map',
+      type: 'nav_msgs/msg/OccupancyGrid',
+      hz: MAP_HZ,
+      build: buildOccupancyGridMessage,
+    },
+    {
+      topic: '/gps/fix',
+      type: 'sensor_msgs/msg/NavSatFix',
+      hz: GPS_HZ,
+      build: buildNavSatFixMessage,
+    },
   ];
 
   // Register schemas + channels and stash encoders.
@@ -523,12 +675,14 @@ async function main() {
   }
 
   // Interleave messages in time order so the bag plays back naturally.
+  // Hz can be fractional (e.g. 0.5 Hz for the map), so compute the period as
+  // a float then round to integer ns — BigInt(0.5) throws.
   const events = [];
   for (const ch of channels) {
-    const period = 1_000_000_000n / BigInt(ch.hz);
-    const count = ch.hz * DURATION_SEC;
+    const periodNs = BigInt(Math.round(1_000_000_000 / ch.hz));
+    const count = Math.max(1, Math.floor(ch.hz * DURATION_SEC));
     for (let i = 0; i < count; i++) {
-      events.push({ ch, t: START_TIME_NS + BigInt(i) * period });
+      events.push({ ch, t: START_TIME_NS + BigInt(i) * periodNs });
     }
   }
   events.sort((a, b) => (a.t < b.t ? -1 : a.t > b.t ? 1 : 0));
