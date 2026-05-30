@@ -33,6 +33,13 @@ export interface TrajectoryExtractionResult {
   source: string;
   /** True if the trajectory came from NavSatFix; the panel adds a "GPS" hint. */
   projected: boolean;
+  /**
+   * Anchor lat/lon used as the (0, 0) of the equirectangular projection
+   * when `projected` is true. Null on non-GPS trajectories (and on GPS
+   * trajectories where no valid fix arrived). Consumers need this to
+   * back-project canvas pixel coords to lat/lon for tile underlays.
+   */
+  navSatRef: { lat: number; lon: number } | null;
 }
 
 interface Vec3Like {
@@ -164,7 +171,7 @@ export function extractTrajectory(
 
   let source = type.split('/').pop() ?? type;
   if (projected) source = `${source} (equirectangular projection)`;
-  return { points, source, projected };
+  return { points, source, projected, navSatRef };
 }
 
 export interface TrajectoryBounds {

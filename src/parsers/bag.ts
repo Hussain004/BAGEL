@@ -39,6 +39,23 @@ import Bunzip from 'seek-bzip';
 import * as lz4 from 'lz4js';
 import type { BagSummary, RawMessage, TopicInfo } from '../types/bag';
 import { clearRos1ReaderCache, deserializeRos1Message } from './rosbag1';
+import {
+  HttpFilelike,
+  sourceDisplayName,
+  sourceKey,
+  sourceSize,
+  type BagSource,
+} from './source';
+
+/**
+ * Build the right `Filelike` for the rosbag reader: `BlobReader` for local
+ * File handles, `HttpFilelike` for remote URLs. Lives here rather than in
+ * `source.ts` so the `@foxglove/rosbag/web` import stays out of the main bundle.
+ */
+function filelikeFor(source: BagSource): Filelike {
+  if (source.kind === 'file') return new BlobReader(source.file);
+  return new HttpFilelike(source.url, source.contentLength);
+}
 
 interface ConnectionMeta {
   conn: number;
@@ -52,8 +69,9 @@ interface ConnectionMeta {
 }
 
 interface CachedBag {
-  fileName: string;
-  fileSize: number;
+  sourceKey: string;
+  displayName: string;
+  size: number;
   bag: Bag;
   /** All connections, keyed by connection ID. ROS1 publishes one connection
    *  per (topic, publisher) pair so a topic may have multiple connections;
@@ -142,12 +160,15 @@ export function disposeBagCache(): void {
   clearRos1ReaderCache();
 }
 
-async function loadBag(file: File): Promise<CachedBag> {
-  if (cached && cached.fileName === file.name && cached.fileSize === file.size) {
+async function loadBag(source: BagSource): Promise<CachedBag> {
+  const key = sourceKey(source);
+  if (cached && cached.sourceKey === key) {
     return cached;
   }
 
-  const reader: Filelike = new BlobReader(file);
+  // BlobReader for file sources, HttpFilelike for URLs — same Filelike
+  // interface either way.
+  const reader = filelikeFor(source);
   // `decompress` is consulted lazily during message iteration — only chunks
   // that are actually read pay the lookup. Uncompressed bags never hit the
   // map at all.
@@ -176,8 +197,9 @@ async function loadBag(file: File): Promise<CachedBag> {
   }
 
   cached = {
-    fileName: file.name,
-    fileSize: file.size,
+    sourceKey: key,
+    displayName: sourceDisplayName(source),
+    size: sourceSize(source),
     bag,
     connectionsById,
     topicMeta,
@@ -186,8 +208,8 @@ async function loadBag(file: File): Promise<CachedBag> {
   return cached;
 }
 
-export async function parseBagFile(file: File): Promise<BagSummary> {
-  const meta = await loadBag(file);
+export async function parseBagFile(source: BagSource): Promise<BagSummary> {
+  const meta = await loadBag(source);
   const { bag } = meta;
 
   const startTime = timeToNs(bag.startTime);
@@ -228,8 +250,8 @@ export async function parseBagFile(file: File): Promise<BagSummary> {
 
   return {
     format: 'bag',
-    fileName: file.name,
-    fileSize: file.size,
+    fileName: meta.displayName,
+    fileSize: meta.size,
     startTime,
     endTime,
     duration,
@@ -239,11 +261,11 @@ export async function parseBagFile(file: File): Promise<BagSummary> {
 }
 
 export async function readRawMessagesBag(
-  file: File,
+  source: BagSource,
   topicName: string,
   limit?: number,
 ): Promise<RawMessage[]> {
-  const meta = await loadBag(file);
+  const meta = await loadBag(source);
   const { bag } = meta;
   if (!meta.topicMeta.has(topicName)) return [];
 
@@ -268,13 +290,13 @@ export async function readRawMessagesBag(
 const YIELD_EVERY = 500;
 
 export async function readDeserializedMessagesBag(
-  file: File,
+  source: BagSource,
   topicName: string,
   limit?: number,
   onProgress?: (decoded: number) => void,
   onBatch?: (batch: { timestamp: bigint; value: Record<string, unknown> | null }[]) => void,
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null }[]> {
-  const meta = await loadBag(file);
+  const meta = await loadBag(source);
   const info = meta.topicMeta.get(topicName);
   if (!info) return [];
   const schemaText = info.messageDefinition;
@@ -347,11 +369,11 @@ function rememberDecoded(
 }
 
 export async function readMessageAtTimeBag(
-  file: File,
+  source: BagSource,
   topicName: string,
   timeNs: bigint,
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null } | null> {
-  const meta = await loadBag(file);
+  const meta = await loadBag(source);
   const info = meta.topicMeta.get(topicName);
   if (!info) return null;
 
@@ -401,9 +423,9 @@ export async function readMessageAtTimeBag(
 }
 
 export async function getTopicTypeBag(
-  file: File,
+  source: BagSource,
   topicName: string,
 ): Promise<string | undefined> {
-  const meta = await loadBag(file);
+  const meta = await loadBag(source);
   return meta.topicMeta.get(topicName)?.type;
 }

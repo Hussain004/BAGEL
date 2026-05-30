@@ -130,6 +130,17 @@ export function isLaserScanType(type: string): boolean {
 }
 
 /**
+ * True if a ROS type is `nav_msgs/OccupancyGrid` — the standard ROS map
+ * format produced by gmapping, slam_toolbox, cartographer, and every
+ * navigation stack costmap publisher. We render it as a textured plane in
+ * the 3D scene, posed by `info.origin` and TF-resolved to the world frame.
+ */
+export function isOccupancyGridType(type: string): boolean {
+  if (!type) return false;
+  return type.endsWith('/OccupancyGrid');
+}
+
+/**
  * True if the topic carries spatial data the ThreeDScene panel can render.
  *
  * Anything that produces a position in 3D space counts: full point clouds
@@ -141,6 +152,7 @@ export function isLaserScanType(type: string): boolean {
 export function is3DCapableType(type: string): boolean {
   if (isCloudType(type) || isLaserScanType(type)) return true;
   if (isMarkerArrayType(type) || isMarkerType(type)) return true;
+  if (isOccupancyGridType(type)) return true;
   // Pose-bearing types — we'll render them as a coordinate frame triad.
   return (
     type.endsWith('/Odometry') ||

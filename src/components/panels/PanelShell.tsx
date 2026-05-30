@@ -155,12 +155,12 @@ export function PanelShell({
  */
 function ExportMenu({ topicName, kind }: { topicName: string; kind: PanelKind }) {
   const bag = useBagStore((s) => s.bag);
-  const file = useBagStore((s) => s.file);
+  const source = useBagStore((s) => s.source);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<ExportFormat | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  if (!bag || !file) return null;
+  if (!bag || !source) return null;
   // TF tree exports are surprisingly complex (you really want a CSV per
   // edge), so opt them out of the generic exporter rather than serve a
   // half-broken one.
@@ -172,7 +172,7 @@ function ExportMenu({ topicName, kind }: { topicName: string; kind: PanelKind })
     setError(null);
     try {
       const messages = await readDeserializedMessages(
-        file,
+        source,
         bag.format,
         topicName,
         EXPORT_MESSAGE_LIMIT,

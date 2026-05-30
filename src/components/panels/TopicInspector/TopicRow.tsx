@@ -5,6 +5,7 @@ import {
   isLaserScanType,
   isMarkerArrayType,
   isMarkerType,
+  isOccupancyGridType,
   isTfTopic,
   isTrajectoryCapableType,
 } from '../../../utils/messages';
@@ -38,6 +39,8 @@ function suggestPanelKind(topic: TopicInfo): PanelKind {
   if (isCloudType(topic.type) || isLaserScanType(topic.type)) return '3d';
   // MarkerArrays / Markers live in 3D space — there is no useful 2D view.
   if (isMarkerArrayType(topic.type) || isMarkerType(topic.type)) return '3d';
+  // OccupancyGrid maps render as a textured plane in the 3D scene.
+  if (isOccupancyGridType(topic.type)) return '3d';
   // For pose-only types (Pose, Point, TransformStamped) plot has nothing
   // useful to show; jump straight to the trajectory view.
   if (
@@ -59,6 +62,9 @@ function panelOptionsFor(topic: TopicInfo): PanelKind[] {
   if (isCloudType(topic.type)) return ['3d', 'raw'];
   if (isLaserScanType(topic.type)) return ['3d', 'plot', 'raw'];
   if (isMarkerArrayType(topic.type) || isMarkerType(topic.type)) {
+    return ['3d', 'raw'];
+  }
+  if (isOccupancyGridType(topic.type)) {
     return ['3d', 'raw'];
   }
   if (
@@ -91,6 +97,24 @@ const KIND_BUTTON_TITLE: Record<PanelKind, string> = {
   tf: 'Open TF tree',
   '3d': 'Open 3D scene',
 };
+
+/**
+ * Per-topic label override for the panel button. OccupancyGrid topics get
+ * `Map` instead of the generic `3D` since "the 3D scene" isn't what users
+ * are looking for when they click /map — they want to see the SLAM output
+ * rendered as a textured plane.
+ */
+function buttonLabelFor(topic: TopicInfo, kind: PanelKind): string {
+  if (kind === '3d' && isOccupancyGridType(topic.type)) return 'Map';
+  return KIND_BUTTON_LABEL[kind];
+}
+
+function buttonTitleFor(topic: TopicInfo, kind: PanelKind): string {
+  if (kind === '3d' && isOccupancyGridType(topic.type)) {
+    return 'Open occupancy-grid map in 3D scene';
+  }
+  return KIND_BUTTON_TITLE[kind];
+}
 
 export function TopicRow({ topic, index }: TopicRowProps) {
   const color = getTopicColor(topic.name, topic.type);
@@ -236,8 +260,8 @@ export function TopicRow({ topic, index }: TopicRowProps) {
           buttonKinds.map((kind) => (
             <PanelButton
               key={kind}
-              label={KIND_BUTTON_LABEL[kind]}
-              title={KIND_BUTTON_TITLE[kind]}
+              label={buttonLabelFor(topic, kind)}
+              title={buttonTitleFor(topic, kind)}
               onClick={() => handleOpen(kind)}
               accent={kind === defaultKind}
             />

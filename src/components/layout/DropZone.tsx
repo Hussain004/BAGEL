@@ -13,7 +13,8 @@ export function DropZone() {
   // flicker as the cursor crosses child element boundaries.
   const [, setDragCounter] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { loadBag, isLoading, loadProgress, error, clearError } = useBagStore();
+  const { loadBag, loadBagFromUrl, isLoading, loadProgress, error, clearError } =
+    useBagStore();
 
   const handleFile = useCallback(
     (file: File) => {
@@ -21,6 +22,16 @@ export function DropZone() {
       loadBag(file);
     },
     [loadBag, clearError]
+  );
+
+  const handleUrl = useCallback(
+    (url: string) => {
+      const trimmed = url.trim();
+      if (!trimmed) return;
+      clearError();
+      loadBagFromUrl(trimmed);
+    },
+    [loadBagFromUrl, clearError],
   );
 
   const handleDragEnter = useCallback(
@@ -128,6 +139,12 @@ export function DropZone() {
           )}
         </div>
 
+        {/* Or paste a URL — fetches via HTTP Range so multi-GB bags only
+            pull the chunks the user scrubs through. Public S3 / GitHub
+            release assets / personal servers all work as long as CORS +
+            Content-Length are exposed. */}
+        <UrlInput onLoad={handleUrl} disabled={isLoading} />
+
         {/* Error Display */}
         {error && (
           <div className="mt-4 p-4 rounded-lg bg-accent-rose/10 border border-accent-rose/20 animate-fade-in">
@@ -192,6 +209,56 @@ export function DropZone() {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * UrlInput — Paste a remote URL to load via HTTP Range. The bagStore handles
+ * the HEAD request, range probe, and per-failure-mode error surfacing; we
+ * just collect the text and hand it off.
+ */
+function UrlInput({
+  onLoad,
+  disabled,
+}: {
+  onLoad: (url: string) => void;
+  disabled: boolean;
+}) {
+  const [url, setUrl] = useState('');
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (disabled) return;
+    onLoad(url);
+  };
+
+  return (
+    <form
+      onSubmit={submit}
+      className="mt-4 flex items-center gap-2"
+      aria-label="Load bag from URL"
+    >
+      <input
+        type="url"
+        value={url}
+        onChange={(e) => setUrl(e.target.value)}
+        placeholder="…or paste a bag URL (https://…)"
+        spellCheck={false}
+        autoComplete="off"
+        disabled={disabled}
+        // Trim leading/trailing spaces invisibly so a copy-paste with
+        // surrounding whitespace doesn't fail with "invalid URL".
+        onBlur={(e) => setUrl(e.target.value.trim())}
+        className="flex-1 px-3 py-2 rounded-md bg-surface border border-border text-text-primary text-sm mono placeholder:text-text-tertiary focus:outline-none focus:border-accent-blue/50 disabled:opacity-50"
+      />
+      <button
+        type="submit"
+        disabled={disabled || url.trim().length === 0}
+        className="px-4 py-2 rounded-md border border-accent-blue/30 bg-accent-blue/10 text-accent-blue text-sm font-medium hover:bg-accent-blue/20 hover:border-accent-blue/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
+      >
+        Open URL
+      </button>
+    </form>
   );
 }
 

@@ -51,6 +51,8 @@ interface ParsedHash {
   timeSec?: number;
   /** Layout tree where leaves carry placeholder `type: ''` — caller resolves. */
   root: LayoutNode | null;
+  /** Optional remote bag URL to load on page open (v0.9). */
+  bagUrl?: string;
 }
 
 /**
@@ -190,6 +192,17 @@ function parseHash(hash: string): ParsedHash {
       out.root = parseFlatEncoding(p);
     }
   }
+  const b = params.get('b');
+  if (b) {
+    // Sanity-check that it parses as a URL — anything else (typo, partial
+    // hash, leftover state) just gets ignored.
+    try {
+      const u = new URL(b);
+      if (u.protocol === 'http:' || u.protocol === 'https:') out.bagUrl = b;
+    } catch {
+      // discard
+    }
+  }
   return out;
 }
 
@@ -202,11 +215,20 @@ function encodeNode(node: LayoutNode): string {
   return `${tag}(${node.children.map(encodeNode).join(',')})`;
 }
 
-function encodeHash(timeSec: number, root: LayoutNode | null): string {
+function encodeHash(
+  timeSec: number,
+  root: LayoutNode | null,
+  bagUrl: string | null,
+): string {
   const params = new URLSearchParams();
   // 3 decimal places ≈ 1 ms — fine for human scrubbing, keeps the URL short.
   params.set('t', timeSec.toFixed(3));
   if (root) params.set('p', encodeNode(root));
+  // `b=` carries the bag's source URL when the bag was loaded from a remote
+  // URL (v0.9). File-loaded bags omit it — there's no way to encode a local
+  // File handle. Refreshing or sharing the link re-fetches the bag and
+  // restores the same layout + playhead position.
+  if (bagUrl) params.set('b', bagUrl);
   return params.toString();
 }
 
@@ -243,10 +265,32 @@ function attachTypesAndPrune(
  */
 export function useUrlState(): void {
   const bag = useBagStore((s) => s.bag);
+  const source = useBagStore((s) => s.source);
+  const loadBagFromUrl = useBagStore((s) => s.loadBagFromUrl);
+  const isLoading = useBagStore((s) => s.isLoading);
+  const error = useBagStore((s) => s.error);
 
   // Track which (name, size) we've already restored against so we don't
   // re-apply on every render or fight the user as they close panels.
   const restoredKeyRef = useRef<string | null>(null);
+  /** Tracks whether we've already kicked off the page-load URL fetch — set
+   *  on first attempt so a fetch failure doesn't loop. */
+  const urlAutoLoadStartedRef = useRef(false);
+
+  // ── Auto-load a bag from the URL hash on first page visit ──────────────
+  //
+  // A `#b=<url>` parameter in the hash is the v0.9 "share a pre-loaded
+  // session" affordance — refreshing or sharing a link with a bag URL
+  // re-fetches the bag so the recipient sees the same data. Fires once
+  // per page load; user-driven loads after that are not auto-overridden.
+  useEffect(() => {
+    if (urlAutoLoadStartedRef.current) return;
+    if (bag || isLoading || error) return;
+    const parsed = parseHash(window.location.hash);
+    if (!parsed.bagUrl) return;
+    urlAutoLoadStartedRef.current = true;
+    void loadBagFromUrl(parsed.bagUrl);
+  }, [bag, isLoading, error, loadBagFromUrl]);
 
   // ── Restore on bag load ────────────────────────────────────────────────
   useEffect(() => {
@@ -291,6 +335,10 @@ export function useUrlState(): void {
     }
 
     const startNs = bag.startTime;
+    // Only URL-loaded bags persist their source in the hash — there's no way
+    // to encode a local File handle. The source ref is captured here and used
+    // on every write below; it changes infrequently (only on load/clear).
+    const bagUrl = source?.kind === 'url' ? source.url : null;
 
     let last = '';
     let pendingFrame: number | null = null;
@@ -300,7 +348,7 @@ export function useUrlState(): void {
       const playhead = usePlayheadStore.getState();
       const root = useLayoutStore.getState().root;
       const timeSec = Math.max(0, Number(playhead.timeNs - startNs) / 1e9);
-      const next = encodeHash(timeSec, root);
+      const next = encodeHash(timeSec, root, bagUrl);
       if (next === last) return;
       last = next;
       // replaceState rather than pushState — the hash represents the current
@@ -326,5 +374,5 @@ export function useUrlState(): void {
       unsubLayout();
       if (pendingFrame !== null) cancelAnimationFrame(pendingFrame);
     };
-  }, [bag]);
+  }, [bag, source]);
 }

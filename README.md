@@ -12,7 +12,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-8-646cff.svg)](https://vite.dev/)
-[![Version](https://img.shields.io/badge/version-0.8.1-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
+[![Version](https://img.shields.io/badge/version-0.9.0-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
 
 [**→ Live Demo**](https://bagel-ros2.vercel.app) · [Report Bug](https://github.com/Hussain004/BAGEL/issues) · [Request Feature](https://github.com/Hussain004/BAGEL/issues)
 
@@ -57,6 +57,15 @@ BAGEL eliminates this friction.
 
 
 ## Features
+
+### v0.9: OccupancyGrid + GPS Tile Underlay + Remote URL Loading
+
+Everything in v0.8.1, plus:
+
+- **`nav_msgs/OccupancyGrid` rendering**: SLAM-produced maps (`gmapping`, `slam_toolbox`, `cartographer`, every nav stack costmap publisher) render as a textured plane in the 3D scene. The map is posed by `info.origin` and TF-resolved against the chosen world frame, so a map in `map` stays put as the robot moves through `odom`. Colour map: `-1` (unknown) → transparent, `0` (free) → light grey at 60% alpha so the ground grid bleeds through, `1…99` → linear ramp from white to dark grey at 85% alpha (cost-map publishers fill the whole range), `100` (occupied) → near-black at 95% alpha. `NearestFilter` keeps cell edges crisp instead of smearing free-space pixels into occupied ones. A `map alpha` slider in the Display card fades the whole plane without losing the per-cell ramp. Texture rebuilds short-circuit on a content-fingerprint match so the 1 Hz SLAM publisher doesn't re-upload to the GPU on every playhead tick. Topic sidebar grows a `Map` quick-button on `/map`-style topics.
+- **OpenStreetMap tile underlay for NavSatFix**: the existing `TrajectoryPlot` projects `sensor_msgs/NavSatFix` to local x/y using equirectangular projection from the first GPS fix. The result is a polyline on a blank canvas — useful but missing the spatial context that makes a GPS trace cool to look at. v0.9 adds an opt-in `map tiles` toggle in the panel: viewport corners get back-projected to lat/lon, the appropriate slippy-map zoom is picked from the current screen scale (1 ≈ tile-pixel = screen-pixel), and the covering tile range is fetched from OSM with a 200-entry in-memory LRU cache. Default off — fetching tiles breaks BAGEL's "no data leaves your machine" pitch, so we make the user opt in explicitly. OSM attribution is shown when the underlay is on, per their tile-usage policy.
+- **Remote URL loading via HTTP Range**: paste a bag URL into the DropZone (alongside the existing drag-and-drop) to load `.mcap` / `.bag` / `.db3` files hosted on public buckets, GitHub release assets, OSF dataset mirrors, or your own server. MCAP and ROS1 `.bag` honour partial reads — only the chunks the user actually scrubs through ever hit the network, so a multi-GB SLAM bag opens in under a second and the rest streams on demand. `.db3` eager-fetches the whole file (sql.js needs it in memory). Format auto-detect handles extensionless URLs by sniffing 16 magic bytes from a single Range request. Specific error messages for every failure mode the spec lets us distinguish: a CORS rejection says "the remote server doesn't allow cross-origin requests" instead of `TypeError: Failed to fetch`; a server without Content-Length says "try a host that supports it (S3, GitHub releases, …)"; a server that ignores Range and returns 200+the-whole-body falls back transparently but flags the symptom; a 416 Range Not Satisfiable says "the bag may be truncated or the wrong content length was advertised". The `BagSource` abstraction (`{ kind: 'file' | 'url' }`) flows through every parser API — panels and hooks don't know whether bytes come from a local Blob or an HTTP Range request.
+- **Shareable URLs include the bag**: when a bag was loaded from a URL, the location hash gains a `b=<url>` parameter alongside the existing `t=` and `p=` segments. Refreshing the page or sharing the link re-fetches the bag and restores the same layout + playhead position. The "share a pre-loaded session" story finally has the bag in it — a single link can advertise "click here to see a sample SLAM run" with the layout already configured. File-loaded bags omit the `b=` parameter (no way to encode a local File handle in a URL).
 
 ### v0.8 & v0.8.1: MarkerArray + ROS1 Compression
 
@@ -161,16 +170,15 @@ Everything in v0.2, plus:
 
 ### Roadmap
 
-v0.8 closes out the ROS1 compatibility story (bz2 + lz4) and adds the marker primitives navigation users rely on. Possible future directions:
+v0.9 ships the SLAM-map render, the GPS spatial context, and the remote-URL load that together make BAGEL useful for shareable demos. Possible future directions:
 
 | Idea | Notes |
 |---|---|
-| Multi-bag overlay | Drag two bags in to compare runs side-by-side on the same timeline, including mixing a ROS1 `.bag` with a ROS2 `.mcap`. The architectural lift is per-bag parser workers, per-bag colour tints, and a time-alignment strategy (wall-clock / bag-start / user-anchor). Pencilled in as the v0.9 headline. |
-| `nav_msgs/OccupancyGrid` rendering | Render a SLAM-produced map as a textured plane in the 3D scene, posed by `info.origin` and TF-resolved to the world frame. Makes "load a SLAM bag, see the map" a one-drag operation. |
-| GPS-on-OpenStreetMap underlay | The existing `TrajectoryPlot` already projects `NavSatFix` to local x/y; an opt-in OSM tile underlay would give a GPS trace real spatial context. Off by default since fetching tiles breaks BAGEL's pure-offline pitch. |
+| Multi-bag overlay | Drag two bags in to compare runs side-by-side on the same timeline, including mixing a ROS1 `.bag` with a ROS2 `.mcap`. The architectural lift is per-bag parser workers, per-bag colour tints, and a time-alignment strategy (wall-clock / bag-start / user-anchor). The deferred v0.9 headline — split out of this release to keep the diff reviewable. |
 | Light theme | Dark is intentional (data viz reads better on dark backgrounds), but a toggle would help in bright field conditions. |
 | Plugin panels | Lets users build custom views (e.g. depth-image colorisation, GPS overlay) against a stable panel API. |
-| Cloud-hosted shareable URLs | The local hash is great for personal reuse like a tiny backend would unlock real link-sharing. |
+| Cloud-hosted shareable URLs | The local hash is great for personal reuse — a tiny backend would unlock real link-sharing with layouts that survive a bag move. |
+| Streaming `.db3` over HTTP Range | `sql.js-httpvfs` would do real partial reads via a custom SQLite VFS — current URL loading eager-fetches the whole `.db3` because sql.js needs it in memory. Deferred until someone hits the practical ~250 MB cap in the wild. |
 
 ---
 
@@ -179,7 +187,7 @@ v0.8 closes out the ROS1 compatibility story (bz2 + lz4) and adds the marker pri
 ### Use the Live Demo
 
 1. Open [**bagel-ros2.vercel.app**](https://bagel-ros2.vercel.app)
-2. Drag your `.mcap`, `.db3`, or `.bag` file onto the page or click **Try a sample bag** for a quick tour
+2. Drag your `.mcap`, `.db3`, or `.bag` file onto the page, paste a URL to a remote bag (v0.9), or click **Try a sample bag** for a quick tour
 3. Explore!
 
 ### Run Locally
@@ -270,17 +278,21 @@ User's Browser
 │         ▼
 └── Parser Web Worker (off-thread)
       │
-      ├── parseBag(file)                  → BagSummary
+      ├── parseBag(source)                → BagSummary
       ├── readDeserializedMessages(...)   → decoded[]   (streams progress)
       ├── readMessageAtTime(...)          → one message
       └── disposeParserCaches()
       │
+      ├── BagSource adapter:
+      │     ├── { kind: 'file', file }    → BlobReadable / BlobReader (range reads against Blob)
+      │     └── { kind: 'url',  url }     → HttpReadable / HttpFilelike (HTTP Range requests)
+      │
       ├── Format detect (.db3, .mcap, or .bag?)
-      │     ├── .mcap → @mcap/core IndexedReader (range reads via BlobReadable)
+      │     ├── .mcap → @mcap/core IndexedReader (uses the adapter)
       │     │              └── fzstd (decompress zstd chunks)
-      │     ├── .db3  → sql.js (SQLite compiled to WASM)
+      │     ├── .db3  → sql.js (SQLite compiled to WASM, eager-fetches the whole file)
       │     │              └── nearest-row-at-time SQL
-      │     └── .bag  → @foxglove/rosbag (range reads via BlobReader)
+      │     └── .bag  → @foxglove/rosbag (uses the adapter)
       │                    ├── chunk index + per-topic message iterator
       │                    └── seek-bzip / lz4js (decompress bz2 / lz4 chunks)
       │
@@ -326,6 +338,7 @@ src/
 ├── parsers/              # Core parsing (no React deps)
 │   ├── index.ts          # Thin shim: forwards every call to the parser worker
 │   ├── core.ts           # Worker-only: format detect + unified parse + read APIs
+│   ├── source.ts         # BagSource abstraction (File or URL), HTTP-Range readers
 │   ├── mcap.ts           # MCAP reader (range reads, fzstd decompress, lazy seek)
 │   ├── db3.ts            # SQLite reader (cached Database, nearest-at-time query)
 │   ├── bag.ts            # ROS1 .bag reader (cached Bag, type-name normalisation)
@@ -383,6 +396,8 @@ src/
     ├── pointcloud.ts     # PointCloud2 binary decode + Turbo colormap + range filter
     ├── customCloud.ts    # Livox CustomMsg / list-of-struct cloud decoder
     ├── laserscan.ts      # LaserScan polar-ring → 3D positions
+    ├── occupancyGrid.ts  # nav_msgs/OccupancyGrid → RGBA texture (v0.9)
+    ├── gpsTiles.ts       # OSM slippy-map projection + tile LRU loader (v0.9)
     ├── export.ts         # CSV + NDJSON encoders + download trigger
     └── version.ts        # APP_VERSION constant
 ```
@@ -399,6 +414,7 @@ ThreeDScene/
 ├── sceneObjects.ts           # Factories for PointCloud / LaserScan / PoseAxes / grid
 ├── markerObjects.ts          # Per-type factories for visualization_msgs/Marker
 ├── markerSet.ts              # (ns, id) → Object3D manager + frame-grouped TFs
+├── mapPlane.ts               # nav_msgs/OccupancyGrid textured plane (v0.9)
 ├── accumulator.ts            # Ring buffer + voxel-grid downsample for accumulation
 └── tfTransform.ts            # composeTFChain + pickWorldFrame helpers
 ```
