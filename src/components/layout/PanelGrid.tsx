@@ -15,6 +15,8 @@ import { RawMessageInspector } from '../panels/RawMessageInspector';
 import { TrajectoryPlot } from '../panels/TrajectoryPlot';
 import { TFTree } from '../panels/TFTree';
 import { ThreeDScene } from '../panels/ThreeDScene';
+import { DiagnosticArray } from '../panels/DiagnosticArray';
+import { Log } from '../panels/Log';
 
 /**
  * PanelGrid — Recursive renderer for the layout tree.
@@ -120,6 +122,10 @@ function Visualisation({ leaf }: { leaf: PanelLeaf }) {
       return <TFTree {...props} />;
     case '3d':
       return <ThreeDScene {...props} />;
+    case 'diagnostic':
+      return <DiagnosticArray {...props} />;
+    case 'log':
+      return <Log {...props} />;
   }
 }
 

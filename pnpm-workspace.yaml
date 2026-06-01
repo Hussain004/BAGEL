@@ -1,0 +1,7 @@
+# pnpm 11+ refuses to run install-time build scripts for any package unless
+# the workspace explicitly allows them. esbuild ships a tiny post-install
+# script that picks the correct prebuilt binary for the current platform —
+# without this allowance, CI fails with `ERR_PNPM_IGNORED_BUILDS` and locally
+# the binary is missing on first install.
+allowBuilds:
+  esbuild: true

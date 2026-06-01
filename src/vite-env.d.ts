@@ -6,9 +6,11 @@ declare module 'sql.js/dist/sql-wasm.wasm?url' {
   export default url;
 }
 
-// Module declaration for sql.js (CJS module lacks ESM types)
+// Module declaration for sql.js (CJS module lacks ESM types). The callers in
+// db3.ts cast to the specific signature they expect; here we just give them a
+// pass-through function type.
 declare module 'sql.js' {
-  const initSqlJs: any;
+  const initSqlJs: (config?: unknown) => Promise<unknown>;
   export default initSqlJs;
 }
 

@@ -1,8 +1,10 @@
 import { getTopicColor, getTypeCategory } from '../../../utils/color';
 import {
   isCloudType,
+  isDiagnosticArrayType,
   isImageType,
   isLaserScanType,
+  isLogType,
   isMarkerArrayType,
   isMarkerType,
   isOccupancyGridType,
@@ -48,6 +50,9 @@ function suggestPanelKind(topic: TopicInfo): PanelKind {
   if (isMarkerArrayType(topic.type) || isMarkerType(topic.type)) return '3d';
   // OccupancyGrid maps render as a textured plane in the 3D scene.
   if (isOccupancyGridType(topic.type)) return '3d';
+  // Diagnostics and Log topics get their dedicated panels (v1.0).
+  if (isDiagnosticArrayType(topic.type)) return 'diagnostic';
+  if (isLogType(topic.type)) return 'log';
   // For pose-only types (Pose, Point, TransformStamped) plot has nothing
   // useful to show; jump straight to the trajectory view.
   if (
@@ -74,6 +79,8 @@ function panelOptionsFor(topic: TopicInfo): PanelKind[] {
   if (isOccupancyGridType(topic.type)) {
     return ['3d', 'raw'];
   }
+  if (isDiagnosticArrayType(topic.type)) return ['diagnostic', 'raw'];
+  if (isLogType(topic.type)) return ['log', 'raw'];
   if (
     isTrajectoryCapableType(topic.type) &&
     (topic.type.endsWith('/Odometry') ||
@@ -94,6 +101,8 @@ const KIND_BUTTON_LABEL: Record<PanelKind, string> = {
   trajectory: 'Path',
   tf: 'TF',
   '3d': '3D',
+  diagnostic: 'Diag',
+  log: 'Log',
 };
 
 const KIND_BUTTON_TITLE: Record<PanelKind, string> = {
@@ -103,6 +112,8 @@ const KIND_BUTTON_TITLE: Record<PanelKind, string> = {
   trajectory: 'Open 2D trajectory',
   tf: 'Open TF tree',
   '3d': 'Open 3D scene',
+  diagnostic: 'Open diagnostic timeline',
+  log: 'Open log viewer',
 };
 
 /**
