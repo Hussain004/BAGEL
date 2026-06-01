@@ -45,7 +45,7 @@ BAGEL eliminates this friction.
 
 ### Quick tour with the bundled sample bag
 
-<video src="https://github.com/user-attachments/assets/5fed57a9-50d8-41e3-aefe-58a18987f57e" controls width="100%"></video>
+<video src="https://github.com/user-attachments/assets/63e448fd-7272-4dee-86a2-a6dc3c3df846" controls width="100%"></video>
 
 ### Stress test with a real-world SLAM dataset
 
