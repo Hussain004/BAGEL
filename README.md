@@ -71,14 +71,14 @@ A condensed feature list is below. **Detailed version-by-version release notes (
 
 ### Visualization panels
 
-- **TimeSeriesPlot** — chart any numeric leaf field (`linear.x`, `orientation.w`, etc.) on uPlot.
-- **ImageViewer** — `sensor_msgs/Image` (`rgb8` / `bgr8` / `rgba8` / `mono8` / `mono16`) and `CompressedImage` (`jpeg` / `png`) with lazy single-message reads.
-- **ThreeDScene** (Three.js) — `PointCloud2`, `LaserScan`, `MarkerArray` (ten primitives: `CUBE` / `SPHERE` / `CYLINDER` / `ARROW` / `LINE_STRIP` / `LINE_LIST` / `CUBE_LIST` / `SPHERE_LIST` / `POINTS` / `TEXT_VIEW_FACING`), `OccupancyGrid`, pose markers. Custom orbit pivot, range filter, point accumulation, configurable up-axis.
-- **TrajectoryPlot** — Odometry / Pose / PoseWithCovariance / TransformStamped / NavSatFix as a 2D polyline, with an opt-in OpenStreetMap tile underlay for GPS traces.
-- **TFTree** — `/tf` + `/tf_static` hierarchy with current transforms at the playhead time.
-- **DiagnosticArray** — swimlane timeline + at-playhead inspector for `diagnostic_msgs/DiagnosticArray`. *(v1.0)*
-- **Log (rosout)** — virtualised list for `rcl_interfaces/Log` and `rosgraph_msgs/Log` with severity, node-name, and full-text filters. *(v1.0)*
-- **RawMessageInspector** — collapsible JSON tree of the deserialized message at the playhead.
+- **TimeSeriesPlot**: chart any numeric leaf field (`linear.x`, `orientation.w`, etc.) on uPlot.
+- **ImageViewer**: `sensor_msgs/Image` (`rgb8` / `bgr8` / `rgba8` / `mono8` / `mono16`) and `CompressedImage` (`jpeg` / `png`) with lazy single-message reads.
+- **ThreeDScene** (Three.js): `PointCloud2`, `LaserScan`, `MarkerArray` (ten primitives: `CUBE` / `SPHERE` / `CYLINDER` / `ARROW` / `LINE_STRIP` / `LINE_LIST` / `CUBE_LIST` / `SPHERE_LIST` / `POINTS` / `TEXT_VIEW_FACING`), `OccupancyGrid`, pose markers. Custom orbit pivot, range filter, point accumulation, configurable up-axis.
+- **TrajectoryPlot**: Odometry / Pose / PoseWithCovariance / TransformStamped / NavSatFix as a 2D polyline, with an opt-in OpenStreetMap tile underlay for GPS traces.
+- **TFTree**: `/tf` + `/tf_static` hierarchy with current transforms at the playhead time.
+- **DiagnosticArray**: swimlane timeline + at-playhead inspector for `diagnostic_msgs/DiagnosticArray`. *(v1.0)*
+- **Log (rosout)**: virtualised list for `rcl_interfaces/Log` and `rosgraph_msgs/Log` with severity, node-name, and full-text filters. *(v1.0)*
+- **RawMessageInspector**: collapsible JSON tree of the deserialized message at the playhead.
 
 All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user-selected world frame.
 
@@ -102,7 +102,7 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 - **Accessibility pass**: ARIA roles + focus management on every modal, `prefers-reduced-motion` respected, focus-visible rings throughout.
 - **Bundled `tour.mcap` sample bag** exercises every panel type. Drop in zero seconds with the "Try a sample bag" button.
 - **168-test Vitest suite** + GitHub Actions CI runs `tsc -b` + `pnpm test` on every PR. *(v1.0)*
-- **Bags well over 2 GB work in the browser** — range reads + lazy decoding throughout the parser stack.
+- **Bags well over 2 GB work in the browser**: range reads + lazy decoding throughout the parser stack.
 
 > Looking for the long version with implementation notes and design tradeoffs for each release? See **[FEATURES.md](FEATURES.md)**.
 
@@ -110,15 +110,15 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 
 ### Earlier version highlights at a glance
 
-- **v0.9 / v0.9.1** — Multi-bag overlay (per-bag Web Worker + three time-alignment modes), `nav_msgs/OccupancyGrid` rendering, OpenStreetMap tile underlay for `NavSatFix`, remote URL loading via HTTP Range.
-- **v0.8 / v0.8.1** — `visualization_msgs/MarkerArray` rendering (10 of 12 primitives), per-frame TF chains, ROS1 `bz2` / `lz4` chunk decompression, paste-your-own `.msg` schema flow for `.db3` topics.
-- **v0.7 / v0.7.1** — Drag-to-dock VSCode-style panel layout, recursive split-tree URL hashes, per-panel state survives docking.
-- **v0.6** — ROS1 `.bag` parsing through the same drop zone (via `@foxglove/rosbag`), cross-version field + type-name normalization.
-- **v0.5** — Keyboard shortcuts, sharable URL state, per-topic CSV / NDJSON export, voxel-grid point accumulation, bundled sample bag, accessibility pass.
-- **v0.4** — `ThreeDScene` panel (PointCloud2 / LaserScan / pose markers), TF-aware rendering, point accumulation ring buffer, custom orbit pivot.
-- **v0.3** — `TrajectoryPlot`, `TFTree`, all parsing moved to a dedicated Web Worker.
-- **v0.2** — Global playhead, `TimeSeriesPlot`, `ImageViewer`, `RawMessageInspector`, zstd-compressed MCAP, multi-GB file handling via range reads.
-- **v0.1** — Drag & drop `.db3` and `.mcap`, format auto-detect, topic inspector with search + sort.
+- **v0.9 / v0.9.1**: Multi-bag overlay (per-bag Web Worker + three time-alignment modes), `nav_msgs/OccupancyGrid` rendering, OpenStreetMap tile underlay for `NavSatFix`, remote URL loading via HTTP Range.
+- **v0.8 / v0.8.1**: `visualization_msgs/MarkerArray` rendering (10 of 12 primitives), per-frame TF chains, ROS1 `bz2` / `lz4` chunk decompression, paste-your-own `.msg` schema flow for `.db3` topics.
+- **v0.7 / v0.7.1**: Drag-to-dock VSCode-style panel layout, recursive split-tree URL hashes, per-panel state survives docking.
+- **v0.6**: ROS1 `.bag` parsing through the same drop zone (via `@foxglove/rosbag`), cross-version field + type-name normalization.
+- **v0.5**: Keyboard shortcuts, sharable URL state, per-topic CSV / NDJSON export, voxel-grid point accumulation, bundled sample bag, accessibility pass.
+- **v0.4**: `ThreeDScene` panel (PointCloud2 / LaserScan / pose markers), TF-aware rendering, point accumulation ring buffer, custom orbit pivot.
+- **v0.3**: `TrajectoryPlot`, `TFTree`, all parsing moved to a dedicated Web Worker.
+- **v0.2**: Global playhead, `TimeSeriesPlot`, `ImageViewer`, `RawMessageInspector`, zstd-compressed MCAP, multi-GB file handling via range reads.
+- **v0.1**: Drag & drop `.db3` and `.mcap`, format auto-detect, topic inspector with search + sort.
 
 For the full detail behind each release (including design rationale and implementation notes), see **[FEATURES.md](FEATURES.md)**.
 
@@ -129,11 +129,11 @@ v1.0 stabilises the surface BAGEL already covers: a test suite that turns "it wo
 | Idea | Notes |
 |---|---|
 | Bag editing / clip export | Trim, extract topics, re-encode. The one feature where BAGEL would replace CLI workflows (`mcap filter`, `rosbag2 convert`) rather than just visualize them. Earmarked as the v1.1 banner. |
-| Plugin panels | Lets users build custom views (e.g. depth-image colorisation, vendor-specific marker overlays, OBD-II decoders) against a stable panel API. Earmarked for v1.2 once internal panels have stabilised — the API becomes a stability contract so shipping it half-baked is a one-way door. |
+| Plugin panels | Lets users build custom views (e.g. depth-image colorisation, vendor-specific marker overlays, OBD-II decoders) against a stable panel API. Earmarked for v1.2 once internal panels have stabilised so the API becomes a stability contract so shipping it half-baked is a one-way door. |
 | Cloud-hosted shareable URLs | The local hash is great for personal reuse (a tiny Vercel function + KV store would unlock real link-sharing with layouts that survive a bag move). Designed in the v1.0 plan, deferred to a follow-up so it can land with the deploy infra change. |
 | `MESH_RESOURCE` / `TRIANGLE_LIST` marker support | v0.8 still ships pink-wireframe placeholders. `TRIANGLE_LIST` is cheap; `MESH_RESOURCE` needs a `package://` → URL resolver flow that's a meaningful UX design call. |
 | Streaming `.db3` over HTTP Range | `sql.js-httpvfs` would do real partial reads via a custom SQLite VFS, current URL loading eager-fetches the whole `.db3` because sql.js needs it in memory. Deferred until someone hits the practical ~250 MB cap in the wild. |
-| `CameraInfo` overlay on ImageViewer | Show intrinsics, draw the principal point, optionally rectify — closes a calibration-debugging workflow that the raw image view can't. |
+| `CameraInfo` overlay on ImageViewer | Show intrinsics, draw the principal point, optionally rectify which closes a calibration-debugging workflow that the raw image view can't. |
 
 ---
 
@@ -285,7 +285,7 @@ BAGEL's built-in type registry covers all standard ROS2 packages:
 | `visualization_msgs` | Marker, MarkerArray (CUBE / SPHERE / CYLINDER / ARROW / LINE_STRIP / LINE_LIST / CUBE_LIST / SPHERE_LIST / POINTS / TEXT_VIEW_FACING) |
 | `diagnostic_msgs` | DiagnosticArray, DiagnosticStatus, KeyValue (rendered as a swimlane timeline panel in v1.0) |
 | `rcl_interfaces` | Log (rendered in the virtualised Log panel in v1.0), ParameterEvent |
-| `rosgraph_msgs` | Log (ROS1 rosout) — same Log panel via shared type detector |
+| `rosgraph_msgs` | Log (ROS1 rosout), same Log panel via shared type detector |
 | `builtin_interfaces` | Time, Duration |
 
 > **MCAP files** embed their schemas, so *any* message type in an MCAP file is supported (including custom types).
@@ -395,13 +395,13 @@ ThreeDScene/
 ```
 tests/
 ├── fixtures/
-│   └── synth.ts                # In-memory MCAP writer — generates per-test bags as Uint8Array
+│   └── synth.ts                # In-memory MCAP writer which generates per-test bags as Uint8Array
 │
 ├── parsers/                    # Parser unit tests
 │   ├── cdr.test.ts             # CDR round-trips (String, Twist, Odometry w/ covariance)
 │   ├── mcap.test.ts            # Parse + read + at-time + cache invalidation against synth bags
 │   ├── db3.test.ts             # .db3 dispatch via mocked sql.js locateFile
-│   ├── bag.test.ts             # ROS1 .bag — skipped on 10 GB fixtures, ready for a smaller one
+│   ├── bag.test.ts             # ROS1 .bag, skipped on 10 GB fixtures, ready for a smaller one
 │   └── source.test.ts          # HTTP Range reader: CORS / 416 / no-Content-Length / Range-ignored
 │
 ├── utils/                      # Utility unit tests
