@@ -15,6 +15,10 @@
  *           * `V(<child>,<child>,...)` for a vertical split
  *           e.g. `H(Pplot:%2Fodom,V(Pimage:%2Fcam,Pplot:b2:%2Fimu))`.
  *   - `b` — first bag URL (v0.9) — restored on page open if no bag is loaded yet.
+ *   - `a` — per-bag anchor times under `anchor` alignment (v1.0). Comma-
+ *           separated `bagId:bagLocalNs` pairs, e.g. `a=b1:5000000000,b2:8230000000`.
+ *           Bags without explicit anchors are omitted; the parser ignores
+ *           entries whose bagId isn't loaded so stale links degrade gracefully.
  *
  * Back-compat: v0.5 hashes used a flat `p=plot:topic1,image:topic2` form
  * without the `P/H/V` prefixes. We detect that shape (no leading `P/H/V`)
@@ -47,6 +51,8 @@ const PANEL_KIND_VALUES: ReadonlySet<string> = new Set([
   'trajectory',
   'tf',
   '3d',
+  'diagnostic',
+  'log',
 ]);
 
 interface ParsedHash {
@@ -55,6 +61,8 @@ interface ParsedHash {
   root: LayoutNode | null;
   /** Optional remote bag URL to load on page open (v0.9). */
   bagUrl?: string;
+  /** Per-bag anchor map: bagId → bag-local-ns. Applied after bag load (v1.0). */
+  anchors?: Map<string, bigint>;
 }
 
 /**
@@ -221,6 +229,24 @@ function parseHash(hash: string): ParsedHash {
       // discard
     }
   }
+  const a = params.get('a');
+  if (a) {
+    const anchors = new Map<string, bigint>();
+    for (const pair of a.split(',')) {
+      const colon = pair.indexOf(':');
+      if (colon < 1) continue;
+      const bagId = pair.slice(0, colon);
+      const nsRaw = pair.slice(colon + 1);
+      // BigInt() throws on a malformed string — guard so a bad pair doesn't
+      // kill the whole hash restore.
+      try {
+        anchors.set(bagId, BigInt(nsRaw));
+      } catch {
+        // discard this pair, keep the others
+      }
+    }
+    if (anchors.size > 0) out.anchors = anchors;
+  }
   return out;
 }
 
@@ -242,6 +268,7 @@ function encodeHash(
   timeSec: number,
   root: LayoutNode | null,
   bagUrl: string | null,
+  anchors: Map<string, bigint> | null,
 ): string {
   const params = new URLSearchParams();
   // 3 decimal places ≈ 1 ms — fine for human scrubbing, keeps the URL short.
@@ -252,6 +279,16 @@ function encodeHash(
   // File handle. Refreshing or sharing the link re-fetches the bag and
   // restores the same layout + playhead position.
   if (bagUrl) params.set('b', bagUrl);
+  // `a=` encodes per-bag anchors. Only emitted for bags that have an explicit
+  // anchor — bags using the startTime fallback omit themselves so the param
+  // stays absent on the default single-bag flow.
+  if (anchors && anchors.size > 0) {
+    const pairs: string[] = [];
+    for (const [bagId, ns] of anchors) {
+      pairs.push(`${bagId}:${ns.toString()}`);
+    }
+    params.set('a', pairs.join(','));
+  }
   return params.toString();
 }
 
@@ -357,6 +394,17 @@ export function useUrlState(): void {
       phState.seek(clamped);
     }
 
+    // Apply saved per-bag anchors (v1.0). Only sets anchors for bags that
+    // are actually loaded; stale bagIds from a prior session are dropped.
+    if (parsed.anchors) {
+      const bagState = useBagStore.getState();
+      for (const [bagId, anchorNs] of parsed.anchors) {
+        if (bagState.bags.has(bagId)) {
+          bagState.setAnchor(bagId, anchorNs);
+        }
+      }
+    }
+
     if (!parsed.root) return;
 
     const bagState = useBagStore.getState();
@@ -396,7 +444,15 @@ export function useUrlState(): void {
       // aligned window). Under single-bag wall-clock this still equals
       // `timeNs - bag.startTime` so v0.7/v0.8 share links round-trip.
       const timeSec = Math.max(0, Number(playhead.timeNs - playhead.startNs) / 1e9);
-      const next = encodeHash(timeSec, root, bagUrl);
+      // Collect anchors from bagStore; only bags with an explicit anchor end
+      // up in the hash so single-bag (and default-anchor multi-bag) links
+      // round-trip identically to v0.9.
+      const anchorMap = new Map<string, bigint>();
+      const bagState = useBagStore.getState();
+      for (const [id, entry] of bagState.bags) {
+        if (entry.anchorNs !== undefined) anchorMap.set(id, entry.anchorNs);
+      }
+      const next = encodeHash(timeSec, root, bagUrl, anchorMap.size > 0 ? anchorMap : null);
       if (next === last) return;
       last = next;
       // replaceState rather than pushState — the hash represents the current
@@ -413,6 +469,10 @@ export function useUrlState(): void {
 
     const unsubPlayhead = usePlayheadStore.subscribe(schedule);
     const unsubLayout = useLayoutStore.subscribe(schedule);
+    // Subscribe to bagStore too so anchor + alignment changes flush to the
+    // hash immediately — without this, setting an anchor wouldn't show up
+    // in the URL until the next playhead tick.
+    const unsubBag = useBagStore.subscribe(schedule);
 
     // Initial write so an opened bag without a hash gets one.
     computeAndWrite();
@@ -420,6 +480,7 @@ export function useUrlState(): void {
     return () => {
       unsubPlayhead();
       unsubLayout();
+      unsubBag();
       if (pendingFrame !== null) cancelAnimationFrame(pendingFrame);
     };
   }, [bag, source]);

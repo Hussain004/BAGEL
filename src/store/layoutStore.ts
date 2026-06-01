@@ -25,7 +25,15 @@
 
 import { create } from 'zustand';
 
-export type PanelKind = 'plot' | 'image' | 'raw' | 'trajectory' | 'tf' | '3d';
+export type PanelKind =
+  | 'plot'
+  | 'image'
+  | 'raw'
+  | 'trajectory'
+  | 'tf'
+  | '3d'
+  | 'diagnostic'
+  | 'log';
 
 export interface PanelLeaf {
   node: 'panel';

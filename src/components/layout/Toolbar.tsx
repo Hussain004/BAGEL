@@ -1,8 +1,15 @@
 import { useRef, useState } from 'react';
-import { useBagStore, type TimeAlignment } from '../../store/bagStore';
+import {
+  useBagStore,
+  bagLocalTimeFor,
+  type BagEntry,
+  type TimeAlignment,
+} from '../../store/bagStore';
+import { usePlayheadStore } from '../../store/playheadStore';
+import { useThemeStore } from '../../store/themeStore';
 import { useUiStore } from '../../store/uiStore';
 import { formatFileSize } from '../../utils/bytes';
-import { formatDuration } from '../../utils/time';
+import { formatDuration, nsToSeconds } from '../../utils/time';
 import { APP_VERSION } from '../../utils/version';
 
 /**
@@ -23,8 +30,32 @@ export function Toolbar() {
   const removeBag = useBagStore((s) => s.removeBag);
   const setFocusBag = useBagStore((s) => s.setFocusBag);
   const setAlignment = useBagStore((s) => s.setAlignment);
+  const setAnchor = useBagStore((s) => s.setAnchor);
   const clearAll = useBagStore((s) => s.clearAll);
+  const theme = useThemeStore((s) => s.theme);
+  const toggleTheme = useThemeStore((s) => s.toggleTheme);
   const setModal = useUiStore((s) => s.setModal);
+
+  // Anchor placement: pick the focused bag's current bag-local time as the
+  // anchor event, then snap aligned time to 0 so the user keeps seeing the
+  // exact same content they just identified as the event. See the v1.0 plan
+  // notes for the math — without the snap, the focused bag's view shifts
+  // because the alignment offset just changed.
+  const onSetAnchor = () => {
+    if (!focusBagId) return;
+    const entry = bags.get(focusBagId);
+    if (!entry) return;
+    const phState = usePlayheadStore.getState();
+    const bagLocalNs = bagLocalTimeFor(entry, phState.timeNs, alignment);
+    setAnchor(focusBagId, bagLocalNs);
+    // syncPlayheadRange (inside setAnchor) recomputed the aligned window;
+    // park the head at 0 so the focused bag stays on its event frame.
+    usePlayheadStore.getState().seek(usePlayheadStore.getState().startNs);
+  };
+
+  const onClearAnchor = (id: string) => {
+    setAnchor(id, undefined);
+  };
 
   const addInputRef = useRef<HTMLInputElement>(null);
   const onAddClick = () => addInputRef.current?.click();
@@ -58,6 +89,12 @@ export function Toolbar() {
           {bagOrder.map((id) => {
             const entry = bags.get(id);
             if (!entry) return null;
+            // Only show the anchor pip when anchor mode is active — outside it
+            // the per-bag anchor is dormant and showing it would be noise.
+            const anchorBagLocalNs =
+              alignment === 'anchor' && entry.anchorNs !== undefined
+                ? entry.anchorNs - entry.summary.startTime
+                : null;
             return (
               <BagChip
                 key={id}
@@ -66,8 +103,10 @@ export function Toolbar() {
                 format={entry.summary.format}
                 focused={id === focusBagId}
                 showFormat={!multi}
+                anchorBagLocalNs={anchorBagLocalNs}
                 onFocus={() => setFocusBag(id)}
                 onRemove={() => removeBag(id)}
+                onClearAnchor={() => onClearAnchor(id)}
               />
             );
           })}
@@ -115,11 +154,44 @@ export function Toolbar() {
         <span>{bag.topics.length} topics</span>
       </div>
 
-      {/* Right: alignment selector (multi-bag only) + Help + Close */}
+      {/* Right: alignment selector + anchor button (multi-bag anchor mode) +
+          Help + Close */}
       <div className="flex items-center gap-1 flex-shrink-0">
         {multi && (
           <AlignmentSelector value={alignment} onChange={setAlignment} />
         )}
+        {multi && alignment === 'anchor' && focusBagId && bags.has(focusBagId) && (
+          <SetAnchorButton
+            entry={bags.get(focusBagId)!}
+            onSetAnchor={onSetAnchor}
+          />
+        )}
+        <button
+          onClick={toggleTheme}
+          className="w-9 h-9 rounded-lg flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-surface-hover transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
+          title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+          aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+        >
+          {theme === 'dark' ? (
+            // Sun icon — switches to light
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}>
+              <circle cx="12" cy="12" r="4" />
+              <path
+                strokeLinecap="round"
+                d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"
+              />
+            </svg>
+          ) : (
+            // Moon icon — switches to dark
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"
+              />
+            </svg>
+          )}
+        </button>
         <button
           onClick={() => setModal('shortcuts')}
           className="w-9 h-9 rounded-lg flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-surface-hover transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
@@ -154,8 +226,12 @@ interface BagChipProps {
   focused: boolean;
   /** Hide the format pill on the single-bag chip — it's still in the badge below. */
   showFormat: boolean;
+  /** Bag-local time the anchor points to, in nanoseconds relative to bag start.
+   *  `null` when no anchor is set or anchor alignment isn't active. */
+  anchorBagLocalNs: bigint | null;
   onFocus: () => void;
   onRemove: () => void;
+  onClearAnchor: () => void;
 }
 function BagChip({
   color,
@@ -163,15 +239,18 @@ function BagChip({
   format,
   focused,
   showFormat,
+  anchorBagLocalNs,
   onFocus,
   onRemove,
+  onClearAnchor,
 }: BagChipProps) {
   const [hover, setHover] = useState(false);
+  const anchorSec = anchorBagLocalNs !== null ? nsToSeconds(anchorBagLocalNs) : null;
   return (
     <div
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs border transition-all max-w-[180px] flex-shrink-0 ${
+      className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs border transition-all max-w-[220px] flex-shrink-0 ${
         focused
           ? 'bg-surface border-border-hover text-text-primary'
           : 'bg-transparent border-border text-text-secondary hover:bg-surface-hover'
@@ -197,6 +276,17 @@ function BagChip({
           </span>
         )}
       </button>
+      {anchorSec !== null && (
+        <button
+          onClick={onClearAnchor}
+          title={`Anchored at bag-local t=${anchorSec.toFixed(2)}s. Click to clear.`}
+          aria-label={`Clear anchor for ${name}`}
+          className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] text-accent-blue hover:text-text-primary hover:bg-accent-blue/15 transition-colors mono flex-shrink-0"
+        >
+          <AnchorIcon />
+          <span className="tabular-nums">{formatAnchorSec(anchorSec)}</span>
+        </button>
+      )}
       {(hover || focused) && (
         <button
           onClick={onRemove}
@@ -210,6 +300,50 @@ function BagChip({
         </button>
       )}
     </div>
+  );
+}
+
+function AnchorIcon() {
+  // Inline SVG anchor — avoids pulling in an icon dep and matches the
+  // toolbar's other inline SVGs.
+  return (
+    <svg
+      className="w-3 h-3"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="5" r="2" />
+      <path strokeLinecap="round" d="M12 7v14M5 12c0 4 3 7 7 7s7-3 7-7M3 12h4M17 12h4" />
+    </svg>
+  );
+}
+
+/** Format a sub-minute anchor time tightly so it fits in the chip. */
+function formatAnchorSec(sec: number): string {
+  if (sec < 60) return `${sec.toFixed(2)}s`;
+  const m = Math.floor(sec / 60);
+  const s = sec - m * 60;
+  return `${m}m${s.toFixed(1)}s`;
+}
+
+interface SetAnchorButtonProps {
+  entry: BagEntry;
+  onSetAnchor: () => void;
+}
+function SetAnchorButton({ entry, onSetAnchor }: SetAnchorButtonProps) {
+  return (
+    <button
+      onClick={onSetAnchor}
+      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-text-secondary hover:text-text-primary hover:bg-surface-hover border border-border hover:border-accent-blue/40 transition-all"
+      title={`Set "${entry.summary.fileName}" anchor to the current playhead — every bag's aligned t=0 will line up at this event.`}
+      aria-label={`Set anchor for ${entry.summary.fileName} at current playhead`}
+    >
+      <AnchorIcon />
+      <span className="hidden xl:inline">Set anchor</span>
+    </button>
   );
 }
 

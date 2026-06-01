@@ -182,3 +182,27 @@ export function isMarkerType(type: string): boolean {
   if (!type) return false;
   return type.includes('visualization_msgs') && type.endsWith('/Marker');
 }
+
+/**
+ * True if a ROS type is `diagnostic_msgs/DiagnosticArray` — the standard
+ * per-node health report every nav/perception stack publishes. v1.0 renders
+ * it as a swimlane timeline (one row per component) + a "what's failing at
+ * the playhead" inspector.
+ */
+export function isDiagnosticArrayType(type: string): boolean {
+  if (!type) return false;
+  return type.includes('diagnostic_msgs') && type.endsWith('/DiagnosticArray');
+}
+
+/**
+ * True if a ROS type is a logging message — `rcl_interfaces/Log` (ROS2) or
+ * `rosgraph_msgs/Log` (ROS1). v1.0 renders it as a virtualised, filterable
+ * log list with severity + node filters.
+ */
+export function isLogType(type: string): boolean {
+  if (!type) return false;
+  return (
+    type.endsWith('/Log') &&
+    (type.includes('rcl_interfaces') || type.includes('rosgraph_msgs'))
+  );
+}

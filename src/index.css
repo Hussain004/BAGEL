@@ -9,7 +9,12 @@
    micro-animations for a robotics-grade data exploration tool.
    ============================================================ */
 
-/* ── Custom Theme ── */
+/* ── Custom Theme ──
+   Base values are the dark theme. The `[data-theme="light"]` block below
+   overrides every value that needs to change for light mode — `themeStore`
+   toggles the attribute on <html>. Accents (blue / cyan / violet / amber /
+   rose / emerald) stay the same across themes — they're vivid enough to
+   read on both light and dark surfaces. */
 @theme {
   --color-bg-primary: #06080f;
   --color-bg-secondary: #0c1020;
@@ -19,6 +24,11 @@
   --color-surface-active: rgba(255, 255, 255, 0.09);
   --color-border: rgba(255, 255, 255, 0.08);
   --color-border-hover: rgba(255, 255, 255, 0.15);
+  /* `--color-overlay` is the semi-transparent neutral used by glass /
+     scrollbar / grid lines. Light theme flips it from white to black. */
+  --color-overlay: rgba(255, 255, 255, 0.03);
+  --color-overlay-strong: rgba(255, 255, 255, 0.06);
+  --color-overlay-grid: rgba(255, 255, 255, 0.02);
 
   --color-accent-blue: #3b82f6;
   --color-accent-cyan: #06b6d4;
@@ -45,6 +55,71 @@
   --shadow-panel: 0 4px 24px rgba(0, 0, 0, 0.4);
 }
 
+/* ── Light theme overrides ──
+   Activated by `<html data-theme="light">`. Only the values that differ
+   from the dark base appear here — everything else inherits.
+
+   Accent colours are darkened to their *-700 tier (same hue, more
+   saturation, less brightness). The dark mode values are deliberately
+   bright so they pop against the deep navy bg; on white surfaces those
+   same values fail WCAG AA — particularly `cyan #06b6d4` and the
+   foreground greys. Tailwind v4 generates `text-accent-cyan` / `bg-
+   accent-cyan/15` etc. from these variables, so a single override
+   propagates to every consumer (panels, badges, gradients) without
+   chasing utility-class usages site by site. */
+:root[data-theme='light'] {
+  --color-bg-primary: #fafbfc;
+  --color-bg-secondary: #f3f5f8;
+  --color-bg-tertiary: #e7ebf0;
+  --color-surface: rgba(15, 23, 42, 0.03);
+  --color-surface-hover: rgba(15, 23, 42, 0.06);
+  --color-surface-active: rgba(15, 23, 42, 0.10);
+  --color-border: rgba(15, 23, 42, 0.10);
+  --color-border-hover: rgba(15, 23, 42, 0.18);
+  --color-overlay: rgba(15, 23, 42, 0.04);
+  --color-overlay-strong: rgba(15, 23, 42, 0.07);
+  --color-overlay-grid: rgba(15, 23, 42, 0.04);
+
+  --color-accent-blue: #1d4ed8;
+  --color-accent-cyan: #0e7490;
+  --color-accent-violet: #6d28d9;
+  --color-accent-emerald: #047857;
+  --color-accent-amber: #b45309;
+  --color-accent-rose: #be123c;
+
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #334155;
+  --color-text-tertiary: #475569;
+  --color-text-muted: #64748b;
+
+  --shadow-panel: 0 4px 24px rgba(15, 23, 42, 0.1);
+}
+
+/* Badge text colours are hardcoded (the `*-light` tints work great on the
+   dark bg but disappear on white) — re-pin them to the darker shade so the
+   pill text stays readable against its tinted background in light mode. */
+:root[data-theme='light'] .badge-blue {
+  color: #1e40af;
+}
+:root[data-theme='light'] .badge-cyan {
+  color: #155e75;
+}
+:root[data-theme='light'] .badge-violet {
+  color: #5b21b6;
+}
+:root[data-theme='light'] .badge-emerald {
+  color: #065f46;
+}
+:root[data-theme='light'] .badge-amber {
+  color: #92400e;
+}
+:root[data-theme='light'] .badge-pink {
+  color: #9d174d;
+}
+:root[data-theme='light'] .badge-slate {
+  color: #334155;
+}
+
 /* ── Base Styles ──
    Wrapped in @layer base so it doesn't outrank Tailwind's utility classes
    (an unlayered `* { padding: 0 }` would beat `.pl-10` in the cascade and
@@ -60,9 +135,16 @@
 }
 
 html {
+  /* color-scheme is updated dynamically by themeStore.applyTheme — default
+     here is dark so the first paint matches the rest of the dark theme
+     before the JS runs. */
   color-scheme: dark;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+html[data-theme='light'] {
+  color-scheme: light;
 }
 
 body {
@@ -92,8 +174,8 @@ select option {
 /* ── Animated Background ── */
 .bg-grid {
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+    linear-gradient(var(--color-overlay-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-overlay-grid) 1px, transparent 1px);
   background-size: 60px 60px;
 }
 
@@ -106,21 +188,21 @@ select option {
 
 /* ── Glassmorphism ── */
 .glass {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--color-overlay);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--color-border);
 }
 
 .glass-strong {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--color-overlay-strong);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--color-border);
 }
 
 .glass-hover:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--color-overlay-strong);
   border-color: var(--color-border-hover);
 }
 
@@ -286,12 +368,12 @@ select option {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--color-border);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--color-border-hover);
 }
 
 /* ── Badge Styles ── */
@@ -416,6 +498,22 @@ select option {
 ::selection {
   background: rgba(59, 130, 246, 0.3);
   color: white;
+}
+
+:root[data-theme='light'] ::selection {
+  /* White text on the light-blue selection bg disappears on a white page;
+     swap to a dark foreground that has solid contrast against the tint. */
+  background: rgba(59, 130, 246, 0.25);
+  color: #0f172a;
+}
+
+/* The gradient logo text uses bright cyan that washes out on white. Same
+   trio of hues, shifted darker so the gradient still reads as the BAGEL
+   brand mark in light mode. */
+:root[data-theme='light'] .text-gradient {
+  background: linear-gradient(135deg, #1d4ed8, #0e7490, #6d28d9);
+  -webkit-background-clip: text;
+  background-clip: text;
 }
 
 /* ── Focus rings ──

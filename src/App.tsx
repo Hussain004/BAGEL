@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import { useBagStore } from './store/bagStore';
 import { useLayoutStore } from './store/layoutStore';
+import { useThemeStore, applyTheme } from './store/themeStore';
 import { DropZone } from './components/layout/DropZone';
 import { Toolbar } from './components/layout/Toolbar';
 import { Timeline } from './components/layout/Timeline';
@@ -33,6 +34,13 @@ export default function App() {
   useKeyboardShortcuts();
   useUrlState();
   useCustomSchemaSync();
+
+  // Apply the persisted (or system-preferred) theme to <html data-theme=…>
+  // before the first paint, then keep it in sync as the user toggles.
+  const theme = useThemeStore((s) => s.theme);
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
 
   // v0.8: when a *different* bag was loaded (single-bag flow), drop any
   // panels + cached messages from the previous one. Multi-bag (v0.9) skips

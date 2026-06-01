@@ -12,7 +12,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-8-646cff.svg)](https://vite.dev/)
-[![Version](https://img.shields.io/badge/version-0.9.1-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
+[![Version](https://img.shields.io/badge/version-1.0.0-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
 
 [**→ Live Demo**](https://bagel-ros2.vercel.app) · [Report Bug](https://github.com/Hussain004/BAGEL/issues) · [Request Feature](https://github.com/Hussain004/BAGEL/issues)
 
@@ -57,6 +57,18 @@ BAGEL eliminates this friction.
 
 
 ## Features
+
+### v1.0: Test Suite + Anchor UI + Light Theme + Diagnostics + Log Viewer
+
+Everything in v0.9.1, plus:
+
+- **Comprehensive test suite (Vitest)**: every parser path, every utility, every common message type now runs through an automated test on every push, so a regression that breaks `.mcap` zstd-chunk reads or the CDR decoder fails CI instead of landing on a user. The suite is **168 passing tests across 13 files** (with 11 tests skipped behind a real-bag fixture that won't fit in memory, see below) and runs end-to-end in about 11 seconds locally. Coverage is two-layered: pure unit tests for `src/utils/` and `src/parsers/` (CDR round-trips, MCAP / DB3 / ROS1 dispatch, HTTP-Range error paths including CORS / 416 / no-Content-Length / Range-ignored fallback, every PointCloud2 datatype path, OccupancyGrid `int8 → RGBA` mapping with content-fingerprint stability, trajectory extraction across all 7 supported pose types, slippy-map projection math at multiple zoom levels), and integration tests that exercise the unified parser entry against the committed sample bag (`public/sample-bags/tour.mcap`) plus the optional real bags in `test_files/`. **Disk-friendly in-memory fixtures**: `tests/fixtures/synth.ts` writes synthetic MCAPs as `Uint8Array`s at test setup time (using the same `@mcap/core` writer pattern as `scripts/build-sample-bag.mjs`), so per-test edge-case bags — compressed chunks, custom schemas, schema-less topics, sub-microsecond message gaps — never hit the filesystem. A `.github/workflows/ci.yml` runs `pnpm install --frozen-lockfile && tsc -b && pnpm test` on every PR; the real-bag fixtures aren't checked into CI so those suites self-skip and the synthetic + sample-bag layers carry the coverage.
+- **User-picked anchor UI for multi-bag**: v0.9 shipped the `anchor` time-alignment mode but defaulted each bag's anchor to its `startTime` because the store method was the only way in. v1.0 surfaces the affordance: when two or more bags are loaded *and* alignment is set to `anchor`, a `⚓ Set anchor` button appears in the toolbar next to the alignment selector. Click it and the focused bag's current bag-local time becomes its anchor, the global aligned playhead snaps back to `t=0` so the focused bag's view doesn't shift (the offset just changed under it), and the bag's chip grows a small `⚓ 12.34s` pip showing where the anchor lives in bag-local seconds. Click the pip to clear and revert to the `startTime` default. The URL hash gains an `a=<bagId>:<ns>,…` segment per bag with a non-default anchor (omitted otherwise, so single-bag and default-anchor multi-bag links round-trip identically to v0.9), and a small `useUrlState` subscription on `bagStore` flushes anchor changes to the hash immediately rather than waiting for the next playhead tick. End-to-end: scrub each bag separately to a physical sync event (a race start, a flag drop, a sensor trigger), hit `Set anchor` on each → their timelines lock to the same event and the hash survives a reload.
+- **Light theme toggle**: dark is still the default (data viz reads better on dark backgrounds, that doesn't change), but a `sun`/`moon` icon button now sits in the toolbar next to the help icon. `themeStore` persists the choice to `localStorage` under `bagel:theme:v1` and honours `prefers-color-scheme: light` on first load only (subsequent visits respect the explicit toggle even if the OS later flips). The implementation is a CSS-variable refactor in `src/index.css` driven by a `data-theme="light"` attribute on `<html>` — every Tailwind v4 utility class that consumes `text-text-secondary` / `bg-surface-hover` / `border-border` / `text-accent-cyan` etc. picks up the new value automatically with no class-rename grind across panels. **WCAG-tuned accents in light mode**: the dark-mode `cyan #06b6d4` and `text-muted #94a3b8` are deliberately bright so they pop against deep navy; on white surfaces those same values fail AA contrast. Light mode overrides each accent to its `-700` tier (`cyan → #0e7490`, `blue → #1d4ed8`, etc.) and the foreground greys to `slate-500/600/700`. Badge text variants (`badge-cyan`, `badge-blue`, …) are re-pinned to their `*-800` counterparts because the `*-300/light` tints that pop on dark disappear on white. The BAGEL logo gradient gets a re-drawn version in the same trio of hues but shifted darker so the brand mark still reads, and `::selection` flips foreground to dark navy on the existing tinted background (white-on-light-blue selection was effectively invisible). The Three.js scene's clear colour stays dark across both themes — point clouds, axes, and lighting are a self-contained visual context and re-painting them on theme change is a v1.x polish item, not a v1.0 blocker.
+- **`diagnostic_msgs/DiagnosticArray` panel**: every nav and perception stack publishes diagnostics; RViz and Foxglove both treat them as first-class. BAGEL up through v0.9 opened them in the raw message inspector — readable but useless for "what was failing at second 42." v1.0 renders a dedicated two-pane view. **Top: swimlane timeline.** One row per `(hardware_id, name)` component, coloured by status across time — green for `OK = 0`, yellow for `WARN = 1`, red for `ERROR = 2`, grey for `STALE = 3`. The global playhead is a vertical line across every row; click any cell to seek the playhead to that timestamp (the click is translated from bag-local back to aligned time so the seek lands correctly across every bag's view). **Bottom: at-playhead inspector.** Expandable list of every component with non-OK status at the current time, showing each one's `message` field plus its `key/value` pairs. **Filters**: status checkboxes (show/hide each severity), per-component name search, and the canvas reflows when filters change. **Data path**: same `useTopicMessages` lazy load as MarkerArray (full history needed for the swimlane), with the cutoff index binary-searched on each playhead tick so scrubbing stays O(log N) per row. TopicRow grows a `Diag` quick-button on matching topics; the unified default-click opens a Diagnostic panel.
+- **`rcl_interfaces/Log` (rosout) panel**: the simplest panel in v1.0 but a high usability win for debugging. Reads `rcl_interfaces/Log` (ROS2) or `rosgraph_msgs/Log` (ROS1) and renders a virtualised, filterable, severity-aware list. **Filters**: severity checkboxes (`DEBUG / INFO / WARN / ERROR / FATAL`, mapped from the spec's `10/20/30/40/50` level values), node-name substring search, and full-text message search — the filter pipeline is a single pass over the decoded array so 100k+ entry logs filter in under a frame. **Click-to-seek**: clicking any row drops the playhead to that log's `stamp`, which keeps the rest of the workspace (3D scene, plots, trajectory) synced to the moment the warning fired. **Auto-follow toggle**: when on, the row closest to the playhead time is highlighted and brought into view as you scrub or play; turning it off lets you scroll independently to read context around an event without the list yanking back to the playhead. **Severity badges** use the same hue palette as the diagnostic swimlane so the two panels read consistently when docked side-by-side.
+
+---
 
 ### v0.9 & v0.9.1: Multi-Bag Overlay + OccupancyGrid + GPS Tile Underlay + Remote URL Loading
 
@@ -171,15 +183,16 @@ Everything in v0.2, plus:
 
 ### Roadmap
 
-v0.9 ships the multi-bag overlay (with per-bag parser workers + three time-alignment modes), the SLAM-map render, the GPS spatial context, and the remote-URL load that together make BAGEL useful for comparison workflows and shareable demos. Possible future directions:
+v1.0 stabilises the surface BAGEL already covers: a test suite that turns "it worked on the bags I tried" into automated assertions, two new panels for diagnostics and logs, the anchor UI that finishes the v0.9 multi-bag story, and a light theme tuned for bright-field conditions. Possible future directions:
 
 | Idea | Notes |
 |---|---|
-| Light theme | Dark is intentional (data viz reads better on dark backgrounds), but a toggle would help in bright field conditions. |
-| Plugin panels | Lets users build custom views (e.g. depth-image colorisation, GPS overlay) against a stable panel API. |
-| Cloud-hosted shareable URLs | The local hash is great for personal reuse (a tiny backend would unlock real link-sharing with layouts that survive a bag move). |
+| Bag editing / clip export | Trim, extract topics, re-encode. The one feature where BAGEL would replace CLI workflows (`mcap filter`, `rosbag2 convert`) rather than just visualize them. Earmarked as the v1.1 banner. |
+| Plugin panels | Lets users build custom views (e.g. depth-image colorisation, vendor-specific marker overlays, OBD-II decoders) against a stable panel API. Earmarked for v1.2 once internal panels have stabilised — the API becomes a stability contract so shipping it half-baked is a one-way door. |
+| Cloud-hosted shareable URLs | The local hash is great for personal reuse (a tiny Vercel function + KV store would unlock real link-sharing with layouts that survive a bag move). Designed in the v1.0 plan, deferred to a follow-up so it can land with the deploy infra change. |
+| `MESH_RESOURCE` / `TRIANGLE_LIST` marker support | v0.8 still ships pink-wireframe placeholders. `TRIANGLE_LIST` is cheap; `MESH_RESOURCE` needs a `package://` → URL resolver flow that's a meaningful UX design call. |
 | Streaming `.db3` over HTTP Range | `sql.js-httpvfs` would do real partial reads via a custom SQLite VFS, current URL loading eager-fetches the whole `.db3` because sql.js needs it in memory. Deferred until someone hits the practical ~250 MB cap in the wild. |
-| User-picked anchor UI for multi-bag | The `anchor` alignment mode currently uses `bag.startTime` as a default until anchors are set, but BAGEL doesn't yet ship UI to pick the per-bag anchor time (the store method exists). Surface a "Set anchor here" button at the playhead so a `race start` / `flag drop` can sync runs. |
+| `CameraInfo` overlay on ImageViewer | Show intrinsics, draw the principal point, optionally rectify — closes a calibration-debugging workflow that the raw image view can't. |
 
 ---
 
@@ -249,6 +262,8 @@ The shortcuts modal (`?`) lists everything at runtime (adding a binding in `src/
 | **CDR Deser.** | @foxglove/rosmsg2-serialization | ROS2 message deserialization |
 | **Type Registry** | @foxglove/rosmsg-msgs-common | Pre-built ROS2 message defs (fallback for .db3 only) |
 | **3D** | three.js (WebGL) | Point clouds, scans, pose markers, MarkerArray primitives, orbit controls |
+| **Testing** | Vitest | Parser + utility unit tests, integration tests against committed sample bag (v1.0) |
+| **CI** | GitHub Actions | `tsc -b` + `pnpm test` on every PR (v1.0) |
 | **Deployment** | Vercel | Static site hosting |
 
 ---
@@ -327,7 +342,9 @@ BAGEL's built-in type registry covers all standard ROS2 packages:
 | `nav_msgs` | Odometry, Path, OccupancyGrid |
 | `tf2_msgs` | TFMessage |
 | `visualization_msgs` | Marker, MarkerArray (CUBE / SPHERE / CYLINDER / ARROW / LINE_STRIP / LINE_LIST / CUBE_LIST / SPHERE_LIST / POINTS / TEXT_VIEW_FACING) |
-| `rcl_interfaces` | Log, ParameterEvent |
+| `diagnostic_msgs` | DiagnosticArray, DiagnosticStatus, KeyValue (rendered as a swimlane timeline panel in v1.0) |
+| `rcl_interfaces` | Log (rendered in the virtualised Log panel in v1.0), ParameterEvent |
+| `rosgraph_msgs` | Log (ROS1 rosout) — same Log panel via shared type detector |
 | `builtin_interfaces` | Time, Duration |
 
 > **MCAP files** embed their schemas, so *any* message type in an MCAP file is supported (including custom types).
@@ -358,6 +375,7 @@ src/
 │   ├── bagStore.ts        # Bag summary + source File
 │   ├── playheadStore.ts   # Time cursor, play/pause, speed
 │   ├── layoutStore.ts     # Open panels keyed by kind:topic
+│   ├── themeStore.ts      # Dark / light preference (v1.0)
 │   └── uiStore.ts         # Modal overlays (about / shortcuts)
 │
 ├── hooks/
@@ -385,7 +403,9 @@ src/
 │       ├── RawMessageInspector/    # JSON tree at playhead time
 │       ├── TrajectoryPlot/         # 2D x/y path on a canvas
 │       ├── TFTree/                 # /tf + /tf_static graph view
-│       └── ThreeDScene/            # Three.js 3D viewer (PointCloud2, LaserScan, Pose, MarkerArray)
+│       ├── ThreeDScene/            # Three.js 3D viewer (PointCloud2, LaserScan, Pose, MarkerArray)
+│       ├── DiagnosticArray/        # Diagnostic swimlane + at-playhead inspector (v1.0)
+│       └── Log/                    # Virtualised rosout viewer w/ severity + node filters (v1.0)
 │
 ├── types/                # TypeScript interfaces
 │   ├── bag.ts            # BagSummary, TopicInfo, RawMessage
@@ -428,6 +448,36 @@ ThreeDScene/
 - `scripts/build-sample-bag.mjs`: generates `public/sample-bags/tour.mcap`, a ~2 MB synthetic bag with `/odom`, `/imu/data`, `/scan`, `/tf`, `/markers`, `/map`, and `/gps/fix` topics over 30 seconds. The `/markers` topic publishes 8 markers at 1 Hz across `status` (base_link, frame-locked) and `planning` (odom) namespaces to exercise the v0.8 MarkerArray renderer end-to-end. `/map` publishes a 100×100 `nav_msgs/OccupancyGrid` that expands outward over the bag, mimicking an incremental SLAM run with outer walls, two pillars, and a mid-cost diagonal corridor to exercise the v0.9 cost ramp. `/gps/fix` projects the figure-eight onto realistic lat/lon around Cambridge UK so the v0.9 OSM tile underlay shows familiar streets when toggled on. Idempotent; rerun only if the synthetic data needs changing. The output is committed so a fresh checkout serves the sample without a Node build step.
 - `scripts/verify-sample-bag.mjs`: parses the generated bag with `McapIndexedReader` and prints the topic table; smoke-test the writer when you change the synthesiser.
 - `scripts/verify-parsers.mjs`: Node-side verification of the `.db3` and `.mcap` parser paths against the real test fixtures in `test_files/`.
+
+### Tests (v1.0)
+
+```
+tests/
+├── fixtures/
+│   └── synth.ts                # In-memory MCAP writer — generates per-test bags as Uint8Array
+│
+├── parsers/                    # Parser unit tests
+│   ├── cdr.test.ts             # CDR round-trips (String, Twist, Odometry w/ covariance)
+│   ├── mcap.test.ts            # Parse + read + at-time + cache invalidation against synth bags
+│   ├── db3.test.ts             # .db3 dispatch via mocked sql.js locateFile
+│   ├── bag.test.ts             # ROS1 .bag — skipped on 10 GB fixtures, ready for a smaller one
+│   └── source.test.ts          # HTTP Range reader: CORS / 416 / no-Content-Length / Range-ignored
+│
+├── utils/                      # Utility unit tests
+│   ├── time.test.ts            # BigInt ns math + alignment offsets
+│   ├── bytes.test.ts           # Size formatting + magic-byte detection
+│   ├── messages.test.ts        # flattenNumeric + type sniffing across every panel kind
+│   ├── pointcloud.test.ts      # FLOAT32 fast path + DataView path + packed RGB + Turbo gradient
+│   ├── trajectory.test.ts      # Pose extraction across all 7 supported types + NavSatFix projection
+│   └── occupancyGrid.test.ts   # int8 → RGBA mapping + content-fingerprint stability
+│
+└── integration/                # Real-bag end-to-end through the unified parseBag entry
+    ├── sample-bag.test.ts      # Committed public/sample-bags/tour.mcap (ships with the repo)
+    ├── real-mcap.test.ts       # test_files/mcap/pose_topics/* (skipped on CI; gitignored)
+    └── real-db3.test.ts        # test_files/db3/sample.db3 (skipped on CI; gitignored)
+```
+
+Run with `pnpm test` (one-shot, ~11 s wall time, 168 passing tests) or `pnpm test:watch` for HMR-style re-runs. `pnpm test:coverage` adds an `@vitest/coverage-v8` report under `coverage/`. The `tests/` directory uses synthetic fixtures (no disk hit) and the bundled `tour.mcap` as the integration layer, so a fresh checkout has everything the suite needs without downloading any new fixtures.
 
 ---
 

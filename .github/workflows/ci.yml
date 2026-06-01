@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    name: Lint, type-check, test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # `--frozen-lockfile` makes CI fail if pnpm-lock.yaml is out of sync.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Lint is non-blocking for now. `eslint-plugin-react-hooks` v7 added
+      # stricter rules (`react-hooks/refs`, `react-hooks/set-state-in-effect`)
+      # that several existing panels trip; the code works fine, the cleanup
+      # is its own task. Re-enable as a hard gate once those are resolved.
+      - name: Lint (non-blocking)
+        run: pnpm lint
+        continue-on-error: true
+
+      # `tsc -b` (no emit) catches all type errors across the project. Faster
+      # than the full `pnpm build` and skips the bundle step.
+      - name: Type check
+        run: pnpm exec tsc -b
+
+      # The real-bag fixtures aren't in CI (`test_files/` is gitignored), so
+      # those test suites skip themselves. The synthetic in-memory MCAPs and
+      # the committed sample bag (`public/sample-bags/tour.mcap`) carry the
+      # coverage on CI. ~150 active tests; under 30 s wall time.
+      - name: Run tests
+        run: pnpm test

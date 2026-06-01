@@ -29,6 +29,8 @@ const KIND_LABELS: Record<PanelKind, string> = {
   trajectory: 'Trajectory',
   tf: 'TF Tree',
   '3d': '3D Scene',
+  diagnostic: 'Diagnostics',
+  log: 'Log',
 };
 
 /**
