@@ -30,6 +30,13 @@ type DecodedMessage = { timestamp: bigint; value: Record<string, unknown> | null
 type DecodedPointCloud = (PointCloudExtraction & { timestamp: bigint }) | null;
 type DecodedLaserScan = (LaserScanExtraction & { timestamp: bigint }) | null;
 
+export interface EditMcapResult {
+  bytes: Uint8Array;
+  messageCount: number;
+  startNs: bigint;
+  endNs: bigint;
+}
+
 interface PendingRequest {
   resolve: (value: unknown) => void;
   reject: (err: Error) => void;
@@ -263,6 +270,42 @@ class ParserClient {
     return this.request<{ ok: true } | { ok: false; error: string }>(
       'validateSchema',
       { schemaText },
+    );
+  }
+
+  /**
+   * Estimate how many messages would survive an edit, without actually
+   * writing the output. Used by the BagEdit modal to size its progress
+   * bar before the user hits "Edit & download".
+   */
+  estimateEditCount(
+    source: BagSource,
+    startNs: bigint,
+    endNs: bigint,
+    topics: string[] | null,
+  ): Promise<number> {
+    return this.request<number>('estimateEditCount', { source, startNs, endNs, topics });
+  }
+
+  /**
+   * Stream-edit an MCAP bag: drop messages outside `[startNs, endNs]` and
+   * (optionally) outside the topic filter, then return a fresh MCAP `Uint8Array`.
+   *
+   * `onProgress` fires every ~250 messages with the running write count so
+   * the BagEdit modal can update its progress bar. The promise resolves
+   * once the writer has flushed its summary section + index.
+   */
+  editMcap(
+    source: BagSource,
+    startNs: bigint,
+    endNs: bigint,
+    topics: string[] | null,
+    onProgress?: (written: number) => void,
+  ): Promise<EditMcapResult> {
+    return this.request<EditMcapResult>(
+      'editMcap',
+      { source, startNs, endNs, topics },
+      { onProgress },
     );
   }
 }

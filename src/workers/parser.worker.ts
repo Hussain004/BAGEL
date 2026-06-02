@@ -30,6 +30,12 @@ import {
   validateSchemaText,
 } from '../parsers/typeRegistry';
 import { clearDb3DecodedCache } from '../parsers/db3';
+import {
+  editMcapBag,
+  estimateMessageCount,
+  type EditOptions,
+} from '../parsers/edit';
+import { loadMcapForEdit } from '../parsers/mcap';
 import type { ColorMode, HeightAxis, PointCloudExtraction } from '../utils/pointcloud';
 import type { LaserScanExtraction } from '../utils/laserscan';
 import type { BagSource } from '../parsers/source';
@@ -47,7 +53,9 @@ type Method =
   | 'disposeParserCaches'
   | 'getSupportedTypes'
   | 'setCustomSchemas'
-  | 'validateSchema';
+  | 'validateSchema'
+  | 'estimateEditCount'
+  | 'editMcap';
 
 interface BaseRequest<P> {
   id: number;
@@ -100,6 +108,20 @@ interface ValidateSchemaParams {
   /** Raw `.msg` text to dry-run through the parser. */
   schemaText: string;
 }
+interface EstimateEditCountParams {
+  source: BagSource;
+  startNs: bigint;
+  endNs: bigint;
+  /** `null` means "all topics". */
+  topics: string[] | null;
+}
+interface EditMcapParams {
+  source: BagSource;
+  startNs: bigint;
+  endNs: bigint;
+  /** `null` means "all topics". */
+  topics: string[] | null;
+}
 
 type WorkerRequest =
   | BaseRequest<ParseBagParams>
@@ -111,6 +133,8 @@ type WorkerRequest =
   | BaseRequest<GetTopicTypeParams>
   | BaseRequest<SetCustomSchemasParams>
   | BaseRequest<ValidateSchemaParams>
+  | BaseRequest<EstimateEditCountParams>
+  | BaseRequest<EditMcapParams>
   | BaseRequest<undefined>;
 
 interface ProgressResponse {
@@ -139,6 +163,13 @@ interface ErrorResponse {
   error: string;
 }
 
+export interface EditMcapResult {
+  bytes: Uint8Array;
+  messageCount: number;
+  startNs: bigint;
+  endNs: bigint;
+}
+
 export type WorkerResponse =
   | ProgressResponse
   | BatchResponse
@@ -151,6 +182,8 @@ export type WorkerResponse =
   | ResultResponse<string | undefined>
   | ResultResponse<string[]>
   | ResultResponse<{ ok: true } | { ok: false; error: string }>
+  | ResultResponse<number>
+  | ResultResponse<EditMcapResult>
   | ResultResponse<void>
   | ErrorResponse;
 
@@ -265,6 +298,32 @@ ctx.addEventListener('message', async (e: MessageEvent<WorkerRequest>) => {
       case 'validateSchema': {
         const { schemaText } = req.params as ValidateSchemaParams;
         respond(validateSchemaText(schemaText));
+        return;
+      }
+      case 'estimateEditCount': {
+        const { source, startNs, endNs, topics } = req.params as EstimateEditCountParams;
+        const meta = await loadMcapForEdit(source);
+        const filter = topics ? new Set(topics) : null;
+        respond(estimateMessageCount(meta, startNs, endNs, filter));
+        return;
+      }
+      case 'editMcap': {
+        const { source, startNs, endNs, topics } = req.params as EditMcapParams;
+        const editOptions: EditOptions = {
+          startNs,
+          endNs,
+          topics: topics ?? undefined,
+          onProgress: (written) =>
+            ctx.postMessage({
+              id: req.id,
+              type: 'progress',
+              decoded: written,
+            } satisfies ProgressResponse),
+        };
+        const result = await editMcapBag(source, editOptions);
+        // Transfer the underlying buffer back zero-copy: the worker has no
+        // further use for the bytes once they reach the main thread.
+        respond(result, [result.bytes.buffer] as Transferable[]);
         return;
       }
       default:

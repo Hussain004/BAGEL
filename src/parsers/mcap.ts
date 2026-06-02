@@ -555,6 +555,24 @@ export async function getTopicTypeMcap(
   return meta.topicMeta.get(topicName)?.schemaName;
 }
 
+/**
+ * Sliver of the cached MCAP state needed for v1.1 bag editing. Re-exposes
+ * the indexed reader (and a hint about whether stream fallback is in play)
+ * so `parsers/edit.ts` can reuse the parse work the user already paid for.
+ *
+ * Intentionally narrower than the full `CachedMcap` so we don't accidentally
+ * leak internal cache shape into another module that doesn't need it.
+ */
+export interface CachedMcapForEdit {
+  reader: CachedMcap['reader'];
+}
+
+/** Resolve the cached MCAP reader for `source`, lazily loading if needed. */
+export async function loadMcapForEdit(source: BagSource): Promise<CachedMcapForEdit> {
+  const meta = await loadMcap(source);
+  return { reader: meta.reader };
+}
+
 /** Per-topic decoded-message LRU bound. Big enough to cover both directions
  *  of a scrub through a handful of adjacent frames; small enough that raw
  *  1080p images (~6 MB each) don't blow up the worker heap. */

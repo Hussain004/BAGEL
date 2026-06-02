@@ -12,7 +12,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-8-646cff.svg)](https://vite.dev/)
-[![Version](https://img.shields.io/badge/version-1.0.0-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
+[![Version](https://img.shields.io/badge/version-1.1.0-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
 
 [**→ Live Demo**](https://bagel-ros2.vercel.app) · [Report Bug](https://github.com/Hussain004/BAGEL/issues) · [Request Feature](https://github.com/Hussain004/BAGEL/issues)
 
@@ -93,6 +93,7 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 - **Drag-to-dock** VSCode-style panel layout. Per-panel state (3D display settings, plot zoom, TF selection) survives docking.
 - **Sharable URL hashes** encode layout + playhead + bag URL + per-bag anchors. v0.5 / v0.7 / v0.9 hash forms still parse, so old links keep working.
 - **Per-topic CSV / NDJSON export** from every panel header.
+- **Bag editing / MCAP clip export**: trim the time range, drop topics you don't need, download a fresh indexed `.mcap`. Replaces the `mcap filter` CLI workflow for the common cuts. MCAP input only in v1.1; ROS1 `.bag` and `.db3` editing queued for v1.2. *(v1.1)*
 - **Paste-your-own `.msg` schema** flow for ROS2 `.db3` topics whose types aren't in the bundled registry. Persisted across sessions in `localStorage`.
 
 ### UX and quality
@@ -101,7 +102,7 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 - **Keyboard shortcuts**: `Space` to play, `← / →` to step, `Esc` to close panels, `T` to focus topic search, `O` to open a bag, `?` for the cheat-sheet.
 - **Accessibility pass**: ARIA roles + focus management on every modal, `prefers-reduced-motion` respected, focus-visible rings throughout.
 - **Bundled `tour.mcap` sample bag** exercises every panel type. Drop in zero seconds with the "Try a sample bag" button.
-- **168-test Vitest suite** + GitHub Actions CI runs `tsc -b` + `pnpm test` on every PR. *(v1.0)*
+- **180-test Vitest suite** + GitHub Actions CI runs `tsc -b` + `pnpm test` on every PR. *(v1.0, expanded in v1.1)*
 - **Bags well over 2 GB work in the browser**: range reads + lazy decoding throughout the parser stack.
 
 > Looking for the long version with implementation notes and design tradeoffs for each release? See **[FEATURES.md](FEATURES.md)**.
@@ -110,6 +111,8 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 
 ### Earlier version highlights at a glance
 
+- **v1.1**: Bag editing. Trim time range, drop topics, download a fresh indexed MCAP. Browser-native replacement for `mcap filter`. 12 new tests; total suite now 180.
+- **v1.0**: 168-test Vitest suite + CI gate, anchor UI for multi-bag, light theme, `DiagnosticArray` swimlane panel, `rcl_interfaces/Log` virtualised viewer.
 - **v0.9 / v0.9.1**: Multi-bag overlay (per-bag Web Worker + three time-alignment modes), `nav_msgs/OccupancyGrid` rendering, OpenStreetMap tile underlay for `NavSatFix`, remote URL loading via HTTP Range.
 - **v0.8 / v0.8.1**: `visualization_msgs/MarkerArray` rendering (10 of 12 primitives), per-frame TF chains, ROS1 `bz2` / `lz4` chunk decompression, paste-your-own `.msg` schema flow for `.db3` topics.
 - **v0.7 / v0.7.1**: Drag-to-dock VSCode-style panel layout, recursive split-tree URL hashes, per-panel state survives docking.
@@ -124,11 +127,12 @@ For the full detail behind each release (including design rationale and implemen
 
 ### Roadmap
 
-v1.0 stabilises the surface BAGEL already covers: a test suite that turns "it worked on the bags I tried" into automated assertions, two new panels for diagnostics and logs, the anchor UI that finishes the v0.9 multi-bag story, and a light theme tuned for bright-field conditions. Possible future directions:
+v1.0 stabilised the surface BAGEL already covered (test suite + CI gate, anchor UI, light theme, diagnostics + log panels). v1.1 ships the first feature that replaces a CLI workflow rather than just visualises one: in-browser MCAP bag editing (trim time range, drop topics, download a fresh indexed `.mcap`). Possible future directions:
 
 | Idea | Notes |
 |---|---|
-| Bag editing / clip export | Trim, extract topics, re-encode. The one feature where BAGEL would replace CLI workflows (`mcap filter`, `rosbag2 convert`) rather than just visualize them. Earmarked as the v1.1 banner. |
+| ROS1 `.bag` + ROS2 `.db3` editing | v1.1's editor is MCAP-in / MCAP-out. Extending the editor to ROS1 input needs `ros1msg` schema + `ros1` message-encoding round-tripping; `.db3` input needs schema reconstruction from the bundled type registry (since `.db3` doesn't embed schemas). Earmarked for v1.2 as a continuation of the v1.1 banner. |
+| Zstd-compressed edit output | v1.1's edited bags are always uncompressed because `fzstd` is decompress-only; we don't bundle a pure-JS zstd *encoder* yet. Output bags reload identically; they just weigh 2-4x the zstd equivalent. Lands once a sensible encoder is available. |
 | Plugin panels | Lets users build custom views (e.g. depth-image colorisation, vendor-specific marker overlays, OBD-II decoders) against a stable panel API. Earmarked for v1.2 once internal panels have stabilised so the API becomes a stability contract so shipping it half-baked is a one-way door. |
 | Cloud-hosted shareable URLs | The local hash is great for personal reuse (a tiny Vercel function + KV store would unlock real link-sharing with layouts that survive a bag move). Designed in the v1.0 plan, deferred to a follow-up so it can land with the deploy infra change. |
 | `MESH_RESOURCE` / `TRIANGLE_LIST` marker support | v0.8 still ships pink-wireframe placeholders. `TRIANGLE_LIST` is cheap; `MESH_RESOURCE` needs a `package://` → URL resolver flow that's a meaningful UX design call. |
@@ -306,6 +310,7 @@ src/
 │   ├── bag.ts            # ROS1 .bag reader (cached Bag, type-name normalisation)
 │   ├── cdr.ts            # CDR deserializer (cached MessageReader per type)
 │   ├── rosbag1.ts        # ROS1 deserializer (cached reader + time-field alias pass)
+│   ├── edit.ts           # v1.1 bag editor: trim + topic filter, MCAP-in to MCAP-out
 │   └── typeRegistry.ts   # ROS2 message definitions (.db3 fallback only)
 │
 ├── workers/
@@ -335,6 +340,8 @@ src/
 │   │   ├── ModalHost.tsx     # Renders whichever modal uiStore selected
 │   │   ├── ModalShell.tsx    # Dialog chrome, Esc-to-close, focus restore
 │   │   ├── AboutModal.tsx    # Project info + tech stack + links
+│   │   ├── BagEditModal.tsx  # v1.1 bag editor: trim + topic filter + MCAP download
+│   │   ├── SchemaPasteModal.tsx # Custom .msg schema paste flow for .db3 (v0.8.1)
 │   │   └── ShortcutsModal.tsx# Generated from SHORTCUTS table
 │   └── panels/
 │       ├── PanelShell.tsx          # Header + export menu + close chrome
@@ -390,7 +397,7 @@ ThreeDScene/
 - `scripts/verify-sample-bag.mjs`: parses the generated bag with `McapIndexedReader` and prints the topic table; smoke-test the writer when you change the synthesiser.
 - `scripts/verify-parsers.mjs`: Node-side verification of the `.db3` and `.mcap` parser paths against the real test fixtures in `test_files/`.
 
-### Tests (v1.0)
+### Tests (v1.0 + v1.1)
 
 ```
 tests/
@@ -402,6 +409,7 @@ tests/
 │   ├── mcap.test.ts            # Parse + read + at-time + cache invalidation against synth bags
 │   ├── db3.test.ts             # .db3 dispatch via mocked sql.js locateFile
 │   ├── bag.test.ts             # ROS1 .bag, skipped on 10 GB fixtures, ready for a smaller one
+│   ├── edit.test.ts            # v1.1 trim + topic filter round-trips (synth + tour.mcap)
 │   └── source.test.ts          # HTTP Range reader: CORS / 416 / no-Content-Length / Range-ignored
 │
 ├── utils/                      # Utility unit tests
@@ -418,7 +426,7 @@ tests/
     └── real-db3.test.ts        # test_files/db3/sample.db3 (skipped on CI; gitignored)
 ```
 
-Run with `pnpm test` (one-shot, ~11 s wall time, 168 passing tests) or `pnpm test:watch` for HMR-style re-runs. `pnpm test:coverage` adds an `@vitest/coverage-v8` report under `coverage/`. The `tests/` directory uses synthetic fixtures (no disk hit) and the bundled `tour.mcap` as the integration layer, so a fresh checkout has everything the suite needs without downloading any new fixtures.
+Run with `pnpm test` (one-shot, ~12 s wall time, 180 passing tests) or `pnpm test:watch` for HMR-style re-runs. `pnpm test:coverage` adds an `@vitest/coverage-v8` report under `coverage/`. The `tests/` directory uses synthetic fixtures (no disk hit) and the bundled `tour.mcap` as the integration layer, so a fresh checkout has everything the suite needs without downloading any new fixtures.
 
 ---
 
