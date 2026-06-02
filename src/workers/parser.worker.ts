@@ -321,7 +321,7 @@ ctx.addEventListener('message', async (e: MessageEvent<WorkerRequest>) => {
             } satisfies ProgressResponse),
         };
         const result = await editMcapBag(source, editOptions);
-        // Transfer the underlying buffer back zero-copy — the worker has no
+        // Transfer the underlying buffer back zero-copy: the worker has no
         // further use for the bytes once they reach the main thread.
         respond(result, [result.bytes.buffer] as Transferable[]);
         return;

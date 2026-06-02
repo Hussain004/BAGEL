@@ -9,7 +9,7 @@ import { formatFileSize } from '../../utils/bytes';
 import type { TopicInfo } from '../../types/bag';
 
 /**
- * BagEditModal — v1.1 banner feature.
+ * BagEditModal: v1.1 banner feature.
  *
  * Trims a loaded MCAP bag to a `[start, end]` window and (optionally) prunes
  * the topic set, then writes a fresh MCAP `Uint8Array` and triggers a
@@ -19,7 +19,7 @@ import type { TopicInfo } from '../../types/bag';
  *
  * v1.1 limitations the UI surfaces explicitly:
  *   - MCAP input only. ROS1 `.bag` and ROS2 `.db3` inputs disable the modal
- *     with a "coming in v1.2" message — they need schema reconstruction +
+ *     with a "coming in v1.2" message; they need schema reconstruction +
  *     message-encoding round-tripping that's its own pass of work.
  *   - Output is always uncompressed MCAP. fzstd is decompress-only so we
  *     can't write zstd chunks yet; output bags reload identically and just
@@ -32,7 +32,7 @@ export function BagEditModal() {
   const entry = focusBagId ? bags.get(focusBagId) : undefined;
 
   if (!entry) {
-    // No bag focused (edge case — the toolbar button is hidden in that case
+    // No bag focused (edge case: the toolbar button is hidden in that case
     // but routing the modal through a global slot means we still defend).
     return (
       <ModalShell title="Edit bag" onClose={close} width="md">
@@ -56,7 +56,7 @@ export function BagEditModal() {
           </p>
           <p className="text-text-tertiary">
             ROS1 <code className="mono">.bag</code> and ROS2{' '}
-            <code className="mono">.db3</code> editing is queued for v1.2 —
+            <code className="mono">.db3</code> editing is queued for v1.2;
             they need schema reconstruction and message-encoding
             round-tripping that didn't fit in the v1.1 surface. As a
             workaround you can convert the bag to MCAP with the official{' '}
@@ -120,11 +120,10 @@ function BagEditForm({ entry, onClose }: FormProps) {
     durationSec: number;
   }>(null);
 
-  // Re-estimate whenever the trim window or topic selection changes — the
-  // user gets a live "~N messages, ~Y MB" hint so they don't have to start
-  // the edit just to find out the cut is empty. Estimates are debounced
-  // (300 ms) so dragging the slider doesn't fire a worker round-trip per
-  // pixel.
+  // Re-estimate whenever the trim window or topic selection changes, so the
+  // user gets a live "~N messages, ~Y MB" hint and doesn't have to start the
+  // edit just to find out the cut is empty. Estimates are debounced (300 ms)
+  // so dragging the slider doesn't fire a worker round-trip per pixel.
   const debounceTimerRef = useRef<number | null>(null);
   useEffect(() => {
     if (debounceTimerRef.current !== null) {
@@ -212,7 +211,7 @@ function BagEditForm({ entry, onClose }: FormProps) {
         (written) => setProgress(written),
       );
       // Hand the bytes to the browser as a download. We can't reuse
-      // `downloadText` directly — it wraps a string — so we drop down to a
+      // `downloadText` directly (it wraps a string), so we drop down to a
       // Blob here. The MCAP MIME type isn't standardised; `application/mcap`
       // matches what `mcap convert` writes when piping through HTTP.
       //
@@ -247,7 +246,7 @@ function BagEditForm({ entry, onClose }: FormProps) {
     }
   };
 
-  // Silence the `downloadText` import-not-used warning — keep it imported so
+  // Silence the `downloadText` import-not-used warning. Keep it imported so
   // future "Save edit script" variants can reuse the same code path.
   void downloadText;
 
@@ -627,7 +626,7 @@ function Spinner() {
 function defaultEditedFilename(original: string): string {
   // Strip the extension, append `__edited`, re-append `.mcap`. Works for
   // input bags whose extension wasn't `.mcap` (URL loads sometimes lack
-  // one — falls back to "<name>__edited.mcap").
+  // one, falling back to "<name>__edited.mcap").
   const stem = original.replace(/\.[^./\\]+$/, '');
   return `${stem || 'bag'}__edited.mcap`;
 }

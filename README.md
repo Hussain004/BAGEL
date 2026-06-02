@@ -111,7 +111,7 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 
 ### Earlier version highlights at a glance
 
-- **v1.1**: Bag editing — trim time range, drop topics, download a fresh indexed MCAP. Browser-native replacement for `mcap filter`. 12 new tests; total suite now 180.
+- **v1.1**: Bag editing. Trim time range, drop topics, download a fresh indexed MCAP. Browser-native replacement for `mcap filter`. 12 new tests; total suite now 180.
 - **v1.0**: 168-test Vitest suite + CI gate, anchor UI for multi-bag, light theme, `DiagnosticArray` swimlane panel, `rcl_interfaces/Log` virtualised viewer.
 - **v0.9 / v0.9.1**: Multi-bag overlay (per-bag Web Worker + three time-alignment modes), `nav_msgs/OccupancyGrid` rendering, OpenStreetMap tile underlay for `NavSatFix`, remote URL loading via HTTP Range.
 - **v0.8 / v0.8.1**: `visualization_msgs/MarkerArray` rendering (10 of 12 primitives), per-frame TF chains, ROS1 `bz2` / `lz4` chunk decompression, paste-your-own `.msg` schema flow for `.db3` topics.
@@ -132,7 +132,7 @@ v1.0 stabilised the surface BAGEL already covered (test suite + CI gate, anchor 
 | Idea | Notes |
 |---|---|
 | ROS1 `.bag` + ROS2 `.db3` editing | v1.1's editor is MCAP-in / MCAP-out. Extending the editor to ROS1 input needs `ros1msg` schema + `ros1` message-encoding round-tripping; `.db3` input needs schema reconstruction from the bundled type registry (since `.db3` doesn't embed schemas). Earmarked for v1.2 as a continuation of the v1.1 banner. |
-| Zstd-compressed edit output | v1.1's edited bags are always uncompressed because `fzstd` is decompress-only — we don't bundle a pure-JS zstd *encoder* yet. Output bags reload identically; they just weigh 2-4× the zstd equivalent. Lands once a sensible encoder is available. |
+| Zstd-compressed edit output | v1.1's edited bags are always uncompressed because `fzstd` is decompress-only; we don't bundle a pure-JS zstd *encoder* yet. Output bags reload identically; they just weigh 2-4x the zstd equivalent. Lands once a sensible encoder is available. |
 | Plugin panels | Lets users build custom views (e.g. depth-image colorisation, vendor-specific marker overlays, OBD-II decoders) against a stable panel API. Earmarked for v1.2 once internal panels have stabilised so the API becomes a stability contract so shipping it half-baked is a one-way door. |
 | Cloud-hosted shareable URLs | The local hash is great for personal reuse (a tiny Vercel function + KV store would unlock real link-sharing with layouts that survive a bag move). Designed in the v1.0 plan, deferred to a follow-up so it can land with the deploy infra change. |
 | `MESH_RESOURCE` / `TRIANGLE_LIST` marker support | v0.8 still ships pink-wireframe placeholders. `TRIANGLE_LIST` is cheap; `MESH_RESOURCE` needs a `package://` → URL resolver flow that's a meaningful UX design call. |
@@ -310,7 +310,7 @@ src/
 │   ├── bag.ts            # ROS1 .bag reader (cached Bag, type-name normalisation)
 │   ├── cdr.ts            # CDR deserializer (cached MessageReader per type)
 │   ├── rosbag1.ts        # ROS1 deserializer (cached reader + time-field alias pass)
-│   ├── edit.ts           # v1.1 bag editor — trim + topic filter, MCAP-in → MCAP-out
+│   ├── edit.ts           # v1.1 bag editor: trim + topic filter, MCAP-in to MCAP-out
 │   └── typeRegistry.ts   # ROS2 message definitions (.db3 fallback only)
 │
 ├── workers/
@@ -340,7 +340,7 @@ src/
 │   │   ├── ModalHost.tsx     # Renders whichever modal uiStore selected
 │   │   ├── ModalShell.tsx    # Dialog chrome, Esc-to-close, focus restore
 │   │   ├── AboutModal.tsx    # Project info + tech stack + links
-│   │   ├── BagEditModal.tsx  # v1.1 bag editor — trim + topic filter + MCAP download
+│   │   ├── BagEditModal.tsx  # v1.1 bag editor: trim + topic filter + MCAP download
 │   │   ├── SchemaPasteModal.tsx # Custom .msg schema paste flow for .db3 (v0.8.1)
 │   │   └── ShortcutsModal.tsx# Generated from SHORTCUTS table
 │   └── panels/

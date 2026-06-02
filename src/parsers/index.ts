@@ -184,7 +184,7 @@ export async function estimateEditCount(
 }
 
 /**
- * Stream-edit an MCAP bag in the per-bag worker — filters by time range and
+ * Stream-edit an MCAP bag in the per-bag worker: filters by time range and
  * topic set, then returns a fresh in-memory MCAP `Uint8Array` ready for
  * download. Throws when the source isn't an indexed MCAP (other formats are
  * deferred to v1.2). The v1.1 banner feature.

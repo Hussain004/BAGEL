@@ -6,7 +6,7 @@
  *      `tests/fixtures/synth.ts`. Covers the time-range filter, topic
  *      include/exclude, and the "edit window is empty" error path.
  *   2. A full round-trip against the committed `public/sample-bags/tour.mcap`
- *      sample bag — edits it down to a slice + topic subset, re-parses the
+ *      sample bag: edits it down to a slice + topic subset, re-parses the
  *      output, asserts the new topic set + bounds match the cut.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -28,7 +28,7 @@ import {
 
 beforeEach(() => disposeMcapCache());
 
-describe('edit/editMcapBag — synthetic bags', () => {
+describe('edit/editMcapBag - synthetic bags', () => {
   it('round-trips a tiny bag unchanged when no filter is applied', async () => {
     const input = bytesToFile(await chatterBag(), 'chatter.mcap');
     const result = await editMcapBag(createFileSource(input), {
@@ -208,7 +208,7 @@ const SAMPLE_PATH = join(process.cwd(), 'public', 'sample-bags', 'tour.mcap');
 const SAMPLE_AVAILABLE = existsSync(SAMPLE_PATH);
 const describeWithSample = SAMPLE_AVAILABLE ? describe : describe.skip;
 
-describeWithSample('edit/editMcapBag — tour.mcap round trip', () => {
+describeWithSample('edit/editMcapBag - tour.mcap round trip', () => {
   function sampleSource() {
     const bytes = readFileSync(SAMPLE_PATH);
     return createFileSource(new File([new Uint8Array(bytes)], 'tour.mcap'));
@@ -217,7 +217,7 @@ describeWithSample('edit/editMcapBag — tour.mcap round trip', () => {
   it('trims to a 5-second window in the middle of the bag', async () => {
     const source = sampleSource();
     const summary = await parseMcap(source);
-    // Pick [10s, 15s] from bag start.
+    // Pick a 5s window starting at the 10s mark, relative to bag start.
     const startNs = summary.startTime + 10_000_000_000n;
     const endNs = summary.startTime + 15_000_000_000n;
     disposeMcapCache();

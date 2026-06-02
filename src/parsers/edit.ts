@@ -1,5 +1,5 @@
 /**
- * MCAP bag editing — time-range trim + topic filter, MCAP-in → MCAP-out.
+ * MCAP bag editing: time-range trim + topic filter, MCAP-in to MCAP-out.
  *
  * v1.1 banner feature. Replaces the `mcap filter` CLI workflow for the
  * common case of "drop this bag's first/last N seconds and these noisy
@@ -9,7 +9,7 @@
  * reads (so editing piggybacks on whatever the user already paid to parse),
  * and stream each surviving message through `McapWriter` into an in-memory
  * `Uint8Array`. The writer chunks + indexes the output so the result opens
- * back in BAGEL with full range-read parity — and runs through external
+ * back in BAGEL with full range-read parity, and runs through external
  * tools (`mcap info`, Foxglove, the official `mcap` CLI) the same way.
  *
  * Scope notes:
@@ -22,7 +22,7 @@
  *     enough surface area to deserve its own pass.
  *   - **Uncompressed output.** `fzstd` is decompress-only; we don't bundle
  *     a zstd encoder yet. Output bags are written with the default chunk
- *     size and no chunk compression. They reload identically — only the
+ *     size and no chunk compression. They reload identically; only the
  *     on-disk size differs from a zstd-compressed equivalent.
  */
 
@@ -42,7 +42,7 @@ export interface EditOptions {
   /**
    * Topics to keep. `undefined` means "keep every topic" (still applies the
    * time-range filter). An empty array means "drop every topic" which is
-   * legal but produces an empty bag — surfaced as a UX warning upstream.
+   * legal but produces an empty bag (surfaced as a UX warning upstream).
    */
   topics?: string[];
   /** Profile string for the output MCAP header. Defaults to the input bag's profile. */
@@ -50,7 +50,7 @@ export interface EditOptions {
   /**
    * Soft progress hint. Total messages-to-write is estimated upstream from
    * statistics; callers can show "wrote N of ~M". The estimate is allowed
-   * to overshoot, so a progress bar finishes a hair early — acceptable.
+   * to overshoot, so a progress bar finishes a hair early. Acceptable.
    */
   onProgress?: (written: number) => void;
 }
@@ -72,7 +72,7 @@ export interface EditResult {
  * appends; final bytes are read via `getBytes()` once `writer.end()` resolves.
  *
  * Same shape as the writable used by `scripts/build-sample-bag.mjs` and
- * `tests/fixtures/synth.ts` — kept distinct so this module doesn't reach into
+ * `tests/fixtures/synth.ts`, kept distinct so this module doesn't reach into
  * test infra at runtime.
  */
 class MemoryWritable implements IWritable {
@@ -111,7 +111,7 @@ class MemoryWritable implements IWritable {
 /**
  * Compute the time-window total message count by walking the reader's
  * statistics + chunk indexes. Returns an overshoot estimate when only chunk
- * metadata is available — message-precise counting would require scanning
+ * metadata is available, because message-precise counting would require scanning
  * each chunk's message index, which defeats the point of a fast estimate.
  *
  * Used purely for progress reporting; the actual write loop counts the real
@@ -124,7 +124,7 @@ export function estimateMessageCount(
   topics: Set<string> | null,
 ): number {
   if (!meta.reader) {
-    // Stream fallback has no statistics — just return 0 so the UI renders
+    // Stream fallback has no statistics; just return 0 so the UI renders
     // an indeterminate spinner instead of a fake progress bar.
     return 0;
   }
@@ -140,7 +140,7 @@ export function estimateMessageCount(
 
   // Otherwise sum per-channel counts that match the topic filter, scaled
   // by the fraction of the bag's time range that overlaps the trim window.
-  // Topic filter is precise; time-range fraction is the overshoot source —
+  // Topic filter is precise; time-range fraction is the overshoot source.
   // a topic that only publishes in the first half of the bag will still be
   // weighted by full-bag duration. Good enough for a progress bar.
   const bagSpan = Number(stats.messageEndTime - stats.messageStartTime);
@@ -168,10 +168,10 @@ export function estimateMessageCount(
  *
  * Throws when:
  *   - the source isn't an MCAP file (other formats are explicitly out of
- *     scope for v1.1 — the modal disables itself in those cases);
+ *     scope for v1.1 (the modal disables itself in those cases);
  *   - the time window is empty (`endNs <= startNs`);
  *   - the source has no `McapIndexedReader` (stream-only bags can't be
- *     edited yet — they'd need a whole-bag re-scan and are bounded by the
+ *     edited yet; they'd need a whole-bag re-scan and are bounded by the
  *     512 MB stream fallback limit anyway, so users with huge un-indexed
  *     bags see a clearer error than "writer threw").
  */
@@ -218,7 +218,7 @@ export async function editMcapBag(
 
   // Schemas + channels are registered lazily on first use. A bag with 30
   // topics where the edit drops 28 of them won't carry the unused schemas
-  // in the output — keeps small edits genuinely small.
+  // in the output, which keeps small edits genuinely small.
   const schemaIdMap = new Map<number, number>(); // input schemaId → output schemaId
   const channelIdMap = new Map<number, number>(); // input channelId → output channelId
 
@@ -227,7 +227,7 @@ export async function editMcapBag(
     if (cached !== undefined) return cached;
     const schema = reader.schemasById.get(inputSchemaId);
     if (!schema) {
-      // Schema id 0 means "no schema" in the MCAP spec — pass it through
+      // Schema id 0 means "no schema" in the MCAP spec, so pass it through
       // unchanged so the writer registers a null-schema channel.
       schemaIdMap.set(inputSchemaId, 0);
       return 0;
