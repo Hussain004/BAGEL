@@ -171,31 +171,66 @@ export async function validateSchema(
 /**
  * Estimate the number of messages that would survive an edit (time-range
  * trim + topic filter). Used by the BagEdit modal to size its progress bar
- * before the actual write begins.
+ * before the actual write begins. v1.2 takes a `format` so the worker picks
+ * the right estimator path.
  */
 export async function estimateEditCount(
   bagId: string,
   source: BagSource,
+  format: BagFormat,
   startNs: bigint,
   endNs: bigint,
   topics: string[] | null,
 ): Promise<number> {
-  return getParserClient(bagId).estimateEditCount(source, startNs, endNs, topics);
+  return getParserClient(bagId).estimateEditCount(
+    source,
+    format,
+    startNs,
+    endNs,
+    topics,
+  );
 }
 
 /**
- * Stream-edit an MCAP bag in the per-bag worker: filters by time range and
+ * Stream-edit a bag in the per-bag worker: filters by time range and
  * topic set, then returns a fresh in-memory MCAP `Uint8Array` ready for
- * download. Throws when the source isn't an indexed MCAP (other formats are
- * deferred to v1.2). The v1.1 banner feature.
+ * download. The v1.2 banner: covers MCAP, ROS1 `.bag`, and ROS2 `.db3`
+ * inputs. Output is always MCAP regardless of source format.
+ *
+ * `includeUnresolvedTopics` is `.db3`-only: topic names whose type isn't in
+ * the bundled registry but the user has explicitly opted in to include.
+ * The modal pre-flights this via `getResolvableTopicsDb3`.
  */
-export async function editMcap(
+export async function editBag(
   bagId: string,
   source: BagSource,
+  format: BagFormat,
   startNs: bigint,
   endNs: bigint,
   topics: string[] | null,
+  includeUnresolvedTopics: string[] | undefined,
   onProgress?: (written: number) => void,
 ): Promise<{ bytes: Uint8Array; messageCount: number; startNs: bigint; endNs: bigint }> {
-  return getParserClient(bagId).editMcap(source, startNs, endNs, topics, onProgress);
+  return getParserClient(bagId).editBag(
+    source,
+    format,
+    startNs,
+    endNs,
+    topics,
+    includeUnresolvedTopics,
+    onProgress,
+  );
+}
+
+/**
+ * For `.db3` inputs, return per-topic resolution status against the bundled
+ * type registry + custom schemas. The BagEdit modal calls this on mount so it
+ * can render "schema missing" chips and offer an opt-in toggle for topics
+ * whose type isn't in the registry.
+ */
+export async function getResolvableTopicsDb3(
+  bagId: string,
+  source: BagSource,
+): Promise<Array<{ topic: string; type: string; resolvable: boolean }>> {
+  return getParserClient(bagId).getResolvableTopicsDb3(source);
 }

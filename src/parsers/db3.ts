@@ -425,3 +425,23 @@ export async function getTopicTypeDb3(
   const { topicTypeByName } = await loadDb(source);
   return topicTypeByName.get(topicName);
 }
+
+/**
+ * Sliver of the cached `.db3` state needed for v1.2 bag editing. Same pattern
+ * as `loadMcapForEdit` and `loadBagForEdit`. Exposes just the SQLite handle
+ * and the topic-name -> type map; `editDb3` runs its own SQL to do the
+ * time + topic filter, and looks types up against the bundled type registry
+ * for schema synthesis.
+ */
+export interface CachedDb3ForEdit {
+  db: SqlDatabase;
+  topicTypeByName: Map<string, string>;
+}
+
+export async function loadDb3ForEdit(source: BagSource): Promise<CachedDb3ForEdit> {
+  const meta = await loadDb(source);
+  return {
+    db: meta.db,
+    topicTypeByName: meta.topicTypeByName,
+  };
+}

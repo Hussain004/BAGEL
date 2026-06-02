@@ -2,28 +2,32 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ModalShell } from './ModalShell';
 import { useUiStore } from '../../store/uiStore';
 import { useBagStore } from '../../store/bagStore';
-import { editMcap, estimateEditCount } from '../../parsers';
+import {
+  editBag,
+  estimateEditCount,
+  getResolvableTopicsDb3,
+} from '../../parsers';
 import { downloadText } from '../../utils/export';
 import { nsToSeconds } from '../../utils/time';
 import { formatFileSize } from '../../utils/bytes';
 import type { TopicInfo } from '../../types/bag';
 
 /**
- * BagEditModal: v1.1 banner feature.
+ * BagEditModal: v1.1 banner feature, extended to every format in v1.2.
  *
- * Trims a loaded MCAP bag to a `[start, end]` window and (optionally) prunes
- * the topic set, then writes a fresh MCAP `Uint8Array` and triggers a
- * browser download. Replaces the `mcap filter` CLI workflow for the most
- * common cuts ("drop the warmup and the noisy diagnostics topics") without
- * leaving the browser.
+ * Trims a loaded bag to a `[start, end]` window and (optionally) prunes the
+ * topic set, then writes a fresh MCAP `Uint8Array` and triggers a browser
+ * download. Output is always MCAP regardless of input format - v1.2 reads
+ * MCAP, ROS1 `.bag`, and ROS2 `.db3` via format-specific edit pipelines and
+ * funnels them all through the same MCAP writer.
  *
- * v1.1 limitations the UI surfaces explicitly:
- *   - MCAP input only. ROS1 `.bag` and ROS2 `.db3` inputs disable the modal
- *     with a "coming in v1.2" message; they need schema reconstruction +
- *     message-encoding round-tripping that's its own pass of work.
+ * Surface limitations the UI still surfaces:
  *   - Output is always uncompressed MCAP. fzstd is decompress-only so we
  *     can't write zstd chunks yet; output bags reload identically and just
  *     weigh a bit more on disk.
+ *   - `.db3` topics whose type isn't in the bundled registry are flagged
+ *     as "schema missing" and unchecked by default. Users can opt them in,
+ *     in which case the bytes are written with a schema-less channel.
  */
 export function BagEditModal() {
   const close = () => useUiStore.getState().setModal(null);
@@ -43,39 +47,6 @@ export function BagEditModal() {
     );
   }
 
-  if (entry.summary.format !== 'mcap') {
-    return (
-      <ModalShell title="Edit bag" subtitle={entry.summary.fileName} onClose={close} width="md">
-        <div className="px-6 py-6 space-y-3 text-sm text-text-secondary">
-          <p>
-            v1.1 bag editing only supports{' '}
-            <code className="mono text-text-primary">.mcap</code> input. The
-            focused bag is a{' '}
-            <code className="mono text-text-primary">.{entry.summary.format}</code>{' '}
-            file.
-          </p>
-          <p className="text-text-tertiary">
-            ROS1 <code className="mono">.bag</code> and ROS2{' '}
-            <code className="mono">.db3</code> editing is queued for v1.2;
-            they need schema reconstruction and message-encoding
-            round-tripping that didn't fit in the v1.1 surface. As a
-            workaround you can convert the bag to MCAP with the official{' '}
-            <code className="mono">mcap convert</code> CLI and then re-open it
-            here.
-          </p>
-        </div>
-        <footer className="px-6 py-3 border-t border-border bg-surface/40 flex items-center justify-end">
-          <button
-            onClick={close}
-            className="px-3 py-1.5 rounded-md text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
-          >
-            Close
-          </button>
-        </footer>
-      </ModalShell>
-    );
-  }
-
   return <BagEditForm entry={entry} onClose={close} />;
 }
 
@@ -90,23 +61,73 @@ function BagEditForm({ entry, onClose }: FormProps) {
 
   // Trim window kept in bag-local seconds for the slider, converted to ns at
   // submit time. Keeping the slider in seconds avoids BigInt drift in the
-  // intermediate state and the user reads "0.0s – 30.0s" instead of raw ns.
+  // intermediate state and the user reads "0.0s - 30.0s" instead of raw ns.
   const [startSec, setStartSec] = useState(0);
   const [endSec, setEndSec] = useState(bagDurationSec);
 
-  // Topic selection. Default: every topic with messages is included; the
-  // empty-count topics are still listed (some bags advertise topics with
-  // zero published messages) so users can drop them if they want, but
-  // they're unchecked-by-default to match the practical "keep what matters"
-  // expectation.
+  // .db3 pre-flight: which topics can the bundled registry actually resolve?
+  // Topics with no resolvable schema are still listed and selectable, but
+  // unchecked by default and rendered with a "schema missing" chip. The
+  // user can opt them in; their bytes get written into the output with a
+  // schema-less MCAP channel.
+  const [unresolvedTopics, setUnresolvedTopics] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [resolutionLoading, setResolutionLoading] = useState(
+    summary.format === 'db3',
+  );
+
+  useEffect(() => {
+    if (summary.format !== 'db3') {
+      setUnresolvedTopics(new Set());
+      setResolutionLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setResolutionLoading(true);
+    void getResolvableTopicsDb3(entry.id, entry.source)
+      .then((resolutions) => {
+        if (cancelled) return;
+        const unresolved = new Set<string>();
+        for (const r of resolutions) {
+          if (!r.resolvable) unresolved.add(r.topic);
+        }
+        setUnresolvedTopics(unresolved);
+      })
+      .catch(() => {
+        // If the pre-flight fails, fall back to letting the user submit
+        // without warnings - editDb3 will skip unresolved topics with a
+        // console warning regardless.
+        if (!cancelled) setUnresolvedTopics(new Set());
+      })
+      .finally(() => {
+        if (!cancelled) setResolutionLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [entry.id, entry.source, summary.format]);
+
+  // Topic selection. Default: every topic with messages AND with a resolvable
+  // schema (for .db3) is included. Empty-count topics are still listed (some
+  // bags advertise topics with zero published messages) so users can drop
+  // them if they want, but they're unchecked-by-default to match the
+  // practical "keep what matters" expectation.
   const initialSelected = useMemo(() => {
     const set = new Set<string>();
     for (const t of summary.topics) {
-      if (t.messageCount > 0) set.add(t.name);
+      if (t.messageCount === 0) continue;
+      if (unresolvedTopics.has(t.name)) continue;
+      set.add(t.name);
     }
     return set;
-  }, [summary.topics]);
+  }, [summary.topics, unresolvedTopics]);
   const [selected, setSelected] = useState<Set<string>>(initialSelected);
+  // Reset the selection when the unresolved-set finishes loading so the
+  // .db3 pre-flight result actually narrows the default.
+  useEffect(() => {
+    setSelected(initialSelected);
+  }, [initialSelected]);
   const [topicFilterQ, setTopicFilterQ] = useState('');
 
   const [filename, setFilename] = useState(() => defaultEditedFilename(summary.fileName));
@@ -139,7 +160,14 @@ function BagEditForm({ entry, onClose }: FormProps) {
         setEstimateMsgs(0);
         return;
       }
-      void estimateEditCount(entry.id, entry.source, startNs, endNs, topics)
+      void estimateEditCount(
+        entry.id,
+        entry.source,
+        summary.format,
+        startNs,
+        endNs,
+        topics,
+      )
         .then(setEstimateMsgs)
         .catch(() => setEstimateMsgs(null));
     }, 300);
@@ -151,6 +179,7 @@ function BagEditForm({ entry, onClose }: FormProps) {
   }, [
     entry.id,
     entry.source,
+    summary.format,
     summary.startTime,
     summary.topics.length,
     startSec,
@@ -199,16 +228,24 @@ function BagEditForm({ entry, onClose }: FormProps) {
     setWriting(true);
     try {
       const topics = selected.size === summary.topics.length ? null : Array.from(selected);
+      // .db3 only: the subset of `topics` that we know are schema-less.
+      // The worker writes those with `schemaId: 0` instead of skipping.
+      const includeUnresolvedTopics =
+        summary.format === 'db3'
+          ? Array.from(selected).filter((t) => unresolvedTopics.has(t))
+          : undefined;
       const startNs =
         summary.startTime + BigInt(Math.round(startSec * 1_000_000_000));
       const endNs = summary.startTime + BigInt(Math.round(endSec * 1_000_000_000));
-      const result = await editMcap(
+      const result = await editBag(
         entry.id,
         entry.source,
+        summary.format,
         startNs,
         endNs,
         topics,
-        (written) => setProgress(written),
+        includeUnresolvedTopics,
+        (written: number) => setProgress(written),
       );
       // Hand the bytes to the browser as a download. We can't reuse
       // `downloadText` directly (it wraps a string), so we drop down to a
@@ -265,6 +302,26 @@ function BagEditForm({ entry, onClose }: FormProps) {
           uncompressed but fully indexed so it re-opens here (or in any other
           MCAP tool) with no further processing.
         </p>
+        {summary.format === 'bag' && (
+          <p className="text-xs text-text-tertiary leading-relaxed">
+            Reading a ROS1{' '}
+            <code className="mono text-text-secondary">.bag</code>: schemas
+            from the bag's connection records flow through as{' '}
+            <code className="mono text-text-secondary">ros1msg</code> in the
+            output, and message bytes copy through with{' '}
+            <code className="mono text-text-secondary">messageEncoding: ros1</code>.
+          </p>
+        )}
+        {summary.format === 'db3' && (
+          <p className="text-xs text-text-tertiary leading-relaxed">
+            Reading a ROS2{' '}
+            <code className="mono text-text-secondary">.db3</code>: schemas
+            come from BAGEL's bundled type registry (plus any custom schemas
+            you've pasted). Topics whose type isn't in the registry are
+            flagged below and excluded by default; tick the checkbox to
+            include them anyway with a schema-less channel.
+          </p>
+        )}
 
         <section>
           <SectionHeader
@@ -346,6 +403,11 @@ function BagEditForm({ entry, onClose }: FormProps) {
               </button>
             )}
           </div>
+          {summary.format === 'db3' && resolutionLoading && (
+            <p className="text-[10px] text-text-muted mt-1 mono">
+              Checking topic schemas against the registry...
+            </p>
+          )}
           <ul className="mt-2 max-h-56 overflow-y-auto rounded-md border border-border bg-bg-primary/40 divide-y divide-border/60">
             {filteredTopics.map((t) => (
               <TopicRow
@@ -353,6 +415,7 @@ function BagEditForm({ entry, onClose }: FormProps) {
                 topic={t}
                 checked={selected.has(t.name)}
                 onToggle={() => onToggleTopic(t.name)}
+                schemaMissing={unresolvedTopics.has(t.name)}
               />
             ))}
             {filteredTopics.length === 0 && (
@@ -575,10 +638,12 @@ function TopicRow({
   topic,
   checked,
   onToggle,
+  schemaMissing,
 }: {
   topic: TopicInfo;
   checked: boolean;
   onToggle: () => void;
+  schemaMissing?: boolean;
 }) {
   return (
     <li>
@@ -592,6 +657,14 @@ function TopicRow({
         <span className="mono text-xs text-text-primary truncate flex-1">
           {topic.name}
         </span>
+        {schemaMissing && (
+          <span
+            className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-accent-amber/40 bg-accent-amber/10 text-accent-amber shrink-0"
+            title="This topic's type isn't in BAGEL's bundled registry. Checking includes the bytes anyway with a schema-less channel."
+          >
+            schema missing
+          </span>
+        )}
         <span className="text-[10px] text-text-tertiary mono shrink-0">
           {topic.type}
         </span>

@@ -429,3 +429,51 @@ export async function getTopicTypeBag(
   const meta = await loadBag(source);
   return meta.topicMeta.get(topicName)?.type;
 }
+
+/**
+ * Sliver of the cached ROS1 state needed for v1.2 bag editing. Same pattern
+ * as `loadMcapForEdit` in `mcap.ts`: re-exposes just what `parsers/editRos1.ts`
+ * needs without leaking the full `CachedBag` shape into another module.
+ */
+export interface CachedBagForEdit {
+  bag: Bag;
+  /** Connection records keyed by connection id. The edit path reads each
+   *  message's `connectionId` and walks back to (topic, type, .msg text). */
+  connectionsById: Map<
+    number,
+    { topic: string; type: string; messageDefinition: string }
+  >;
+  /** First-connection metadata per topic; used for the per-topic message-count
+   *  estimator and pre-flight UI. */
+  topicMeta: Map<string, { type: string; messageDefinition: string }>;
+  /** Per-connection message counts summed across every chunk index. Lets the
+   *  estimator scale by the topic include set without re-walking chunks. */
+  messageCountByConn: Map<number, number>;
+}
+
+export async function loadBagForEdit(source: BagSource): Promise<CachedBagForEdit> {
+  const meta = await loadBag(source);
+  const connectionsById = new Map<
+    number,
+    { topic: string; type: string; messageDefinition: string }
+  >();
+  for (const [id, c] of meta.connectionsById) {
+    connectionsById.set(id, {
+      topic: c.topic,
+      type: c.type,
+      messageDefinition: c.messageDefinition,
+    });
+  }
+  const messageCountByConn = new Map<number, number>();
+  for (const chunkInfo of meta.bag.chunkInfos) {
+    for (const { conn, count } of chunkInfo.connections) {
+      messageCountByConn.set(conn, (messageCountByConn.get(conn) ?? 0) + count);
+    }
+  }
+  return {
+    bag: meta.bag,
+    connectionsById,
+    topicMeta: meta.topicMeta,
+    messageCountByConn,
+  };
+}

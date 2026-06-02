@@ -30,11 +30,17 @@ type DecodedMessage = { timestamp: bigint; value: Record<string, unknown> | null
 type DecodedPointCloud = (PointCloudExtraction & { timestamp: bigint }) | null;
 type DecodedLaserScan = (LaserScanExtraction & { timestamp: bigint }) | null;
 
-export interface EditMcapResult {
+export interface EditBagResult {
   bytes: Uint8Array;
   messageCount: number;
   startNs: bigint;
   endNs: bigint;
+}
+
+export interface Db3TopicResolution {
+  topic: string;
+  type: string;
+  resolvable: boolean;
 }
 
 interface PendingRequest {
@@ -277,36 +283,62 @@ class ParserClient {
    * Estimate how many messages would survive an edit, without actually
    * writing the output. Used by the BagEdit modal to size its progress
    * bar before the user hits "Edit & download".
+   *
+   * v1.2: takes a `format` so the worker can dispatch to the right
+   * estimator (MCAP statistics scan, ROS1 chunk-info sum, or .db3 SQL count).
    */
   estimateEditCount(
     source: BagSource,
+    format: BagFormat,
     startNs: bigint,
     endNs: bigint,
     topics: string[] | null,
   ): Promise<number> {
-    return this.request<number>('estimateEditCount', { source, startNs, endNs, topics });
+    return this.request<number>('estimateEditCount', {
+      source,
+      format,
+      startNs,
+      endNs,
+      topics,
+    });
   }
 
   /**
-   * Stream-edit an MCAP bag: drop messages outside `[startNs, endNs]` and
-   * (optionally) outside the topic filter, then return a fresh MCAP `Uint8Array`.
+   * Stream-edit a bag (any supported format): drop messages outside
+   * `[startNs, endNs]` and (optionally) outside the topic filter, then return
+   * a fresh MCAP `Uint8Array`. Output is always MCAP regardless of input.
    *
    * `onProgress` fires every ~250 messages with the running write count so
    * the BagEdit modal can update its progress bar. The promise resolves
    * once the writer has flushed its summary section + index.
+   *
+   * v1.2: replaces v1.1's MCAP-only `editMcap`. `format` selects the
+   * read path; `includeUnresolvedTopics` is .db3-only (caller opt-in for
+   * topics whose type isn't in the bundled registry).
    */
-  editMcap(
+  editBag(
     source: BagSource,
+    format: BagFormat,
     startNs: bigint,
     endNs: bigint,
     topics: string[] | null,
+    includeUnresolvedTopics?: string[],
     onProgress?: (written: number) => void,
-  ): Promise<EditMcapResult> {
-    return this.request<EditMcapResult>(
-      'editMcap',
-      { source, startNs, endNs, topics },
+  ): Promise<EditBagResult> {
+    return this.request<EditBagResult>(
+      'editBag',
+      { source, format, startNs, endNs, topics, includeUnresolvedTopics },
       { onProgress },
     );
+  }
+
+  /**
+   * For `.db3` inputs, return per-topic resolution status against the bundled
+   * type registry + custom schemas. The BagEdit modal uses this to render
+   * "schema missing" chips and gate the opt-in toggle before submit.
+   */
+  getResolvableTopicsDb3(source: BagSource): Promise<Db3TopicResolution[]> {
+    return this.request<Db3TopicResolution[]>('getResolvableTopicsDb3', { source });
   }
 }
 

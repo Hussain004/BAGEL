@@ -12,7 +12,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-8-646cff.svg)](https://vite.dev/)
-[![Version](https://img.shields.io/badge/version-1.1.0-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
+[![Version](https://img.shields.io/badge/version-1.2.0-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
 
 [**→ Live Demo**](https://bagel-ros2.vercel.app) · [Report Bug](https://github.com/Hussain004/BAGEL/issues) · [Request Feature](https://github.com/Hussain004/BAGEL/issues)
 
@@ -93,7 +93,7 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 - **Drag-to-dock** VSCode-style panel layout. Per-panel state (3D display settings, plot zoom, TF selection) survives docking.
 - **Sharable URL hashes** encode layout + playhead + bag URL + per-bag anchors. v0.5 / v0.7 / v0.9 hash forms still parse, so old links keep working.
 - **Per-topic CSV / NDJSON export** from every panel header.
-- **Bag editing / MCAP clip export**: trim the time range, drop topics you don't need, download a fresh indexed `.mcap`. Replaces the `mcap filter` CLI workflow for the common cuts. MCAP input only in v1.1; ROS1 `.bag` and `.db3` editing queued for v1.2. *(v1.1)*
+- **Bag editing / MCAP clip export**: trim the time range, drop topics you don't need, download a fresh indexed `.mcap`. Replaces the `mcap filter` CLI workflow for the common cuts. **v1.2 extends the editor to ROS1 `.bag` and ROS2 `.db3` inputs** alongside MCAP - output is always MCAP regardless of input format. `.db3` topics whose type isn't in BAGEL's bundled registry are flagged in the modal and excluded by default; opt them in to include them with a schema-less channel. *(v1.1 / v1.2)*
 - **Paste-your-own `.msg` schema** flow for ROS2 `.db3` topics whose types aren't in the bundled registry. Persisted across sessions in `localStorage`.
 
 ### UX and quality
@@ -111,6 +111,7 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 
 ### Earlier version highlights at a glance
 
+- **v1.2**: Cross-format bag editing. The v1.1 editor now also accepts ROS1 `.bag` and ROS2 `.db3` inputs, both producing fresh indexed MCAP output. ROS1 schemas flow through from connection records as `ros1msg`; `.db3` schemas are synthesised on demand from the bundled type registry. 23 new tests; total suite now 203.
 - **v1.1**: Bag editing. Trim time range, drop topics, download a fresh indexed MCAP. Browser-native replacement for `mcap filter`. 12 new tests; total suite now 180.
 - **v1.0**: 168-test Vitest suite + CI gate, anchor UI for multi-bag, light theme, `DiagnosticArray` swimlane panel, `rcl_interfaces/Log` virtualised viewer.
 - **v0.9 / v0.9.1**: Multi-bag overlay (per-bag Web Worker + three time-alignment modes), `nav_msgs/OccupancyGrid` rendering, OpenStreetMap tile underlay for `NavSatFix`, remote URL loading via HTTP Range.
@@ -127,12 +128,11 @@ For the full detail behind each release (including design rationale and implemen
 
 ### Roadmap
 
-v1.0 stabilised the surface BAGEL already covered (test suite + CI gate, anchor UI, light theme, diagnostics + log panels). v1.1 ships the first feature that replaces a CLI workflow rather than just visualises one: in-browser MCAP bag editing (trim time range, drop topics, download a fresh indexed `.mcap`). Possible future directions:
+v1.0 stabilised the surface BAGEL already covered (test suite + CI gate, anchor UI, light theme, diagnostics + log panels). v1.1 shipped the first feature that replaces a CLI workflow rather than just visualises one: in-browser MCAP bag editing. v1.2 extends that editor to ROS1 `.bag` and ROS2 `.db3` inputs so the "replace a CLI workflow" promise covers every format BAGEL reads. Possible future directions:
 
 | Idea | Notes |
 |---|---|
-| ROS1 `.bag` + ROS2 `.db3` editing | v1.1's editor is MCAP-in / MCAP-out. Extending the editor to ROS1 input needs `ros1msg` schema + `ros1` message-encoding round-tripping; `.db3` input needs schema reconstruction from the bundled type registry (since `.db3` doesn't embed schemas). Earmarked for v1.2 as a continuation of the v1.1 banner. |
-| Zstd-compressed edit output | v1.1's edited bags are always uncompressed because `fzstd` is decompress-only; we don't bundle a pure-JS zstd *encoder* yet. Output bags reload identically; they just weigh 2-4x the zstd equivalent. Lands once a sensible encoder is available. |
+| Zstd-compressed edit output | Edited bags are always uncompressed because `fzstd` is decompress-only; we don't bundle a pure-JS zstd *encoder* yet. Output bags reload identically; they just weigh 2-4x the zstd equivalent. Lands once a sensible encoder is available. |
 | Plugin panels | Lets users build custom views (e.g. depth-image colorisation, vendor-specific marker overlays, OBD-II decoders) against a stable panel API. Earmarked for v1.2 once internal panels have stabilised so the API becomes a stability contract so shipping it half-baked is a one-way door. |
 | Cloud-hosted shareable URLs | The local hash is great for personal reuse (a tiny Vercel function + KV store would unlock real link-sharing with layouts that survive a bag move). Designed in the v1.0 plan, deferred to a follow-up so it can land with the deploy infra change. |
 | `MESH_RESOURCE` / `TRIANGLE_LIST` marker support | v0.8 still ships pink-wireframe placeholders. `TRIANGLE_LIST` is cheap; `MESH_RESOURCE` needs a `package://` → URL resolver flow that's a meaningful UX design call. |

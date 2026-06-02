@@ -68,9 +68,11 @@ export function Toolbar() {
 
   if (!bag) return null;
   const multi = bagOrder.length > 1;
-  // v1.1: bag editing is MCAP-only, so the button stays hidden on .bag /
-  // .db3 focus and doesn't dangle a "click for a v1.2 placeholder" affordance.
-  const canEditFocusedBag = bag.format === 'mcap';
+  // v1.2: bag editing now covers every format BAGEL reads. Output is MCAP
+  // regardless of the source - the format-specific edit pipelines hand off
+  // to the same MCAP writer.
+  const canEditFocusedBag =
+    bag.format === 'mcap' || bag.format === 'bag' || bag.format === 'db3';
 
   return (
     <header className="glass-strong px-6 py-3 flex items-center justify-between animate-fade-in flex-shrink-0 z-50 gap-4">
@@ -173,7 +175,7 @@ export function Toolbar() {
           <button
             onClick={() => setModal('bag-edit')}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-text-secondary hover:text-text-primary hover:bg-surface-hover border border-border hover:border-accent-blue/40 transition-all"
-            title="Trim time range and drop topics, then download as a new MCAP (v1.1)"
+            title="Trim time range and drop topics, then download as a new MCAP (v1.2: works for .mcap / .bag / .db3)"
             aria-label="Edit bag - trim and re-export"
           >
             <EditIcon />

@@ -31,11 +31,11 @@ import {
 } from '../parsers/typeRegistry';
 import { clearDb3DecodedCache } from '../parsers/db3';
 import {
-  editMcapBag,
-  estimateMessageCount,
+  editBag,
+  estimateMessageCountForFormat,
   type EditOptions,
 } from '../parsers/edit';
-import { loadMcapForEdit } from '../parsers/mcap';
+import { getResolvableTopicsDb3 } from '../parsers/editDb3';
 import type { ColorMode, HeightAxis, PointCloudExtraction } from '../utils/pointcloud';
 import type { LaserScanExtraction } from '../utils/laserscan';
 import type { BagSource } from '../parsers/source';
@@ -55,7 +55,8 @@ type Method =
   | 'setCustomSchemas'
   | 'validateSchema'
   | 'estimateEditCount'
-  | 'editMcap';
+  | 'editBag'
+  | 'getResolvableTopicsDb3';
 
 interface BaseRequest<P> {
   id: number;
@@ -110,17 +111,24 @@ interface ValidateSchemaParams {
 }
 interface EstimateEditCountParams {
   source: BagSource;
+  format: BagFormat;
   startNs: bigint;
   endNs: bigint;
   /** `null` means "all topics". */
   topics: string[] | null;
 }
-interface EditMcapParams {
+interface EditBagParams {
   source: BagSource;
+  format: BagFormat;
   startNs: bigint;
   endNs: bigint;
   /** `null` means "all topics". */
   topics: string[] | null;
+  /** v1.2 .db3-only: unresolved-type topics the user opted in to. */
+  includeUnresolvedTopics?: string[];
+}
+interface GetResolvableTopicsDb3Params {
+  source: BagSource;
 }
 
 type WorkerRequest =
@@ -134,7 +142,8 @@ type WorkerRequest =
   | BaseRequest<SetCustomSchemasParams>
   | BaseRequest<ValidateSchemaParams>
   | BaseRequest<EstimateEditCountParams>
-  | BaseRequest<EditMcapParams>
+  | BaseRequest<EditBagParams>
+  | BaseRequest<GetResolvableTopicsDb3Params>
   | BaseRequest<undefined>;
 
 interface ProgressResponse {
@@ -163,11 +172,17 @@ interface ErrorResponse {
   error: string;
 }
 
-export interface EditMcapResult {
+export interface EditBagResult {
   bytes: Uint8Array;
   messageCount: number;
   startNs: bigint;
   endNs: bigint;
+}
+
+export interface Db3TopicResolutionDto {
+  topic: string;
+  type: string;
+  resolvable: boolean;
 }
 
 export type WorkerResponse =
@@ -183,7 +198,8 @@ export type WorkerResponse =
   | ResultResponse<string[]>
   | ResultResponse<{ ok: true } | { ok: false; error: string }>
   | ResultResponse<number>
-  | ResultResponse<EditMcapResult>
+  | ResultResponse<EditBagResult>
+  | ResultResponse<Db3TopicResolutionDto[]>
   | ResultResponse<void>
   | ErrorResponse;
 
@@ -301,18 +317,22 @@ ctx.addEventListener('message', async (e: MessageEvent<WorkerRequest>) => {
         return;
       }
       case 'estimateEditCount': {
-        const { source, startNs, endNs, topics } = req.params as EstimateEditCountParams;
-        const meta = await loadMcapForEdit(source);
+        const { source, format, startNs, endNs, topics } =
+          req.params as EstimateEditCountParams;
         const filter = topics ? new Set(topics) : null;
-        respond(estimateMessageCount(meta, startNs, endNs, filter));
+        respond(
+          await estimateMessageCountForFormat(source, format, startNs, endNs, filter),
+        );
         return;
       }
-      case 'editMcap': {
-        const { source, startNs, endNs, topics } = req.params as EditMcapParams;
+      case 'editBag': {
+        const { source, format, startNs, endNs, topics, includeUnresolvedTopics } =
+          req.params as EditBagParams;
         const editOptions: EditOptions = {
           startNs,
           endNs,
           topics: topics ?? undefined,
+          includeUnresolvedTopics: includeUnresolvedTopics ?? undefined,
           onProgress: (written) =>
             ctx.postMessage({
               id: req.id,
@@ -320,10 +340,15 @@ ctx.addEventListener('message', async (e: MessageEvent<WorkerRequest>) => {
               decoded: written,
             } satisfies ProgressResponse),
         };
-        const result = await editMcapBag(source, editOptions);
+        const result = await editBag(source, format, editOptions);
         // Transfer the underlying buffer back zero-copy: the worker has no
         // further use for the bytes once they reach the main thread.
         respond(result, [result.bytes.buffer] as Transferable[]);
+        return;
+      }
+      case 'getResolvableTopicsDb3': {
+        const { source } = req.params as GetResolvableTopicsDb3Params;
+        respond(await getResolvableTopicsDb3(source));
         return;
       }
       default:

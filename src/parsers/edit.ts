@@ -28,6 +28,7 @@
 
 import { McapWriter, type IWritable } from '@mcap/core';
 import type { BagSource } from './source';
+import type { BagFormat } from '../types/bag';
 import {
   loadMcapForEdit,
   type CachedMcapForEdit,
@@ -47,6 +48,15 @@ export interface EditOptions {
   topics?: string[];
   /** Profile string for the output MCAP header. Defaults to the input bag's profile. */
   profile?: string;
+  /**
+   * v1.2 `.db3` edit-only opt-in. Topic names whose type isn't in the
+   * bundled registry but the user has explicitly chosen to include anyway.
+   * Their messages get written with a schema-less channel (MCAP schemaId 0)
+   * - readable by tools that don't need schema text, including BAGEL after
+   * the user pastes a schema for the type. Has no effect on MCAP or ROS1
+   * edits since both formats embed their schemas in the source bag.
+   */
+  includeUnresolvedTopics?: string[];
   /**
    * Soft progress hint. Total messages-to-write is estimated upstream from
    * statistics; callers can show "wrote N of ~M". The estimate is allowed
@@ -298,4 +308,56 @@ export async function editMcapBag(
     startNs: firstNs ?? options.startNs,
     endNs: lastNs ?? options.endNs,
   };
+}
+
+/**
+ * Format-aware edit dispatcher. Forwards to `editMcapBag`, `editRos1Bag`,
+ * or `editDb3Bag` based on the source bag's format. All three return the
+ * same `EditResult` shape - an in-memory MCAP `Uint8Array` plus a small
+ * bookkeeping struct - so callers don't need format-specific branches.
+ *
+ * v1.2 banner: the editor surface now covers every format BAGEL reads.
+ */
+export async function editBag(
+  source: BagSource,
+  format: BagFormat,
+  options: EditOptions,
+): Promise<EditResult> {
+  if (format === 'mcap') return editMcapBag(source, options);
+  if (format === 'bag') {
+    const { editRos1Bag } = await import('./editRos1');
+    return editRos1Bag(source, options);
+  }
+  if (format === 'db3') {
+    const { editDb3Bag } = await import('./editDb3');
+    return editDb3Bag(source, options);
+  }
+  throw new Error(`No editor for format: ${format}`);
+}
+
+/**
+ * Format-aware estimator. Falls through to the MCAP-specific
+ * `estimateMessageCount` already in this module for `.mcap`, and delegates
+ * to the format-specific estimators for `.bag` and `.db3`.
+ */
+export async function estimateMessageCountForFormat(
+  source: BagSource,
+  format: BagFormat,
+  startNs: bigint,
+  endNs: bigint,
+  topics: Set<string> | null,
+): Promise<number> {
+  if (format === 'mcap') {
+    const meta = await loadMcapForEdit(source);
+    return estimateMessageCount(meta, startNs, endNs, topics);
+  }
+  if (format === 'bag') {
+    const { estimateMessageCountRos1 } = await import('./editRos1');
+    return estimateMessageCountRos1(source, startNs, endNs, topics);
+  }
+  if (format === 'db3') {
+    const { estimateMessageCountDb3 } = await import('./editDb3');
+    return estimateMessageCountDb3(source, startNs, endNs, topics);
+  }
+  throw new Error(`No estimator for format: ${format}`);
 }
