@@ -2,6 +2,7 @@ import { useUiStore } from '../../store/uiStore';
 import { AboutModal } from './AboutModal';
 import { ShortcutsModal } from './ShortcutsModal';
 import { SchemaPasteModal } from './SchemaPasteModal';
+import { BagEditModal } from './BagEditModal';
 
 /**
  * ModalHost — Renders whichever modal the UI store has selected. Mounted once
@@ -20,6 +21,7 @@ export function ModalHost() {
     <>
       {modal === 'about' && <AboutModal />}
       {modal === 'shortcuts' && <ShortcutsModal />}
+      {modal === 'bag-edit' && <BagEditModal />}
       {schemaPaste && <SchemaPasteModal />}
     </>
   );
