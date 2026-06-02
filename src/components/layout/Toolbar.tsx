@@ -68,6 +68,9 @@ export function Toolbar() {
 
   if (!bag) return null;
   const multi = bagOrder.length > 1;
+  // v1.1: bag editing is MCAP-only — the button stays hidden on .bag /
+  // .db3 focus so it doesn't dangle a "click for a v1.2 placeholder" affordance.
+  const canEditFocusedBag = bag.format === 'mcap';
 
   return (
     <header className="glass-strong px-6 py-3 flex items-center justify-between animate-fade-in flex-shrink-0 z-50 gap-4">
@@ -165,6 +168,17 @@ export function Toolbar() {
             entry={bags.get(focusBagId)!}
             onSetAnchor={onSetAnchor}
           />
+        )}
+        {canEditFocusedBag && (
+          <button
+            onClick={() => setModal('bag-edit')}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-text-secondary hover:text-text-primary hover:bg-surface-hover border border-border hover:border-accent-blue/40 transition-all"
+            title="Trim time range and drop topics, then download as a new MCAP (v1.1)"
+            aria-label="Edit bag — trim and re-export"
+          >
+            <EditIcon />
+            <span className="hidden xl:inline">Edit</span>
+          </button>
         )}
         <button
           onClick={toggleTheme}
@@ -317,6 +331,24 @@ function AnchorIcon() {
     >
       <circle cx="12" cy="5" r="2" />
       <path strokeLinecap="round" d="M12 7v14M5 12c0 4 3 7 7 7s7-3 7-7M3 12h4M17 12h4" />
+    </svg>
+  );
+}
+
+function EditIcon() {
+  // Scissors icon — universal "cut/trim" affordance.
+  return (
+    <svg
+      className="w-3.5 h-3.5"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={1.7}
+      aria-hidden="true"
+    >
+      <circle cx="6" cy="6" r="3" />
+      <circle cx="6" cy="18" r="3" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 6l12 12M9 18L21 6" />
     </svg>
   );
 }

@@ -167,3 +167,35 @@ export async function validateSchema(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   return getSharedParserClient().validateSchema(schemaText);
 }
+
+/**
+ * Estimate the number of messages that would survive an edit (time-range
+ * trim + topic filter). Used by the BagEdit modal to size its progress bar
+ * before the actual write begins.
+ */
+export async function estimateEditCount(
+  bagId: string,
+  source: BagSource,
+  startNs: bigint,
+  endNs: bigint,
+  topics: string[] | null,
+): Promise<number> {
+  return getParserClient(bagId).estimateEditCount(source, startNs, endNs, topics);
+}
+
+/**
+ * Stream-edit an MCAP bag in the per-bag worker — filters by time range and
+ * topic set, then returns a fresh in-memory MCAP `Uint8Array` ready for
+ * download. Throws when the source isn't an indexed MCAP (other formats are
+ * deferred to v1.2). The v1.1 banner feature.
+ */
+export async function editMcap(
+  bagId: string,
+  source: BagSource,
+  startNs: bigint,
+  endNs: bigint,
+  topics: string[] | null,
+  onProgress?: (written: number) => void,
+): Promise<{ bytes: Uint8Array; messageCount: number; startNs: bigint; endNs: bigint }> {
+  return getParserClient(bagId).editMcap(source, startNs, endNs, topics, onProgress);
+}
