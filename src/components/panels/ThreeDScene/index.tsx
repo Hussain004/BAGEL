@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
 import { useBagLocalPlayhead } from '../../../hooks/useBagLocalPlayhead';
@@ -14,12 +14,21 @@ import { PanelShell } from '../PanelShell';
 import { getTopicColor } from '../../../utils/color';
 import { nsToSeconds } from '../../../utils/time';
 import {
+  isCameraInfoType,
   isCloudType,
   isLaserScanType,
   isMarkerArrayType,
   isMarkerType,
   isOccupancyGridType,
 } from '../../../utils/messages';
+import {
+  parseCameraInfo,
+  type CameraIntrinsics,
+} from '../../../hooks/useCameraInfo';
+import {
+  createCameraFrustum,
+  type CameraFrustumObject,
+} from './cameraFrustum';
 import { useMessageAtTime } from '../../../hooks/useMessageAtTime';
 import { useTopicMessages, type DecodedMessage } from '../../../hooks/useTopicMessages';
 import { useTFGraph, type TFGraph } from '../TFTree/useTFGraph';
@@ -306,6 +315,8 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     pivot,
     hiddenMarkerNamespaces,
     mapAlpha,
+    cameraFrustumsOn,
+    cameraFrustumFar,
   } = settings;
 
   const setColorMode = (v: ColorMode) => updateSettings(panelId, { colorMode: v });
@@ -330,6 +341,10 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     updateSettings(panelId, { hiddenMarkerNamespaces: Array.from(cur).sort() });
   };
   const setMapAlpha = (v: number) => updateSettings(panelId, { mapAlpha: v });
+  const setCameraFrustumsOn = (v: boolean) =>
+    updateSettings(panelId, { cameraFrustumsOn: v });
+  const setCameraFrustumFar = (v: number) =>
+    updateSettings(panelId, { cameraFrustumFar: v });
 
   // Footer stats for the accumulator. Updated on every successful append;
   // derived from the THREE.js accumulator state which is recreated on every
@@ -1110,6 +1125,144 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     refs.renderOnce();
   }, [robotModel, graph, worldFrame, playheadNs, upFixMatrix, sceneRef]);
 
+  // ─── Camera frustums (v1.3.2) ──────────────────────────────────────────
+  //
+  // For every `sensor_msgs/CameraInfo` topic in the bag, render a wireframe
+  // pyramid in the camera's optical frame. The frustum is sized by the
+  // intrinsics (fx, fy, cx, cy, width, height) and a single far-plane
+  // distance set per-panel. Hidden subcomponents below the panel mount one
+  // `useMessageAtTime` per camera and push parsed intrinsics into the map
+  // here; the lifecycle effect mirrors the map onto the Three.js scene.
+  const cameraInfoTopics = useMemo<string[]>(() => {
+    if (!bag) return [];
+    return bag.topics
+      .filter((t) => isCameraInfoType(t.type))
+      .map((t) => t.name)
+      .sort();
+  }, [bag]);
+
+  const [cameraInfos, setCameraInfos] = useState<Map<string, CameraIntrinsics>>(
+    new Map(),
+  );
+  const handleCameraInfoUpdate = useCallback(
+    (topic: string, info: CameraIntrinsics | null) => {
+      setCameraInfos((prev) => {
+        const existing = prev.get(topic) ?? null;
+        // No-op when the underlying intrinsics didn't actually change; this
+        // keeps the lifecycle effect from re-running on every playhead tick.
+        if (existing && info && cameraIntrinsicsEqual(existing, info)) return prev;
+        if (!existing && !info) return prev;
+        const next = new Map(prev);
+        if (info) next.set(topic, info);
+        else next.delete(topic);
+        return next;
+      });
+    },
+    [],
+  );
+  // (Topic deletions on bag swap are handled by the `CameraInfoFeed`'s
+  // own unmount cleanup, which calls `onUpdate(topic, null)`. No
+  // separate sync-effect is needed here.)
+
+  const cameraFrustumsRef = useRef<Map<string, {
+    frustum: CameraFrustumObject;
+    cache: { key: string; matrix: THREE.Matrix4 } | null;
+  }>>(new Map());
+
+  // Lifecycle: create / dispose frustums to match the active topic set.
+  // Lint disable: the `cameraFrustumsRef` map content is the canonical
+  // source of truth for the panel's Three.js scene-graph contribution.
+  // Mutating it from effects is the same pattern the rest of the panel
+  // already uses for `objectsRef` (cloud, accumulator, marker set, etc.)
+  // and is the standard idiom for hosting an imperative Three.js scene
+  // alongside React state.
+  /* eslint-disable react-hooks/immutability */
+  useEffect(() => {
+    const refs = sceneRef.current;
+    if (!refs) return;
+    const owned = cameraFrustumsRef.current;
+    const desired = cameraFrustumsOn ? new Set(cameraInfos.keys()) : new Set<string>();
+    // Drop frustums whose topic is no longer wanted.
+    for (const [topic, entry] of [...owned]) {
+      if (!desired.has(topic)) {
+        refs.worldGroup.remove(entry.frustum.object);
+        entry.frustum.dispose();
+        owned.delete(topic);
+      }
+    }
+    // Add frustums for new topics. Each gets its own LineSegments material
+    // because tinting per-camera (a v1.3.x follow-up) is easier if every
+    // frustum already owns its material instance.
+    for (const topic of desired) {
+      if (owned.has(topic)) continue;
+      const f = createCameraFrustum();
+      refs.worldGroup.add(f.object);
+      owned.set(topic, { frustum: f, cache: null });
+    }
+    refs.renderOnce();
+  }, [cameraInfos, cameraFrustumsOn, sceneRef]);
+
+  // Unmount cleanup: dispose every frustum when the panel itself goes away.
+  useEffect(() => {
+    // Capture the refs at effect-setup time so the cleanup function reads
+    // the same instances even if React has nulled them by teardown.
+    const refsAtSetup = sceneRef.current;
+    const ownedAtSetup = cameraFrustumsRef.current;
+    return () => {
+      for (const [, entry] of ownedAtSetup) {
+        if (refsAtSetup) refsAtSetup.worldGroup.remove(entry.frustum.object);
+        entry.frustum.dispose();
+      }
+      ownedAtSetup.clear();
+    };
+    // Run only on unmount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Per-tick: refresh geometry for the current far plane + apply TF chain
+  // from each camera's optical frame to the world frame. Cheap enough to
+  // run unconditionally; the geometry update reuses the same Float32Array
+  // when the vertex count is stable.
+  useEffect(() => {
+    const refs = sceneRef.current;
+    if (!refs) return;
+    const owned = cameraFrustumsRef.current;
+    for (const [topic, entry] of owned) {
+      const intrinsics = cameraInfos.get(topic);
+      if (!intrinsics) {
+        entry.frustum.object.visible = false;
+        continue;
+      }
+      entry.frustum.object.visible = true;
+      entry.frustum.update(intrinsics, cameraFrustumFar);
+      // Cache key wraps a per-camera ref so each camera keeps its own
+      // TF cache - sharing across cameras would invalidate every tick.
+      const cacheHolder = {
+        current: entry.cache,
+      } as React.MutableRefObject<{ key: string; matrix: THREE.Matrix4 } | null>;
+      applyTransform(
+        entry.frustum.object,
+        graph,
+        intrinsics.frameId || null,
+        worldFrame,
+        playheadNs,
+        cacheHolder,
+        upFixMatrix,
+      );
+      entry.cache = cacheHolder.current;
+    }
+    refs.renderOnce();
+  }, [
+    cameraInfos,
+    cameraFrustumFar,
+    graph,
+    worldFrame,
+    playheadNs,
+    upFixMatrix,
+    sceneRef,
+  ]);
+  /* eslint-enable react-hooks/immutability */
+
   // First-frame autofit. Subsequent frames leave the camera alone so playback
   // doesn't yank the view around.
   const hasAutoFitRef = useRef(false);
@@ -1192,6 +1345,19 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
       type={type}
       accentColor={accent}
     >
+      {/* Hidden feeds: one per CameraInfo topic, push parsed intrinsics into
+          `cameraInfos`. Only mount when the user has enabled frustums so we
+          don't pay for CameraInfo decodes on bags they don't care about. */}
+      {cameraFrustumsOn &&
+        cameraInfoTopics.map((topic) => (
+          <CameraInfoFeed
+            key={topic}
+            topic={topic}
+            bagId={bagId}
+            playheadNs={playheadNs}
+            onUpdate={handleCameraInfoUpdate}
+          />
+        ))}
       <div className="flex-1 flex flex-col min-h-0">
         <div className="flex-1 min-h-[260px] relative bg-bg-primary/60 overflow-hidden">
           <div ref={containerRef} className="absolute inset-0" />
@@ -1257,6 +1423,11 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
               robotHidden={robotHidden}
               setRobotHidden={(hidden) => setRobotHidden(panelId, hidden)}
               robotHasJointStates={jointStates.hasTopic}
+              cameraFrustumCount={cameraInfoTopics.length}
+              cameraFrustumsOn={cameraFrustumsOn}
+              setCameraFrustumsOn={setCameraFrustumsOn}
+              cameraFrustumFar={cameraFrustumFar}
+              setCameraFrustumFar={setCameraFrustumFar}
             />
           </div>
 
@@ -1425,6 +1596,14 @@ interface ControlsCardProps {
   setRobotHidden: (hidden: boolean) => void;
   /** Bag has a JointState topic the model can ingest. */
   robotHasJointStates: boolean;
+  /** Number of `sensor_msgs/CameraInfo` topics in the bag (v1.3.2). */
+  cameraFrustumCount: number;
+  /** Master toggle for the camera frustum overlay. */
+  cameraFrustumsOn: boolean;
+  setCameraFrustumsOn: (v: boolean) => void;
+  /** Far-plane distance for the frustum, in metres. */
+  cameraFrustumFar: number;
+  setCameraFrustumFar: (v: number) => void;
 }
 
 function ControlsCard({
@@ -1469,6 +1648,11 @@ function ControlsCard({
   robotHidden,
   setRobotHidden,
   robotHasJointStates,
+  cameraFrustumCount,
+  cameraFrustumsOn,
+  setCameraFrustumsOn,
+  cameraFrustumFar,
+  setCameraFrustumFar,
 }: ControlsCardProps) {
   const [open, setOpen] = useState(false);
   const allFrames = useMemo(() => (graph ? Array.from(graph.frames).sort() : []), [graph]);
@@ -1782,6 +1966,41 @@ function ControlsCard({
               )}
             </div>
           )}
+          {cameraFrustumCount > 0 && (
+            <div className="pt-1 border-t border-border/60">
+              <label
+                className="flex items-center gap-1.5 text-text-secondary cursor-pointer"
+                title="Render a wireframe pyramid in each camera's optical frame, sized by its CameraInfo intrinsics"
+              >
+                <input
+                  type="checkbox"
+                  checked={cameraFrustumsOn}
+                  onChange={(e) => setCameraFrustumsOn(e.target.checked)}
+                  className="accent-accent-cyan"
+                />
+                camera frustums{' '}
+                <span className="text-text-tertiary">({cameraFrustumCount})</span>
+              </label>
+              {cameraFrustumsOn && (
+                <div className="mt-1.5 flex items-center gap-2 text-[10px]">
+                  <span className="text-text-tertiary w-12 flex-shrink-0">far</span>
+                  <input
+                    type="range"
+                    min={0.5}
+                    max={50}
+                    step={0.5}
+                    value={cameraFrustumFar}
+                    onChange={(e) => setCameraFrustumFar(Number(e.target.value))}
+                    className="flex-1 accent-accent-cyan"
+                    aria-label="Camera frustum far plane distance"
+                  />
+                  <span className="text-text-secondary mono w-10 text-right">
+                    {cameraFrustumFar.toFixed(1)}m
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
           <div className="pt-1 border-t border-border/60">
             <div className="text-text-tertiary text-[10px] mb-1">up axis</div>
             <select
@@ -1835,6 +2054,62 @@ function pickFrameId(value: Record<string, unknown> | null | undefined): string 
  * If `postMul` is omitted the result is just the TF chain — preserves the
  * pre-up-axis behaviour for callers that don't need it.
  */
+/**
+ * Field-by-field equality check for two CameraIntrinsics snapshots.
+ *
+ * Used to coalesce identical playhead updates so the camera-frustum
+ * lifecycle effect doesn't re-trigger on every tick when the publisher
+ * is sending the same CameraInfo at 30 Hz (the common case).
+ */
+function cameraIntrinsicsEqual(a: CameraIntrinsics, b: CameraIntrinsics): boolean {
+  if (a.fx !== b.fx || a.fy !== b.fy || a.cx !== b.cx || a.cy !== b.cy) return false;
+  if (a.width !== b.width || a.height !== b.height) return false;
+  if (a.frameId !== b.frameId) return false;
+  if (a.distortionModel !== b.distortionModel) return false;
+  if (a.distortionCoefficients.length !== b.distortionCoefficients.length) return false;
+  for (let i = 0; i < a.distortionCoefficients.length; i++) {
+    if (a.distortionCoefficients[i] !== b.distortionCoefficients[i]) return false;
+  }
+  return true;
+}
+
+/**
+ * Hidden helper: read one `sensor_msgs/CameraInfo` topic via
+ * `useMessageAtTime` and push the parsed intrinsics into the panel's
+ * shared map. One component per topic so we can satisfy rules-of-hooks
+ * (hooks called unconditionally per fixed identity) while still
+ * supporting an arbitrary number of cameras per bag.
+ */
+function CameraInfoFeed({
+  topic,
+  bagId,
+  playheadNs,
+  onUpdate,
+}: {
+  topic: string;
+  bagId: string | undefined;
+  playheadNs: bigint;
+  onUpdate: (topic: string, info: CameraIntrinsics | null) => void;
+}) {
+  const message = useMessageAtTime(topic, playheadNs, bagId);
+  useEffect(() => {
+    if (!message.message?.value) {
+      onUpdate(topic, null);
+      return;
+    }
+    const info = parseCameraInfo(
+      message.message.value,
+      message.message.timestamp,
+    );
+    onUpdate(topic, info);
+  }, [topic, message.message, onUpdate]);
+  useEffect(() => {
+    // Cleanup: drop this topic's entry when the feed unmounts (bag swap).
+    return () => onUpdate(topic, null);
+  }, [topic, onUpdate]);
+  return null;
+}
+
 function applyTransform(
   userGroup: THREE.Group,
   graph: TFGraph | null,

@@ -60,6 +60,21 @@ export interface ThreeDPanelSettings {
    * gradient. Only meaningful for occupancygrid panels.
    */
   mapAlpha: number;
+  /**
+   * Show wireframe camera frustums for every `sensor_msgs/CameraInfo`
+   * topic in the bag (v1.3.2). Off by default - bags without a calibrated
+   * camera publish nothing useful here, and showing four overlapping
+   * frustums on a multi-camera rig before the user opts in would clutter
+   * a freshly opened panel.
+   */
+  cameraFrustumsOn: boolean;
+  /**
+   * Far-plane distance for the camera frustum, in metres (v1.3.2).
+   * Applied across every visible camera so a single slider scales the
+   * whole multi-camera rig at once. 5 m is a good default for indoor
+   * SLAM bags; outdoor / drone bags typically want 20-50 m.
+   */
+  cameraFrustumFar: number;
 }
 
 /**
@@ -84,6 +99,8 @@ export const DEFAULT_THREE_D_SETTINGS: ThreeDPanelSettings = {
   pivot: null,
   hiddenMarkerNamespaces: [],
   mapAlpha: 0.85,
+  cameraFrustumsOn: false,
+  cameraFrustumFar: 5,
 };
 
 interface ThreeDPanelState {
