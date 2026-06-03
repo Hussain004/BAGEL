@@ -7,6 +7,9 @@ import {
   useThreeDPanelStore,
   type UpAxis,
 } from '../../../store/threeDPanelStore';
+import { useRobotModelStore } from '../../../store/robotModelStore';
+import { useJointStates } from '../../../hooks/useJointStates';
+import { buildRobotSubtree, type RobotSubtree } from './robotModel';
 import { PanelShell } from '../PanelShell';
 import { getTopicColor } from '../../../utils/color';
 import { nsToSeconds } from '../../../utils/time';
@@ -277,6 +280,15 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
   // not a user preference.
   const settings = useThreeDPanelStore((s) => s.byId[panelId] ?? DEFAULT_THREE_D_SETTINGS);
   const updateSettings = useThreeDPanelStore((s) => s.update);
+
+  // ─── Robot model (v1.3.0) ──────────────────────────────────────────────
+  // Each panel grows its own `RobotSubtree` instance because Three.js scene
+  // graph nodes can't be parented to two scenes at once. The store is the
+  // source of truth for the URDF; per-panel hide flags live there too.
+  const robotModel = useRobotModelStore((s) => s.loaded);
+  const robotHidden = useRobotModelStore((s) => !!s.hiddenInPanel[panelId]);
+  const setRobotHidden = useRobotModelStore((s) => s.setHiddenInPanel);
+  const jointStates = useJointStates(bagId, playheadNs);
   const {
     colorMode,
     pointSize,
@@ -1004,6 +1016,100 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     refs.renderOnce();
   }, [isMarker, hiddenMarkerNamespaces, markerNamespaces, sceneRef]);
 
+  // ─── Robot subtree lifecycle ───────────────────────────────────────────
+  //
+  // Build the Three.js subtree whenever the loaded URDF, the anchor link,
+  // or the scene mounts. The build is async (mesh loads), so we guard
+  // against the user swapping models mid-build with a cancellation flag.
+  const robotRef = useRef<RobotSubtree | null>(null);
+  const robotTransformCacheRef = useRef<{ key: string; matrix: THREE.Matrix4 } | null>(null);
+
+  useEffect(() => {
+    const refs = sceneRef.current;
+    if (!refs) return;
+    if (!robotModel) {
+      // No URDF loaded - nothing to render.
+      const existing = robotRef.current;
+      if (existing) {
+        refs.worldGroup.remove(existing.root);
+        existing.dispose();
+        robotRef.current = null;
+        refs.renderOnce();
+      }
+      return;
+    }
+
+    let cancelled = false;
+    void buildRobotSubtree(robotModel.model, robotModel.anchorLink).then((subtree) => {
+      if (cancelled) {
+        subtree.dispose();
+        return;
+      }
+      // Dispose any previous subtree before swapping in the new one so a
+      // re-mount or model swap doesn't leak the prior tree.
+      const existing = robotRef.current;
+      if (existing) {
+        refs.worldGroup.remove(existing.root);
+        existing.dispose();
+      }
+      robotRef.current = subtree;
+      subtree.root.visible = !robotHidden;
+      refs.worldGroup.add(subtree.root);
+      // Force the per-tick transform effect below to re-apply at first paint.
+      robotTransformCacheRef.current = null;
+      refs.renderOnce();
+    });
+
+    return () => {
+      cancelled = true;
+    };
+    // sceneKind in the deps so a panel that switches data flavour (e.g. via
+    // a topic-row drag from a pointcloud to a markerarray panel kind) still
+    // rebuilds correctly. Also re-run when the anchor link changes so the
+    // root group's local frame matches the new anchor.
+  }, [sceneRef, robotModel, robotHidden, sceneKind]);
+
+  // Apply hide toggle without rebuilding.
+  useEffect(() => {
+    const refs = sceneRef.current;
+    const subtree = robotRef.current;
+    if (!refs || !subtree) return;
+    subtree.root.visible = !robotHidden;
+    refs.renderOnce();
+  }, [robotHidden, sceneRef]);
+
+  // Joint-state ingestion. setJointPositions is cheap (matrix tweaks per
+  // joint), so we just apply on every change.
+  useEffect(() => {
+    const refs = sceneRef.current;
+    const subtree = robotRef.current;
+    if (!refs || !subtree) return;
+    subtree.setJointPositions(jointStates.positions);
+    refs.renderOnce();
+  }, [jointStates.positions, sceneRef]);
+
+  // Per-tick TF transform: place the robot's root at its anchor link's
+  // world-space pose. Independent from the user-group's transform because
+  // the robot's anchor link is rarely the same as the data topic's
+  // header.frame_id. Uses the same cache-on-key pattern as the userGroup
+  // transform so consecutive playhead ticks don't re-walk the chain.
+  useEffect(() => {
+    const refs = sceneRef.current;
+    const subtree = robotRef.current;
+    if (!refs || !subtree || !robotModel) return;
+    subtree.root.matrixAutoUpdate = false;
+    applyTransform(
+      subtree.root as unknown as THREE.Group,
+      graph,
+      robotModel.anchorLink || null,
+      worldFrame,
+      playheadNs,
+      robotTransformCacheRef,
+      upFixMatrix,
+    );
+    refs.renderOnce();
+  }, [robotModel, graph, worldFrame, playheadNs, upFixMatrix, sceneRef]);
+
   // First-frame autofit. Subsequent frames leave the camera alone so playback
   // doesn't yank the view around.
   const hasAutoFitRef = useRef(false);
@@ -1146,6 +1252,11 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
               onToggleNamespace={toggleNamespaceHidden}
               mapAlpha={mapAlpha}
               setMapAlpha={setMapAlpha}
+              hasRobotModel={!!robotModel}
+              robotName={robotModel?.sourceName ?? null}
+              robotHidden={robotHidden}
+              setRobotHidden={(hidden) => setRobotHidden(panelId, hidden)}
+              robotHasJointStates={jointStates.hasTopic}
             />
           </div>
 
@@ -1305,6 +1416,15 @@ interface ControlsCardProps {
   /** Global alpha multiplier for OccupancyGrid panels (0…1). */
   mapAlpha: number;
   setMapAlpha: (a: number) => void;
+  /** A URDF has been loaded app-wide. */
+  hasRobotModel: boolean;
+  /** Source filename (for the title attribute). */
+  robotName: string | null;
+  /** This panel hides the robot model. */
+  robotHidden: boolean;
+  setRobotHidden: (hidden: boolean) => void;
+  /** Bag has a JointState topic the model can ingest. */
+  robotHasJointStates: boolean;
 }
 
 function ControlsCard({
@@ -1344,6 +1464,11 @@ function ControlsCard({
   onToggleNamespace,
   mapAlpha,
   setMapAlpha,
+  hasRobotModel,
+  robotName,
+  robotHidden,
+  setRobotHidden,
+  robotHasJointStates,
 }: ControlsCardProps) {
   const [open, setOpen] = useState(false);
   const allFrames = useMemo(() => (graph ? Array.from(graph.frames).sort() : []), [graph]);
@@ -1630,6 +1755,33 @@ function ControlsCard({
               axes
             </label>
           </div>
+          {hasRobotModel && (
+            <div className="pt-1 border-t border-border/60">
+              <label
+                className="flex items-center gap-1.5 text-text-secondary cursor-pointer"
+                title={
+                  robotName
+                    ? `Robot model: ${robotName}${
+                        robotHasJointStates ? ' (animating from /joint_states)' : ''
+                      }`
+                    : undefined
+                }
+              >
+                <input
+                  type="checkbox"
+                  checked={!robotHidden}
+                  onChange={(e) => setRobotHidden(!e.target.checked)}
+                  className="accent-accent-blue"
+                />
+                robot model
+              </label>
+              {!robotHasJointStates && (
+                <div className="text-text-tertiary text-[10px] mt-0.5">
+                  no /joint_states - joints stay at rest
+                </div>
+              )}
+            </div>
+          )}
           <div className="pt-1 border-t border-border/60">
             <div className="text-text-tertiary text-[10px] mb-1">up axis</div>
             <select

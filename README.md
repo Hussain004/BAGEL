@@ -12,7 +12,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-8-646cff.svg)](https://vite.dev/)
-[![Version](https://img.shields.io/badge/version-1.2.0-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
+[![Version](https://img.shields.io/badge/version-1.3.0-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
 
 [**→ Live Demo**](https://bagel-ros2.vercel.app) · [Report Bug](https://github.com/Hussain004/BAGEL/issues) · [Request Feature](https://github.com/Hussain004/BAGEL/issues)
 
@@ -96,6 +96,13 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 - **Bag editing / MCAP clip export**: trim the time range, drop topics you don't need, download a fresh indexed `.mcap`. Replaces the `mcap filter` CLI workflow for the common cuts. **v1.2 extends the editor to ROS1 `.bag` and ROS2 `.db3` inputs** alongside MCAP - output is always MCAP regardless of input format. `.db3` topics whose type isn't in BAGEL's bundled registry are flagged in the modal and excluded by default; opt them in to include them with a schema-less channel. *(v1.1 / v1.2)*
 - **Paste-your-own `.msg` schema** flow for ROS2 `.db3` topics whose types aren't in the bundled registry. Persisted across sessions in `localStorage`.
 
+### Robot model (URDF) overlay *(v1.3.0)*
+
+- **Drop a `.urdf` and the robot appears in every 3D panel**, anchored to its root link in world space via the bag's `/tf` stream. Joints animate from `sensor_msgs/JointState` (auto-detected) when the bag publishes it; static URDFs render at their rest pose. A toolbar "Robot" button opens the load modal; the Display card in each 3D panel grows a per-panel `robot model` hide toggle.
+- **Geometry support**: box / cylinder / sphere primitives + `.stl` / `.dae` / `.obj` meshes. Loaders are lazy-imported on first use of each file type so primitives-only URDFs don't pay the Collada loader's bundle cost.
+- **`package://` resolver**: paste a URL prefix or drag-drop a folder per referenced package; URL bindings persist across sessions in `localStorage` under `bagel:package-roots:v1`. No auto-fetch from ROS distros - BAGEL only loads meshes from where you point it.
+- **Bundled sample robot URDF** (`public/sample-bags/sample-robot.urdf`) pairs with `tour.mcap` so the "Try a sample robot" button in the modal demonstrates the full flow on a fresh checkout.
+
 ### UX and quality
 
 - **Light + dark themes** (toggle in the toolbar; persisted per browser). *(v1.0)*
@@ -111,6 +118,7 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 
 ### Earlier version highlights at a glance
 
+- **v1.3.0**: Robot model in the 3D scene. Drop a URDF + an optional `package://` folder/URL per referenced mesh, and BAGEL renders the robot in every 3D panel anchored to the bag's `/tf` stream. Revolute and prismatic joints animate from `sensor_msgs/JointState` when present. Zero-dependency URDF parser + LRU-cached `.stl`/`.dae`/`.obj` loader. 20 new tests; total suite now 223.
 - **v1.2**: Cross-format bag editing. The v1.1 editor now also accepts ROS1 `.bag` and ROS2 `.db3` inputs, both producing fresh indexed MCAP output. ROS1 schemas flow through from connection records as `ros1msg`; `.db3` schemas are synthesised on demand from the bundled type registry. 23 new tests; total suite now 203.
 - **v1.1**: Bag editing. Trim time range, drop topics, download a fresh indexed MCAP. Browser-native replacement for `mcap filter`. 12 new tests; total suite now 180.
 - **v1.0**: 168-test Vitest suite + CI gate, anchor UI for multi-bag, light theme, `DiagnosticArray` swimlane panel, `rcl_interfaces/Log` virtualised viewer.
@@ -128,16 +136,17 @@ For the full detail behind each release (including design rationale and implemen
 
 ### Roadmap
 
-v1.0 stabilised the surface BAGEL already covered (test suite + CI gate, anchor UI, light theme, diagnostics + log panels). v1.1 shipped the first feature that replaces a CLI workflow rather than just visualises one: in-browser MCAP bag editing. v1.2 extends that editor to ROS1 `.bag` and ROS2 `.db3` inputs so the "replace a CLI workflow" promise covers every format BAGEL reads. Possible future directions:
+v1.0 stabilised the surface BAGEL already covered (test suite + CI gate, anchor UI, light theme, diagnostics + log panels). v1.1 / v1.2 shipped browser-native bag editing across every input format BAGEL reads. v1.3.0 pivots to "make BAGEL feel like a real robotics tool, not just a bag viewer" with URDF + meshes in the 3D scene; the rest of the v1.3 line picks up the loose threads. Possible future directions:
 
 | Idea | Notes |
 |---|---|
+| `MESH_RESOURCE` + `TRIANGLE_LIST` markers (**v1.3.1**, in flight) | The v1.3.0 mesh loader + `package://` resolver feed straight into `markerObjects.ts`; the v0.8 pink-wireframe placeholder finally retires for real meshes. `TRIANGLE_LIST` builds a `BufferGeometry` from `marker.points` taken three at a time with per-vertex colours when present. |
+| `CameraInfo` overlay + frustum (**v1.3.2**, in flight) | Pair `sensor_msgs/CameraInfo` with `sensor_msgs/Image` panels (auto-pair by topic name convention; manual pair as a fallback). ImageViewer overlays the principal-point reticle + focal-length badge + a "calibration likely unfilled" chip when all distortion coefficients are zero. The 3D scene renders the camera frustum (wireframe pyramid) at the camera's TF-resolved pose, with a slider for far-plane distance. |
 | Zstd-compressed edit output | Edited bags are always uncompressed because `fzstd` is decompress-only; we don't bundle a pure-JS zstd *encoder* yet. Output bags reload identically; they just weigh 2-4x the zstd equivalent. Lands once a sensible encoder is available. |
-| Plugin panels | Lets users build custom views (e.g. depth-image colorisation, vendor-specific marker overlays, OBD-II decoders) against a stable panel API. Earmarked for v1.2 once internal panels have stabilised so the API becomes a stability contract so shipping it half-baked is a one-way door. |
+| Plugin panels | Lets users build custom views (e.g. depth-image colorisation, vendor-specific marker overlays, OBD-II decoders) against a stable panel API. Earmarked once internal panels have stabilised so the API becomes a stability contract; shipping it half-baked is a one-way door. |
 | Cloud-hosted shareable URLs | The local hash is great for personal reuse (a tiny Vercel function + KV store would unlock real link-sharing with layouts that survive a bag move). Designed in the v1.0 plan, deferred to a follow-up so it can land with the deploy infra change. |
-| `MESH_RESOURCE` / `TRIANGLE_LIST` marker support | v0.8 still ships pink-wireframe placeholders. `TRIANGLE_LIST` is cheap; `MESH_RESOURCE` needs a `package://` → URL resolver flow that's a meaningful UX design call. |
-| Streaming `.db3` over HTTP Range | `sql.js-httpvfs` would do real partial reads via a custom SQLite VFS, current URL loading eager-fetches the whole `.db3` because sql.js needs it in memory. Deferred until someone hits the practical ~250 MB cap in the wild. |
-| `CameraInfo` overlay on ImageViewer | Show intrinsics, draw the principal point, optionally rectify which closes a calibration-debugging workflow that the raw image view can't. |
+| Streaming `.db3` over HTTP Range | `sql.js-httpvfs` would do real partial reads via a custom SQLite VFS; current URL loading eager-fetches the whole `.db3` because sql.js needs it in memory. Deferred until someone hits the practical ~250 MB cap in the wild. |
+| Xacro evaluator | Pure-JS xacro is ~1000 LOC of XML transform - its own project. Users pre-process with the official `xacro` once; the URDF modal explains this when an unprocessed file is detected. Earmarked for a future "tool integration" pass rather than a v1.3.x sub-version. |
 
 ---
 
@@ -283,7 +292,7 @@ BAGEL's built-in type registry covers all standard ROS2 packages:
 |---|---|
 | `std_msgs` | String, Int32, Float64, Bool, Header |
 | `geometry_msgs` | Pose, Twist, Transform, Point, Quaternion |
-| `sensor_msgs` | Image, Imu, LaserScan, NavSatFix, PointCloud2 |
+| `sensor_msgs` | Image, Imu, LaserScan, NavSatFix, PointCloud2, JointState (drives URDF joints in the 3D scene from v1.3.0) |
 | `nav_msgs` | Odometry, Path, OccupancyGrid |
 | `tf2_msgs` | TFMessage |
 | `visualization_msgs` | Marker, MarkerArray (CUBE / SPHERE / CYLINDER / ARROW / LINE_STRIP / LINE_LIST / CUBE_LIST / SPHERE_LIST / POINTS / TEXT_VIEW_FACING) |
@@ -311,6 +320,8 @@ src/
 │   ├── cdr.ts            # CDR deserializer (cached MessageReader per type)
 │   ├── rosbag1.ts        # ROS1 deserializer (cached reader + time-field alias pass)
 │   ├── edit.ts           # v1.1 bag editor: trim + topic filter, MCAP-in to MCAP-out
+│   ├── urdf.ts           # v1.3 URDF parser (zero-dep mini XML tokenizer + URDF semantic layer)
+│   ├── packageResolver.ts# v1.3 package:// → URL / File resolver (localStorage-backed)
 │   └── typeRegistry.ts   # ROS2 message definitions (.db3 fallback only)
 │
 ├── workers/
@@ -322,6 +333,7 @@ src/
 │   ├── playheadStore.ts   # Time cursor, play/pause, speed
 │   ├── layoutStore.ts     # Open panels keyed by kind:topic
 │   ├── themeStore.ts      # Dark / light preference (v1.0)
+│   ├── robotModelStore.ts # v1.3 loaded URDF + per-panel visibility flags
 │   └── uiStore.ts         # Modal overlays (about / shortcuts)
 │
 ├── hooks/
@@ -342,6 +354,7 @@ src/
 │   │   ├── AboutModal.tsx    # Project info + tech stack + links
 │   │   ├── BagEditModal.tsx  # v1.1 bag editor: trim + topic filter + MCAP download
 │   │   ├── SchemaPasteModal.tsx # Custom .msg schema paste flow for .db3 (v0.8.1)
+│   │   ├── UrdfLoadModal.tsx # v1.3 URDF drop + per-package resolver prompts
 │   │   └── ShortcutsModal.tsx# Generated from SHORTCUTS table
 │   └── panels/
 │       ├── PanelShell.tsx          # Header + export menu + close chrome
@@ -371,6 +384,7 @@ src/
     ├── occupancyGrid.ts  # nav_msgs/OccupancyGrid → RGBA texture (v0.9)
     ├── gpsTiles.ts       # OSM slippy-map projection + tile LRU loader (v0.9)
     ├── export.ts         # CSV + NDJSON encoders + download trigger
+    ├── meshLoader.ts     # v1.3 Three.js .stl/.dae/.obj dispatcher (lazy + LRU)
     └── version.ts        # APP_VERSION constant
 ```
 
@@ -388,6 +402,7 @@ ThreeDScene/
 ├── markerSet.ts              # (ns, id) → Object3D manager + frame-grouped TFs
 ├── mapPlane.ts               # nav_msgs/OccupancyGrid textured plane (v0.9)
 ├── accumulator.ts            # Ring buffer + voxel-grid downsample for accumulation
+├── robotModel.ts             # v1.3 URDF → Three.js subtree builder (joints + meshes)
 └── tfTransform.ts            # composeTFChain + pickWorldFrame helpers
 ```
 
@@ -397,12 +412,12 @@ ThreeDScene/
 - `scripts/verify-sample-bag.mjs`: parses the generated bag with `McapIndexedReader` and prints the topic table; smoke-test the writer when you change the synthesiser.
 - `scripts/verify-parsers.mjs`: Node-side verification of the `.db3` and `.mcap` parser paths against the real test fixtures in `test_files/`.
 
-### Tests (v1.0 + v1.1)
+### Tests (v1.0 - v1.3)
 
 ```
 tests/
 ├── fixtures/
-│   └── synth.ts                # In-memory MCAP writer which generates per-test bags as Uint8Array
+│   └── synth.ts                # In-memory MCAP / .bag / .db3 writers (per-test bags as Uint8Array)
 │
 ├── parsers/                    # Parser unit tests
 │   ├── cdr.test.ts             # CDR round-trips (String, Twist, Odometry w/ covariance)
@@ -410,7 +425,11 @@ tests/
 │   ├── db3.test.ts             # .db3 dispatch via mocked sql.js locateFile
 │   ├── bag.test.ts             # ROS1 .bag, skipped on 10 GB fixtures, ready for a smaller one
 │   ├── edit.test.ts            # v1.1 trim + topic filter round-trips (synth + tour.mcap)
-│   └── source.test.ts          # HTTP Range reader: CORS / 416 / no-Content-Length / Range-ignored
+│   ├── editDb3.test.ts         # v1.2 .db3-in / MCAP-out + missing-schema opt-in path
+│   ├── editRos1.test.ts        # v1.2 .bag-in / MCAP-out + connection-record schema flow
+│   ├── source.test.ts          # HTTP Range reader: CORS / 416 / no-Content-Length / Range-ignored
+│   ├── urdf.test.ts            # v1.3 URDF parser: primitives, meshes, joints, xacro detection
+│   └── packageResolver.test.ts # v1.3 package:// resolver: URL + file bindings, persistence
 │
 ├── utils/                      # Utility unit tests
 │   ├── time.test.ts            # BigInt ns math + alignment offsets
@@ -426,7 +445,7 @@ tests/
     └── real-db3.test.ts        # test_files/db3/sample.db3 (skipped on CI; gitignored)
 ```
 
-Run with `pnpm test` (one-shot, ~12 s wall time, 180 passing tests) or `pnpm test:watch` for HMR-style re-runs. `pnpm test:coverage` adds an `@vitest/coverage-v8` report under `coverage/`. The `tests/` directory uses synthetic fixtures (no disk hit) and the bundled `tour.mcap` as the integration layer, so a fresh checkout has everything the suite needs without downloading any new fixtures.
+Run with `pnpm test` (one-shot, ~12 s wall time, 223 passing tests) or `pnpm test:watch` for HMR-style re-runs. `pnpm test:coverage` adds an `@vitest/coverage-v8` report under `coverage/`. The `tests/` directory uses synthetic fixtures (no disk hit) and the bundled `tour.mcap` as the integration layer, so a fresh checkout has everything the suite needs without downloading any new fixtures.
 
 ---
 
