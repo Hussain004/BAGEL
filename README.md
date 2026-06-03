@@ -12,7 +12,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-8-646cff.svg)](https://vite.dev/)
-[![Version](https://img.shields.io/badge/version-1.3.2-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
+[![Version](https://img.shields.io/badge/version-1.3.3-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
 
 [**→ Live Demo**](https://bagel-ros2.vercel.app) · [Report Bug](https://github.com/Hussain004/BAGEL/issues) · [Request Feature](https://github.com/Hussain004/BAGEL/issues)
 
@@ -106,10 +106,12 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 ### UX and quality
 
 - **Light + dark themes** (toggle in the toolbar; persisted per browser). *(v1.0)*
-- **Keyboard shortcuts**: `Space` to play, `← / →` to step, `Esc` to close panels, `T` to focus topic search, `O` to open a bag, `?` for the cheat-sheet.
+- **Keyboard shortcuts**: `Space` to play, `← / →` to step, `L` to toggle loop playback *(v1.3.3)*, `Esc` to close panels, `T` to focus topic search, `O` to open a bag, `?` for the cheat-sheet.
+- **Loop playback**: a `Timeline` toolbar toggle wraps the playhead back to start at end-of-bag instead of pausing, persisted across reloads. *(v1.3.3)*
+- **Saved Display defaults**: per-data-type defaults for the 3D panel's Display card (colour mode, accumulator, point size, range filter, up axis, camera-frustum master toggle), persisted across sessions. *(v1.3.3)*
 - **Accessibility pass**: ARIA roles + focus management on every modal, `prefers-reduced-motion` respected, focus-visible rings throughout.
 - **Bundled `tour.mcap` sample bag** exercises every panel type. Drop in zero seconds with the "Try a sample bag" button.
-- **180-test Vitest suite** + GitHub Actions CI runs `tsc -b` + `pnpm test` on every PR. *(v1.0, expanded in v1.1)*
+- **276-test Vitest suite** + GitHub Actions CI runs `tsc -b` + `pnpm test` on every PR. *(v1.0, expanded each release)*
 - **Bags well over 2 GB work in the browser**: range reads + lazy decoding throughout the parser stack.
 
 > Looking for the long version with implementation notes and design tradeoffs for each release? See **[FEATURES.md](FEATURES.md)**.
@@ -118,6 +120,7 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 
 ### Earlier version highlights at a glance
 
+- **v1.3.3**: Saved Display defaults + loop playback. The 3D panel's Display card grows `save as default` / `reset` / `clear saved` affordances that persist your colour mode, accumulator state, point size, range filter, up-axis, and camera-frustum knobs per data type (`PointCloud2` / `LaserScan` / `MarkerArray` / `OccupancyGrid` / `Pose`) to `localStorage`, so the next bag you open spins up new panels with your preferred settings instead of the built-in defaults. Closes issue #44. The Timeline grows a `loop` toggle (also bound to `L`) that wraps the playhead back to start instead of pausing at the end of the bag, persisted so the choice survives a reload. Closes issue #45. 20 new tests; total suite now 276.
 - **v1.3.2**: `sensor_msgs/CameraInfo` first-class support. ImageViewer grows an overlay (principal-point reticle, focal-length badge, calibration-likely-unfilled chip) with auto-pair by topic-name convention (`/camera/image_raw` -> `/camera/camera_info`) and a per-panel manual override. The 3D scene renders a wireframe camera frustum in each camera's optical frame, sized by intrinsics, with a per-panel far-plane slider; when the camera's TF chains to the robot, the frustum follows the robot through scrubs. 21 new tests; total suite now 256.
 - **v1.3.1**: `visualization_msgs/Marker` types 10 (`MESH_RESOURCE`) and 11 (`TRIANGLE_LIST`) now render correctly in the 3D panel, closing the last gap from v0.8. Mesh markers re-use the v1.3.0 `package://` resolver + `meshLoader` so one mapping per package serves both URDF visuals and marker meshes. `mesh_use_embedded_materials` is honoured. Triangle-list markers render as vertex-coloured Lambert-lit triangle soups with per-vertex colours when `marker.colors[]` matches the vertex count, otherwise solid `marker.color`. 12 new tests; total suite now 235.
 - **v1.3.0**: Robot model in the 3D scene. Drop a URDF + an optional `package://` folder/URL per referenced mesh, and BAGEL renders the robot in every 3D panel anchored to the bag's `/tf` stream. Revolute and prismatic joints animate from `sensor_msgs/JointState` when present. Zero-dependency URDF parser + LRU-cached `.stl`/`.dae`/`.obj` loader. 20 new tests; total suite now 223.
@@ -138,12 +141,13 @@ For the full detail behind each release (including design rationale and implemen
 
 ### Roadmap
 
-v1.0 stabilised the surface BAGEL already covered (test suite + CI gate, anchor UI, light theme, diagnostics + log panels). v1.1 / v1.2 shipped browser-native bag editing across every input format BAGEL reads. v1.3.0 pivoted to "make BAGEL feel like a real robotics tool, not just a bag viewer" with URDF + meshes in the 3D scene, v1.3.1 closed the v0.8 marker gap by wiring the same mesh loader into `MESH_RESOURCE` + `TRIANGLE_LIST`, and v1.3.2 closed the calibration-debugging story with `sensor_msgs/CameraInfo` overlay + camera frustum. Possible future directions:
+v1.0 stabilised the surface BAGEL already covered (test suite + CI gate, anchor UI, light theme, diagnostics + log panels). v1.1 / v1.2 shipped browser-native bag editing across every input format BAGEL reads. v1.3.0 pivoted to "make BAGEL feel like a real robotics tool, not just a bag viewer" with URDF + meshes in the 3D scene, v1.3.1 closed the v0.8 marker gap by wiring the same mesh loader into `MESH_RESOURCE` + `TRIANGLE_LIST`, v1.3.2 closed the calibration-debugging story with `sensor_msgs/CameraInfo` overlay + camera frustum, and v1.3.3 picked up two user-reported papercuts (saved Display defaults + loop playback). Possible future directions:
 
 | Idea | Notes |
 |---|---|
-| Image rectification from `CameraInfo` (**v1.3.3** candidate) | v1.3.2 shows intrinsics + frustum but doesn't warp the pixels. A per-frame canvas remap keyed by `distortion_model` (plumb-bob covers ~95% of bags; fisheye + equidistant ship as follow-ups) would close the "does the calibration actually flatten the lens distortion?" loop without leaving the browser. |
-| Per-camera frustum hide toggle | v1.3.2's Display card has one master switch + one far-plane slider; on multi-camera bags every frustum renders at the same depth. A per-camera checklist (parallel to the v0.8 marker-namespace filter) would close this. |
+| Image rectification from `CameraInfo` (**v1.3.4** candidate) | v1.3.2 shows intrinsics + frustum but doesn't warp the pixels. A per-frame canvas remap keyed by `distortion_model` (plumb-bob covers ~95% of bags; fisheye + equidistant ship as follow-ups) would close the "does the calibration actually flatten the lens distortion?" loop without leaving the browser. Earmarked but deferred while v1.3.3 user feedback lands. |
+| Per-camera frustum hide toggle | v1.3.2's Display card has one master switch + one far-plane slider; on multi-camera bags every frustum renders at the same depth. A per-camera checklist (parallel to the v0.8 marker-namespace filter) would close this. Earmarked for the same v1.3.4 cycle as image rectification. |
+| About-modal management surface for saved Display defaults | v1.3.3's `clear saved` link in the Display card covers the single-default case; an About-modal table listing every saved default with `edit` / `delete` (mirroring the v0.8.1 custom-schemas section) would scale once a third saved-preference store joins the picture. |
 | Collada texture-dependency resolution | `.dae` files reference texture image files via relative paths; the v1.3.1 mesh loader handles top-level mesh files but not their textures. A small texture-pre-resolution pass through the same `packageResolver` would close this for moveit / nav2 bags whose mesh markers carry per-link decals. |
 | Zstd-compressed edit output | Edited bags are always uncompressed because `fzstd` is decompress-only; we don't bundle a pure-JS zstd *encoder* yet. Output bags reload identically; they just weigh 2-4x the zstd equivalent. Lands once a sensible encoder is available. |
 | Plugin panels | Lets users build custom views (e.g. depth-image colorisation, vendor-specific marker overlays, OBD-II decoders) against a stable panel API. Earmarked once internal panels have stabilised so the API becomes a stability contract; shipping it half-baked is a one-way door. |
@@ -188,6 +192,7 @@ Then open [http://localhost:5173](http://localhost:5173) in your browser.
 | `← / →` | Step the playhead by ~1% of the bag |
 | `Shift + ← / →` | Step by ~5% |
 | `Home / End` | Jump to bag start / end |
+| `L` | Toggle loop playback (v1.3.3) |
 | `T` | Focus the topic search box |
 | `O` | Open a different bag file |
 | `Esc` | Close the most recent panel |
@@ -333,10 +338,11 @@ src/
 │
 ├── store/
 │   ├── bagStore.ts        # Bag summary + source File
-│   ├── playheadStore.ts   # Time cursor, play/pause, speed
+│   ├── playheadStore.ts   # Time cursor, play/pause, speed, v1.3.3 loop flag
 │   ├── layoutStore.ts     # Open panels keyed by kind:topic
 │   ├── themeStore.ts      # Dark / light preference (v1.0)
 │   ├── robotModelStore.ts # v1.3 loaded URDF + per-panel visibility flags
+│   ├── panelDefaultsStore.ts # v1.3.3 per-data-type 3D Display defaults (localStorage)
 │   └── uiStore.ts         # Modal overlays (about / shortcuts)
 │
 ├── hooks/
@@ -400,6 +406,7 @@ The 3D panel is split across a few focused modules:
 ```
 ThreeDScene/
 ├── index.tsx                 # Panel React component + ControlsCard
+├── sceneKind.ts              # v1.3.3 SceneKind enum + detectKind() shared with panelDefaultsStore
 ├── useScene.ts               # Renderer / scene / camera / orbit-controls lifetime
 ├── useDecodedPointCloud.ts   # Lazy worker-decoded single-frame loader
 ├── sceneObjects.ts           # Factories for PointCloud / LaserScan / PoseAxes / grid
@@ -418,7 +425,7 @@ ThreeDScene/
 - `scripts/verify-sample-bag.mjs`: parses the generated bag with `McapIndexedReader` and prints the topic table; smoke-test the writer when you change the synthesiser.
 - `scripts/verify-parsers.mjs`: Node-side verification of the `.db3` and `.mcap` parser paths against the real test fixtures in `test_files/`.
 
-### Tests (v1.0 - v1.3)
+### Tests (v1.0 - v1.3.3)
 
 ```
 tests/
@@ -449,6 +456,10 @@ tests/
 │   ├── markerObjects.test.ts   # v1.3.1 MESH_RESOURCE + TRIANGLE_LIST factories (mocked loader)
 │   └── cameraFrustum.test.ts   # v1.3.2 frustum geometry math (centred + offset principal points)
 │
+├── store/                      # Zustand store tests (pure logic, no React renderer)
+│   ├── playheadLoop.test.ts    # v1.3.3 loop playback wrap-around + localStorage persistence
+│   └── panelDefaults.test.ts   # v1.3.3 per-data-type defaults: portable subset + save/clear flow
+│
 ├── hooks/                      # React hook helpers (pure functions covered without renderer)
 │   └── useCameraInfo.test.ts   # v1.3.2 auto-pair convention + parseCameraInfo + per-panel persistence
 │
@@ -458,7 +469,7 @@ tests/
     └── real-db3.test.ts        # test_files/db3/sample.db3 (skipped on CI; gitignored)
 ```
 
-Run with `pnpm test` (one-shot, under 20 s wall time, 256 passing tests) or `pnpm test:watch` for HMR-style re-runs. `pnpm test:coverage` adds an `@vitest/coverage-v8` report under `coverage/`. The `tests/` directory uses synthetic fixtures (no disk hit) and the bundled `tour.mcap` as the integration layer, so a fresh checkout has everything the suite needs without downloading any new fixtures.
+Run with `pnpm test` (one-shot, under 20 s wall time, 276 passing tests) or `pnpm test:watch` for HMR-style re-runs. `pnpm test:coverage` adds an `@vitest/coverage-v8` report under `coverage/`. The `tests/` directory uses synthetic fixtures (no disk hit) and the bundled `tour.mcap` as the integration layer, so a fresh checkout has everything the suite needs without downloading any new fixtures.
 
 ---
 

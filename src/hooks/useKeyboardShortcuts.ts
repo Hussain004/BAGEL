@@ -29,6 +29,7 @@ export const SHORTCUTS: ShortcutDescription[] = [
   { keys: '←  →', description: 'Step the playhead by ~1% of the bag', group: 'Playback' },
   { keys: 'Shift + ←  →', description: 'Step by ~5% (coarse jump)', group: 'Playback' },
   { keys: 'Home  End', description: 'Jump to bag start / end', group: 'Playback' },
+  { keys: 'L', description: 'Toggle loop playback', group: 'Playback' },
   { keys: 'T', description: 'Focus the topic search box', group: 'Navigation' },
   { keys: 'Esc', description: 'Close the most recently opened panel', group: 'Panels' },
   { keys: 'Shift + Esc', description: 'Close every open panel', group: 'Panels' },
@@ -112,6 +113,14 @@ export function useKeyboardShortcuts(): void {
         if (e.ctrlKey || e.metaKey || e.altKey) return;
         e.preventDefault();
         useBagStore.getState().clearBag();
+        return;
+      }
+
+      if (e.key === 'l' || e.key === 'L') {
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        e.preventDefault();
+        const store = usePlayheadStore.getState();
+        store.setLoop(!store.loop);
         return;
       }
 

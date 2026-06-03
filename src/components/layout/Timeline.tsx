@@ -10,8 +10,19 @@ import { nsToSeconds, formatDuration } from '../../utils/time';
  */
 export function Timeline() {
   const bag = useBagStore((s) => s.bag);
-  const { timeNs, startNs, endNs, playing, speed, seekFraction, setPlaying, setSpeed, tick } =
-    usePlayheadStore();
+  const {
+    timeNs,
+    startNs,
+    endNs,
+    playing,
+    speed,
+    loop,
+    seekFraction,
+    setPlaying,
+    setSpeed,
+    setLoop,
+    tick,
+  } = usePlayheadStore();
   const trackRef = useRef<HTMLDivElement>(null);
   const isDraggingRef = useRef(false);
   const lastFrameRef = useRef<number | null>(null);
@@ -145,6 +156,26 @@ export function Timeline() {
           />
         </div>
       </div>
+
+      <button
+        onClick={() => setLoop(!loop)}
+        className={`w-8 h-8 rounded-md flex items-center justify-center border transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60 ${
+          loop
+            ? 'bg-accent-blue/15 border-accent-blue/40 text-accent-blue'
+            : 'border-border text-text-secondary hover:border-accent-blue/40 hover:text-accent-blue'
+        }`}
+        title={loop ? 'Loop on (L) - playback wraps to start at end' : 'Loop off (L) - playback pauses at end'}
+        aria-label={loop ? 'Disable loop playback' : 'Enable loop playback'}
+        aria-pressed={loop}
+        id="timeline-loop-toggle"
+      >
+        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M17 1l4 4-4 4" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 11V9a4 4 0 014-4h14" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M7 23l-4-4 4-4" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M21 13v2a4 4 0 01-4 4H3" />
+        </svg>
+      </button>
 
       <SpeedSelect value={speed} onChange={setSpeed} />
     </div>
