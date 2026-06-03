@@ -12,7 +12,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-8-646cff.svg)](https://vite.dev/)
-[![Version](https://img.shields.io/badge/version-1.3.0-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
+[![Version](https://img.shields.io/badge/version-1.3.1-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
 
 [**→ Live Demo**](https://bagel-ros2.vercel.app) · [Report Bug](https://github.com/Hussain004/BAGEL/issues) · [Request Feature](https://github.com/Hussain004/BAGEL/issues)
 
@@ -73,7 +73,7 @@ A condensed feature list is below. **Detailed version-by-version release notes (
 
 - **TimeSeriesPlot**: chart any numeric leaf field (`linear.x`, `orientation.w`, etc.) on uPlot.
 - **ImageViewer**: `sensor_msgs/Image` (`rgb8` / `bgr8` / `rgba8` / `mono8` / `mono16`) and `CompressedImage` (`jpeg` / `png`) with lazy single-message reads.
-- **ThreeDScene** (Three.js): `PointCloud2`, `LaserScan`, `MarkerArray` (ten primitives: `CUBE` / `SPHERE` / `CYLINDER` / `ARROW` / `LINE_STRIP` / `LINE_LIST` / `CUBE_LIST` / `SPHERE_LIST` / `POINTS` / `TEXT_VIEW_FACING`), `OccupancyGrid`, pose markers. Custom orbit pivot, range filter, point accumulation, configurable up-axis.
+- **ThreeDScene** (Three.js): `PointCloud2`, `LaserScan`, `MarkerArray` (all twelve primitives: `CUBE` / `SPHERE` / `CYLINDER` / `ARROW` / `LINE_STRIP` / `LINE_LIST` / `CUBE_LIST` / `SPHERE_LIST` / `POINTS` / `TEXT_VIEW_FACING` / `MESH_RESOURCE` / `TRIANGLE_LIST` from v1.3.1), `OccupancyGrid`, pose markers. Custom orbit pivot, range filter, point accumulation, configurable up-axis.
 - **TrajectoryPlot**: Odometry / Pose / PoseWithCovariance / TransformStamped / NavSatFix as a 2D polyline, with an opt-in OpenStreetMap tile underlay for GPS traces.
 - **TFTree**: `/tf` + `/tf_static` hierarchy with current transforms at the playhead time.
 - **DiagnosticArray**: swimlane timeline + at-playhead inspector for `diagnostic_msgs/DiagnosticArray`. *(v1.0)*
@@ -118,6 +118,7 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 
 ### Earlier version highlights at a glance
 
+- **v1.3.1**: `visualization_msgs/Marker` types 10 (`MESH_RESOURCE`) and 11 (`TRIANGLE_LIST`) now render correctly in the 3D panel, closing the last gap from v0.8. Mesh markers re-use the v1.3.0 `package://` resolver + `meshLoader` so one mapping per package serves both URDF visuals and marker meshes. `mesh_use_embedded_materials` is honoured. Triangle-list markers render as vertex-coloured Lambert-lit triangle soups with per-vertex colours when `marker.colors[]` matches the vertex count, otherwise solid `marker.color`. 12 new tests; total suite now 235.
 - **v1.3.0**: Robot model in the 3D scene. Drop a URDF + an optional `package://` folder/URL per referenced mesh, and BAGEL renders the robot in every 3D panel anchored to the bag's `/tf` stream. Revolute and prismatic joints animate from `sensor_msgs/JointState` when present. Zero-dependency URDF parser + LRU-cached `.stl`/`.dae`/`.obj` loader. 20 new tests; total suite now 223.
 - **v1.2**: Cross-format bag editing. The v1.1 editor now also accepts ROS1 `.bag` and ROS2 `.db3` inputs, both producing fresh indexed MCAP output. ROS1 schemas flow through from connection records as `ros1msg`; `.db3` schemas are synthesised on demand from the bundled type registry. 23 new tests; total suite now 203.
 - **v1.1**: Bag editing. Trim time range, drop topics, download a fresh indexed MCAP. Browser-native replacement for `mcap filter`. 12 new tests; total suite now 180.
@@ -136,12 +137,12 @@ For the full detail behind each release (including design rationale and implemen
 
 ### Roadmap
 
-v1.0 stabilised the surface BAGEL already covered (test suite + CI gate, anchor UI, light theme, diagnostics + log panels). v1.1 / v1.2 shipped browser-native bag editing across every input format BAGEL reads. v1.3.0 pivots to "make BAGEL feel like a real robotics tool, not just a bag viewer" with URDF + meshes in the 3D scene; the rest of the v1.3 line picks up the loose threads. Possible future directions:
+v1.0 stabilised the surface BAGEL already covered (test suite + CI gate, anchor UI, light theme, diagnostics + log panels). v1.1 / v1.2 shipped browser-native bag editing across every input format BAGEL reads. v1.3.0 pivoted to "make BAGEL feel like a real robotics tool, not just a bag viewer" with URDF + meshes in the 3D scene, and v1.3.1 closed the v0.8 marker gap by wiring the same mesh loader into `MESH_RESOURCE` + `TRIANGLE_LIST`. Possible future directions:
 
 | Idea | Notes |
 |---|---|
-| `MESH_RESOURCE` + `TRIANGLE_LIST` markers (**v1.3.1**, in flight) | The v1.3.0 mesh loader + `package://` resolver feed straight into `markerObjects.ts`; the v0.8 pink-wireframe placeholder finally retires for real meshes. `TRIANGLE_LIST` builds a `BufferGeometry` from `marker.points` taken three at a time with per-vertex colours when present. |
 | `CameraInfo` overlay + frustum (**v1.3.2**, in flight) | Pair `sensor_msgs/CameraInfo` with `sensor_msgs/Image` panels (auto-pair by topic name convention; manual pair as a fallback). ImageViewer overlays the principal-point reticle + focal-length badge + a "calibration likely unfilled" chip when all distortion coefficients are zero. The 3D scene renders the camera frustum (wireframe pyramid) at the camera's TF-resolved pose, with a slider for far-plane distance. |
+| Collada texture-dependency resolution (**v1.3.3**) | `.dae` files reference texture image files via relative paths; the v1.3.1 mesh loader handles top-level mesh files but not their textures. A small texture-pre-resolution pass through the same `packageResolver` would close this for moveit / nav2 bags whose mesh markers carry per-link decals. |
 | Zstd-compressed edit output | Edited bags are always uncompressed because `fzstd` is decompress-only; we don't bundle a pure-JS zstd *encoder* yet. Output bags reload identically; they just weigh 2-4x the zstd equivalent. Lands once a sensible encoder is available. |
 | Plugin panels | Lets users build custom views (e.g. depth-image colorisation, vendor-specific marker overlays, OBD-II decoders) against a stable panel API. Earmarked once internal panels have stabilised so the API becomes a stability contract; shipping it half-baked is a one-way door. |
 | Cloud-hosted shareable URLs | The local hash is great for personal reuse (a tiny Vercel function + KV store would unlock real link-sharing with layouts that survive a bag move). Designed in the v1.0 plan, deferred to a follow-up so it can land with the deploy infra change. |
@@ -398,7 +399,7 @@ ThreeDScene/
 ├── useScene.ts               # Renderer / scene / camera / orbit-controls lifetime
 ├── useDecodedPointCloud.ts   # Lazy worker-decoded single-frame loader
 ├── sceneObjects.ts           # Factories for PointCloud / LaserScan / PoseAxes / grid
-├── markerObjects.ts          # Per-type factories for visualization_msgs/Marker
+├── markerObjects.ts          # Per-type factories for visualization_msgs/Marker (all 12 primitives as of v1.3.1)
 ├── markerSet.ts              # (ns, id) → Object3D manager + frame-grouped TFs
 ├── mapPlane.ts               # nav_msgs/OccupancyGrid textured plane (v0.9)
 ├── accumulator.ts            # Ring buffer + voxel-grid downsample for accumulation
@@ -439,13 +440,16 @@ tests/
 │   ├── trajectory.test.ts      # Pose extraction across all 7 supported types + NavSatFix projection
 │   └── occupancyGrid.test.ts   # int8 → RGBA mapping + content-fingerprint stability
 │
+├── components/                 # ThreeDScene panel unit tests
+│   └── markerObjects.test.ts   # v1.3.1 MESH_RESOURCE + TRIANGLE_LIST factories (mocked loader)
+│
 └── integration/                # Real-bag end-to-end through the unified parseBag entry
     ├── sample-bag.test.ts      # Committed public/sample-bags/tour.mcap (ships with the repo)
     ├── real-mcap.test.ts       # test_files/mcap/pose_topics/* (skipped on CI; gitignored)
     └── real-db3.test.ts        # test_files/db3/sample.db3 (skipped on CI; gitignored)
 ```
 
-Run with `pnpm test` (one-shot, ~12 s wall time, 223 passing tests) or `pnpm test:watch` for HMR-style re-runs. `pnpm test:coverage` adds an `@vitest/coverage-v8` report under `coverage/`. The `tests/` directory uses synthetic fixtures (no disk hit) and the bundled `tour.mcap` as the integration layer, so a fresh checkout has everything the suite needs without downloading any new fixtures.
+Run with `pnpm test` (one-shot, under 20 s wall time, 235 passing tests) or `pnpm test:watch` for HMR-style re-runs. `pnpm test:coverage` adds an `@vitest/coverage-v8` report under `coverage/`. The `tests/` directory uses synthetic fixtures (no disk hit) and the bundled `tour.mcap` as the integration layer, so a fresh checkout has everything the suite needs without downloading any new fixtures.
 
 ---
 
