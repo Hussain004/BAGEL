@@ -8,6 +8,7 @@ import {
 import { usePlayheadStore } from '../../store/playheadStore';
 import { useThemeStore } from '../../store/themeStore';
 import { useUiStore } from '../../store/uiStore';
+import { useRobotModelStore } from '../../store/robotModelStore';
 import { formatFileSize } from '../../utils/bytes';
 import { formatDuration, nsToSeconds } from '../../utils/time';
 import { APP_VERSION } from '../../utils/version';
@@ -35,6 +36,8 @@ export function Toolbar() {
   const theme = useThemeStore((s) => s.theme);
   const toggleTheme = useThemeStore((s) => s.toggleTheme);
   const setModal = useUiStore((s) => s.setModal);
+  const robotModel = useRobotModelStore((s) => s.loaded);
+  const clearRobotModel = useRobotModelStore((s) => s.clearLoaded);
 
   // Anchor placement: pick the focused bag's current bag-local time as the
   // anchor event, then snap aligned time to 0 so the user keeps seeing the
@@ -180,6 +183,35 @@ export function Toolbar() {
           >
             <EditIcon />
             <span className="hidden xl:inline">Edit</span>
+          </button>
+        )}
+        <button
+          onClick={() => setModal('urdf-load')}
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs border transition-all ${
+            robotModel
+              ? 'border-accent-blue/40 bg-accent-blue/10 text-accent-blue hover:bg-accent-blue/15'
+              : 'border-border text-text-secondary hover:text-text-primary hover:bg-surface-hover hover:border-accent-blue/40'
+          }`}
+          title={
+            robotModel
+              ? `Robot model loaded: ${robotModel.sourceName} (${robotModel.model.links.size} links). Click to swap.`
+              : 'Load a URDF to render a robot model in every 3D panel'
+          }
+          aria-label="Load robot model"
+        >
+          <RobotIcon />
+          <span className="hidden xl:inline">{robotModel ? 'Robot' : 'Robot'}</span>
+        </button>
+        {robotModel && (
+          <button
+            onClick={clearRobotModel}
+            className="w-7 h-7 rounded-md flex items-center justify-center text-text-tertiary hover:text-accent-rose hover:bg-accent-rose/10 transition-all"
+            title={`Remove robot model "${robotModel.sourceName}"`}
+            aria-label="Remove robot model"
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </button>
         )}
         <button
@@ -333,6 +365,25 @@ function AnchorIcon() {
     >
       <circle cx="12" cy="5" r="2" />
       <path strokeLinecap="round" d="M12 7v14M5 12c0 4 3 7 7 7s7-3 7-7M3 12h4M17 12h4" />
+    </svg>
+  );
+}
+
+function RobotIcon() {
+  // Simple stylised robot head: rounded square + two dot eyes + an antenna.
+  return (
+    <svg
+      className="w-3.5 h-3.5"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={1.7}
+      aria-hidden="true"
+    >
+      <rect x="5" y="8" width="14" height="11" rx="2" />
+      <circle cx="9.5" cy="13" r="1" fill="currentColor" />
+      <circle cx="14.5" cy="13" r="1" fill="currentColor" />
+      <path strokeLinecap="round" d="M12 8V5M12 3v1" />
     </svg>
   );
 }
