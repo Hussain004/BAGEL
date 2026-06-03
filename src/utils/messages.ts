@@ -80,6 +80,16 @@ export function isCompressedImageType(type: string): boolean {
   return type.includes('CompressedImage');
 }
 
+/**
+ * True if a ROS type is `sensor_msgs/CameraInfo` (v1.3.2). Used by the
+ * `useCameraInfo` auto-pair to discover candidate intrinsics topics for
+ * the ImageViewer overlay + 3D camera frustum.
+ */
+export function isCameraInfoType(type: string): boolean {
+  if (!type) return false;
+  return type.endsWith('/CameraInfo');
+}
+
 /** True if a ROS2 type carries planar pose data the Trajectory panel can render. */
 export function isTrajectoryCapableType(type: string): boolean {
   return (

@@ -19,6 +19,14 @@ interface PanelShellProps {
   accentColor?: string;
   /** Multi-bag: which bag this panel reads from. Falls back to focused bag. */
   bagId?: string;
+  /**
+   * Optional extra controls rendered in the header before the export menu
+   * (v1.3.2). ImageViewer uses this for the CameraInfo overlay toggle so
+   * the toggle stays out of the panel body and out of the canvas region.
+   * Clicks on descendants are excluded from the drag handle the same way
+   * the export menu and close button are.
+   */
+  headerExtras?: ReactNode;
   children: ReactNode;
 }
 
@@ -55,6 +63,7 @@ export function PanelShell({
   type,
   accentColor,
   bagId,
+  headerExtras,
   children,
 }: PanelShellProps) {
   const closePanel = useLayoutStore((s) => s.closePanel);
@@ -149,6 +158,7 @@ export function PanelShell({
           {pkg && <span className="text-text-muted mono">{pkg}/</span>}
           <span className="text-text-secondary mono">{shortType}</span>
         </div>
+        {headerExtras}
         <ExportMenu topicName={topicName} kind={kind} bagId={bagId} />
         <button
           onClick={() => closePanel(panelId)}

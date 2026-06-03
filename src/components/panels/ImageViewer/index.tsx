@@ -6,6 +6,11 @@ import { isCompressedImageType } from '../../../utils/messages';
 import { nsToSeconds } from '../../../utils/time';
 import { PanelShell } from '../PanelShell';
 import { getTopicColor } from '../../../utils/color';
+import { useCameraInfo, type CameraIntrinsics } from '../../../hooks/useCameraInfo';
+import {
+  DEFAULT_IMAGE_SETTINGS,
+  useImagePanelStore,
+} from '../../../store/panelUiStores';
 
 interface ImageViewerProps {
   panelId: string;
@@ -15,12 +20,18 @@ interface ImageViewerProps {
 }
 
 /**
- * ImageViewer — Renders the current frame for a sensor_msgs/Image or
+ * ImageViewer - Renders the current frame for a sensor_msgs/Image or
  * sensor_msgs/CompressedImage topic at the global playhead time.
  *
  * Uses lazy single-message reads (useMessageAtTime) instead of eagerly
  * loading every frame. Image streams in compressed bags are gigabytes of
- * raw pixel data — preloading them would hang the UI for many minutes.
+ * raw pixel data, so preloading them would hang the UI for many minutes.
+ *
+ * v1.3.2: optional CameraInfo overlay - principal-point reticle, focal-
+ * length badge, and a "calibration likely unfilled" chip when every
+ * coefficient in D[0..4] is zero. Pairing is automatic by topic-name
+ * convention (`/camera/image_raw` -> `/camera/camera_info`) with a manual
+ * dropdown when convention misses.
  */
 export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProps) {
   const entry = useBagStore((s) => resolveBagEntry(s, bagId));
@@ -31,6 +42,17 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
 
   const { message, loading, error } = useMessageAtTime(topicName, playheadNs, bagId);
 
+  const settings =
+    useImagePanelStore((s) => s.byId[panelId]) ?? DEFAULT_IMAGE_SETTINGS;
+  const updateSettings = useImagePanelStore((s) => s.update);
+
+  const camera = useCameraInfo(
+    topicName,
+    bagId,
+    playheadNs,
+    settings.cameraInfoManualPair || null,
+  );
+
   const [renderError, setRenderError] = useState<string | null>(null);
   const [meta, setMeta] = useState<{ width: number; height: number; encoding: string } | null>(
     null,
@@ -38,6 +60,11 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
 
   // Draw the current frame onto the canvas.
   useEffect(() => {
+    // Reset the error banner when a new message arrives. This was the
+    // pre-v1.3.2 behaviour; the lint rule sees `setRenderError` and a
+    // useEffect together and complains, but the reset has no cascade
+    // because the same effect immediately decodes the new frame.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRenderError(null);
     if (!message?.value || !canvasRef.current) return;
 
@@ -78,9 +105,27 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
   const showInitialLoading = loading && !message;
   const startNs = bag?.startTime ?? 0n;
 
+  const overlayOn = settings.cameraInfoOverlay && !!camera.info;
+  const headerExtras = (
+    <CameraInfoHeaderToggle
+      hasCandidates={camera.candidates.length > 0}
+      enabled={settings.cameraInfoOverlay}
+      onToggle={(next) => updateSettings(panelId, { cameraInfoOverlay: next })}
+      hasInfo={!!camera.info}
+    />
+  );
+
   return (
-    <PanelShell panelId={panelId} kind="image" topicName={topicName} type={type} accentColor={accent} bagId={bagId}>
-      {showInitialLoading && <PanelLoadingState message="Loading frame…" />}
+    <PanelShell
+      panelId={panelId}
+      kind="image"
+      topicName={topicName}
+      type={type}
+      accentColor={accent}
+      bagId={bagId}
+      headerExtras={headerExtras}
+    >
+      {showInitialLoading && <PanelLoadingState message="Loading frame..." />}
       {error && !message && <PanelErrorState message={error} />}
       {!loading && !error && !message && (
         <PanelEmptyState message="No image messages on this topic." />
@@ -96,15 +141,16 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
                 <div className="text-text-muted text-xs">{renderError}</div>
               </div>
             ) : (
-              <canvas
-                ref={canvasRef}
-                className="max-w-full max-h-full object-contain rounded-md border border-border"
+              <CanvasWithOverlay
+                canvasRef={canvasRef}
+                showOverlay={overlayOn}
+                camera={camera.info}
               />
             )}
             {loading && (
               <div
                 className="absolute top-2 right-2 w-4 h-4 text-accent-blue animate-spin-slow"
-                title="Loading newer frame…"
+                title="Loading newer frame..."
               >
                 <svg fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
@@ -112,7 +158,25 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
                 </svg>
               </div>
             )}
+            {overlayOn && camera.info && (
+              <CameraInfoBadge
+                camera={camera.info}
+                calibrationLikelyUnfilled={camera.calibrationLikelyUnfilled}
+              />
+            )}
           </div>
+
+          {settings.cameraInfoOverlay && camera.candidates.length > 0 && (
+            <CameraInfoPairBar
+              pairedTopic={camera.pairedTopic}
+              isAutoPair={camera.isAutoPair}
+              candidates={camera.candidates}
+              manualOverride={settings.cameraInfoManualPair}
+              onChange={(next) =>
+                updateSettings(panelId, { cameraInfoManualPair: next })
+              }
+            />
+          )}
 
           <div className="px-4 py-1.5 border-t border-border flex items-center justify-between text-text-muted text-xs mono">
             <span>
@@ -128,6 +192,185 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
         </div>
       )}
     </PanelShell>
+  );
+}
+
+interface CanvasWithOverlayProps {
+  canvasRef: React.RefObject<HTMLCanvasElement | null>;
+  showOverlay: boolean;
+  camera: CameraIntrinsics | null;
+}
+
+function CanvasWithOverlay({ canvasRef, showOverlay, camera }: CanvasWithOverlayProps) {
+  // The reticle sits over the canvas in absolute coords. We compute its CSS
+  // position from (cx, cy) and the rendered canvas size, kept in sync via
+  // ResizeObserver so a resize from a panel drag doesn't drift it.
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [reticle, setReticle] = useState<{ left: number; top: number } | null>(null);
+
+  useEffect(() => {
+    if (!showOverlay || !camera || !wrapperRef.current || !canvasRef.current) {
+      setReticle(null);
+      return;
+    }
+    const canvas = canvasRef.current;
+    const compute = () => {
+      const rect = canvas.getBoundingClientRect();
+      const wrapperRect = wrapperRef.current!.getBoundingClientRect();
+      if (canvas.width === 0 || canvas.height === 0) return;
+      const scaleX = rect.width / canvas.width;
+      const scaleY = rect.height / canvas.height;
+      const leftPx = rect.left - wrapperRect.left + camera.cx * scaleX;
+      const topPx = rect.top - wrapperRect.top + camera.cy * scaleY;
+      setReticle({ left: leftPx, top: topPx });
+    };
+    compute();
+    const ro = new ResizeObserver(compute);
+    ro.observe(canvas);
+    ro.observe(wrapperRef.current);
+    return () => ro.disconnect();
+  }, [showOverlay, camera, canvasRef]);
+
+  return (
+    <div ref={wrapperRef} className="relative max-w-full max-h-full flex items-center justify-center">
+      <canvas
+        ref={canvasRef}
+        className="max-w-full max-h-full object-contain rounded-md border border-border"
+      />
+      {showOverlay && reticle && (
+        <div
+          className="pointer-events-none absolute"
+          style={{
+            left: `${reticle.left}px`,
+            top: `${reticle.top}px`,
+            transform: 'translate(-50%, -50%)',
+          }}
+          aria-hidden
+        >
+          <svg width="22" height="22" viewBox="0 0 22 22">
+            <circle cx="11" cy="11" r="8" fill="none" stroke="#06b6d4" strokeWidth="1" opacity="0.85" />
+            <line x1="11" y1="0" x2="11" y2="22" stroke="#06b6d4" strokeWidth="0.7" opacity="0.85" />
+            <line x1="0" y1="11" x2="22" y2="11" stroke="#06b6d4" strokeWidth="0.7" opacity="0.85" />
+            <circle cx="11" cy="11" r="1.5" fill="#06b6d4" />
+          </svg>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface CameraInfoBadgeProps {
+  camera: CameraIntrinsics;
+  calibrationLikelyUnfilled: boolean;
+}
+
+function CameraInfoBadge({ camera, calibrationLikelyUnfilled }: CameraInfoBadgeProps) {
+  return (
+    <div className="absolute bottom-2 left-2 flex flex-col gap-1 items-start">
+      <div className="bg-bg-primary/85 backdrop-blur border border-border rounded-md px-2 py-1 text-[10px] mono text-text-secondary">
+        f = ({camera.fx.toFixed(1)}, {camera.fy.toFixed(1)}) px
+        <span className="text-text-tertiary ml-2">
+          {camera.width}×{camera.height}
+        </span>
+      </div>
+      {calibrationLikelyUnfilled && (
+        <div
+          className="bg-amber-500/15 border border-amber-500/40 text-amber-300 rounded-md px-2 py-1 text-[10px] mono"
+          title="Every coefficient in D[0..4] is zero. This is almost always a calibration template that was never run."
+        >
+          calibration likely unfilled
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface CameraInfoPairBarProps {
+  pairedTopic: string | null;
+  isAutoPair: boolean;
+  candidates: string[];
+  manualOverride: string;
+  onChange: (next: string) => void;
+}
+
+function CameraInfoPairBar({
+  pairedTopic,
+  isAutoPair,
+  candidates,
+  manualOverride,
+  onChange,
+}: CameraInfoPairBarProps) {
+  // The select drives the manual override; "" maps to "use auto-pair".
+  const selectValue = manualOverride || '';
+  return (
+    <div className="px-4 py-1 border-t border-border flex items-center gap-2 text-[10px] mono">
+      <span className="text-text-tertiary">camera_info</span>
+      <select
+        value={selectValue}
+        onChange={(e) => onChange(e.target.value)}
+        className="px-1.5 py-0.5 bg-surface border border-border rounded text-text-secondary focus:outline-none focus:border-accent-blue/50"
+        title={
+          isAutoPair
+            ? `Auto-paired with ${pairedTopic ?? 'none'}`
+            : selectValue
+              ? 'Manual pair (overrides auto-detection)'
+              : 'No pair selected'
+        }
+      >
+        <option value="">auto: {pairedTopic ?? 'none'}</option>
+        {candidates.map((cand) => (
+          <option key={cand} value={cand}>
+            {cand}
+          </option>
+        ))}
+      </select>
+      {!isAutoPair && selectValue && (
+        <button
+          type="button"
+          onClick={() => onChange('')}
+          className="text-text-tertiary hover:text-accent-blue underline decoration-dotted"
+          title="Revert to the auto-detected pair"
+        >
+          clear
+        </button>
+      )}
+    </div>
+  );
+}
+
+interface CameraInfoHeaderToggleProps {
+  hasCandidates: boolean;
+  enabled: boolean;
+  onToggle: (next: boolean) => void;
+  hasInfo: boolean;
+}
+
+function CameraInfoHeaderToggle({
+  hasCandidates,
+  enabled,
+  onToggle,
+  hasInfo,
+}: CameraInfoHeaderToggleProps) {
+  if (!hasCandidates) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => onToggle(!enabled)}
+      className={`text-[10px] mono px-1.5 py-0.5 rounded border transition-colors ${
+        enabled
+          ? 'border-accent-cyan/60 text-accent-cyan bg-accent-cyan/10'
+          : 'border-border text-text-tertiary hover:text-text-secondary hover:border-border-strong'
+      }`}
+      title={
+        enabled
+          ? hasInfo
+            ? 'CameraInfo overlay on - click to hide'
+            : 'CameraInfo overlay on but no message at this timestamp'
+          : 'Show the CameraInfo overlay (principal point + focal length)'
+      }
+    >
+      CameraInfo
+    </button>
   );
 }
 

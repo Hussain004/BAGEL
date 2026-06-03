@@ -112,6 +112,49 @@ export const useTrajectoryPanelStore = create<TrajectoryPanelState>((set) => ({
   },
 }));
 
+// ── ImageViewer (v1.3.2) ───────────────────────────────────────────────
+
+export interface ImagePanelSettings {
+  /**
+   * Show the CameraInfo overlay (principal-point reticle, focal-length
+   * badge, distortion-likely-unfilled chip). Off by default so the panel
+   * looks the same as v1.3.1 for users who don't have a CameraInfo topic
+   * in their bag; turning it on is a single click in the panel header.
+   */
+  cameraInfoOverlay: boolean;
+  /**
+   * Manual CameraInfo topic override. Empty string means "use auto-pair".
+   * Persisted per-panel so a stereo rig's odd left/right mapping sticks
+   * through dock + reopen.
+   */
+  cameraInfoManualPair: string;
+}
+
+export const DEFAULT_IMAGE_SETTINGS: ImagePanelSettings = {
+  cameraInfoOverlay: false,
+  cameraInfoManualPair: '',
+};
+
+interface ImagePanelState {
+  byId: Record<string, ImagePanelSettings>;
+  update: (panelId: string, partial: Partial<ImagePanelSettings>) => void;
+}
+
+export const useImagePanelStore = create<ImagePanelState>((set) => ({
+  byId: {},
+  update: (panelId, partial) => {
+    set((state) => {
+      const current = state.byId[panelId] ?? DEFAULT_IMAGE_SETTINGS;
+      return {
+        byId: {
+          ...state.byId,
+          [panelId]: { ...current, ...partial },
+        },
+      };
+    });
+  },
+}));
+
 // ── TFTree ─────────────────────────────────────────────────────────────
 
 export interface TFTreePanelSettings {
