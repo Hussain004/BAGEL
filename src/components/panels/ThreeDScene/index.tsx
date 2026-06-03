@@ -7,6 +7,15 @@ import {
   useThreeDPanelStore,
   type UpAxis,
 } from '../../../store/threeDPanelStore';
+import {
+  resolveDefaults,
+  usePanelDefaultsStore,
+} from '../../../store/panelDefaultsStore';
+import {
+  detectKind,
+  SCENE_KIND_LABELS,
+  type SceneKind,
+} from './sceneKind';
 import { useRobotModelStore } from '../../../store/robotModelStore';
 import { useJointStates } from '../../../hooks/useJointStates';
 import { buildRobotSubtree, type RobotSubtree } from './robotModel';
@@ -15,11 +24,6 @@ import { getTopicColor } from '../../../utils/color';
 import { nsToSeconds } from '../../../utils/time';
 import {
   isCameraInfoType,
-  isCloudType,
-  isLaserScanType,
-  isMarkerArrayType,
-  isMarkerType,
-  isOccupancyGridType,
 } from '../../../utils/messages';
 import {
   parseCameraInfo,
@@ -71,8 +75,6 @@ interface ThreeDSceneProps {
   /** Which bag the panel reads from (multi-bag). Defaults to focused bag. */
   bagId?: string;
 }
-
-type SceneKind = 'pointcloud' | 'laserscan' | 'pose' | 'markerarray' | 'occupancygrid';
 
 /**
  * Hard cap on marker messages we decode for a panel. Real-world bags rarely
@@ -143,20 +145,6 @@ function makeUpFix(axis: UpAxis): THREE.Matrix4 {
       break;
   }
   return m;
-}
-
-function detectKind(type: string): SceneKind {
-  // MarkerArray (and the rare single Marker) get their own path — the
-  // primitives are heterogeneous and don't share the cloud/pose code at all.
-  if (isMarkerArrayType(type) || isMarkerType(type)) return 'markerarray';
-  // Both sensor_msgs/PointCloud2 and list-of-points clouds (Livox CustomMsg
-  // etc.) take the 'pointcloud' branch — they share the same render
-  // pipeline once the worker has produced Float32Array positions + colors.
-  if (isCloudType(type)) return 'pointcloud';
-  if (isLaserScanType(type)) return 'laserscan';
-  // SLAM-produced maps render as a textured plane in the world frame.
-  if (isOccupancyGridType(type)) return 'occupancygrid';
-  return 'pose';
 }
 
 /**
@@ -287,8 +275,38 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
   // reopen of the same 3D panel as a side benefit. `accumStats` stays as
   // local state because it's a derived view of the live accumulator object,
   // not a user preference.
-  const settings = useThreeDPanelStore((s) => s.byId[panelId] ?? DEFAULT_THREE_D_SETTINGS);
+  //
+  // v1.3.3: a *user-saved* default per scene kind sits between the per-panel
+  // entry and the hard-coded fallback. On first mount of a panelId, the
+  // resolved kind default is materialised into the panel's store entry so
+  // every subsequent `update` keeps the same baseline.
+  const userDefaultsByKind = usePanelDefaultsStore((s) => s.byKind);
+  const setUserDefault = usePanelDefaultsStore((s) => s.setDefault);
+  const clearUserDefault = usePanelDefaultsStore((s) => s.clearDefault);
+  const hasUserDefault = !!userDefaultsByKind[sceneKind];
+  const effectiveDefaults = useMemo(
+    () => resolveDefaults(sceneKind, userDefaultsByKind),
+    [sceneKind, userDefaultsByKind],
+  );
+  const settings = useThreeDPanelStore(
+    (s) => s.byId[panelId] ?? effectiveDefaults,
+  );
   const updateSettings = useThreeDPanelStore((s) => s.update);
+  const setAllSettings = useThreeDPanelStore((s) => s.setAll);
+
+  // Seed the per-panel store entry from the resolved kind defaults the first
+  // time this panel is rendered. Without this seeding the user's saved
+  // default would only "stick" once they touched any setting (because the
+  // current `update` baseline is the hard-coded fallback). Running it once
+  // via a ref keeps the seed write idempotent across React 18 double-mount.
+  const seededRef = useRef(false);
+  if (!seededRef.current) {
+    seededRef.current = true;
+    const has = useThreeDPanelStore.getState().byId[panelId] !== undefined;
+    if (!has && hasUserDefault) {
+      setAllSettings(panelId, effectiveDefaults);
+    }
+  }
 
   // ─── Robot model (v1.3.0) ──────────────────────────────────────────────
   // Each panel grows its own `RobotSubtree` instance because Three.js scene
@@ -345,6 +363,24 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     updateSettings(panelId, { cameraFrustumsOn: v });
   const setCameraFrustumFar = (v: number) =>
     updateSettings(panelId, { cameraFrustumFar: v });
+
+  // v1.3.3 - issue #44: "Save as default" snapshots the current panel's
+  // settings as the kind-level user default; "Reset to default" applies the
+  // saved default (or the hard-coded fallback when none is saved) back to
+  // *this* panel. Both actions only touch their respective stores - the
+  // panel re-renders through the existing `byId[panelId]` selector.
+  const handleSaveAsDefault = useCallback(() => {
+    setUserDefault(sceneKind, settings);
+  }, [setUserDefault, sceneKind, settings]);
+  const handleResetToDefault = useCallback(() => {
+    // Apply the kind default to this panel. We deliberately reuse
+    // `effectiveDefaults` here so the user immediately sees the default
+    // they just saved, instead of needing to reopen the panel.
+    setAllSettings(panelId, effectiveDefaults);
+  }, [setAllSettings, panelId, effectiveDefaults]);
+  const handleClearSavedDefault = useCallback(() => {
+    clearUserDefault(sceneKind);
+  }, [clearUserDefault, sceneKind]);
 
   // Footer stats for the accumulator. Updated on every successful append;
   // derived from the THREE.js accumulator state which is recreated on every
@@ -1428,6 +1464,11 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
               setCameraFrustumsOn={setCameraFrustumsOn}
               cameraFrustumFar={cameraFrustumFar}
               setCameraFrustumFar={setCameraFrustumFar}
+              sceneKindLabel={SCENE_KIND_LABELS[sceneKind]}
+              hasSavedDefault={hasUserDefault}
+              onSaveAsDefault={handleSaveAsDefault}
+              onResetToDefault={handleResetToDefault}
+              onClearSavedDefault={handleClearSavedDefault}
             />
           </div>
 
@@ -1604,6 +1645,13 @@ interface ControlsCardProps {
   /** Far-plane distance for the frustum, in metres. */
   cameraFrustumFar: number;
   setCameraFrustumFar: (v: number) => void;
+  /** Human-readable scene-kind label for the v1.3.3 defaults UI ("PointCloud2"). */
+  sceneKindLabel: string;
+  /** True when a user default is saved for this scene kind. */
+  hasSavedDefault: boolean;
+  onSaveAsDefault: () => void;
+  onResetToDefault: () => void;
+  onClearSavedDefault: () => void;
 }
 
 function ControlsCard({
@@ -1653,6 +1701,11 @@ function ControlsCard({
   setCameraFrustumsOn,
   cameraFrustumFar,
   setCameraFrustumFar,
+  sceneKindLabel,
+  hasSavedDefault,
+  onSaveAsDefault,
+  onResetToDefault,
+  onClearSavedDefault,
 }: ControlsCardProps) {
   const [open, setOpen] = useState(false);
   const allFrames = useMemo(() => (graph ? Array.from(graph.frames).sort() : []), [graph]);
@@ -2032,6 +2085,45 @@ function ControlsCard({
               </select>
             </div>
           )}
+          <div className="pt-1 border-t border-border/60 space-y-1">
+            <div className="flex items-center justify-between text-text-tertiary text-[10px]">
+              <span>defaults ({sceneKindLabel})</span>
+              {hasSavedDefault && (
+                <button
+                  onClick={onClearSavedDefault}
+                  className="text-text-tertiary hover:text-accent-rose underline decoration-dotted"
+                  title={`Forget the saved default for ${sceneKindLabel}. Future panels fall back to built-in defaults.`}
+                >
+                  clear saved
+                </button>
+              )}
+            </div>
+            <div className="flex gap-1">
+              <button
+                onClick={onSaveAsDefault}
+                className="flex-1 px-2 py-0.5 rounded-md transition-colors border border-border text-text-secondary hover:border-accent-blue/40 hover:text-accent-blue"
+                title={`Persist this panel's current settings as the default for every new ${sceneKindLabel} panel (stored in your browser).`}
+              >
+                save as default
+              </button>
+              <button
+                onClick={onResetToDefault}
+                className="flex-1 px-2 py-0.5 rounded-md transition-colors border border-border text-text-secondary hover:border-accent-blue/40 hover:text-accent-blue"
+                title={
+                  hasSavedDefault
+                    ? `Apply the saved ${sceneKindLabel} default to this panel.`
+                    : `Reset this panel to the built-in ${sceneKindLabel} defaults.`
+                }
+              >
+                reset
+              </button>
+            </div>
+            {hasSavedDefault && (
+              <div className="text-text-tertiary text-[10px] leading-tight">
+                saved default in effect for new panels
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

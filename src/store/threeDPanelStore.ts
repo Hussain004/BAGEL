@@ -107,6 +107,13 @@ interface ThreeDPanelState {
   byId: Record<string, ThreeDPanelSettings>;
   /** Patch a single panel's settings. Initialises from defaults on first write. */
   update: (panelId: string, partial: Partial<ThreeDPanelSettings>) => void;
+  /**
+   * Replace the entire settings object for `panelId`. Used by the v1.3.3
+   * defaults-seeding path so the user's saved per-kind default lands in
+   * full on first mount, rather than waiting for the user to touch a
+   * setting before the saved values stick.
+   */
+  setAll: (panelId: string, settings: ThreeDPanelSettings) => void;
 }
 
 export const useThreeDPanelStore = create<ThreeDPanelState>((set) => ({
@@ -121,5 +128,10 @@ export const useThreeDPanelStore = create<ThreeDPanelState>((set) => ({
         },
       };
     });
+  },
+  setAll: (panelId, settings) => {
+    set((state) => ({
+      byId: { ...state.byId, [panelId]: settings },
+    }));
   },
 }));
