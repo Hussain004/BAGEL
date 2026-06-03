@@ -17,10 +17,19 @@
  *   - POINTS                            Points with vertex colours
  *   - CUBE_LIST / SPHERE_LIST           InstancedMesh of the primitive
  *   - TEXT_VIEW_FACING                  Billboarded Sprite with a Canvas tex
- *   - MESH_RESOURCE / TRIANGLE_LIST     Placeholder sphere + console warn
- *                                       (mesh URIs can't be fetched from a
- *                                       static viewer; triangle lists are
- *                                       rare enough to ship in v0.8.x)
+ *   - MESH_RESOURCE                     Lazy `meshLoader.loadMesh()` swap-in
+ *                                       (v1.3.1). Wireframe placeholder shown
+ *                                       while loading and as the fallback on
+ *                                       resolve / load failure. Respects
+ *                                       `mesh_use_embedded_materials` to flip
+ *                                       between bundled materials and the
+ *                                       marker's solid colour.
+ *   - TRIANGLE_LIST                     `MeshLambertMaterial` over a
+ *                                       `BufferGeometry` built from
+ *                                       `marker.points` taken three at a time
+ *                                       (v1.3.1). Per-vertex `marker.colors[]`
+ *                                       when length matches, otherwise solid
+ *                                       `marker.color`.
  *
  * Scale convention (from the ROS Marker spec):
  *   - CUBE: scale = full XYZ size
@@ -40,6 +49,7 @@
  */
 
 import * as THREE from 'three';
+import { loadMesh, MeshLoadError } from '../../../utils/meshLoader';
 
 export const MARKER_TYPE = {
   ARROW: 0,
@@ -101,6 +111,13 @@ export interface MarkerData {
   colors: ColorRGBA[];
   text: string;
   meshResource: string;
+  /**
+   * When true, the loaded mesh keeps the materials baked into the file (the
+   * artist's intent for `.dae` / `.obj` packages). When false (the default per
+   * the Marker .msg), the mesh is tinted with `marker.color`. RViz follows
+   * the same convention.
+   */
+  meshUseEmbeddedMaterials: boolean;
 }
 
 export interface RenderedMarker {
@@ -590,16 +607,18 @@ function createTextMarker(): RenderedMarker {
   };
 }
 
-// ── placeholder for unsupported types ─────────────────────────────────────
+// ── placeholder for unsupported / not-yet-resolved meshes ────────────────
 
 /**
- * MESH_RESOURCE references external `.dae` / `.stl` URIs that a static
- * site can't fetch (no `package://` resolver, and `file://` is blocked).
- * TRIANGLE_LIST is rare in published bags and not yet implemented.
+ * Small pink wireframe sphere used in two cases:
+ *   1. As the fallback for an unknown marker type (defensive: bags from
+ *      third-party stacks occasionally publish out-of-spec values).
+ *   2. As the placeholder for MESH_RESOURCE while its bytes are still
+ *      loading, AND as the failure mode when the load can't resolve.
  *
- * Both render as a small wireframe sphere with a console warning, so the
- * rest of the scene still composes and the user can see *where* the
- * marker would have been.
+ * `reason`, when non-empty, is emitted exactly once via `console.warn` the
+ * first time `update()` runs so a typo'd type or missing package surfaces
+ * in the dev tools without spamming on every playhead tick.
  */
 function createPlaceholderMarker(reason: string): RenderedMarker {
   const geometry = new THREE.SphereGeometry(0.1, 8, 6);
@@ -617,10 +636,277 @@ function createPlaceholderMarker(reason: string): RenderedMarker {
       applyPose(mesh, m.pose);
       const s = Math.max(m.scale.x, m.scale.y, m.scale.z, 0.05);
       mesh.scale.setScalar(s);
-      if (!warned) {
+      if (!warned && reason) {
         console.warn(`[MarkerArray] ${reason} (ns=${m.ns}, id=${m.id})`);
         warned = true;
       }
+    },
+    dispose: () => {
+      geometry.dispose();
+      material.dispose();
+    },
+  };
+}
+
+// ── MESH_RESOURCE (v1.3.1) ────────────────────────────────────────────────
+
+/**
+ * Recursively tint every Mesh material under `root` with the marker's solid
+ * colour. Clones each material first so the cached mesh in `meshLoader`'s
+ * LRU is not mutated, since multiple markers sharing the same URI but
+ * different colours would otherwise fight over one shared material reference.
+ *
+ * Skipping non-Mesh nodes (Lines / Sprites inside a .dae for example) is
+ * fine: the visual intent of `mesh_use_embedded_materials=false` is "make
+ * this whole mesh the marker's colour"; non-mesh helpers stay as-is rather
+ * than crash on an unsupported material shape.
+ */
+function tintLoadedMesh(root: THREE.Object3D, color: ColorRGBA): void {
+  const r = clamp01(color.r);
+  const g = clamp01(color.g);
+  const b = clamp01(color.b);
+  const a = clamp01(color.a);
+  root.traverse((node) => {
+    const mesh = node as THREE.Mesh;
+    if (!mesh.isMesh || !mesh.material) return;
+    const cloned = Array.isArray(mesh.material)
+      ? mesh.material.map((m) => m.clone())
+      : mesh.material.clone();
+    mesh.material = cloned;
+    const list = Array.isArray(cloned) ? cloned : [cloned];
+    for (const m of list) {
+      const colored = m as THREE.Material & { color?: THREE.Color };
+      if (colored.color) colored.color.setRGB(r, g, b);
+      m.opacity = a;
+      m.transparent = a < 1;
+    }
+  });
+}
+
+/**
+ * Apply opacity only. Used when `mesh_use_embedded_materials=true` but the
+ * marker still wants a translucent overlay (debug overlays on top of an
+ * artist-coloured mesh). Materials are cloned for the same reason as
+ * `tintLoadedMesh`.
+ */
+function applyOpacityToLoadedMesh(root: THREE.Object3D, alpha: number): void {
+  const a = clamp01(alpha);
+  root.traverse((node) => {
+    const mesh = node as THREE.Mesh;
+    if (!mesh.isMesh || !mesh.material) return;
+    const cloned = Array.isArray(mesh.material)
+      ? mesh.material.map((m) => m.clone())
+      : mesh.material.clone();
+    mesh.material = cloned;
+    const list = Array.isArray(cloned) ? cloned : [cloned];
+    for (const m of list) {
+      m.opacity = a;
+      m.transparent = a < 1;
+    }
+  });
+}
+
+/**
+ * MESH_RESOURCE renders an external mesh referenced by `marker.mesh_resource`
+ * (a `package://`, `http://`, `https://`, or bare URL). The resolver +
+ * loader path is the same one the v1.3.0 URDF code path uses, so the
+ * pink-wireframe placeholder only survives when the load actually fails.
+ *
+ * Lifecycle:
+ *   - Construct: placeholder is in the scene immediately.
+ *   - First `update(m)` with a non-empty `meshResource`: kick off
+ *     `loadMesh(uri)`. The placeholder stays visible until the promise
+ *     resolves.
+ *   - On resolve: swap the loaded mesh in for the placeholder. Honour
+ *     `mesh_use_embedded_materials` to decide between bundled materials
+ *     and a re-tint by `marker.color`. Cache the URI so successive ticks
+ *     don't re-issue the load.
+ *   - On rejection: leave the placeholder in place and `console.warn`
+ *     once. This matches the v0.8 failure mode.
+ *   - On URI change between updates: bump a generation counter so an
+ *     in-flight stale resolve discards itself, then re-issue.
+ *
+ * Disposal note: the loaded mesh's geometries / materials are *not*
+ * disposed here; they belong to `meshLoader`'s LRU cache, which is the
+ * single owner. Disposing them here would corrupt the cache for any other
+ * marker (or URDF visual) that pulled a clone of the same URI. The cache
+ * disposes on its own evictions.
+ */
+function createMeshResourceMarker(): RenderedMarker {
+  const group = new THREE.Group();
+  const placeholderGeo = new THREE.SphereGeometry(0.1, 8, 6);
+  const placeholderMat = new THREE.MeshBasicMaterial({
+    color: 0xff66cc,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.6,
+  });
+  const placeholder = new THREE.Mesh(placeholderGeo, placeholderMat);
+  group.add(placeholder);
+
+  let lastUri = '';
+  let loadedMesh: THREE.Object3D | null = null;
+  let lastEmbedded: boolean | null = null;
+  let lastTintKey = '';
+  let loadGeneration = 0;
+  let warned = false;
+
+  const showPlaceholder = (sz: Vec3) => {
+    const s = Math.max(sz.x, sz.y, sz.z, 0.05);
+    placeholder.scale.setScalar(s);
+    placeholder.visible = true;
+  };
+
+  return {
+    object: group,
+    update: (m) => {
+      applyPose(group, m.pose);
+
+      const uri = m.meshResource;
+      if (uri !== lastUri) {
+        lastUri = uri;
+        warned = false;
+        if (loadedMesh) {
+          group.remove(loadedMesh);
+          loadedMesh = null;
+        }
+        lastEmbedded = null;
+        lastTintKey = '';
+        showPlaceholder(m.scale);
+        if (!uri) return;
+
+        const gen = ++loadGeneration;
+        const useEmbedded = m.meshUseEmbeddedMaterials;
+        const colorSnapshot: ColorRGBA = { ...m.color };
+        const scaleSnapshot: Vec3 = { ...m.scale };
+        loadMesh(uri)
+          .then((mesh) => {
+            if (gen !== loadGeneration) return;
+            mesh.scale.set(
+              scaleSnapshot.x || 1,
+              scaleSnapshot.y || 1,
+              scaleSnapshot.z || 1,
+            );
+            if (!useEmbedded) {
+              tintLoadedMesh(mesh, colorSnapshot);
+              lastTintKey = `${colorSnapshot.r}|${colorSnapshot.g}|${colorSnapshot.b}|${colorSnapshot.a}`;
+            } else if (colorSnapshot.a < 1) {
+              applyOpacityToLoadedMesh(mesh, colorSnapshot.a);
+              lastTintKey = `embed|${colorSnapshot.a}`;
+            } else {
+              lastTintKey = 'embed';
+            }
+            lastEmbedded = useEmbedded;
+            placeholder.visible = false;
+            group.add(mesh);
+            loadedMesh = mesh;
+          })
+          .catch((err) => {
+            if (gen !== loadGeneration) return;
+            if (!warned) {
+              const reason = err instanceof MeshLoadError ? err.message : String(err);
+              console.warn(
+                `[MarkerArray] MESH_RESOURCE failed (${m.ns}:${m.id}) ${uri}: ${reason}`,
+              );
+              warned = true;
+            }
+          });
+        return;
+      }
+
+      // URI hasn't changed. Adjust visible state without re-loading.
+      if (loadedMesh) {
+        loadedMesh.scale.set(m.scale.x || 1, m.scale.y || 1, m.scale.z || 1);
+        const useEmbedded = m.meshUseEmbeddedMaterials;
+        const tintKey = useEmbedded
+          ? m.color.a < 1
+            ? `embed|${m.color.a}`
+            : 'embed'
+          : `${m.color.r}|${m.color.g}|${m.color.b}|${m.color.a}`;
+        if (useEmbedded !== lastEmbedded || tintKey !== lastTintKey) {
+          // Materials may have been mutated already; clone again to land
+          // back on a fresh set rather than stacking edits.
+          if (!useEmbedded) {
+            tintLoadedMesh(loadedMesh, m.color);
+          } else if (m.color.a < 1) {
+            applyOpacityToLoadedMesh(loadedMesh, m.color.a);
+          }
+          lastEmbedded = useEmbedded;
+          lastTintKey = tintKey;
+        }
+      } else {
+        showPlaceholder(m.scale);
+      }
+    },
+    dispose: () => {
+      // Drop the placeholder; the loaded mesh's geometries / materials
+      // belong to the mesh-loader cache and must not be disposed here.
+      placeholderGeo.dispose();
+      placeholderMat.dispose();
+      loadGeneration++; // any in-flight promise becomes a no-op on resolve.
+      if (loadedMesh) {
+        group.remove(loadedMesh);
+        loadedMesh = null;
+      }
+    },
+  };
+}
+
+// ── TRIANGLE_LIST (v1.3.1) ────────────────────────────────────────────────
+
+/**
+ * TRIANGLE_LIST renders `marker.points[]` as a Lambert-lit triangle soup, in
+ * groups of three. `marker.colors[]` gives per-vertex colour when its length
+ * matches `points.length`; otherwise the whole mesh tints from
+ * `marker.color`. An odd trailing point is dropped rather than building a
+ * dangling triangle.
+ *
+ * Scale: spec is ambiguous but RViz multiplies the geometry coordinates by
+ * `marker.scale`. We match RViz so debug bags rendered side-by-side line up.
+ *
+ * `DoubleSide` because triangle-soup marker meshes (planner footprints,
+ * convex hulls, costmap surfaces) are routinely camera-flipped relative to
+ * how the publisher generated them. Single-side culling makes those
+ * scenarios silently disappear; the lighting cost is negligible at marker
+ * scale (<<10k tris in practice).
+ */
+function createTriangleListMarker(): RenderedMarker {
+  const geometry = new THREE.BufferGeometry();
+  const material = new THREE.MeshLambertMaterial({
+    color: 0xffffff,
+    vertexColors: true,
+    transparent: true,
+    side: THREE.DoubleSide,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.frustumCulled = false;
+  return {
+    object: mesh,
+    update: (m) => {
+      applyPose(mesh, m.pose);
+      mesh.scale.set(m.scale.x || 1, m.scale.y || 1, m.scale.z || 1);
+      const triCount = Math.floor(m.points.length / 3);
+      if (triCount === 0) {
+        mesh.visible = false;
+        return;
+      }
+      mesh.visible = m.color.a > 0;
+      const vertexCount = triCount * 3;
+      geometry.setAttribute(
+        'position',
+        new THREE.BufferAttribute(packPositions(m.points, vertexCount), 3),
+      );
+      geometry.setAttribute(
+        'color',
+        new THREE.BufferAttribute(packColors(m.colors, m.color, vertexCount), 3),
+      );
+      geometry.computeVertexNormals();
+      geometry.computeBoundingSphere();
+      // Keep base colour white so per-vertex colour passes through Lambert
+      // multiplication unchanged. Opacity still lives on the material.
+      material.color.setRGB(1, 1, 1);
+      material.opacity = clamp01(m.color.a);
+      material.transparent = material.opacity < 1;
     },
     dispose: () => {
       geometry.dispose();
@@ -654,13 +940,9 @@ export function createMarkerObject(type: number): RenderedMarker {
     case MARKER_TYPE.TEXT_VIEW_FACING:
       return createTextMarker();
     case MARKER_TYPE.MESH_RESOURCE:
-      return createPlaceholderMarker(
-        'MESH_RESOURCE is not supported (URIs cannot be resolved in-browser)',
-      );
+      return createMeshResourceMarker();
     case MARKER_TYPE.TRIANGLE_LIST:
-      return createPlaceholderMarker(
-        'TRIANGLE_LIST is not yet implemented',
-      );
+      return createTriangleListMarker();
     default:
       return createPlaceholderMarker(`unknown marker type ${type}`);
   }
@@ -728,6 +1010,7 @@ export function normaliseMarker(
     }),
     text: typeof raw.text === 'string' ? raw.text : '',
     meshResource: typeof raw.mesh_resource === 'string' ? raw.mesh_resource : '',
+    meshUseEmbeddedMaterials: Boolean(raw.mesh_use_embedded_materials ?? false),
   };
 }
 
