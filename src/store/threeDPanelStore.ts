@@ -75,6 +75,14 @@ export interface ThreeDPanelSettings {
    * SLAM bags; outdoor / drone bags typically want 20-50 m.
    */
   cameraFrustumFar: number;
+  /**
+   * Camera topics whose frustum the user has individually hidden (v1.3.4).
+   * Stored as a sorted array for stable structural equality. Only meaningful
+   * when `cameraFrustumsOn` is true and the bag has multiple CameraInfo
+   * topics. Topic names are bag-specific so this field is excluded from
+   * per-kind saved defaults (listed in NON_PORTABLE_FIELDS).
+   */
+  hiddenFrustumTopics: string[];
 }
 
 /**
@@ -101,6 +109,7 @@ export const DEFAULT_THREE_D_SETTINGS: ThreeDPanelSettings = {
   mapAlpha: 0.85,
   cameraFrustumsOn: false,
   cameraFrustumFar: 5,
+  hiddenFrustumTopics: [],
 };
 
 interface ThreeDPanelState {

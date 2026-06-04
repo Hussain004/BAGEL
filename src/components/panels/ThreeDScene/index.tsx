@@ -335,6 +335,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     mapAlpha,
     cameraFrustumsOn,
     cameraFrustumFar,
+    hiddenFrustumTopics,
   } = settings;
 
   const setColorMode = (v: ColorMode) => updateSettings(panelId, { colorMode: v });
@@ -363,6 +364,12 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     updateSettings(panelId, { cameraFrustumsOn: v });
   const setCameraFrustumFar = (v: number) =>
     updateSettings(panelId, { cameraFrustumFar: v });
+  const toggleFrustumTopicHidden = (t: string, hidden: boolean) => {
+    const cur = new Set(hiddenFrustumTopics);
+    if (hidden) cur.add(t);
+    else cur.delete(t);
+    updateSettings(panelId, { hiddenFrustumTopics: Array.from(cur).sort() });
+  };
 
   // v1.3.3 - issue #44: "Save as default" snapshots the current panel's
   // settings as the kind-level user default; "Reset to default" applies the
@@ -1217,7 +1224,10 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     const refs = sceneRef.current;
     if (!refs) return;
     const owned = cameraFrustumsRef.current;
-    const desired = cameraFrustumsOn ? new Set(cameraInfos.keys()) : new Set<string>();
+    const hiddenSet = new Set(hiddenFrustumTopics);
+    const desired = cameraFrustumsOn
+      ? new Set([...cameraInfos.keys()].filter((t) => !hiddenSet.has(t)))
+      : new Set<string>();
     // Drop frustums whose topic is no longer wanted.
     for (const [topic, entry] of [...owned]) {
       if (!desired.has(topic)) {
@@ -1236,7 +1246,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
       owned.set(topic, { frustum: f, cache: null });
     }
     refs.renderOnce();
-  }, [cameraInfos, cameraFrustumsOn, sceneRef]);
+  }, [cameraInfos, cameraFrustumsOn, hiddenFrustumTopics, sceneRef]);
 
   // Unmount cleanup: dispose every frustum when the panel itself goes away.
   useEffect(() => {
@@ -1464,6 +1474,9 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
               setCameraFrustumsOn={setCameraFrustumsOn}
               cameraFrustumFar={cameraFrustumFar}
               setCameraFrustumFar={setCameraFrustumFar}
+              cameraInfoTopics={cameraInfoTopics}
+              hiddenFrustumTopics={hiddenFrustumTopics}
+              onToggleFrustumTopic={toggleFrustumTopicHidden}
               sceneKindLabel={SCENE_KIND_LABELS[sceneKind]}
               hasSavedDefault={hasUserDefault}
               onSaveAsDefault={handleSaveAsDefault}
@@ -1645,6 +1658,11 @@ interface ControlsCardProps {
   /** Far-plane distance for the frustum, in metres. */
   cameraFrustumFar: number;
   setCameraFrustumFar: (v: number) => void;
+  /** All CameraInfo topic names (v1.3.4). Used to render per-camera hide checkboxes. */
+  cameraInfoTopics: string[];
+  /** Topics whose frustum the user has hidden (v1.3.4). */
+  hiddenFrustumTopics: string[];
+  onToggleFrustumTopic: (topic: string, hidden: boolean) => void;
   /** Human-readable scene-kind label for the v1.3.3 defaults UI ("PointCloud2"). */
   sceneKindLabel: string;
   /** True when a user default is saved for this scene kind. */
@@ -1701,6 +1719,9 @@ function ControlsCard({
   setCameraFrustumsOn,
   cameraFrustumFar,
   setCameraFrustumFar,
+  cameraInfoTopics,
+  hiddenFrustumTopics,
+  onToggleFrustumTopic,
   sceneKindLabel,
   hasSavedDefault,
   onSaveAsDefault,
@@ -2050,6 +2071,32 @@ function ControlsCard({
                   <span className="text-text-secondary mono w-10 text-right">
                     {cameraFrustumFar.toFixed(1)}m
                   </span>
+                </div>
+              )}
+              {cameraFrustumsOn && cameraInfoTopics.length > 1 && (
+                <div className="mt-1.5 space-y-0.5">
+                  <div className="text-text-tertiary text-[10px] mb-0.5">cameras</div>
+                  {cameraInfoTopics.map((topic) => {
+                    const hidden = hiddenFrustumTopics.includes(topic);
+                    const shortName = topic.split('/').filter(Boolean).slice(-2).join('/') || topic;
+                    return (
+                      <label
+                        key={topic}
+                        className={`flex items-center gap-1.5 cursor-pointer text-[10px] ${
+                          hidden ? 'text-text-tertiary' : 'text-text-secondary'
+                        }`}
+                        title={topic}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!hidden}
+                          onChange={(e) => onToggleFrustumTopic(topic, !e.target.checked)}
+                          className="accent-accent-cyan flex-shrink-0"
+                        />
+                        <span className="truncate">{shortName}</span>
+                      </label>
+                    );
+                  })}
                 </div>
               )}
             </div>

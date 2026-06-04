@@ -2,6 +2,8 @@ import { useUiStore } from '../../store/uiStore';
 import { ModalShell } from './ModalShell';
 import { APP_VERSION } from '../../utils/version';
 import { useCustomSchemaStore } from '../../store/customSchemaStore';
+import { usePanelDefaultsStore, type PanelDefaults } from '../../store/panelDefaultsStore';
+import { SCENE_KINDS, SCENE_KIND_LABELS, type SceneKind } from '../panels/ThreeDScene/sceneKind';
 
 /**
  * AboutModal — Project description, version, links.
@@ -45,6 +47,8 @@ export function AboutModal() {
         </div>
 
         <CustomSchemasSection />
+
+        <SavedDefaultsSection />
 
         <div className="border-t border-border pt-4 flex flex-wrap gap-2">
           <LinkButton href="https://github.com/Hussain004/BAGEL">
@@ -142,6 +146,98 @@ function CustomSchemasSection() {
               title="Forget this schema"
             >
               delete
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * Summarise the most user-visible settings in a saved default so the table
+ * row gives enough context to distinguish "accumulate / height" from
+ * "single colour / no accumulate" without opening the panel.
+ */
+function describeDefaults(defaults: PanelDefaults): string {
+  const parts: string[] = [];
+  if (defaults.colorMode !== undefined) parts.push(`color: ${defaults.colorMode}`);
+  if (defaults.accumulating !== undefined) parts.push(defaults.accumulating ? 'accumulate on' : 'accumulate off');
+  if (defaults.pointSize !== undefined) parts.push(`${defaults.pointSize}px`);
+  if (defaults.cameraFrustumsOn !== undefined) parts.push(defaults.cameraFrustumsOn ? 'frustums on' : 'frustums off');
+  if (defaults.mapAlpha !== undefined) parts.push(`alpha ${Math.round(defaults.mapAlpha * 100)}%`);
+  if (parts.length === 0) parts.push('saved');
+  return parts.join(', ');
+}
+
+/**
+ * Lists per-kind saved Display defaults with a clear affordance per row and
+ * a "clear all" at the section level. Hidden when nothing has been saved yet,
+ * so the About modal stays compact for users who have never touched defaults.
+ */
+function SavedDefaultsSection() {
+  const byKind = usePanelDefaultsStore((s) => s.byKind);
+  const clearDefault = usePanelDefaultsStore((s) => s.clearDefault);
+  const clearAll = usePanelDefaultsStore((s) => s.clearAll);
+
+  const savedKinds = SCENE_KINDS.filter((k) => k in byKind);
+  if (savedKinds.length === 0) return null;
+
+  return (
+    <div className="border-t border-border pt-4 space-y-2">
+      <div className="flex items-baseline justify-between">
+        <h3 className="text-text-primary text-sm font-semibold">
+          Saved Display defaults
+        </h3>
+        <div className="flex items-center gap-2">
+          <span className="text-text-tertiary text-[10px]">
+            {savedKinds.length} saved
+          </span>
+          <button
+            onClick={() => {
+              if (
+                typeof window === 'undefined' ||
+                window.confirm('Clear all saved Display defaults?')
+              ) {
+                clearAll();
+              }
+            }}
+            className="text-text-tertiary hover:text-accent-rose text-[10px] underline decoration-dotted focus:outline-none focus-visible:text-accent-rose"
+            title="Forget every saved default - future panels will use built-in defaults"
+          >
+            clear all
+          </button>
+        </div>
+      </div>
+      <p className="text-xs text-text-tertiary">
+        Per-data-type defaults saved from the Display card. Applied to every
+        new panel of that type. Stored in your browser only.
+      </p>
+      <ul className="space-y-1">
+        {savedKinds.map((kind: SceneKind) => (
+          <li
+            key={kind}
+            className="flex items-center gap-2 px-2 py-1 rounded-md bg-surface/40 border border-border/60"
+          >
+            <span className="text-text-primary text-xs font-medium w-28 flex-shrink-0">
+              {SCENE_KIND_LABELS[kind]}
+            </span>
+            <span className="text-text-tertiary text-[10px] truncate flex-1 mono">
+              {describeDefaults(byKind[kind]!)}
+            </span>
+            <button
+              onClick={() => {
+                if (
+                  typeof window === 'undefined' ||
+                  window.confirm(`Clear saved default for ${SCENE_KIND_LABELS[kind]}?`)
+                ) {
+                  clearDefault(kind);
+                }
+              }}
+              className="text-text-tertiary hover:text-accent-rose text-[10px] underline decoration-dotted focus:outline-none focus-visible:text-accent-rose flex-shrink-0"
+              title={`Forget the saved default for ${SCENE_KIND_LABELS[kind]}`}
+            >
+              clear
             </button>
           </li>
         ))}
