@@ -1,45 +1,47 @@
 /**
  * Build a small synthetic MCAP file bundled with BAGEL as "Try a sample bag".
  *
- * The real test fixtures in test_files/ are 250 MB – 3.7 GB which is too big
+ * The real test fixtures in test_files/ are 250 MB - 3.7 GB which is too big
  * to ship in the public web bundle. This script generates a self-contained
- * 30-second synthetic bag (~50 KB) with:
+ * 30-second synthetic bag with:
  *
- *   - /odom (nav_msgs/Odometry)             — 10 Hz figure-eight pose, gives
- *                                              the Trajectory + Plot panels
- *                                              something interesting to render.
- *   - /imu/data (sensor_msgs/Imu)            — 50 Hz angular velocity + accel,
- *                                              drives the Plot panel.
- *   - /scan (sensor_msgs/LaserScan)          — 10 Hz radial scan, exercises
- *                                              the LaserScan branch of the
- *                                              3D panel.
- *   - /tf (tf2_msgs/TFMessage)               — 10 Hz odom→base_link, exercises
- *                                              the TF tree + TF-aware rendering.
- *   - /markers (visualization_msgs/MarkerArray) — 1 Hz set of debug primitives
- *                                              in two namespaces (`status` in
- *                                              base_link, `planning` in odom)
- *                                              to exercise the v0.8 marker
- *                                              renderer (cube/sphere/cylinder/
- *                                              arrow/line_strip/points/text).
- *   - /map (nav_msgs/OccupancyGrid)          — 0.5 Hz synthetic SLAM map that
- *                                              expands outward over the bag.
- *                                              Exercises the v0.9 map plane
- *                                              renderer (cost ramp + origin
- *                                              pose + TF-resolved placement).
- *   - /gps/fix (sensor_msgs/NavSatFix)       — 1 Hz GPS trace, the figure-eight
- *                                              projected onto realistic lat/lon
- *                                              somewhere recognisable (around
- *                                              Cambridge, UK so the OSM tile
- *                                              underlay shows familiar streets
- *                                              when the toggle is flipped on).
+ *   - /odom (nav_msgs/Odometry)             - 10 Hz figure-eight pose, gives
+ *                                             the Trajectory + Plot panels
+ *                                             something interesting to render.
+ *   - /imu/data (sensor_msgs/Imu)           - 50 Hz angular velocity + accel,
+ *                                             drives the Plot panel.
+ *   - /scan (sensor_msgs/LaserScan)         - 10 Hz radial scan, exercises
+ *                                             the LaserScan branch of the
+ *                                             3D panel.
+ *   - /tf (tf2_msgs/TFMessage)              - 10 Hz odom->base_link + static
+ *                                             camera mounts, exercises the
+ *                                             TF tree + TF-aware rendering.
+ *   - /markers (visualization_msgs/MarkerArray) - 1 Hz set of debug primitives
+ *                                             in two namespaces (`status` in
+ *                                             base_link, `planning` in odom)
+ *                                             to exercise the v0.8 marker
+ *                                             renderer (cube/sphere/cylinder/
+ *                                             arrow/line_strip/points/text).
+ *   - /map (nav_msgs/OccupancyGrid)         - 0.5 Hz synthetic SLAM map that
+ *                                             expands outward over the bag.
+ *   - /gps/fix (sensor_msgs/NavSatFix)      - 1 Hz GPS trace, figure-eight
+ *                                             projected onto lat/lon around
+ *                                             Cambridge UK so the OSM tile
+ *                                             underlay shows familiar streets.
+ *   - /camera/image_raw (sensor_msgs/Image) - 2 Hz pre-distorted checkerboard
+ *                                             (96x72 RGB8). Clicking "undistort"
+ *                                             in the ImageViewer panel applies
+ *                                             the v1.3.4 plumb-bob remap and
+ *                                             straightens the grid lines.
+ *   - /camera/camera_info (CameraInfo)      - 2 Hz, k1=-0.30 barrel distortion,
+ *                                             auto-pairs with /camera/image_raw.
+ *   - /camera_rear/camera_info (CameraInfo) - 1 Hz second camera (CameraInfo
+ *                                             only, no image stream), exercises
+ *                                             the v1.3.4 per-camera frustum
+ *                                             hide toggle in the 3D panel.
  *
  * Run:    node scripts/build-sample-bag.mjs
  * Output: public/sample-bags/tour.mcap
- *
- * The script is idempotent. Re-running with the same inputs produces the same
- * bytes, so it's safe to commit the result. We commit it rather than running
- * on every build because the deps (mcap/foxglove serialization) are already
- * in node_modules and re-running adds latency without changing output.
  */
 
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -69,6 +71,32 @@ const MARKER_HZ = 1;
 const MAP_HZ = 0.5;
 // GPS receivers are usually 1 Hz commodity units — match that.
 const GPS_HZ = 1;
+// Camera image stream: 2 Hz keeps the bag size reasonable (~1.3 MB total)
+// while giving the ImageViewer panel enough frames to scrub through.
+const CAMERA_HZ = 2;
+
+// ── Camera intrinsics (v1.3.4) ──────────────────────────────────────────
+// Front camera: 96x72 px, fx=fy=80, centred principal point.
+// D = [k1, k2, p1, p2, k3]. k1=-0.30 gives noticeable barrel distortion
+// (grid lines bow inward at edges); the v1.3.4 "undistort" button
+// straightens them using the plumb-bob remap.
+const CAM_W = 96;
+const CAM_H = 72;
+const CAM_FX = 80.0;
+const CAM_FY = 80.0;
+const CAM_CX = 48.0;
+const CAM_CY = 36.0;
+const CAM_D = [-0.30, 0.08, 0.0, 0.0, 0.0];
+
+// Rear camera: CameraInfo only (no image stream). Placed 0.28m behind the
+// robot, slightly different intrinsics so the frustums look distinct.
+const CAM_REAR_W = 96;
+const CAM_REAR_H = 72;
+const CAM_REAR_FX = 65.0;
+const CAM_REAR_FY = 65.0;
+const CAM_REAR_CX = 48.0;
+const CAM_REAR_CY = 36.0;
+const CAM_REAR_D = [-0.15, 0.03, 0.0, 0.0, 0.0];
 
 // Occupancy grid sizing: 10 m × 10 m at 0.1 m / cell.
 // Origin at (-5, -5) so the figure-eight (radius ~5) fits inside.
@@ -226,6 +254,110 @@ function figureEightPose(t) {
   return { x, y, yaw };
 }
 
+// ── Camera image generation (v1.3.4) ────────────────────────────────────
+
+/**
+ * Generate an ideal (undistorted) grid / checkerboard in RGB8.
+ * White grid lines on alternating blue/orange squares — easy to see
+ * distortion at a glance because straight lines become obviously curved.
+ */
+function buildIdealGridRgb(width, height, spacing = 12) {
+  const rgb = new Uint8Array(width * height * 3);
+  for (let v = 0; v < height; v++) {
+    for (let u = 0; u < width; u++) {
+      const onLine = (u % spacing < 2) || (v % spacing < 2);
+      const i = (v * width + u) * 3;
+      if (onLine) {
+        rgb[i] = 240; rgb[i + 1] = 240; rgb[i + 2] = 240;
+      } else {
+        const sq = Math.floor(u / spacing) + Math.floor(v / spacing);
+        if (sq % 2 === 0) {
+          rgb[i] = 30; rgb[i + 1] = 90; rgb[i + 2] = 180;
+        } else {
+          rgb[i] = 180; rgb[i + 1] = 70; rgb[i + 2] = 25;
+        }
+      }
+    }
+  }
+  return rgb;
+}
+
+/**
+ * Given normalised *distorted* coordinates (xd_n, yd_n), find the
+ * corresponding normalised *undistorted* coordinates (xu, yu) via a simple
+ * fixed-point iteration. 5 iterations is enough for |k1| < 0.5.
+ */
+function invertDistortion(xd_n, yd_n, k1, k2, p1, p2, k3) {
+  let xu = xd_n;
+  let yu = yd_n;
+  for (let iter = 0; iter < 5; iter++) {
+    const r2 = xu * xu + yu * yu;
+    const r4 = r2 * r2;
+    const r6 = r4 * r2;
+    const radial = 1 + k1 * r2 + k2 * r4 + k3 * r6;
+    const dx = 2 * p1 * xu * yu + p2 * (r2 + 2 * xu * xu);
+    const dy = p1 * (r2 + 2 * yu * yu) + 2 * p2 * xu * yu;
+    xu = (xd_n - dx) / radial;
+    yu = (yd_n - dy) / radial;
+  }
+  return { xu, yu };
+}
+
+/**
+ * Apply forward distortion to an ideal RGB8 image, producing the "raw"
+ * distorted image that would come off a real lens. For each pixel in the
+ * distorted output, we invert the distortion to find its source in the
+ * ideal image, then bilinearly interpolate.
+ *
+ * This means BAGEL's forward-remap undistortion (which does the same
+ * forward remap but on the already-distorted input) will approximately
+ * recover the ideal image.
+ */
+function buildDistortedRgb(ideal, width, height, fx, fy, cx, cy, k1, k2, p1, p2, k3) {
+  const out = new Uint8Array(width * height * 3);
+  for (let v = 0; v < height; v++) {
+    for (let u = 0; u < width; u++) {
+      // Normalised distorted coords for this sensor pixel.
+      const xd_n = (u - cx) / fx;
+      const yd_n = (v - cy) / fy;
+      // Invert distortion to get normalised ideal coords.
+      const { xu, yu } = invertDistortion(xd_n, yd_n, k1, k2, p1, p2, k3);
+      // Back to pixel coords in the ideal image.
+      const srcX = xu * fx + cx;
+      const srcY = yu * fy + cy;
+      const x0 = Math.floor(srcX);
+      const y0 = Math.floor(srcY);
+      const x1 = x0 + 1;
+      const y1 = y0 + 1;
+      if (x0 < 0 || y0 < 0 || x1 >= width || y1 >= height) continue;
+      const fxf = srcX - x0;
+      const fyf = srcY - y0;
+      const w00 = (1 - fxf) * (1 - fyf);
+      const w10 = fxf * (1 - fyf);
+      const w01 = (1 - fxf) * fyf;
+      const w11 = fxf * fyf;
+      const p00 = (y0 * width + x0) * 3;
+      const p10 = (y0 * width + x1) * 3;
+      const p01 = (y1 * width + x0) * 3;
+      const p11 = (y1 * width + x1) * 3;
+      const di = (v * width + u) * 3;
+      out[di]     = w00 * ideal[p00]     + w10 * ideal[p10]     + w01 * ideal[p01]     + w11 * ideal[p11];
+      out[di + 1] = w00 * ideal[p00 + 1] + w10 * ideal[p10 + 1] + w01 * ideal[p01 + 1] + w11 * ideal[p11 + 1];
+      out[di + 2] = w00 * ideal[p00 + 2] + w10 * ideal[p10 + 2] + w01 * ideal[p01 + 2] + w11 * ideal[p11 + 2];
+    }
+  }
+  return out;
+}
+
+// Precompute the distorted image once — every frame is the same static
+// checkerboard so the ImageViewer demo works at any playhead position.
+const IDEAL_GRID = buildIdealGridRgb(CAM_W, CAM_H, 12);
+const DISTORTED_GRID = buildDistortedRgb(
+  IDEAL_GRID, CAM_W, CAM_H,
+  CAM_FX, CAM_FY, CAM_CX, CAM_CY,
+  CAM_D[0], CAM_D[1], CAM_D[2], CAM_D[3], CAM_D[4],
+);
+
 // ── Per-topic encoders ──────────────────────────────────────────────────
 function buildOdomMessage(timeNs) {
   const t = Number(timeNs - START_TIME_NS) / 1e9;
@@ -325,6 +457,24 @@ function buildTfMessage(timeNs) {
         transform: {
           translation: { x: 0, y: 0, z: 0.1 },
           rotation: { x: 0, y: 0, z: 0, w: 1 },
+        },
+      },
+      {
+        header: header('base_link', timeNs),
+        child_frame_id: 'camera_optical_link',
+        transform: {
+          // Ry(+90): camera z points forward (+x in base_link).
+          translation: { x: 0.35, y: 0, z: 0.25 },
+          rotation: { x: 0, y: 0.7071, z: 0, w: 0.7071 },
+        },
+      },
+      {
+        header: header('base_link', timeNs),
+        child_frame_id: 'camera_rear_optical_link',
+        transform: {
+          // Ry(-90): camera z points backward (-x in base_link).
+          translation: { x: -0.28, y: 0, z: 0.25 },
+          rotation: { x: 0, y: -0.7071, z: 0, w: 0.7071 },
         },
       },
     ],
@@ -597,6 +747,52 @@ function buildNavSatFixMessage(timeNs) {
   };
 }
 
+// ── Camera message builders (v1.3.4) ────────────────────────────────────
+
+function buildCameraImageMessage(timeNs) {
+  return {
+    header: header('camera_optical_link', timeNs),
+    height: CAM_H,
+    width: CAM_W,
+    encoding: 'rgb8',
+    is_bigendian: 0,
+    step: CAM_W * 3,
+    data: Array.from(DISTORTED_GRID),
+  };
+}
+
+function buildCameraInfoMessage(timeNs) {
+  return {
+    header: header('camera_optical_link', timeNs),
+    height: CAM_H,
+    width: CAM_W,
+    distortion_model: 'plumb_bob',
+    d: CAM_D,
+    k: [CAM_FX, 0, CAM_CX, 0, CAM_FY, CAM_CY, 0, 0, 1],
+    r: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+    p: [CAM_FX, 0, CAM_CX, 0, 0, CAM_FY, CAM_CY, 0, 0, 0, 1, 0],
+    binning_x: 0,
+    binning_y: 0,
+    roi: { x_offset: 0, y_offset: 0, height: 0, width: 0, do_rectify: false },
+  };
+}
+
+function buildCameraRearInfoMessage(timeNs) {
+  return {
+    header: header('camera_rear_optical_link', timeNs),
+    height: CAM_REAR_H,
+    width: CAM_REAR_W,
+    distortion_model: 'plumb_bob',
+    d: CAM_REAR_D,
+    k: [CAM_REAR_FX, 0, CAM_REAR_CX, 0, CAM_REAR_FY, CAM_REAR_CY, 0, 0, 1],
+    r: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+    p: [CAM_REAR_FX, 0, CAM_REAR_CX, 0, 0, CAM_REAR_FY, CAM_REAR_CY, 0, 0, 0, 1, 0],
+    binning_x: 0,
+    binning_y: 0,
+    roi: { x_offset: 0, y_offset: 0, height: 0, width: 0, do_rectify: false },
+  };
+}
+
 // ── Drive the writer ────────────────────────────────────────────────────
 async function main() {
   const writable = makeMemoryWritable();
@@ -653,6 +849,24 @@ async function main() {
       type: 'sensor_msgs/msg/NavSatFix',
       hz: GPS_HZ,
       build: buildNavSatFixMessage,
+    },
+    {
+      topic: '/camera/image_raw',
+      type: 'sensor_msgs/msg/Image',
+      hz: CAMERA_HZ,
+      build: buildCameraImageMessage,
+    },
+    {
+      topic: '/camera/camera_info',
+      type: 'sensor_msgs/msg/CameraInfo',
+      hz: CAMERA_HZ,
+      build: buildCameraInfoMessage,
+    },
+    {
+      topic: '/camera_rear/camera_info',
+      type: 'sensor_msgs/msg/CameraInfo',
+      hz: GPS_HZ,
+      build: buildCameraRearInfoMessage,
     },
   ];
 
