@@ -11,6 +11,11 @@ import {
   DEFAULT_IMAGE_SETTINGS,
   useImagePanelStore,
 } from '../../../store/panelUiStores';
+import {
+  isPlumbBobModel,
+  buildRemapMap,
+  applyRemap,
+} from '../../../utils/imageRectify';
 
 interface ImageViewerProps {
   panelId: string;
@@ -58,6 +63,12 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
     null,
   );
 
+  // Keep the latest CameraInfo in a ref so the decode effect can read it
+  // inside the async IIFE without making camera.info a dep (which would
+  // re-trigger the expensive decode on every CameraInfo tick).
+  const cameraInfoRef = useRef<CameraIntrinsics | null>(null);
+  cameraInfoRef.current = camera.info;
+
   // Draw the current frame onto the canvas.
   useEffect(() => {
     // Reset the error banner when a new message arrives. This was the
@@ -67,6 +78,8 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setRenderError(null);
     if (!message?.value || !canvasRef.current) return;
+
+    const rectifyWanted = settings.rectify;
 
     let cancelled = false;
     (async () => {
@@ -85,6 +98,23 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
         if (!ctx) return;
         ctx.drawImage(bitmap, 0, 0);
         bitmap.close?.();
+
+        // Plumb-bob undistortion: read the latest CameraInfo from the ref
+        // so this block runs on the same bitmap, not a later decode.
+        const ci = cameraInfoRef.current;
+        if (
+          rectifyWanted &&
+          ci &&
+          ci.width === bitmap.width &&
+          ci.height === bitmap.height &&
+          isPlumbBobModel(ci.distortionModel)
+        ) {
+          const raw = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+          const map = buildRemapMap(ci);
+          const rectified = applyRemap(raw.data, map);
+          ctx.putImageData(new ImageData(rectified, bitmap.width, bitmap.height), 0, 0);
+        }
+
         setMeta({
           width: bitmap.width,
           height: bitmap.height,
@@ -99,20 +129,36 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
     return () => {
       cancelled = true;
     };
-  }, [message, compressed]);
+    // settings.rectify is intentionally included so toggling rectify
+    // re-decodes the current frame immediately.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [message, compressed, settings.rectify]);
 
   const accent = getTopicColor(topicName, type);
   const showInitialLoading = loading && !message;
   const startNs = bag?.startTime ?? 0n;
 
   const overlayOn = settings.cameraInfoOverlay && !!camera.info;
+  const canRectify =
+    camera.candidates.length > 0 &&
+    !camera.hasNoInfoTopic &&
+    (camera.info ? isPlumbBobModel(camera.info.distortionModel) : true);
   const headerExtras = (
-    <CameraInfoHeaderToggle
-      hasCandidates={camera.candidates.length > 0}
-      enabled={settings.cameraInfoOverlay}
-      onToggle={(next) => updateSettings(panelId, { cameraInfoOverlay: next })}
-      hasInfo={!!camera.info}
-    />
+    <>
+      <RectifyHeaderToggle
+        hasCandidates={camera.candidates.length > 0}
+        enabled={settings.rectify}
+        onToggle={(next) => updateSettings(panelId, { rectify: next })}
+        canRectify={canRectify}
+        hasInfo={!!camera.info}
+      />
+      <CameraInfoHeaderToggle
+        hasCandidates={camera.candidates.length > 0}
+        enabled={settings.cameraInfoOverlay}
+        onToggle={(next) => updateSettings(panelId, { cameraInfoOverlay: next })}
+        hasInfo={!!camera.info}
+      />
+    </>
   );
 
   return (
@@ -370,6 +416,51 @@ function CameraInfoHeaderToggle({
       }
     >
       CameraInfo
+    </button>
+  );
+}
+
+interface RectifyHeaderToggleProps {
+  hasCandidates: boolean;
+  enabled: boolean;
+  onToggle: (next: boolean) => void;
+  /** False when the paired CameraInfo uses an unsupported model (fisheye etc). */
+  canRectify: boolean;
+  hasInfo: boolean;
+}
+
+function RectifyHeaderToggle({
+  hasCandidates,
+  enabled,
+  onToggle,
+  canRectify,
+  hasInfo,
+}: RectifyHeaderToggleProps) {
+  if (!hasCandidates) return null;
+  const unsupported = hasInfo && !canRectify;
+  return (
+    <button
+      type="button"
+      onClick={() => { if (!unsupported) onToggle(!enabled); }}
+      disabled={unsupported}
+      className={`text-[10px] mono px-1.5 py-0.5 rounded border transition-colors ${
+        unsupported
+          ? 'border-border text-text-tertiary opacity-50 cursor-not-allowed'
+          : enabled
+            ? 'border-accent-violet/60 text-accent-violet bg-accent-violet/10'
+            : 'border-border text-text-tertiary hover:text-text-secondary hover:border-border-strong'
+      }`}
+      title={
+        unsupported
+          ? 'Unsupported distortion model - only plumb_bob is supported'
+          : enabled
+            ? hasInfo
+              ? 'Undistortion on - click to disable'
+              : 'Undistortion on but no CameraInfo at this timestamp'
+            : 'Undistort frames using the paired CameraInfo D coefficients (plumb_bob)'
+      }
+    >
+      undistort
     </button>
   );
 }

@@ -128,11 +128,19 @@ export interface ImagePanelSettings {
    * through dock + reopen.
    */
   cameraInfoManualPair: string;
+  /**
+   * Apply plumb-bob (Brown-Conrady) undistortion to each frame using the
+   * paired CameraInfo's D coefficients (v1.3.4). Off by default - bags
+   * without a paired CameraInfo or with an unsupported distortion model
+   * (fisheye, equidistant) keep the raw frame unchanged.
+   */
+  rectify: boolean;
 }
 
 export const DEFAULT_IMAGE_SETTINGS: ImagePanelSettings = {
   cameraInfoOverlay: false,
   cameraInfoManualPair: '',
+  rectify: false,
 };
 
 interface ImagePanelState {
