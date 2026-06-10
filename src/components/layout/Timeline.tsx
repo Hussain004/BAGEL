@@ -314,48 +314,60 @@ interface AnnotationTickProps {
 
 function AnnotationTick({ annotation, fraction, isEditing, onSeek, onRemove }: AnnotationTickProps) {
   const [hovered, setHovered] = useState(false);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Delayed hide so moving the mouse from the tick into the tooltip above it
+  // doesn't instantly dismiss the tooltip (the gap between them would otherwise
+  // fire onMouseLeave before the mouse reaches the tooltip).
+  const enter = () => {
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    setHovered(true);
+  };
+  const leave = () => {
+    hideTimer.current = setTimeout(() => setHovered(false), 200);
+  };
 
   return (
     <div
-      className="absolute top-0 bottom-0 z-10"
+      // w-6 wide hit area (centered via -translate-x-1/2) so the tick is easy
+      // to hover even though the visible bar is only a few px wide.
+      className="absolute top-0 bottom-0 z-10 w-6 -translate-x-1/2"
       style={{ left: `${fraction * 100}%` }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseEnter={enter}
+      onMouseLeave={leave}
+      onClick={(e) => { e.stopPropagation(); onSeek(); }}
     >
-      {/* Tick mark */}
+      {/* Tick bar - centered in the hit area */}
       <div
-        className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 rounded-sm cursor-pointer transition-all ${
+        className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-sm cursor-pointer transition-all ${
           isEditing
-            ? 'w-1 h-5 bg-accent-amber'
-            : 'w-0.5 h-3.5 bg-accent-amber/80 hover:w-1 hover:h-4 hover:bg-accent-amber'
-        }`}
-        onClick={(e) => {
-          e.stopPropagation();
-          onSeek();
-        }}
+            ? 'w-1.5 h-5 bg-accent-amber'
+            : 'w-1 h-4 bg-accent-amber/70 group-hover:bg-accent-amber'
+        } ${hovered && !isEditing ? 'w-1.5 h-5 bg-accent-amber' : ''}`}
       />
 
-      {/* Tooltip + delete - shown on hover */}
+      {/* Tooltip + delete - floats above; has its own enter/leave so the
+          mouse can travel into it without triggering the hide timer. */}
       {hovered && !isEditing && (
         <div
-          className="absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 z-20 pointer-events-none"
-          style={{ minWidth: '80px' }}
+          className="absolute bottom-full left-1/2 -translate-x-1/2 z-20"
+          style={{ paddingBottom: '6px', minWidth: '80px' }}
+          onMouseEnter={enter}
+          onMouseLeave={leave}
+          onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex items-center gap-1.5 bg-bg-primary border border-border rounded-md px-2 py-1 shadow-lg pointer-events-auto whitespace-nowrap">
-            <span className="text-[10px] text-text-secondary max-w-[120px] truncate">
+          <div className="flex items-center gap-2 bg-bg-primary border border-border rounded-md px-2 py-1 shadow-lg whitespace-nowrap">
+            <span className="text-[10px] text-text-secondary max-w-[140px] truncate">
               {annotation.label}
             </span>
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onRemove();
-              }}
+              onClick={(e) => { e.stopPropagation(); onRemove(); }}
               onPointerDown={(e) => e.stopPropagation()}
-              className="text-[10px] leading-none text-text-muted hover:text-accent-rose transition-colors flex-shrink-0"
+              className="text-[11px] leading-none text-text-muted hover:text-accent-rose transition-colors flex-shrink-0 cursor-pointer px-0.5"
               title="Remove bookmark"
               aria-label="Remove bookmark"
             >
-              x
+              ×
             </button>
           </div>
         </div>
