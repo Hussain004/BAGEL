@@ -6,6 +6,7 @@ import {
   type TimeAlignment,
 } from '../../store/bagStore';
 import { usePlayheadStore } from '../../store/playheadStore';
+import { useLayoutStore } from '../../store/layoutStore';
 import { useThemeStore } from '../../store/themeStore';
 import { useUiStore } from '../../store/uiStore';
 import { useRobotModelStore } from '../../store/robotModelStore';
@@ -35,6 +36,7 @@ export function Toolbar() {
   const clearAll = useBagStore((s) => s.clearAll);
   const theme = useThemeStore((s) => s.theme);
   const toggleTheme = useThemeStore((s) => s.toggleTheme);
+  const openPanel = useLayoutStore((s) => s.openPanel);
   const setModal = useUiStore((s) => s.setModal);
   const robotModel = useRobotModelStore((s) => s.loaded);
   const clearRobotModel = useRobotModelStore((s) => s.clearLoaded);
@@ -174,6 +176,22 @@ export function Toolbar() {
             onSetAnchor={onSetAnchor}
           />
         )}
+        <button
+          onClick={() =>
+            openPanel({
+              kind: 'health',
+              topicName: '__health__',
+              type: '',
+              bagId: focusBagId ?? undefined,
+            })
+          }
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-text-secondary hover:text-text-primary hover:bg-surface-hover border border-border hover:border-accent-blue/40 transition-all"
+          title="Open Bag Health dashboard - per-topic Hz, jitter, gaps, bandwidth"
+          aria-label="Open bag health dashboard"
+        >
+          <HealthIcon />
+          <span className="hidden xl:inline">Health</span>
+        </button>
         {canEditFocusedBag && (
           <button
             onClick={() => setModal('bag-edit')}
@@ -402,6 +420,21 @@ function EditIcon() {
       <circle cx="6" cy="6" r="3" />
       <circle cx="6" cy="18" r="3" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M9 6l12 12M9 18L21 6" />
+    </svg>
+  );
+}
+
+function HealthIcon() {
+  return (
+    <svg
+      className="w-3.5 h-3.5"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={1.7}
+      aria-hidden="true"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 12h3l3-9 4 18 3-9 3 0" />
     </svg>
   );
 }

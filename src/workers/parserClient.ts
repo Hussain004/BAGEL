@@ -21,7 +21,7 @@
  * those don't depend on having any bag loaded.
  */
 
-import type { BagFormat, BagSummary, RawMessage } from '../types/bag';
+import type { AllTopicStats, BagFormat, BagSummary, RawMessage } from '../types/bag';
 import type { ColorMode, HeightAxis, PointCloudExtraction } from '../utils/pointcloud';
 import type { LaserScanExtraction } from '../utils/laserscan';
 import type { BagSource } from '../parsers/source';
@@ -339,6 +339,10 @@ class ParserClient {
    */
   getResolvableTopicsDb3(source: BagSource): Promise<Db3TopicResolution[]> {
     return this.request<Db3TopicResolution[]>('getResolvableTopicsDb3', { source });
+  }
+
+  readAllMessageStats(source: BagSource, format: BagFormat): Promise<AllTopicStats> {
+    return this.request<AllTopicStats>('readAllMessageStats', { source, format });
   }
 }
 

@@ -10,7 +10,7 @@
  * first parseDb3() call so subsequent reads avoid re-parsing the WASM file.
  */
 
-import type { BagSummary, RawMessage, TopicInfo } from '../types/bag';
+import type { AllTopicStats, BagSummary, RawMessage, TopicInfo } from '../types/bag';
 import { deserializeByType } from './cdr';
 import {
   sourceDisplayName,
@@ -424,6 +424,56 @@ export async function getTopicTypeDb3(
 ): Promise<string | undefined> {
   const { topicTypeByName } = await loadDb(source);
   return topicTypeByName.get(topicName);
+}
+
+export async function readAllMessageStatsDb3(source: BagSource): Promise<AllTopicStats> {
+  const { db } = await loadDb(source);
+
+  const timeResult = db.exec('SELECT MIN(timestamp) FROM messages');
+  let startNs = 0n;
+  if (timeResult.length > 0 && timeResult[0].values.length > 0) {
+    const minTs = timeResult[0].values[0][0];
+    if (minTs != null) startNs = BigInt(minTs as number);
+  }
+
+  const stmt = db.prepare(`
+    SELECT t.name, m.timestamp, LENGTH(m.data)
+    FROM messages m
+    JOIN topics t ON m.topic_id = t.id
+    ORDER BY m.timestamp ASC
+  `);
+
+  const rawTimes = new Map<string, number[]>();
+  const rawSizes = new Map<string, number[]>();
+
+  try {
+    while (stmt.step()) {
+      const row = stmt.get();
+      const topic = row[0] as string;
+      const ts = row[1] as number | bigint;
+      const size = row[2] as number;
+      const tsNs = typeof ts === 'bigint' ? ts : BigInt(ts);
+      const relNs = Number(tsNs - startNs);
+
+      let t = rawTimes.get(topic);
+      if (!t) { t = []; rawTimes.set(topic, t); }
+      t.push(relNs);
+      let s = rawSizes.get(topic);
+      if (!s) { s = []; rawSizes.set(topic, s); }
+      s.push(size);
+    }
+  } finally {
+    stmt.free();
+  }
+
+  const result: AllTopicStats = {};
+  for (const [topic, times] of rawTimes) {
+    result[topic] = {
+      times: new Float64Array(times),
+      sizes: new Uint32Array(rawSizes.get(topic)!),
+    };
+  }
+  return result;
 }
 
 /**
