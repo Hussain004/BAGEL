@@ -38,6 +38,9 @@ export function Timeline() {
   const [editingLabel, setEditingLabel] = useState('');
   // Pixel offset from track left for positioning the input (clamped on render).
   const [editingX, setEditingX] = useState(0);
+  // True when the edit is for a freshly-created annotation (cancel = delete it).
+  // False when renaming an existing one (cancel = restore, don't delete).
+  const [editingIsNew, setEditingIsNew] = useState(false);
 
   const editInputRef = useRef<HTMLInputElement>(null);
 
@@ -111,6 +114,7 @@ export function Timeline() {
       const id = addAnnotation(clamped, `Mark ${count}`);
       setEditingLabel(`Mark ${count}`);
       setEditingX(e.clientX - rect.left);
+      setEditingIsNew(true);
       setEditingId(id);
     },
     [addAnnotation],
@@ -128,11 +132,12 @@ export function Timeline() {
     setEditingId(null);
   }, [editingId, editingLabel, updateLabel, removeAnnotation]);
 
-  // Cancel the inline label edit (remove the annotation).
+  // Cancel the inline label edit.
+  // Only delete the annotation if it was just created (Escape on a rename keeps it).
   const cancelEdit = useCallback(() => {
-    if (editingId) removeAnnotation(editingId);
+    if (editingId && editingIsNew) removeAnnotation(editingId);
     setEditingId(null);
-  }, [editingId, removeAnnotation]);
+  }, [editingId, editingIsNew, removeAnnotation]);
 
   // Add bookmark at current playhead.
   const addBookmarkHere = useCallback(() => {
@@ -231,6 +236,12 @@ export function Timeline() {
               isEditing={editingId === ann.id}
               onSeek={() => usePlayheadStore.getState().seek(ann.timeNs)}
               onRemove={() => removeAnnotation(ann.id)}
+              onRename={() => {
+                setEditingLabel(ann.label);
+                setEditingX(f * (trackRef.current?.clientWidth ?? 300));
+                setEditingIsNew(false);
+                setEditingId(ann.id);
+              }}
             />
           );
         })}
@@ -310,9 +321,10 @@ interface AnnotationTickProps {
   isEditing: boolean;
   onSeek: () => void;
   onRemove: () => void;
+  onRename: () => void;
 }
 
-function AnnotationTick({ annotation, fraction, isEditing, onSeek, onRemove }: AnnotationTickProps) {
+function AnnotationTick({ annotation, fraction, isEditing, onSeek, onRemove, onRename }: AnnotationTickProps) {
   const [hovered, setHovered] = useState(false);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -336,6 +348,7 @@ function AnnotationTick({ annotation, fraction, isEditing, onSeek, onRemove }: A
       onMouseEnter={enter}
       onMouseLeave={leave}
       onClick={(e) => { e.stopPropagation(); onSeek(); }}
+      onDoubleClick={(e) => { e.stopPropagation(); onRename(); }}
     >
       {/* Tick bar - centered in the hit area */}
       <div
@@ -351,19 +364,19 @@ function AnnotationTick({ annotation, fraction, isEditing, onSeek, onRemove }: A
       {hovered && !isEditing && (
         <div
           className="absolute bottom-full left-1/2 -translate-x-1/2 z-20"
-          style={{ paddingBottom: '6px', minWidth: '80px' }}
+          style={{ paddingBottom: '6px' }}
           onMouseEnter={enter}
           onMouseLeave={leave}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex items-center gap-2 bg-bg-primary border border-border rounded-md px-2 py-1 shadow-lg whitespace-nowrap">
+          <div className="flex items-center gap-1 bg-bg-primary border border-border rounded-md px-2 py-1 shadow-lg whitespace-nowrap">
             <span className="text-[10px] text-text-secondary max-w-[140px] truncate">
               {annotation.label}
             </span>
             <button
               onClick={(e) => { e.stopPropagation(); onRemove(); }}
               onPointerDown={(e) => e.stopPropagation()}
-              className="text-[11px] leading-none text-text-muted hover:text-accent-rose transition-colors flex-shrink-0 cursor-pointer px-0.5"
+              className="text-[11px] leading-none text-text-muted hover:text-accent-rose transition-colors flex-shrink-0 cursor-pointer"
               title="Remove bookmark"
               aria-label="Remove bookmark"
             >
