@@ -24,8 +24,18 @@ import { create } from 'zustand';
 
 // ── TimeSeriesPlot ─────────────────────────────────────────────────────
 
+/** A user-defined derived series: a math expression plotted on top of raw fields. */
+export interface ExpressionDef {
+  /** Stable id used as the series key in visibility map and uPlot. */
+  id: string;
+  /** Raw expression text, e.g. "sqrt(linear.x^2 + linear.y^2)". */
+  expr: string;
+  /** Display label in the legend (defaults to `expr` if the user didn't rename it). */
+  label: string;
+}
+
 export interface TimeSeriesPanelSettings {
-  /** Map of `field.path` → visibility. Missing entries default to visible. */
+  /** Map of `field.path` or expression `id` → visibility. Missing entries default to visible. */
   visibility: Record<string, boolean>;
   /**
    * Current x-axis range in seconds-from-first-message, or null when the
@@ -34,11 +44,14 @@ export interface TimeSeriesPanelSettings {
    * after a dock with the same horizontal viewport the user was looking at.
    */
   xRange: { min: number; max: number } | null;
+  /** User-defined math expressions plotted as extra derived series. */
+  expressions: ExpressionDef[];
 }
 
 export const DEFAULT_TIMESERIES_SETTINGS: TimeSeriesPanelSettings = {
   visibility: {},
   xRange: null,
+  expressions: [],
 };
 
 interface TimeSeriesPanelState {

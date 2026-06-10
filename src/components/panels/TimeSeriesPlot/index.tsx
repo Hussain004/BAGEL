@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
 import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
@@ -10,7 +10,9 @@ import { getTopicColor } from '../../../utils/color';
 import {
   DEFAULT_TIMESERIES_SETTINGS,
   useTimeSeriesPanelStore,
+  type ExpressionDef,
 } from '../../../store/panelUiStores';
+import { compileExpr } from '../../../utils/mathExpr';
 
 /**
  * Series palette used when the topic doesn't fall into a known category.
@@ -89,10 +91,7 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
     return { time, values, fieldNames, baseNs };
   }, [messages]);
 
-  // Per-panel UI state — visibility toggles + saved x-axis zoom range.
-  // Lives in a store so a dock-induced remount (v0.7) doesn't reset what
-  // the user just clicked / dragged. Settings keyed by `panelId` survive
-  // close + reopen of the same panel too.
+  // Per-panel UI state — visibility toggles, saved zoom, and math expressions.
   const settings = useTimeSeriesPanelStore(
     (s) => s.byId[panelId] ?? DEFAULT_TIMESERIES_SETTINGS,
   );
@@ -100,33 +99,92 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
   const visibility = settings.visibility;
   const setVisibility = (next: Record<string, boolean>) =>
     updateSettings(panelId, { visibility: next });
+  // Guard against old stored state that predates the expressions field.
+  const expressions: ExpressionDef[] = settings.expressions ?? [];
+
+  // Expression input form state (local — doesn't need to survive remounts).
+  const [exprInputVisible, setExprInputVisible] = useState(false);
+  const [exprDraft, setExprDraft] = useState('');
+  const [exprError, setExprError] = useState<string | null>(null);
+
+  // Evaluate every active expression over the decoded series data.
+  const expressionResults = useMemo<Record<string, (number | null)[]>>(() => {
+    if (!series || expressions.length === 0) return {};
+    const out: Record<string, (number | null)[]> = {};
+    for (const def of expressions) {
+      const compiled = compileExpr(def.expr);
+      const vals: (number | null)[] = new Array(series.time.length);
+      if (typeof compiled === 'string') {
+        vals.fill(null);
+      } else {
+        for (let i = 0; i < series.time.length; i++) {
+          const vars: Record<string, number | null> = {};
+          for (const f of series.fieldNames) {
+            vars[f] = (series.values[f][i] as number | null | undefined) ?? null;
+          }
+          vals[i] = compiled(vars);
+        }
+      }
+      out[def.id] = vals;
+    }
+    return out;
+  }, [series, expressions]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
-  // Latest series stashed for the mount effect's closure — the mount only
-  // re-runs when the field set changes, but it needs whatever series we
-  // have at that moment to build initial opts/data.
   const seriesRef = useRef(series);
   seriesRef.current = series;
-  // Mirror saved xRange in a ref so the mouseup handler can read the latest
-  // scale state without needing to be reattached on every settings change.
   const savedXRangeRef = useRef(settings.xRange);
   savedXRangeRef.current = settings.xRange;
+  // Refs used inside the mount effect to access latest expressions without
+  // re-running the full teardown/recreate cycle on every settings change.
+  const expressionsRef = useRef(expressions);
+  expressionsRef.current = expressions;
+  const expressionResultsRef = useRef(expressionResults);
+  expressionResultsRef.current = expressionResults;
 
-  // Stable key over the set of fields. Re-mount uPlot only when this
-  // changes; during streaming the fields are stable from the first batch
-  // so the plot mounts once and grows in place via `setData` below.
+  // Mount key: re-build uPlot when the field set changes OR when the
+  // expression list changes (add/remove triggers a series count change).
   const fieldNamesKey = useMemo(
     () => series?.fieldNames.join('|') ?? '',
     [series],
   );
+  const exprKey = expressions.map(e => e.id).join(',');
+  const mountKey = fieldNamesKey + '||' + exprKey;
 
-  // Mount / unmount effect: depends only on fieldNamesKey so the chart
-  // canvas isn't torn down every time a streaming batch arrives.
+  const handleAddExpr = () => {
+    const trimmed = exprDraft.trim();
+    if (!trimmed) return;
+    const compiled = compileExpr(trimmed);
+    if (typeof compiled === 'string') {
+      setExprError(compiled);
+      return;
+    }
+    const id = `expr_${Date.now()}`;
+    updateSettings(panelId, {
+      expressions: [...expressions, { id, expr: trimmed, label: trimmed }],
+    });
+    setExprDraft('');
+    setExprError(null);
+    setExprInputVisible(false);
+  };
+
+  const handleRemoveExpr = (id: string) => {
+    updateSettings(panelId, {
+      expressions: expressions.filter(e => e.id !== id),
+    });
+  };
+
+  // Mount / unmount effect: depends on mountKey (field set + expression ids).
+  // Re-runs when either changes; during streaming the fields are stable so
+  // the plot mounts once and grows in place via `setData` below.
   useEffect(() => {
-    if (!fieldNamesKey || !containerRef.current) return;
+    if (!mountKey || !containerRef.current) return;
     const current = seriesRef.current;
     if (!current) return;
+
+    const exprs = expressionsRef.current;
+    const exprRes = expressionResultsRef.current;
 
     const colors = current.fieldNames.map(
       (_, i) => SERIES_PALETTE[i % SERIES_PALETTE.length],
@@ -135,12 +193,9 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
     const data: uPlot.AlignedData = [
       current.time,
       ...current.fieldNames.map((f) => current.values[f] as (number | null)[]),
+      ...exprs.map((e) => (exprRes[e.id] ?? []) as (number | null)[]),
     ];
 
-    // Pre-mount restoration of saved x-axis zoom (after a dock-induced
-    // remount, after close+reopen, or on a hash-restore session). If
-    // `xRange` is null the user has not zoomed, so we leave it unset and
-    // let uPlot auto-fit to the streamed data.
     const initialXRange = savedXRangeRef.current;
 
     const opts: uPlot.Options = {
@@ -173,6 +228,14 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
           width: 1.5,
           points: { show: false },
           show: visibility[f] !== false,
+        })),
+        ...exprs.map((e, i) => ({
+          label: e.label,
+          stroke: SERIES_PALETTE[(current.fieldNames.length + i) % SERIES_PALETTE.length],
+          width: 1.5,
+          points: { show: false },
+          show: visibility[e.id] !== false,
+          dash: [4, 3],
         })),
       ],
       legend: { show: false },
@@ -240,20 +303,18 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
     // visibility is applied via setSeries below; panelId is stable; the
     // store action ref is stable across renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fieldNamesKey]);
+  }, [mountKey]);
 
-  // In-place data update: runs every time series identity changes, but
-  // doesn't tear down the canvas. `setData` triggers uPlot's internal
-  // redraw with the new arrays — orders of magnitude cheaper than a
-  // remount during the streaming decode.
+  // In-place data update: runs every time series or expression results change.
   useEffect(() => {
     if (!plotRef.current || !series) return;
     const data: uPlot.AlignedData = [
       series.time,
       ...series.fieldNames.map((f) => series.values[f] as (number | null)[]),
+      ...expressions.map((e) => (expressionResults[e.id] ?? []) as (number | null)[]),
     ];
     plotRef.current.setData(data);
-  }, [series]);
+  }, [series, expressionResults, expressions]);
 
   // Toggle series visibility without rebuilding the plot.
   useEffect(() => {
@@ -261,7 +322,10 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
     series.fieldNames.forEach((f, i) => {
       plotRef.current!.setSeries(i + 1, { show: visibility[f] !== false });
     });
-  }, [visibility, series]);
+    expressions.forEach((e, i) => {
+      plotRef.current!.setSeries(series.fieldNames.length + i + 1, { show: visibility[e.id] !== false });
+    });
+  }, [visibility, series, expressions]);
 
   // Sync the cursor line with the global playhead (bag-local for multi-bag).
   const playheadNs = useBagLocalPlayhead(bagId);
@@ -313,30 +377,108 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
               for top breathing room; horizontal spacing comes from the
               panel border. */}
           <div ref={containerRef} className="flex-1 min-h-[240px] pt-2 min-w-0" />
-          <div className="px-4 py-2 border-t border-border flex flex-wrap gap-2 max-h-24 overflow-y-auto">
-            {series.fieldNames.map((f, i) => {
-              const color = SERIES_PALETTE[i % SERIES_PALETTE.length];
-              const visible = visibility[f] !== false;
-              return (
-                <button
-                  key={f}
-                  onClick={() =>
-                    setVisibility({ ...visibility, [f]: !visible })
-                  }
-                  className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs mono transition-all border ${
-                    visible
-                      ? 'bg-surface border-border text-text-primary'
-                      : 'bg-transparent border-transparent text-text-muted'
-                  } hover:border-border-hover`}
-                >
+          <div className="px-4 pt-2 pb-1 border-t border-border space-y-1.5">
+            {/* Series chips: raw fields + expression series */}
+            <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto">
+              {series.fieldNames.map((f, i) => {
+                const color = SERIES_PALETTE[i % SERIES_PALETTE.length];
+                const visible = visibility[f] !== false;
+                return (
+                  <button
+                    key={f}
+                    onClick={() => setVisibility({ ...visibility, [f]: !visible })}
+                    className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs mono transition-all border ${
+                      visible
+                        ? 'bg-surface border-border text-text-primary'
+                        : 'bg-transparent border-transparent text-text-muted'
+                    } hover:border-border-hover`}
+                  >
+                    <span
+                      className="w-2 h-2 rounded-full"
+                      style={{ backgroundColor: visible ? color : '#475569' }}
+                    />
+                    {f}
+                  </button>
+                );
+              })}
+              {expressions.map((e, i) => {
+                const color = SERIES_PALETTE[(series.fieldNames.length + i) % SERIES_PALETTE.length];
+                const visible = visibility[e.id] !== false;
+                return (
                   <span
-                    className="w-2 h-2 rounded-full"
-                    style={{ backgroundColor: visible ? color : '#475569' }}
-                  />
-                  {f}
+                    key={e.id}
+                    className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs mono border transition-all ${
+                      visible
+                        ? 'bg-surface border-border text-text-primary'
+                        : 'bg-transparent border-transparent text-text-muted'
+                    }`}
+                  >
+                    <button
+                      onClick={() => setVisibility({ ...visibility, [e.id]: !visible })}
+                      className="flex items-center gap-1.5 hover:opacity-80"
+                      title={`Toggle visibility of: ${e.expr}`}
+                    >
+                      {/* dashed swatch to distinguish from raw field chips */}
+                      <svg width="10" height="10" viewBox="0 0 10 10">
+                        <line x1="0" y1="5" x2="10" y2="5" stroke={visible ? color : '#475569'} strokeWidth="2" strokeDasharray="3 2" />
+                      </svg>
+                      <span className="max-w-[160px] truncate">{e.label}</span>
+                    </button>
+                    <button
+                      onClick={() => handleRemoveExpr(e.id)}
+                      className="ml-0.5 text-text-muted hover:text-accent-rose transition-colors"
+                      title="Remove expression"
+                    >
+                      ×
+                    </button>
+                  </span>
+                );
+              })}
+              {/* Add expression trigger */}
+              {!exprInputVisible && (
+                <button
+                  onClick={() => setExprInputVisible(true)}
+                  title="Add a math expression as a derived series"
+                  className="flex items-center gap-1 px-2 py-1 rounded-md text-xs mono border border-dashed border-border text-text-muted hover:border-accent-blue/60 hover:text-accent-blue transition-all"
+                >
+                  <span className="text-[10px] font-semibold">+</span> f(x)
                 </button>
-              );
-            })}
+              )}
+            </div>
+
+            {/* Expression input row */}
+            {exprInputVisible && (
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <input
+                    autoFocus
+                    value={exprDraft}
+                    onChange={(ev) => { setExprDraft(ev.target.value); setExprError(null); }}
+                    onKeyDown={(ev) => {
+                      if (ev.key === 'Enter') { ev.preventDefault(); handleAddExpr(); }
+                      if (ev.key === 'Escape') { setExprInputVisible(false); setExprDraft(''); setExprError(null); }
+                    }}
+                    placeholder="e.g. sqrt(linear.x^2 + linear.y^2)"
+                    className="flex-1 bg-surface border border-border rounded-md px-2 py-1 text-xs mono text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-blue/60"
+                  />
+                  <button
+                    onClick={handleAddExpr}
+                    className="px-2 py-1 rounded-md text-xs mono bg-accent-blue/10 border border-accent-blue/40 text-accent-blue hover:bg-accent-blue/15 transition-all"
+                  >
+                    Add
+                  </button>
+                  <button
+                    onClick={() => { setExprInputVisible(false); setExprDraft(''); setExprError(null); }}
+                    className="px-2 py-1 rounded-md text-xs mono border border-border text-text-muted hover:border-border-hover transition-all"
+                  >
+                    Cancel
+                  </button>
+                </div>
+                {exprError && (
+                  <p className="text-xs mono text-accent-rose px-1">{exprError}</p>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
