@@ -9,7 +9,7 @@
 import { create } from 'zustand';
 import type { PanelKind } from './layoutStore';
 
-export type ModalKind = 'about' | 'shortcuts' | 'bag-edit' | 'urdf-load' | null;
+export type ModalKind = 'about' | 'shortcuts' | 'bag-edit' | 'urdf-load' | 'clip-export' | null;
 
 /**
  * Per-target state for the schema-paste modal. We keep this separate from

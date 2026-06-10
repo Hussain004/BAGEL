@@ -192,6 +192,17 @@ export function Toolbar() {
           <HealthIcon />
           <span className="hidden xl:inline">Health</span>
         </button>
+        {bag && (
+          <button
+            onClick={() => setModal('clip-export')}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-text-secondary hover:text-text-primary hover:bg-surface-hover border border-border hover:border-accent-blue/40 transition-all"
+            title="Export a panel as animated PNG zip or WebM video"
+            aria-label="Export clip"
+          >
+            <ClipIcon />
+            <span className="hidden xl:inline">Export</span>
+          </button>
+        )}
         {canEditFocusedBag && (
           <button
             onClick={() => setModal('bag-edit')}
@@ -604,6 +615,30 @@ function formatNumber(n: number): string {
 }
 
 /** Small BAGEL icon for toolbar */
+function ClipIcon() {
+  return (
+    <svg
+      className="w-3.5 h-3.5"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={1.7}
+      aria-hidden="true"
+    >
+      {/* Film strip outline */}
+      <rect x="2" y="6" width="20" height="12" rx="1.5" />
+      {/* Perforations left */}
+      <rect x="4" y="9" width="2" height="2" rx="0.5" />
+      <rect x="4" y="13" width="2" height="2" rx="0.5" />
+      {/* Perforations right */}
+      <rect x="18" y="9" width="2" height="2" rx="0.5" />
+      <rect x="18" y="13" width="2" height="2" rx="0.5" />
+      {/* Play triangle */}
+      <path strokeLinecap="round" strokeLinejoin="round" d="M10 9.5l5 2.5-5 2.5V9.5z" />
+    </svg>
+  );
+}
+
 function BagelIconSmall() {
   return (
     <div className="relative w-7 h-7">
