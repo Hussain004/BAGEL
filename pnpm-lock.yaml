@@ -32,6 +32,9 @@ importers:
       '@mcap/core':
         specifier: ^2.2.1
         version: 2.2.1
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
       fzstd:
         specifier: ^0.1.1
         version: 0.1.1

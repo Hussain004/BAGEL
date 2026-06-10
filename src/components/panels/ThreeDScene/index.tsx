@@ -67,6 +67,7 @@ import {
   decodeOccupancyGrid,
   type OccupancyGridMessage,
 } from '../../../utils/occupancyGrid';
+import { registerCapture } from '../../../utils/captureRegistry';
 
 interface ThreeDSceneProps {
   panelId: string;
@@ -450,6 +451,12 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
 
   const { graph, missing: noTf } = useTFGraph(bagId);
   const { containerRef, sceneRef } = useScene();
+
+  // Register this panel's WebGL canvas for clip export.
+  useEffect(
+    () => registerCapture(panelId, () => sceneRef.current?.renderer.domElement ?? null),
+    [panelId, sceneRef],
+  );
 
   // Auto-pick a world frame when the TF graph + first message arrive.
   useEffect(() => {

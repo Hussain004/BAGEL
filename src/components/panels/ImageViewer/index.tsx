@@ -16,6 +16,7 @@ import {
   buildRemapMap,
   applyRemap,
 } from '../../../utils/imageRectify';
+import { registerCapture } from '../../../utils/captureRegistry';
 
 interface ImageViewerProps {
   panelId: string;
@@ -44,6 +45,7 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
   const playheadNs = useBagLocalPlayhead(bagId);
   const compressed = isCompressedImageType(type);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => registerCapture(panelId, () => canvasRef.current), [panelId]);
 
   const { message, loading, error } = useMessageAtTime(topicName, playheadNs, bagId);
 

@@ -13,6 +13,7 @@ import {
   type ExpressionDef,
 } from '../../../store/panelUiStores';
 import { compileExpr } from '../../../utils/mathExpr';
+import { registerCapture } from '../../../utils/captureRegistry';
 
 /**
  * Series palette used when the topic doesn't fall into a known category.
@@ -132,6 +133,10 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
 
   const containerRef = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
+  useEffect(
+    () => registerCapture(panelId, () => containerRef.current?.querySelector('canvas') ?? null),
+    [panelId],
+  );
   const seriesRef = useRef(series);
   seriesRef.current = series;
   const savedXRangeRef = useRef(settings.xRange);

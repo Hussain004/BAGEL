@@ -55,6 +55,7 @@ export function useScene(): {
       antialias: true,
       alpha: true,
       powerPreference: 'default',
+      preserveDrawingBuffer: true, // required for canvas.toBlob() in clip export
     });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setClearColor(0x0c1020, 1.0);

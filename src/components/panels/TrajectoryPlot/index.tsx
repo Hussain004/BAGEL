@@ -17,6 +17,7 @@ import {
   latLonToWorldPx,
   pickZoomForScale,
 } from '../../../utils/gpsTiles';
+import { registerCapture } from '../../../utils/captureRegistry';
 
 interface TrajectoryPlotProps {
   panelId: string;
@@ -65,6 +66,8 @@ export function TrajectoryPlot({ panelId, topicName, type, bagId }: TrajectoryPl
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => registerCapture(panelId, () => canvasRef.current), [panelId]);
+
   // Pan/zoom view persisted per panelId so a dock-induced remount doesn't
   // throw away the user's current viewport. Reading the slice with a
   // fallback to the module-level DEFAULT keeps the reference stable on
