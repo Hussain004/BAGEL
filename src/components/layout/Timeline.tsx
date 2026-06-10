@@ -1,12 +1,16 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { useBagStore } from '../../store/bagStore';
 import { usePlayheadStore } from '../../store/playheadStore';
+import { useAnnotationStore, type Annotation } from '../../store/annotationStore';
 import { nsToSeconds, formatDuration } from '../../utils/time';
 
 /**
  * Timeline — Global playhead control at the bottom of the main view.
  * Click or drag along the bar to seek; the playhead syncs across all
  * open visualization panels.
+ *
+ * v1.4.3: annotation ticks rendered on the bar. Double-click the bar to
+ * drop a named bookmark; click a tick to seek to it.
  */
 export function Timeline() {
   const bag = useBagStore((s) => s.bag);
@@ -23,13 +27,26 @@ export function Timeline() {
     setLoop,
     tick,
   } = usePlayheadStore();
+  const { annotations, addAnnotation, removeAnnotation, updateLabel } = useAnnotationStore();
+
   const trackRef = useRef<HTMLDivElement>(null);
   const isDraggingRef = useRef(false);
   const lastFrameRef = useRef<number | null>(null);
-  // Note: the playhead range is owned by bagStore now (it varies with
-  // alignment mode + the union of every loaded bag's range). The Timeline
-  // used to reset it on every `bag` change; that's no longer necessary —
-  // bagStore.syncPlayheadRange is the single source of truth.
+
+  // Inline label-edit state: set to the annotation id whose label is being typed.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingLabel, setEditingLabel] = useState('');
+  // Pixel offset from track left for positioning the input (clamped on render).
+  const [editingX, setEditingX] = useState(0);
+
+  const editInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editingId && editInputRef.current) {
+      editInputRef.current.focus();
+      editInputRef.current.select();
+    }
+  }, [editingId]);
 
   // RAF loop for playback.
   useEffect(() => {
@@ -78,6 +95,52 @@ export function Timeline() {
     (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
   };
 
+  // Double-click on track -> add bookmark at that time, enter inline edit.
+  const handleTrackDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      const el = trackRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      const ph = usePlayheadStore.getState();
+      const range = ph.endNs - ph.startNs;
+      const raw = ph.startNs + BigInt(Math.round(Number(range) * fraction));
+      const clamped = raw < ph.startNs ? ph.startNs : raw > ph.endNs ? ph.endNs : raw;
+      const count = useAnnotationStore.getState().annotations.length + 1;
+      const id = addAnnotation(clamped, `Mark ${count}`);
+      setEditingLabel(`Mark ${count}`);
+      setEditingX(e.clientX - rect.left);
+      setEditingId(id);
+    },
+    [addAnnotation],
+  );
+
+  // Confirm the inline label edit.
+  const commitEdit = useCallback(() => {
+    if (!editingId) return;
+    const trimmed = editingLabel.trim();
+    if (trimmed) {
+      updateLabel(editingId, trimmed);
+    } else {
+      removeAnnotation(editingId);
+    }
+    setEditingId(null);
+  }, [editingId, editingLabel, updateLabel, removeAnnotation]);
+
+  // Cancel the inline label edit (remove the annotation).
+  const cancelEdit = useCallback(() => {
+    if (editingId) removeAnnotation(editingId);
+    setEditingId(null);
+  }, [editingId, removeAnnotation]);
+
+  // Add bookmark at current playhead.
+  const addBookmarkHere = useCallback(() => {
+    const { timeNs: t } = usePlayheadStore.getState();
+    const count = useAnnotationStore.getState().annotations.length + 1;
+    addAnnotation(t, `Mark ${count}`);
+  }, [addAnnotation]);
+
   // Spacebar toggles playback (when no text input is focused).
   useEffect(() => {
     if (!bag) return;
@@ -94,9 +157,6 @@ export function Timeline() {
 
   if (!bag) return null;
 
-  // Use the playhead range (set by bagStore.syncPlayheadRange) rather than
-  // bag.duration directly — multi-bag with bag-start alignment gives a
-  // range equal to max(bag1, bag2) which may differ from any single bag.
   const duration = Number(endNs - startNs) / 1e9;
   const elapsed = Number(timeNs - startNs) / 1e9;
   const fraction = endNs > startNs ? elapsed / duration : 0;
@@ -132,14 +192,15 @@ export function Timeline() {
 
       <div
         ref={trackRef}
-        className="flex-1 h-8 flex items-center cursor-pointer select-none group"
+        className="flex-1 h-8 flex items-center cursor-pointer select-none group relative"
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
+        onDoubleClick={handleTrackDoubleClick}
         id="timeline-track"
         role="slider"
-        aria-label="Playhead — drag or use arrow keys to scrub"
+        aria-label="Playhead - drag or use arrow keys to scrub"
         aria-valuemin={0}
         aria-valuemax={Math.round(duration * 1000) / 1000}
         aria-valuenow={Math.round(elapsed * 1000) / 1000}
@@ -155,7 +216,66 @@ export function Timeline() {
             style={{ left: `calc(${Math.max(0, Math.min(1, fraction)) * 100}% - 7px)` }}
           />
         </div>
+
+        {/* Annotation ticks */}
+        {annotations.map((ann) => {
+          const f =
+            endNs > startNs
+              ? Math.max(0, Math.min(1, Number(ann.timeNs - startNs) / Number(endNs - startNs)))
+              : 0;
+          return (
+            <AnnotationTick
+              key={ann.id}
+              annotation={ann}
+              fraction={f}
+              isEditing={editingId === ann.id}
+              onSeek={() => usePlayheadStore.getState().seek(ann.timeNs)}
+              onRemove={() => removeAnnotation(ann.id)}
+            />
+          );
+        })}
+
+        {/* Inline label editor - positioned near the new annotation tick */}
+        {editingId && (
+          <div
+            className="absolute z-30 pointer-events-none"
+            style={{
+              left: `${Math.max(40, Math.min(editingX, (trackRef.current?.clientWidth ?? 300) - 40))}px`,
+              bottom: '100%',
+              marginBottom: '4px',
+              transform: 'translateX(-50%)',
+            }}
+          >
+            <input
+              ref={editInputRef}
+              value={editingLabel}
+              onChange={(e) => setEditingLabel(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); commitEdit(); }
+                if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
+                e.stopPropagation();
+              }}
+              onBlur={commitEdit}
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              onDoubleClick={(e) => e.stopPropagation()}
+              className="pointer-events-auto w-32 bg-bg-primary border border-accent-amber/60 rounded-md px-2 py-1 text-xs text-text-primary focus:outline-none focus:border-accent-amber shadow-lg"
+              placeholder="Bookmark name"
+              maxLength={60}
+            />
+          </div>
+        )}
       </div>
+
+      <button
+        onClick={addBookmarkHere}
+        className="w-8 h-8 rounded-md flex items-center justify-center border border-border text-text-secondary hover:border-accent-amber/40 hover:text-accent-amber transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber/60"
+        title="Add bookmark at playhead (M)"
+        aria-label="Add timeline bookmark"
+        id="timeline-bookmark-btn"
+      >
+        <BookmarkIcon />
+      </button>
 
       <button
         onClick={() => setLoop(!loop)}
@@ -164,7 +284,7 @@ export function Timeline() {
             ? 'bg-accent-blue/15 border-accent-blue/40 text-accent-blue'
             : 'border-border text-text-secondary hover:border-accent-blue/40 hover:text-accent-blue'
         }`}
-        title={loop ? 'Loop on (L) - playback wraps to start at end' : 'Loop off (L) - playback pauses at end'}
+        title={loop ? 'Loop on (L)' : 'Loop off (L)'}
         aria-label={loop ? 'Disable loop playback' : 'Enable loop playback'}
         aria-pressed={loop}
         id="timeline-loop-toggle"
@@ -179,6 +299,87 @@ export function Timeline() {
 
       <SpeedSelect value={speed} onChange={setSpeed} />
     </div>
+  );
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+interface AnnotationTickProps {
+  annotation: Annotation;
+  fraction: number;
+  isEditing: boolean;
+  onSeek: () => void;
+  onRemove: () => void;
+}
+
+function AnnotationTick({ annotation, fraction, isEditing, onSeek, onRemove }: AnnotationTickProps) {
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <div
+      className="absolute top-0 bottom-0 z-10"
+      style={{ left: `${fraction * 100}%` }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {/* Tick mark */}
+      <div
+        className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 rounded-sm cursor-pointer transition-all ${
+          isEditing
+            ? 'w-1 h-5 bg-accent-amber'
+            : 'w-0.5 h-3.5 bg-accent-amber/80 hover:w-1 hover:h-4 hover:bg-accent-amber'
+        }`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onSeek();
+        }}
+      />
+
+      {/* Tooltip + delete - shown on hover */}
+      {hovered && !isEditing && (
+        <div
+          className="absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 z-20 pointer-events-none"
+          style={{ minWidth: '80px' }}
+        >
+          <div className="flex items-center gap-1.5 bg-bg-primary border border-border rounded-md px-2 py-1 shadow-lg pointer-events-auto whitespace-nowrap">
+            <span className="text-[10px] text-text-secondary max-w-[120px] truncate">
+              {annotation.label}
+            </span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove();
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              className="text-[10px] leading-none text-text-muted hover:text-accent-rose transition-colors flex-shrink-0"
+              title="Remove bookmark"
+              aria-label="Remove bookmark"
+            >
+              x
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BookmarkIcon() {
+  return (
+    <svg
+      className="w-3.5 h-3.5"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z" />
+      <line x1="12" y1="8" x2="12" y2="14" />
+      <line x1="9" y1="11" x2="15" y2="11" />
+    </svg>
   );
 }
 
