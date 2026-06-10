@@ -102,7 +102,16 @@ export async function encodeWebM(
 
 /** Trigger a browser file download from a Uint8Array or Blob. */
 export function downloadBytes(data: Uint8Array | Blob, filename: string): void {
-  const blob = data instanceof Blob ? data : new Blob([data]);
+  let blob: Blob;
+  if (data instanceof Blob) {
+    blob = data;
+  } else {
+    // Copy into a plain ArrayBuffer - fflate returns Uint8Array<ArrayBufferLike>
+    // which TypeScript's Blob constructor does not accept under strict lib checks.
+    const ab = new ArrayBuffer(data.byteLength);
+    new Uint8Array(ab).set(data);
+    blob = new Blob([ab]);
+  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
