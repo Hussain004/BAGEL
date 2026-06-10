@@ -17,6 +17,7 @@ import { TFTree } from '../panels/TFTree';
 import { ThreeDScene } from '../panels/ThreeDScene';
 import { DiagnosticArray } from '../panels/DiagnosticArray';
 import { Log } from '../panels/Log';
+import { BagHealth } from '../panels/BagHealth';
 
 /**
  * PanelGrid — Recursive renderer for the layout tree.
@@ -126,6 +127,8 @@ function Visualisation({ leaf }: { leaf: PanelLeaf }) {
       return <DiagnosticArray {...props} />;
     case 'log':
       return <Log {...props} />;
+    case 'health':
+      return <BagHealth {...props} />;
   }
 }
 

@@ -6,7 +6,7 @@
  * format so panels don't have to care about db3 vs mcap.
  */
 
-import type { BagFormat, BagSummary, RawMessage } from '../types/bag';
+import type { AllTopicStats, BagFormat, BagSummary, RawMessage } from '../types/bag';
 import {
   parseMcap,
   readRawMessagesMcap,
@@ -14,6 +14,7 @@ import {
   readMessageAtTimeMcap,
   getTopicTypeMcap,
   disposeMcapCache,
+  readAllMessageStatsMcap,
 } from './mcap';
 import {
   parseDb3,
@@ -22,6 +23,7 @@ import {
   readMessageAtTimeDb3,
   getTopicTypeDb3,
   disposeDb3Cache,
+  readAllMessageStatsDb3,
 } from './db3';
 import {
   parseBagFile,
@@ -30,6 +32,7 @@ import {
   readMessageAtTimeBag,
   getTopicTypeBag,
   disposeBagCache,
+  readAllMessageStatsBag,
 } from './bag';
 import { checkMagicBytes } from '../utils/bytes';
 import { sourceDisplayName, sourceReadSlice, type BagSource } from './source';
@@ -149,6 +152,15 @@ export function disposeParserCaches(): void {
   disposeMcapCache();
   disposeDb3Cache();
   disposeBagCache();
+}
+
+export async function readAllMessageStats(
+  source: BagSource,
+  format: BagFormat,
+): Promise<AllTopicStats> {
+  if (format === 'mcap') return readAllMessageStatsMcap(source);
+  if (format === 'bag') return readAllMessageStatsBag(source);
+  return readAllMessageStatsDb3(source);
 }
 
 /**

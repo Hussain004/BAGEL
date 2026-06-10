@@ -37,7 +37,7 @@ import { BlobReader } from '@foxglove/rosbag/web';
 import type { Filelike } from '@foxglove/rosbag';
 import Bunzip from 'seek-bzip';
 import * as lz4 from 'lz4js';
-import type { BagSummary, RawMessage, TopicInfo } from '../types/bag';
+import type { AllTopicStats, BagSummary, RawMessage, TopicInfo } from '../types/bag';
 import { clearRos1ReaderCache, deserializeRos1Message } from './rosbag1';
 import {
   HttpFilelike,
@@ -428,6 +428,42 @@ export async function getTopicTypeBag(
 ): Promise<string | undefined> {
   const meta = await loadBag(source);
   return meta.topicMeta.get(topicName)?.type;
+}
+
+export async function readAllMessageStatsBag(source: BagSource): Promise<AllTopicStats> {
+  const meta = await loadBag(source);
+  const { bag } = meta;
+  const startNs = timeToNs(bag.startTime);
+
+  const rawTimes = new Map<string, number[]>();
+  const rawSizes = new Map<string, number[]>();
+
+  const iterator = bag.messageIterator({});
+  for await (const event of iterator as AsyncIterable<{
+    topic: string;
+    timestamp: { sec: number; nsec: number };
+    data: Uint8Array;
+  }>) {
+    const { topic } = event;
+    const relNs = Number(timeToNs(event.timestamp) - startNs);
+    const size = event.data.byteLength;
+
+    let t = rawTimes.get(topic);
+    if (!t) { t = []; rawTimes.set(topic, t); }
+    t.push(relNs);
+    let s = rawSizes.get(topic);
+    if (!s) { s = []; rawSizes.set(topic, s); }
+    s.push(size);
+  }
+
+  const result: AllTopicStats = {};
+  for (const [topic, times] of rawTimes) {
+    result[topic] = {
+      times: new Float64Array(times),
+      sizes: new Uint32Array(rawSizes.get(topic)!),
+    };
+  }
+  return result;
 }
 
 /**

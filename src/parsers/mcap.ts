@@ -14,7 +14,7 @@
 import { McapIndexedReader, McapStreamReader, type DecompressHandlers, type IReadable } from '@mcap/core';
 import { BlobReadable } from '@mcap/browser';
 import { decompress as fzstdDecompress } from 'fzstd';
-import type { BagSummary, RawMessage, TopicInfo } from '../types/bag';
+import type { AllTopicStats, BagSummary, RawMessage, TopicInfo } from '../types/bag';
 import { deserializeWithSchema } from './cdr';
 import {
   HttpReadable,
@@ -553,6 +553,64 @@ export async function getTopicTypeMcap(
 ): Promise<string | undefined> {
   const meta = await loadMcap(source);
   return meta.topicMeta.get(topicName)?.schemaName;
+}
+
+export async function readAllMessageStatsMcap(source: BagSource): Promise<AllTopicStats> {
+  const meta = await loadMcap(source);
+
+  const rawTimes = new Map<string, bigint[]>();
+  const rawSizes = new Map<string, number[]>();
+
+  if (meta.reader) {
+    for await (const msg of meta.reader.readMessages({})) {
+      const ch = meta.channelById.get(msg.channelId);
+      if (!ch) continue;
+      const { topic } = ch;
+      let t = rawTimes.get(topic);
+      if (!t) { t = []; rawTimes.set(topic, t); }
+      t.push(msg.logTime);
+      let s = rawSizes.get(topic);
+      if (!s) { s = []; rawSizes.set(topic, s); }
+      s.push(msg.data.byteLength);
+    }
+  } else if (meta.buffer) {
+    const streamReader = new McapStreamReader({ decompressHandlers: meta.decompressHandlers });
+    streamReader.append(meta.buffer);
+    for (let record; (record = streamReader.nextRecord()); ) {
+      if (record.type !== 'Message') continue;
+      const ch = meta.channelById.get(record.channelId);
+      if (!ch) continue;
+      const { topic } = ch;
+      let t = rawTimes.get(topic);
+      if (!t) { t = []; rawTimes.set(topic, t); }
+      t.push(record.logTime);
+      let s = rawSizes.get(topic);
+      if (!s) { s = []; rawSizes.set(topic, s); }
+      s.push(record.data.byteLength);
+    }
+  }
+
+  // Determine start time: statistics have it for indexed files; stream fallback needs a scan.
+  let startNs: bigint;
+  if (meta.reader?.statistics?.messageStartTime != null) {
+    startNs = meta.reader.statistics.messageStartTime;
+  } else {
+    startNs = 0n;
+    for (const times of rawTimes.values()) {
+      for (const t of times) {
+        if (startNs === 0n || t < startNs) startNs = t;
+      }
+    }
+  }
+
+  const result: AllTopicStats = {};
+  for (const [topic, times] of rawTimes) {
+    const sizes = rawSizes.get(topic)!;
+    const relTimes = new Float64Array(times.length);
+    for (let i = 0; i < times.length; i++) relTimes[i] = Number(times[i] - startNs);
+    result[topic] = { times: relTimes, sizes: new Uint32Array(sizes) };
+  }
+  return result;
 }
 
 /**
