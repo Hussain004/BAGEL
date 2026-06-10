@@ -4,6 +4,85 @@ Detailed version-by-version release notes, including the design rationale behind
 
 ---
 
+## v1.4: Analysis and Shareability
+
+v1.4 is a four-part series. The theme is "make the data you already have easier to analyze and share." v1.3 turned BAGEL into a real robotics tool; v1.4 gives it the feedback loop: measure bag quality, derive new signals from raw ones, capture moments as video, and pin timestamps so colleagues see exactly what you're seeing.
+
+### v1.4.3: Timeline Bookmarks / Annotations
+
+Everything in v1.4.2, plus:
+
+- **Named bookmarks on the scrubber.** Drop a marker at any timestamp, give it a label, click it to seek. The primary use case is the "star-driving artifact": copy a URL after bookmarking a TF jump at 12.3 s and the recipient opens the bag at that exact moment with the marker already visible. The three entry points are: **double-click the timeline bar** (places a tick at the click position and opens an inline label editor inline above it - Enter to confirm, Escape to discard); the **`+` bookmark button** in the Timeline toolbar (places a tick at the current playhead with an auto-label, no editor for speed); and the **`M` keyboard shortcut** (same as the button, added to the SHORTCUTS table so the Shortcuts modal lists it automatically).
+
+- **`annotationStore`** (`src/store/annotationStore.ts`). A Zustand store holding `Annotation[]` sorted by `timeNs` (aligned playhead time, same coordinate space as `playheadStore.timeNs`, not bag-local ns). Aligned time is the right choice here: a bookmark placed while viewing two bags under `bag-start` alignment should land on the same physical moment even after the user switches to `wall-clock` alignment. `addAnnotation(timeNs, label)` returns the new id so the double-click handler can immediately open the inline editor for it. `loadForBag(bagKey, fromHash?)` replaces the in-memory set from either localStorage or a caller-supplied `fromHash` array (the latter taking priority so URL-shared bookmarks are not overwritten by stale local ones). Storage key is `bagel:annotations:v1:<bagFingerprint>` where the fingerprint is `name:size` for file bags and the source URL for remote bags - the same two-factor key the v0.5 URL-state restore uses for its "should we re-apply this hash?" check. BigInt `timeNs` values are serialised as decimal strings (JSON has no BigInt support). Malformed or truncated entries in localStorage are silently skipped so a corrupted entry doesn't prevent the rest from loading.
+
+- **Timeline tick rendering.** Annotation ticks are rendered as amber vertical bars (`w-0.5 h-3.5`) absolutely positioned within the `flex-1 h-8` track container (made `relative` in v1.4.3 to host them). On hover, a small tooltip floats above the tick showing the label and an `x` delete button. The tooltip uses React state (`useState(false)` on each `AnnotationTick`) rather than CSS-only `:hover` because the tooltip needs to overflow the parent div - CSS `overflow: hidden` on the progress bar's inner div would clip a pure-CSS tooltip. Click on the tick body seeks (with `e.stopPropagation()` so the track's own pointer handler doesn't also seek to the click position). The inline label editor is an absolutely positioned `<input>` that floats above the track at the new annotation's position; it receives auto-focus on mount via a `useEffect`, and stops propagation on `pointerdown` and `doubleClick` so the track doesn't interpret typing as a drag or a new double-click.
+
+- **`bm=` URL hash segment.** Format: pipe-separated `timeSec.3f,label` tuples with labels URL-encoded, e.g. `bm=1.500,Mark+1|12.300,TF%20jump`. Uses `bm=` rather than `a=` (which already encodes per-bag anchor times in v1.0) to avoid a collision. The hash encode adds `bm=` only when the annotation list is non-empty, so single-bag hashes without bookmarks are byte-for-byte identical to their pre-v1.4.3 form - full back-compat. On parse, `timeSec` values are stored as raw floats; `timeNs` is resolved in the restore effect after the bag loads and `playheadStore.startNs` is known, clamped to `[startNs, endNs]`. `useAnnotationStore` is subscribed in the `computeAndWrite` path alongside `playheadStore`, `layoutStore`, and `bagStore` so any annotation change flushes to the URL within one rAF.
+
+- **11 new tests** in `tests/store/annotations.test.ts` covering: empty default, `addAnnotation` sort order and id return, `removeAnnotation`, `updateLabel`, `clearAll`, `loadForBag` from localStorage, `loadForBag` with `fromHash` override, localStorage persistence on add and clear, graceful handling of corrupted JSON, and graceful handling of non-parseable `timeNs` strings. **303 passing tests total** (was 292 at v1.3.4, +11 here; v1.4.0-v1.4.2 are counted separately in their own sub-sections below).
+
+Explicitly out of scope for v1.4.3:
+- **Annotation notes / free-text body.** The `Annotation` interface reserves a `note?` field but the v1.4.3 UI only exposes the label. A second multi-line text field in a detail popover is a natural follow-up once someone wants per-bookmark context beyond a short name.
+- **Annotation colour.** All ticks are amber for now. Per-bookmark colour pickers would be straightforward (the `Annotation` interface reserves `color?`) but add surface area to the inline editor that isn't justified at v1.4.3 scale.
+- **Annotation export.** The bookmarks are in the URL hash and localStorage; a dedicated "export as CSV" or "copy timestamps" button would be useful for log review workflows. Deferred until the use-case is confirmed.
+
+---
+
+### v1.4.2: Clip Export
+
+Everything in v1.4.1, plus:
+
+- **Export any panel as an animated PNG zip or WebM video.** An `Export` button appears in the Toolbar whenever a bag is loaded. Clicking it opens `ClipExportModal`, which lists every capturable open panel (Image, 3D Scene, Plot, Trajectory), lets the user pick a time window (start/end in seconds from bag start, numerical inputs), choose a frame rate (6 / 12 / 24 / 30 fps), and select PNG zip or WebM output. A live frame estimate shows `~N frames` with a rough duration warning for large exports. The modal runs a progress bar during capture and a second bar during encode, and supports mid-export cancellation.
+
+- **Frame-sync protocol.** Capturing a panel that renders asynchronously (a WebGL scene waiting for a TF decode, an image viewer waiting for a decompressed JPEG, a plot re-sampling a large message array) requires waiting for the render to settle before calling `canvas.toBlob()`. The protocol: `playheadStore.seek(targetNs)` to position the playhead, then two `requestAnimationFrame` cycles (flushing React's commit pass and the Three.js render tick), then a 250 ms `setTimeout` (covering async worker decodes for images and point clouds), then `canvas.toBlob('image/png')`. This "2x rAF + 250 ms" wait is the same budget the v1.3.2 CameraInfo overlay uses for its "settled" heuristic. The 250 ms tail is conservative; for most panels at normal bag speeds a single rAF + a message-decode round-trip is under 100 ms, but the tail covers the pathological case (a 10 MP compressed image decompressing on a slow tab) without risking a blank frame.
+
+- **`preserveDrawingBuffer: true` on `THREE.WebGLRenderer`.** WebGL clears the framebuffer after presenting to the display, so calling `canvas.toBlob()` outside of the render callback returns a blank image. `preserveDrawingBuffer` disables this optimisation - the GPU holds the last rendered frame in the buffer until the next `renderer.render()` call. The cost is slightly higher GPU memory (no buffer recycling) and a small performance penalty on some drivers; the benefit is that `toBlob()` works at any point after render, which is exactly what the frame-sync protocol requires.
+
+- **`captureRegistry.ts`** (`src/utils/captureRegistry.ts`). A module-level `Map<panelId, () => HTMLCanvasElement | null>` that panels register into on mount and deregister on unmount. `ClipExportModal` calls `listCapturablePanelIds()` on open (to populate the panel selector) and `captureCanvas(panelId)` per frame (to grab the canvas for `toBlob`). This avoids prop-drilling a canvas ref from every panel to the export modal, and it avoids hard-coding panel structure inside the modal. `ThreeDScene` registers `renderer.domElement`; `ImageViewer` and `TrajectoryPlot` register their existing `canvasRef.current`; `TimeSeriesPlot` queries for uPlot's canvas via `containerRef.current?.querySelector('canvas')` since uPlot owns the canvas element internally.
+
+- **`clipEncoder.ts`** (`src/utils/clipEncoder.ts`). Four exports: `waitForPanelRender()` (the 2x rAF + 250 ms protocol), `canvasToBlob(canvas)` (Promise-wrapped `toBlob`), `encodePngZip(frames)` (zips all blobs as `frame_00001.png` ... using `fflate.zipSync` with `level: 0` - PNG files are already DEFLATE-compressed so re-compressing them wastes CPU and gains nothing), and `encodeWebM(frames, fps, width, height)` (two-phase: phase 1 collected all PNG blobs already in the capture loop; phase 2 draws each PNG blob to an `OffscreenCanvas`-equivalent regular canvas, calls `captureStream(0) + track.requestFrame()` to push the frame to a `MediaRecorder`, and sleeps `1000/fps` ms between frames so the recorder's timestamps are spaced at the correct interval). `downloadBytes(data, filename)` creates an `<a>` with `URL.createObjectURL`, clicks it, and revokes after 60 s. The `Uint8Array` from `fflate.zipSync` is copied into a fresh `ArrayBuffer` before constructing the `Blob` - `fflate` types the return as `Uint8Array<ArrayBufferLike>` which TypeScript's strict lib rejects as a `BlobPart` because `ArrayBufferLike` includes `SharedArrayBuffer`; a plain `ArrayBuffer` copy is always safe.
+
+- **New `fflate` dependency.** Added with `pnpm add fflate`. Used only in `clipEncoder.ts` for the PNG zip path; the WebM path has no new deps (it uses the browser's built-in `MediaRecorder` API).
+
+Explicitly out of scope for v1.4.2:
+- **GIF output.** GIF encoding in pure JS is slow (~200 ms / frame at 1080p) and produces large files. WebM at 12 fps is a better fit for "share a robot behaviour clip"; GIF is useful for README embeds and would need a canvas-to-GIF pipeline (e.g. `gif.js`) that wasn't worth adding in v1.4.2.
+- **Panel resize during export.** If the user resizes the browser window mid-export, panel canvas dimensions may change between frames. The encoder reads `width` / `height` from the first captured canvas before the loop; a mid-export resize would produce a malformed zip (inconsistent PNG sizes) or a corrupted WebM. Export is intentionally not locked to a fixed resolution in v1.4.2 - the advice is "don't resize during export."
+
+---
+
+### v1.4.1: Math Expressions as Derived Series in TimeSeriesPlot
+
+Everything in v1.4.0, plus:
+
+- **Derived series via inline math expressions.** A `+ expr` button in the TimeSeriesPlot series list opens a one-line expression input. The user types an expression like `linear_x * 3.6` (m/s to km/h conversion), `sqrt(vx*vx + vy*vy)` (speed magnitude from velocity components), or `angular_z - angular_z_bias` (bias-corrected yaw rate). The expression is compiled once against the set of available numeric field names from the topic's first decoded message; if any referenced name is unknown an inline error shows before the series is added. On each plot update the expression is evaluated per-sample using the values of the referenced fields at that timestamp. The result is a new series drawn in the plot alongside the raw fields, with a `fx` label prefix to distinguish it from direct field series.
+
+- **Expression engine** (`src/utils/mathExpr.ts`). A two-pass tokenizer + recursive-descent evaluator. No `eval` or `new Function` - the engine builds an AST and walks it. Supported: numeric literals, field name identifiers, binary `+ - * /`, unary `-`, parentheses for grouping, and six built-in functions: `sqrt`, `abs`, `pow` (two-argument), `min` and `max` (two-argument), and `floor`. Precedence follows standard math convention (multiply/divide before add/subtract, unary minus tightest). Division by zero produces `NaN` (not a throw) so a bad expression in a running plot doesn't crash the panel. The tokenizer rejects unknown identifiers at compile time (before the series is added) so runtime errors are impossible for well-formed expressions. Error messages are human-readable: `"Unknown field: 'angulr_z' (did you mean 'angular_z'?)"` uses a Levenshtein-1 candidate suggestion.
+
+- **`erasableSyntaxOnly` compliance.** TypeScript 5.x's `erasableSyntaxOnly` flag (enabled in this repo's `tsconfig.json`) forbids constructor parameter properties (`constructor(private readonly x: T)`) because they emit a field assignment statement - non-erasable syntax. The `Parser` class inside `mathExpr.ts` uses an explicit field declaration + plain constructor body to stay compliant.
+
+- **36 new tests** in `tests/utils/mathExpr.test.ts` covering: all six binary operators, unary minus, nested parentheses, all six built-in functions, field name resolution, unknown-field error with suggestion, division by zero, empty expression error, multi-operator precedence, and round-trip expression-to-value correctness against known results.
+
+---
+
+### v1.4.0: Bag Health Dashboard
+
+Everything in v1.3.4, plus:
+
+- **Per-topic health analytics.** A `Health` button in the Toolbar opens the Bag Health panel - a sortable table showing, for every topic in the focused bag: measured Hz (messages / wall duration), jitter (standard deviation of inter-message gaps in ms, plus p95 as a separate column), gap events (intervals between consecutive messages that exceed 3x the median period), and bandwidth (bytes/s). The intent is "open the bag, press Health, immediately see which topic is publishing erratically or silently dropped out." This is the v1.4 banner feature: v1.3 said "BAGEL is a real robotics tool"; v1.4 says "and it tells you when your bag data is suspect."
+
+- **`getHealthStats` worker RPC.** Health stats are computed once per bag in the parser worker via a new `getHealthStats(source)` method on the worker RPC surface. The worker iterates all messages for all topics (a full linear scan), accumulates per-topic timestamp sequences, then computes Hz, gap list, jitter (stddev of diffs), and bandwidth in one pass. Results are cached by source key so the second time you open the Health panel it's instant. For large bags (multi-GB MCAP) the scan can take 2-10 seconds; the Health panel shows a loading spinner during the scan and renders the table as soon as results arrive. The scan runs entirely off the main thread (in the parser worker), so the rest of the UI stays responsive.
+
+- **Severity colour chips.** Each metric column renders a `green / amber / red` chip: Hz below 80% of the declared frequency is amber, below 50% is red; jitter p95 above 20 ms is amber, above 100 ms is red; any gap event is amber, more than 5 gap events is red. Thresholds are intentionally loose to avoid false positives on typical robot bags where clock jitter and publisher variance are normal; the intent is to catch genuine anomalies (a camera topic at 1 Hz when it should be 30 Hz, a `/tf` gap during a localisation failure).
+
+- **Sortable by any column.** Click a column header to sort ascending; click again to sort descending. Sort state is local to the panel (not persisted - it's a view preference, not a bag property).
+
+Explicitly out of scope for v1.4.0:
+- **Cross-bag health comparison.** The Health panel opens for the focused bag only. Comparing two bags' health stats side by side is a v1.5+ "multi-bag analysis" feature.
+- **Per-message timing histogram.** The gap list is summarised as a count; a per-topic timeline of actual inter-message gaps would be more informative but requires a separate plot panel and is deferred.
+
+---
+
 ## v1.3.4: Image Rectification + Per-Camera Frustum Hide + About-Modal Defaults
 
 Everything in v1.3.3, plus:
