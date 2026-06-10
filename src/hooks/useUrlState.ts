@@ -43,6 +43,7 @@ import {
   type SplitOrientation,
 } from '../store/layoutStore';
 import { usePlayheadStore } from '../store/playheadStore';
+import { useAnnotationStore, type Annotation } from '../store/annotationStore';
 
 const PANEL_KIND_VALUES: ReadonlySet<string> = new Set([
   'plot',
@@ -63,6 +64,12 @@ interface ParsedHash {
   bagUrl?: string;
   /** Per-bag anchor map: bagId → bag-local-ns. Applied after bag load (v1.0). */
   anchors?: Map<string, bigint>;
+  /**
+   * Timeline bookmarks from the `bm=` hash segment (v1.4.3).
+   * timeNs is a placeholder (0n) here — it's resolved to aligned ns in the
+   * restore effect once the bag's playhead range is known.
+   */
+  bookmarks?: { id: string; timeSec: number; label: string }[];
 }
 
 /**
@@ -247,6 +254,34 @@ function parseHash(hash: string): ParsedHash {
     }
     if (anchors.size > 0) out.anchors = anchors;
   }
+
+  // `bm=` encodes timeline bookmarks (v1.4.3).
+  // Format: pipe-separated `timeSec.3f,label` tuples with label URL-encoded.
+  // e.g. `bm=1.500,Mark+1|12.300,TF%20jump`
+  const bm = params.get('bm');
+  if (bm) {
+    const bookmarks: { id: string; timeSec: number; label: string }[] = [];
+    for (const seg of bm.split('|')) {
+      const comma = seg.indexOf(',');
+      if (comma < 1) continue;
+      const timeSec = parseFloat(seg.slice(0, comma));
+      if (!Number.isFinite(timeSec) || timeSec < 0) continue;
+      let label: string;
+      try {
+        label = decodeURIComponent(seg.slice(comma + 1));
+      } catch {
+        continue;
+      }
+      if (!label) continue;
+      bookmarks.push({
+        id: `bm-${Math.random().toString(36).slice(2, 8)}`,
+        timeSec,
+        label,
+      });
+    }
+    if (bookmarks.length > 0) out.bookmarks = bookmarks;
+  }
+
   return out;
 }
 
@@ -269,6 +304,7 @@ function encodeHash(
   root: LayoutNode | null,
   bagUrl: string | null,
   anchors: Map<string, bigint> | null,
+  bookmarks: { timeSec: number; label: string }[] | null,
 ): string {
   const params = new URLSearchParams();
   // 3 decimal places ≈ 1 ms — fine for human scrubbing, keeps the URL short.
@@ -288,6 +324,16 @@ function encodeHash(
       pairs.push(`${bagId}:${ns.toString()}`);
     }
     params.set('a', pairs.join(','));
+  }
+  // `bm=` encodes timeline bookmarks (v1.4.3). Omitted when empty so single-bag
+  // hashes without bookmarks stay identical to their pre-v1.4.3 form.
+  if (bookmarks && bookmarks.length > 0) {
+    params.set(
+      'bm',
+      bookmarks
+        .map((b) => `${b.timeSec.toFixed(3)},${encodeURIComponent(b.label)}`)
+        .join('|'),
+    );
   }
   return params.toString();
 }
@@ -384,13 +430,13 @@ export function useUrlState(): void {
     // playhead range start (aligned time under multi-bag); under v0.7/v0.8
     // single-bag wall-clock alignment this is identical to seconds from
     // bag.startTime, so existing share links round-trip exactly.
+    const phState = usePlayheadStore.getState();
+    const { startNs: phStart, endNs: phEnd } = phState;
+
     if (parsed.timeSec !== undefined) {
-      const phState = usePlayheadStore.getState();
-      const startNs = phState.startNs;
-      const endNs = phState.endNs;
-      const targetNs = startNs + BigInt(Math.round(parsed.timeSec * 1e9));
+      const targetNs = phStart + BigInt(Math.round(parsed.timeSec * 1e9));
       const clamped =
-        targetNs < startNs ? startNs : targetNs > endNs ? endNs : targetNs;
+        targetNs < phStart ? phStart : targetNs > phEnd ? phEnd : targetNs;
       phState.seek(clamped);
     }
 
@@ -402,6 +448,27 @@ export function useUrlState(): void {
         if (bagState.bags.has(bagId)) {
           bagState.setAnchor(bagId, anchorNs);
         }
+      }
+    }
+
+    // Load bookmarks for this bag (v1.4.3). URL-hash bookmarks take priority
+    // over localStorage so a shared link restores the sender's annotations.
+    {
+      const bagEntry = useBagStore.getState().bags.get(useBagStore.getState().focusBagId ?? '');
+      const bagKey =
+        bagEntry?.source.kind === 'url'
+          ? bagEntry.source.url
+          : `${bag.fileName}:${bag.fileSize}`;
+
+      if (parsed.bookmarks) {
+        const hydrated: Annotation[] = parsed.bookmarks.map((b) => {
+          const ns = phStart + BigInt(Math.round(b.timeSec * 1e9));
+          const clamped = ns < phStart ? phStart : ns > phEnd ? phEnd : ns;
+          return { id: b.id, timeNs: clamped, label: b.label };
+        });
+        useAnnotationStore.getState().loadForBag(bagKey, hydrated);
+      } else {
+        useAnnotationStore.getState().loadForBag(bagKey);
       }
     }
 
@@ -452,7 +519,25 @@ export function useUrlState(): void {
       for (const [id, entry] of bagState.bags) {
         if (entry.anchorNs !== undefined) anchorMap.set(id, entry.anchorNs);
       }
-      const next = encodeHash(timeSec, root, bagUrl, anchorMap.size > 0 ? anchorMap : null);
+      // Encode bookmarks (v1.4.3). Only emit when non-empty so single-bag
+      // hashes without bookmarks stay identical to their pre-v1.4.3 form.
+      const { annotations } = useAnnotationStore.getState();
+      const bookmarks =
+        annotations.length > 0
+          ? annotations
+              .map((a) => ({
+                timeSec: Math.max(0, Number(a.timeNs - playhead.startNs) / 1e9),
+                label: a.label,
+              }))
+              .filter((b) => b.timeSec >= 0)
+          : null;
+      const next = encodeHash(
+        timeSec,
+        root,
+        bagUrl,
+        anchorMap.size > 0 ? anchorMap : null,
+        bookmarks,
+      );
       if (next === last) return;
       last = next;
       // replaceState rather than pushState — the hash represents the current
@@ -473,6 +558,8 @@ export function useUrlState(): void {
     // hash immediately — without this, setting an anchor wouldn't show up
     // in the URL until the next playhead tick.
     const unsubBag = useBagStore.subscribe(schedule);
+    // Subscribe to annotationStore so bookmark changes flush to the hash.
+    const unsubAnnotations = useAnnotationStore.subscribe(schedule);
 
     // Initial write so an opened bag without a hash gets one.
     computeAndWrite();
@@ -481,6 +568,7 @@ export function useUrlState(): void {
       unsubPlayhead();
       unsubLayout();
       unsubBag();
+      unsubAnnotations();
       if (pendingFrame !== null) cancelAnimationFrame(pendingFrame);
     };
   }, [bag, source]);

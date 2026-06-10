@@ -15,6 +15,7 @@ import { useBagStore } from '../store/bagStore';
 import { usePlayheadStore } from '../store/playheadStore';
 import { useLayoutStore } from '../store/layoutStore';
 import { useUiStore } from '../store/uiStore';
+import { useAnnotationStore } from '../store/annotationStore';
 
 /** Single source of truth for the Shortcuts modal + the handler. */
 export interface ShortcutDescription {
@@ -30,6 +31,7 @@ export const SHORTCUTS: ShortcutDescription[] = [
   { keys: 'Shift + ←  →', description: 'Step by ~5% (coarse jump)', group: 'Playback' },
   { keys: 'Home  End', description: 'Jump to bag start / end', group: 'Playback' },
   { keys: 'L', description: 'Toggle loop playback', group: 'Playback' },
+  { keys: 'M', description: 'Add timeline bookmark at playhead', group: 'Playback' },
   { keys: 'T', description: 'Focus the topic search box', group: 'Navigation' },
   { keys: 'Esc', description: 'Close the most recently opened panel', group: 'Panels' },
   { keys: 'Shift + Esc', description: 'Close every open panel', group: 'Panels' },
@@ -121,6 +123,16 @@ export function useKeyboardShortcuts(): void {
         e.preventDefault();
         const store = usePlayheadStore.getState();
         store.setLoop(!store.loop);
+        return;
+      }
+
+      if (e.key === 'm' || e.key === 'M') {
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        e.preventDefault();
+        const { timeNs } = usePlayheadStore.getState();
+        const ann = useAnnotationStore.getState();
+        const count = ann.annotations.length + 1;
+        ann.addAnnotation(timeNs, `Mark ${count}`);
         return;
       }
 
