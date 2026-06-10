@@ -103,6 +103,7 @@ const KIND_BUTTON_LABEL: Record<PanelKind, string> = {
   '3d': '3D',
   diagnostic: 'Diag',
   log: 'Log',
+  health: 'Health',
 };
 
 const KIND_BUTTON_TITLE: Record<PanelKind, string> = {
@@ -114,6 +115,7 @@ const KIND_BUTTON_TITLE: Record<PanelKind, string> = {
   '3d': 'Open 3D scene',
   diagnostic: 'Open diagnostic timeline',
   log: 'Open log viewer',
+  health: 'Open bag health dashboard',
 };
 
 /**
