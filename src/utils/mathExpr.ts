@@ -114,7 +114,8 @@ const BUILTINS: Record<string, (args: Array<number | null>) => number | null> = 
 
 class Parser {
   private pos = 0;
-  constructor(private readonly toks: Token[]) {}
+  private readonly toks: Token[];
+  constructor(toks: Token[]) { this.toks = toks; }
 
   parse(): CompiledExpr {
     const fn = this.parseAdditive();
