@@ -32,6 +32,10 @@ export function Timeline() {
   const trackRef = useRef<HTMLDivElement>(null);
   const isDraggingRef = useRef(false);
   const lastFrameRef = useRef<number | null>(null);
+  // Tracks which annotation tick is currently hovered so double-click can
+  // rename it instead of creating a new one. Ref (not state) to avoid
+  // re-renders on every mouse-enter/leave.
+  const hoveredAnnIdRef = useRef<string | null>(null);
 
   // Inline label-edit state: set to the annotation id whose label is being typed.
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -98,19 +102,38 @@ export function Timeline() {
     (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
   };
 
-  // Double-click on track -> add bookmark at that time, enter inline edit.
+  // Double-click on track -> rename hovered annotation, or add a new one.
   const handleTrackDoubleClick = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
       const el = trackRef.current;
       if (!el) return;
       const rect = el.getBoundingClientRect();
+
+      // If a tick is currently hovered, rename it instead of creating a new one.
+      if (hoveredAnnIdRef.current) {
+        const ann = useAnnotationStore.getState().annotations.find(
+          (a) => a.id === hoveredAnnIdRef.current,
+        );
+        if (ann) {
+          const ph = usePlayheadStore.getState();
+          const range = ph.endNs - ph.startNs;
+          const f = range > 0n ? Number(ann.timeNs - ph.startNs) / Number(range) : 0;
+          setEditingLabel(ann.label);
+          setEditingX(f * rect.width);
+          setEditingIsNew(false);
+          setEditingId(ann.id);
+          return;
+        }
+      }
+
       const fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
       const ph = usePlayheadStore.getState();
       const range = ph.endNs - ph.startNs;
       const raw = ph.startNs + BigInt(Math.round(Number(range) * fraction));
       const clamped = raw < ph.startNs ? ph.startNs : raw > ph.endNs ? ph.endNs : raw;
-      const count = useAnnotationStore.getState().annotations.length + 1;
+      const anns = useAnnotationStore.getState().annotations;
+      const count = anns.length + 1;
       const id = addAnnotation(clamped, `Mark ${count}`);
       setEditingLabel(`Mark ${count}`);
       setEditingX(e.clientX - rect.left);
@@ -242,6 +265,7 @@ export function Timeline() {
                 setEditingIsNew(false);
                 setEditingId(ann.id);
               }}
+              onHoverChange={(id) => { hoveredAnnIdRef.current = id; }}
             />
           );
         })}
@@ -322,9 +346,10 @@ interface AnnotationTickProps {
   onSeek: () => void;
   onRemove: () => void;
   onRename: () => void;
+  onHoverChange: (id: string | null) => void;
 }
 
-function AnnotationTick({ annotation, fraction, isEditing, onSeek, onRemove, onRename }: AnnotationTickProps) {
+function AnnotationTick({ annotation, fraction, isEditing, onSeek, onRemove, onRename, onHoverChange }: AnnotationTickProps) {
   const [hovered, setHovered] = useState(false);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -334,9 +359,13 @@ function AnnotationTick({ annotation, fraction, isEditing, onSeek, onRemove, onR
   const enter = () => {
     if (hideTimer.current) clearTimeout(hideTimer.current);
     setHovered(true);
+    onHoverChange(annotation.id);
   };
   const leave = () => {
-    hideTimer.current = setTimeout(() => setHovered(false), 200);
+    hideTimer.current = setTimeout(() => {
+      setHovered(false);
+      onHoverChange(null);
+    }, 200);
   };
 
   return (
@@ -368,15 +397,16 @@ function AnnotationTick({ annotation, fraction, isEditing, onSeek, onRemove, onR
           onMouseEnter={enter}
           onMouseLeave={leave}
           onClick={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
         >
-          <div className="flex items-center gap-1 bg-bg-primary border border-border rounded-md px-2 py-1 shadow-lg whitespace-nowrap">
-            <span className="text-[10px] text-text-secondary max-w-[140px] truncate">
+          <div className="flex items-center gap-2 bg-bg-primary border border-border rounded-md px-3 py-1.5 shadow-lg whitespace-nowrap">
+            <span className="text-xs text-text-secondary max-w-[160px] truncate">
               {annotation.label}
             </span>
             <button
               onClick={(e) => { e.stopPropagation(); onRemove(); }}
               onPointerDown={(e) => e.stopPropagation()}
-              className="text-[11px] leading-none text-text-muted hover:text-accent-rose transition-colors flex-shrink-0 cursor-pointer"
+              className="text-sm leading-none text-text-muted hover:text-accent-rose transition-colors flex-shrink-0 cursor-pointer"
               title="Remove bookmark"
               aria-label="Remove bookmark"
             >
