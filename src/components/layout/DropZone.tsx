@@ -269,7 +269,7 @@ function UrlInput({
       <button
         type="submit"
         disabled={disabled || url.trim().length === 0}
-        className="px-4 py-2 rounded-md border border-accent-blue/30 bg-accent-blue/10 text-accent-blue text-sm font-medium hover:bg-accent-blue/20 hover:border-accent-blue/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
+        className="w-28 px-4 py-2 rounded-md border border-accent-blue/30 bg-accent-blue/10 text-accent-blue text-sm font-medium hover:bg-accent-blue/20 hover:border-accent-blue/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
       >
         Open URL
       </button>
@@ -289,14 +289,12 @@ function WsConnectInput({
   disabled: boolean;
 }) {
   const [url, setUrl] = useState('');
-  const connectingBagIds = useLiveStore((s) => {
-    const ids: string[] = [];
-    s.statuses.forEach((status, id) => {
-      if (status === 'connecting') ids.push(id);
-    });
-    return ids;
+  const isConnecting = useLiveStore((s) => {
+    for (const status of s.statuses.values()) {
+      if (status === 'connecting') return true;
+    }
+    return false;
   });
-  const isConnecting = connectingBagIds.length > 0;
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -326,7 +324,7 @@ function WsConnectInput({
       <button
         type="submit"
         disabled={disabled || !url.trim().startsWith('ws')}
-        className="px-4 py-2 rounded-md border border-accent-emerald/30 bg-accent-emerald/10 text-accent-emerald text-sm font-medium hover:bg-accent-emerald/20 hover:border-accent-emerald/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-emerald/60 flex items-center gap-1.5"
+        className="w-28 px-4 py-2 rounded-md border border-accent-emerald/30 bg-accent-emerald/10 text-accent-emerald text-sm font-medium hover:bg-accent-emerald/20 hover:border-accent-emerald/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-emerald/60 flex items-center justify-center gap-1.5"
       >
         {isConnecting ? (
           <svg className="w-3.5 h-3.5 animate-spin-slow" fill="none" viewBox="0 0 24 24">

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, Component, type ReactNode } from 'react';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import { useBagStore } from './store/bagStore';
 import { useLayoutStore } from './store/layoutStore';
@@ -17,6 +17,27 @@ import { useLivePlayhead } from './hooks/useLivePlayhead';
 import { formatDuration } from './utils/time';
 import type { BagSummary } from './types/bag';
 
+interface ErrorBoundaryState { error: Error | null }
+class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryState> {
+  state: ErrorBoundaryState = { error: null };
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState { return { error }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ fontFamily: 'monospace', padding: '2rem', background: '#0a0e1a', color: '#f87171', minHeight: '100vh' }}>
+          <h1 style={{ color: '#fb923c', marginBottom: '1rem' }}>BAGEL crashed - please report this</h1>
+          <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '0.85rem' }}>
+            {this.state.error.message}
+            {'\n\n'}
+            {this.state.error.stack}
+          </pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 /**
  * Root Application Component.
  *
@@ -26,7 +47,7 @@ import type { BagSummary } from './types/bag';
  * Global cross-cutting hooks (keyboard shortcuts, URL hash sync) live here
  * so they survive bag changes and are torn down only when the app unmounts.
  */
-export default function App() {
+function AppInner() {
   const bag = useBagStore((s) => s.bag);
   const closeAllPanels = useLayoutStore((s) => s.closeAllPanels);
 
@@ -73,6 +94,14 @@ export default function App() {
       )}
       <ModalHost />
     </>
+  );
+}
+
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <AppInner />
+    </ErrorBoundary>
   );
 }
 
