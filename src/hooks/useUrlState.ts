@@ -456,7 +456,7 @@ export function useUrlState(): void {
     {
       const bagEntry = useBagStore.getState().bags.get(useBagStore.getState().focusBagId ?? '');
       const bagKey =
-        bagEntry?.source.kind === 'url'
+        bagEntry?.source?.kind === 'url'
           ? bagEntry.source.url
           : `${bag.fileName}:${bag.fileSize}`;
 

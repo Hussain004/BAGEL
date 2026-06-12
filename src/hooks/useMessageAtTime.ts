@@ -26,6 +26,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useBagStore, resolveBagEntry } from '../store/bagStore';
+import { useLiveStore } from '../store/liveStore';
 import { readMessageAtTime } from '../parsers';
 
 export interface MessageAtTimeState {
@@ -41,6 +42,11 @@ export function useMessageAtTime(
 ): MessageAtTimeState {
   const entry = useBagStore((s) => resolveBagEntry(s, bagId));
 
+  // Subscribe to live revisions so we re-render when a new frame arrives.
+  const liveRevision = useLiveStore((s) =>
+    entry?.kind === 'live' ? (s.revisions.get(entry.id) ?? 0) : 0,
+  );
+
   const [state, setState] = useState<MessageAtTimeState>({
     message: null,
     loading: true,
@@ -55,15 +61,21 @@ export function useMessageAtTime(
   const sessionRef = useRef(0);
   const fireRef = useRef<() => void>(() => {});
 
-  // Each (bag, file, topic) tuple is a session. Bump on entry and exit so
-  // any in-flight requests from the previous session bail before they call
-  // setState (which would either land on the wrong topic or — on unmount —
-  // poke an already-torn-down component).
+  // ── Live path: synchronous ring-buffer lookup, no worker involved.
+  useEffect(() => {
+    if (!entry || !topicName || entry.kind !== 'live' || !entry.liveConn) return;
+    const raw = entry.liveConn.ringBuffer.getMessageAtTime(topicName, timeNs);
+    const msg = raw ? { timestamp: raw.timeNs, value: raw.value } : null;
+    setState({ message: msg, loading: false, error: null });
+  }, [entry, topicName, timeNs, liveRevision]);
+
+  // ── File / URL path: session management. Bump when bag/topic changes to
+  // invalidate any in-flight worker requests from the previous session.
   useEffect(() => {
     sessionRef.current++;
     pendingTimeRef.current = null;
     inflightRef.current = false;
-    if (!entry) {
+    if (!entry || entry.kind === 'live') {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setState({ message: null, loading: false, error: null });
     }
@@ -78,7 +90,7 @@ export function useMessageAtTime(
   }, [entry, topicName]);
 
   useEffect(() => {
-    if (!entry) return;
+    if (!entry || entry.kind === 'live' || !entry.source) return;
 
     const mySession = sessionRef.current;
     const { id: workerBagId, summary: bag, source } = entry;

@@ -13,6 +13,7 @@ import { clearTopicMessageCache } from './hooks/useTopicMessages';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useUrlState } from './hooks/useUrlState';
 import { useCustomSchemaSync } from './hooks/useCustomSchemaSync';
+import { useLivePlayhead } from './hooks/useLivePlayhead';
 import { formatDuration } from './utils/time';
 import type { BagSummary } from './types/bag';
 
@@ -34,6 +35,8 @@ export default function App() {
   useKeyboardShortcuts();
   useUrlState();
   useCustomSchemaSync();
+  // Keep the playhead range / cursor in sync with the live ring buffer.
+  useLivePlayhead();
 
   // Apply the persisted (or system-preferred) theme to <html data-theme=…>
   // before the first paint, then keep it in sync as the user toggles.

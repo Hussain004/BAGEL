@@ -12,7 +12,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-8-646cff.svg)](https://vite.dev/)
-[![Version](https://img.shields.io/badge/version-1.4.3-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
+[![Version](https://img.shields.io/badge/version-1.5.0-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
 
 [**→ Live Demo**](https://bagel-ros2.vercel.app) · [Report Bug](https://github.com/Hussain004/BAGEL/issues) · [Request Feature](https://github.com/Hussain004/BAGEL/issues)
 
@@ -60,7 +60,7 @@ BAGEL eliminates this friction.
 
 A condensed feature list is below. **Detailed version-by-version release notes (with the design rationale behind every feature) live in [FEATURES.md](FEATURES.md).**
 
-### File formats
+### File formats and live sources
 
 | Format | Notes |
 |---|---|
@@ -68,6 +68,7 @@ A condensed feature list is below. **Detailed version-by-version release notes (
 | ROS2 `.db3` | SQLite via `sql.js` / WASM |
 | ROS1 `.bag` | Including `bz2` and `lz4` compressed chunks |
 | Remote URLs | HTTP Range requests, so only the chunks you scrub through hit the network. `.mcap` / `.bag` stream lazily; `.db3` eager-fetches (sql.js needs it in memory). |
+| **Foxglove WebSocket** *(v1.5.0)* | Paste a `ws://` or `wss://` URL to connect to a live robot running `foxglove_bridge` or `rosbridge_suite`. All panels update in real time. Per-topic ring buffer holds the last 10,000 messages per topic; Follow/Pause button lets you scrub back into history without disconnecting. Auto-reconnect with exponential backoff. |
 
 ### Visualization panels
 
@@ -105,6 +106,14 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 - **`package://` resolver**: paste a URL prefix or drag-drop a folder per referenced package; URL bindings persist across sessions in `localStorage` under `bagel:package-roots:v1`. No auto-fetch from ROS distros - BAGEL only loads meshes from where you point it.
 - **Bundled sample robot URDF** (`public/sample-bags/sample-robot.urdf`) pairs with `tour.mcap` so the "Try a sample robot" button in the modal demonstrates the full flow on a fresh checkout.
 
+### Live robot data *(v1.5.0)*
+
+- **Foxglove WebSocket client**: connect to a live robot by pasting a `ws://host:8765` URL into the new "Connect" input. Works with `foxglove_bridge` (ROS2) and `rosbridge_suite` (ROS1/ROS2). Implements `foxglove.websocket.v1` - binary MESSAGE_DATA frames for message payloads, JSON frames for topic advertisement.
+- **Per-topic ring buffer**: the last 10,000 messages per topic are held in memory. All existing panels (Image, Plot, 3D Scene, Trajectory, TF Tree, Log) display live data without any panel-level changes - the hooks detect a live entry and read from the ring buffer instead of the parser worker.
+- **Follow / Pause mode**: the timeline's Follow button (also in the Toolbar chip) keeps the playhead at the live edge. Press Pause to scrub back through buffered history; press Follow to snap forward again.
+- **Auto-reconnect**: exponential backoff on disconnect: 1s, 2s, 4s, 8s, 16s, 30s. Connection status shown as a pulsing dot (emerald = connected, amber = reconnecting, rose = error) on the toolbar chip.
+- **CDR and JSON decoding** in the main thread using the bundled `@foxglove/rosmsg2-serialization` parser - same library used for `.db3` topic decoding, no new dependencies.
+
 ### Analysis tools *(v1.4)*
 
 - **Bag Health dashboard** *(v1.4.0)*: a per-topic analytics panel showing measured Hz, jitter (p50/p95 inter-message gap deviation), gap events (pauses longer than 3x the expected period), and bandwidth (bytes/s). Opens from a `Health` button in the Toolbar that appears once a bag is loaded. Data is computed once per bag in a background scan and cached.
@@ -120,7 +129,7 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 - **Saved Display defaults**: per-data-type defaults for the 3D panel's Display card (colour mode, accumulator, point size, range filter, up axis, camera-frustum master toggle), persisted across sessions. Manageable from the About modal. *(v1.3.3 / v1.3.4)*
 - **Accessibility pass**: ARIA roles + focus management on every modal, `prefers-reduced-motion` respected, focus-visible rings throughout.
 - **Bundled `tour.mcap` sample bag** exercises every panel type. Drop in zero seconds with the "Try a sample bag" button.
-- **303-test Vitest suite** + GitHub Actions CI runs `tsc -b` + `pnpm test` on every PR. *(v1.0, expanded each release)*
+- **344-test Vitest suite** + GitHub Actions CI runs `tsc -b` + `pnpm test` on every PR. *(v1.0, expanded each release)*
 - **Bags well over 2 GB work in the browser**: range reads + lazy decoding throughout the parser stack.
 
 > Looking for the long version with implementation notes and design tradeoffs for each release? See **[FEATURES.md](FEATURES.md)**.
@@ -129,6 +138,7 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 
 ### Earlier version highlights at a glance
 
+- **v1.5.0**: Live robot data via Foxglove WebSocket (`ws://host:8765`). Paste a URL into the new Connect input; all existing panels update in real time. Per-topic ring buffer (10,000 msg/topic), Follow/Pause toggle on the timeline, auto-reconnect with exponential backoff, pulsing status dot on the toolbar chip. CDR + JSON decoding in the main thread via the bundled `@foxglove/rosmsg2-serialization` - no new dependencies. 41 new tests in `tests/live/` and `tests/store/`; 344 total.
 - **v1.4.3**: Timeline bookmarks. Named amber ticks on the scrubber; double-click the bar (or press `M`, or use the `+` button) to drop a bookmark at any timestamp, click to seek, hover to see the label and delete it. Bookmarks persist to `localStorage` keyed by bag fingerprint and are encoded in the URL hash as `bm=timeSec.3f,label|...` tuples so a shared link opens the bag with the sender's annotations intact. `loadForBag` lets URL-hash bookmarks take priority over localStorage. 11 new tests in `tests/store/annotations.test.ts`; 303 total.
 - **v1.4.2**: Clip export. Export button in the Toolbar opens a modal to render any open panel (Image, 3D Scene, Plot, Trajectory) frame-by-frame to a PNG zip or WebM video. Frame-sync protocol: seek playhead, double rAF + 250 ms settle, `canvas.toBlob()`. PNG frames zipped via `fflate` (level 0 - no recompression of already-compressed PNGs); WebM encoded via a two-phase `MediaRecorder` + `captureStream(0)` + `requestFrame()` approach so video playback speed matches the requested fps regardless of how long each frame takes to capture. `preserveDrawingBuffer: true` added to `THREE.WebGLRenderer` so the 3D panel's canvas is always readable. Capture registry (`captureRegistry.ts`) lets panels register their canvas without prop drilling. New `fflate` dependency.
 - **v1.4.1**: Math expressions as derived series in TimeSeriesPlot. Add expressions like `vel * 2 + offset` or `sqrt(x*x + y*y)` as extra series in any plot panel. Tokenizer + recursive-descent evaluator with no `eval`, supports `+`, `-`, `*`, `/`, unary minus, `sqrt()`, `abs()`, `pow()`, `min()`, `max()`. 36 new tests in `tests/utils/mathExpr.test.ts`; covers all operators, precedence, error paths.
@@ -155,7 +165,7 @@ For the full detail behind each release (including design rationale and implemen
 
 ### Roadmap
 
-v1.0 stabilised the surface BAGEL already covered. v1.1 / v1.2 shipped browser-native bag editing. v1.3.x built "real robotics tool" features (URDF, CameraInfo, image rectification). v1.4 added analysis and shareability: Bag Health dashboard (v1.4.0), math expressions in plots (v1.4.1), frame-by-frame clip export (v1.4.2), and timeline bookmarks shareable via URL hash (v1.4.3). Possible future directions:
+v1.0 stabilised the surface BAGEL already covered. v1.1 / v1.2 shipped browser-native bag editing. v1.3.x built "real robotics tool" features (URDF, CameraInfo, image rectification). v1.4 added analysis and shareability: Bag Health dashboard (v1.4.0), math expressions in plots (v1.4.1), frame-by-frame clip export (v1.4.2), and timeline bookmarks shareable via URL hash (v1.4.3). **v1.5.0 shipped live robot data** via Foxglove WebSocket: connect to a running robot, view all panels in real time, scrub the ring buffer when you pause. Possible future directions:
 
 | Idea | Notes |
 |---|---|
@@ -174,7 +184,7 @@ v1.0 stabilised the surface BAGEL already covered. v1.1 / v1.2 shipped browser-n
 ### Use the Live Demo
 
 1. Open [**bagel-ros2.vercel.app**](https://bagel-ros2.vercel.app)
-2. Drag your `.mcap`, `.db3`, or `.bag` file onto the page, paste a URL to a remote bag (v0.9), or click **Try a sample bag** for a quick tour
+2. Drag your `.mcap`, `.db3`, or `.bag` file onto the page, paste a URL to a remote bag, paste a `ws://` or `wss://` URL to connect to a live robot, or click **Try a sample bag** for a quick tour
 3. Explore!
 
 ### Run Locally

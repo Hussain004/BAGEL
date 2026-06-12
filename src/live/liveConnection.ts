@@ -1,0 +1,261 @@
+/**
+ * LiveConnection - orchestrates a single Foxglove WebSocket connection.
+ *
+ * Responsibilities:
+ *   - Creates and owns a FoxgloveClient, reconnects on drop.
+ *   - Decodes incoming messages and pushes them into a LiveRingBuffer.
+ *   - Throttles liveStore revision bumps to one per animation frame so
+ *     React re-renders cap at ~60 Hz regardless of message rate.
+ *   - Maintains a BagSummary (topics, time range, message count) and
+ *     notifies the owner (bagStore) when it changes.
+ *   - Exposes disconnect() for graceful shutdown.
+ *
+ * Reconnect strategy: exponential backoff 1s, 2s, 4s, 8s, 16s, 30s (max).
+ * Manual disconnect() cancels any pending reconnect.
+ */
+
+import { FoxgloveClient, type FoxgloveChannel, type FoxgloveEvent } from './foxgloveClient';
+import { LiveRingBuffer } from './liveRingBuffer';
+import { decodeLiveMessage } from './liveDecoder';
+import { useLiveStore, type LiveStatus } from '../store/liveStore';
+import type { BagSummary, TopicInfo } from '../types/bag';
+
+export type SummaryCallback = (summary: BagSummary) => void;
+
+const BACKOFF_MS = [1000, 2000, 4000, 8000, 16000, 30000];
+
+export class LiveConnection {
+  readonly bagId: string;
+  readonly ringBuffer = new LiveRingBuffer();
+
+  private readonly wsUrl: string;
+  private readonly onSummaryUpdate: SummaryCallback;
+
+  private client: FoxgloveClient | null = null;
+  private channels = new Map<number, FoxgloveChannel>();
+  private subIdToChannelId = new Map<number, number>();
+
+  private destroyed = false;
+  private reconnectAttempt = 0;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private summaryDirty = false;
+  private summaryTimer: ReturnType<typeof setInterval> | null = null;
+  private cachedSummary: BagSummary;
+
+  private pendingRevBump = false;
+
+  constructor(bagId: string, wsUrl: string, onSummaryUpdate: SummaryCallback) {
+    this.bagId = bagId;
+    this.wsUrl = wsUrl;
+    this.onSummaryUpdate = onSummaryUpdate;
+    this.cachedSummary = buildSummary(wsUrl, [], 0n, 0n, 0);
+    this.connect();
+    // Flush summary stats to bagStore at 1 Hz so toolbar numbers stay fresh
+    // without a re-render per message.
+    this.summaryTimer = setInterval(() => this.flushSummary(), 1000);
+  }
+
+  // ── Connection lifecycle ─────────────────────────────────────────────────
+
+  private connect(): void {
+    if (this.destroyed) return;
+    this.setStatus('connecting');
+    this.client = new FoxgloveClient(this.wsUrl, (e) => this.handleEvent(e));
+  }
+
+  private scheduleReconnect(): void {
+    const delay = BACKOFF_MS[Math.min(this.reconnectAttempt, BACKOFF_MS.length - 1)];
+    this.reconnectAttempt++;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.connect();
+    }, delay);
+  }
+
+  // ── Event handling ────────────────────────────────────────────────────────
+
+  private handleEvent(event: FoxgloveEvent): void {
+    if (this.destroyed) return;
+
+    switch (event.type) {
+      case 'open':
+        this.reconnectAttempt = 0;
+        this.setStatus('connected', event.serverName);
+        // Re-subscribe to all known channels on reconnect.
+        if (this.channels.size > 0) {
+          this.subscribeToChannels(Array.from(this.channels.values()));
+        }
+        break;
+
+      case 'advertise':
+        for (const ch of event.channels) this.channels.set(ch.id, ch);
+        this.subscribeToChannels(event.channels);
+        this.pushSummaryTopics();
+        break;
+
+      case 'unadvertise':
+        for (const id of event.channelIds) this.channels.delete(id);
+        this.pushSummaryTopics();
+        break;
+
+      case 'message': {
+        const channelId = event.channelId || this.subIdToChannelId.get(event.subscriptionId) || 0;
+        const ch = this.channels.get(channelId);
+        if (!ch) break;
+
+        const value = decodeLiveMessage(ch.encoding, ch.schemaEncoding, ch.schema, event.data);
+        if (value === null) break;
+
+        const timeNs =
+          event.logTimeNs > 0n
+            ? event.logTimeNs
+            : BigInt(Date.now()) * 1_000_000n;
+
+        this.ringBuffer.push(ch.topic, timeNs, value);
+        this.summaryDirty = true;
+        this.scheduleBump(timeNs);
+        break;
+      }
+
+      case 'close':
+        this.client = null;
+        this.subIdToChannelId.clear();
+        if (!this.destroyed) {
+          this.setStatus('reconnecting');
+          this.scheduleReconnect();
+        } else {
+          this.setStatus('disconnected');
+        }
+        break;
+
+      case 'error':
+        this.setStatus('error', event.message);
+        break;
+
+      case 'time':
+        // Server clock ticks - not needed beyond the per-message logTimeNs.
+        break;
+    }
+  }
+
+  // ── Subscription helpers ─────────────────────────────────────────────────
+
+  private subscribeToChannels(channels: FoxgloveChannel[]): void {
+    if (!this.client || channels.length === 0) return;
+    const ids = this.client.subscribe(channels.map((c) => c.id));
+    for (let i = 0; i < ids.length; i++) {
+      this.subIdToChannelId.set(ids[i], channels[i].id);
+    }
+  }
+
+  // ── Summary maintenance ──────────────────────────────────────────────────
+
+  private pushSummaryTopics(): void {
+    const topics = this.buildTopicList();
+    this.cachedSummary = { ...this.cachedSummary, topics };
+    this.onSummaryUpdate(this.cachedSummary);
+  }
+
+  private flushSummary(): void {
+    if (!this.summaryDirty) return;
+    this.summaryDirty = false;
+    const range = this.ringBuffer.getTimeRange();
+    const startTime = range?.startNs ?? this.cachedSummary.startTime;
+    const endTime = range?.endNs ?? this.cachedSummary.endTime;
+    const duration = startTime === 0n ? 0 : Number(endTime - startTime) / 1e9;
+    this.cachedSummary = buildSummary(
+      this.wsUrl,
+      this.buildTopicList(),
+      startTime,
+      endTime,
+      this.ringBuffer.totalPushed,
+      duration,
+    );
+    this.onSummaryUpdate(this.cachedSummary);
+  }
+
+  private buildTopicList(): TopicInfo[] {
+    return Array.from(this.channels.values()).map((ch) => ({
+      name: ch.topic,
+      type: ch.schemaName,
+      messageCount: this.ringBuffer.getTopicMessageCount(ch.topic),
+      serializationFormat: ch.encoding,
+      frequency: undefined,
+    }));
+  }
+
+  // ── Revision bump (rAF-throttled) ─────────────────────────────────────────
+
+  private scheduleBump(timeNs: bigint): void {
+    if (this.pendingRevBump) return;
+    this.pendingRevBump = true;
+
+    const doIt = () => {
+      this.pendingRevBump = false;
+      const range = this.ringBuffer.getTimeRange();
+      useLiveStore.getState().bumpRevision(this.bagId, range?.endNs ?? timeNs);
+    };
+
+    if (typeof requestAnimationFrame !== 'undefined') {
+      requestAnimationFrame(doIt);
+    } else {
+      // Node / test environments: fire synchronously after a microtask.
+      Promise.resolve().then(doIt);
+    }
+  }
+
+  // ── Status helper ─────────────────────────────────────────────────────────
+
+  private setStatus(status: LiveStatus, detail?: string): void {
+    useLiveStore.getState().setStatus(this.bagId, status, detail);
+  }
+
+  // ── Public API ────────────────────────────────────────────────────────────
+
+  get status(): LiveStatus {
+    return useLiveStore.getState().statuses.get(this.bagId) ?? 'connecting';
+  }
+
+  get summary(): BagSummary {
+    return this.cachedSummary;
+  }
+
+  disconnect(): void {
+    this.destroyed = true;
+    if (this.reconnectTimer !== null) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.summaryTimer !== null) {
+      clearInterval(this.summaryTimer);
+      this.summaryTimer = null;
+    }
+    this.client?.dispose();
+    this.client = null;
+    this.setStatus('disconnected');
+    useLiveStore.getState().removeEntry(this.bagId);
+  }
+}
+
+// ── Factory helper ────────────────────────────────────────────────────────────
+
+function buildSummary(
+  wsUrl: string,
+  topics: TopicInfo[],
+  startTime: bigint,
+  endTime: bigint,
+  totalMessageCount: number,
+  duration?: number,
+): BagSummary {
+  return {
+    format: 'live',
+    fileName: wsUrl,
+    fileSize: 0,
+    startTime,
+    endTime,
+    duration: duration ?? 0,
+    totalMessageCount,
+    topics,
+  };
+}

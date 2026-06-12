@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { useBagStore } from '../../store/bagStore';
+import { useLiveStore } from '../../store/liveStore';
 import { usePlayheadStore } from '../../store/playheadStore';
 import { useAnnotationStore, type Annotation } from '../../store/annotationStore';
 import { nsToSeconds, formatDuration } from '../../utils/time';
@@ -14,6 +15,13 @@ import { nsToSeconds, formatDuration } from '../../utils/time';
  */
 export function Timeline() {
   const bag = useBagStore((s) => s.bag);
+  const focusBagId = useBagStore((s) => s.focusBagId);
+  const isLive = bag?.format === 'live';
+  const liveStatus = useLiveStore((s) =>
+    focusBagId && isLive ? (s.statuses.get(focusBagId) ?? 'connecting') : undefined,
+  );
+  const followLive = useLiveStore((s) => s.followLive);
+  const setFollowLive = useLiveStore((s) => s.setFollowLive);
   const {
     timeNs,
     startNs,
@@ -333,6 +341,31 @@ export function Timeline() {
       </button>
 
       <SpeedSelect value={speed} onChange={setSpeed} />
+
+      {isLive && (
+        <button
+          onClick={() => setFollowLive(!followLive)}
+          className={`flex items-center gap-1.5 h-8 px-2.5 rounded-md border text-xs transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-emerald/60 ${
+            followLive
+              ? 'bg-accent-emerald/15 border-accent-emerald/40 text-accent-emerald'
+              : 'border-border text-text-secondary hover:border-accent-emerald/40 hover:text-accent-emerald'
+          }`}
+          title={followLive ? 'Following live edge - click to pause and scrub history' : 'Follow live edge'}
+          aria-label={followLive ? 'Pause live follow' : 'Follow live'}
+          aria-pressed={followLive}
+        >
+          <span
+            className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+              liveStatus === 'connected'
+                ? followLive ? 'bg-accent-emerald animate-pulse' : 'bg-accent-emerald'
+                : liveStatus === 'reconnecting' || liveStatus === 'connecting'
+                ? 'bg-accent-amber animate-pulse'
+                : 'bg-text-muted'
+            }`}
+          />
+          <span className="hidden sm:inline">{followLive ? 'Live' : 'Follow'}</span>
+        </button>
+      )}
     </div>
   );
 }

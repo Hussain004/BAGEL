@@ -4,6 +4,56 @@ Detailed version-by-version release notes, including the design rationale behind
 
 ---
 
+## v1.5: Live Robot Data
+
+v1.5 makes BAGEL a live robotics tool, not just a bag file viewer. The headline: paste a `ws://` URL and every panel updates in real time from a running robot. No ROS install, no Foxglove account, just a browser tab.
+
+### v1.5.0: Foxglove WebSocket Live Connection
+
+Everything in v1.4.3, plus:
+
+- **Foxglove WebSocket client** (`src/live/foxgloveClient.ts`). Implements the `foxglove.websocket.v1` sub-protocol, the same protocol used by Foxglove Studio, `foxglove_bridge`, and `rosbridge_suite` (with the FoxgloveServer adapter). The client handles the two frame types the server sends: JSON text frames for control messages (`serverInfo`, `advertise`, `unadvertise`, `status`) and binary frames for data (`op=1` MESSAGE_DATA: `[op:u8][subId:u32LE][logTimeNs:u64LE][payload...]`, `op=2` TIME: `[op:u8][timestampNs:u64LE]`). u64 timestamps are read as two u32 halves (`lo | (hi << 32n)`) because `DataView` has no `getBigUint64` equivalent in older environments and BigInt shifts are unambiguous. Public API: `subscribe(channelIds): number[]`, `unsubscribe(subIds)`, `dispose()`, `get readyState()`. The class is intentionally thin - it fires `FoxgloveEvent` objects to a caller-supplied callback rather than embedding any routing logic.
+
+- **Per-topic ring buffer** (`src/live/liveRingBuffer.ts`). Each topic gets a sorted `BufferedMessage[]` with a fixed capacity of 10,000 entries. `push(topic, timeNs, value)` appends and calls `arr.shift()` when the array exceeds capacity, so the buffer always holds the newest messages. `getMessageAtTime(topic, timeNs)` uses binary search (`O(log n)`) to find the nearest message. `getTimeRange()` walks all topic buffers to find the oldest surviving message (reflecting any evictions) and pairs it with the tracked `_endNs`. `totalPushed` is monotonically increasing - it counts all pushes, not just the currently buffered ones, so callers can detect activity even after evictions. The ring buffer does not copy message values; decoded objects are stored by reference, which is safe because the live decoder produces fresh objects per message.
+
+- **CDR and JSON decoder** (`src/live/liveDecoder.ts`). Decodes raw `Uint8Array` payloads to `Record<string, unknown>` objects. Supports `encoding: 'cdr'` (ROS2 CDR via `parseRosMsgDefinition` + `MessageReader` from `@foxglove/rosmsg2-serialization`, the same library already used for `.db3` decoding - zero new dependencies) and `encoding: 'json'` (bare `JSON.parse` on the UTF-8 text). `MessageReader` instances are cached by a schema fingerprint key (schema name + first 64 bytes of schema text) so a high-frequency topic pays only one compile cost per session. `clearLiveDecoderCache()` is exported for testing.
+
+- **`LiveConnection`** (`src/live/liveConnection.ts`). Orchestrates the `FoxgloveClient`, `LiveRingBuffer`, and `liveStore`. Key design decisions:
+  - **Exponential backoff reconnect** on `close` events: delays are `[1000, 2000, 4000, 8000, 16000, 30000]` ms with the index clamped at 5. The delay index is reset on a successful `serverInfo`. A `destroyed` flag prevents reconnect after an explicit `disconnect()` call.
+  - **rAF-throttled `bumpRevision`** via `scheduleBump(timeNs)`. Each push schedules a `requestAnimationFrame` to call `useLiveStore.getState().bumpRevision(bagId, timeNs)`. If a frame is already pending, no new one is scheduled. This means `liveStore` revision increments at most once per paint (~60 Hz) regardless of message rate, so a 300 Hz IMU topic does not trigger 300 React re-renders per second.
+  - **1 Hz summary flush** via `setInterval`. The `flushSummary` function calls `onSummaryUpdate` once per second with updated `totalMessageCount` and `duration`. This keeps `bagStore` update rate bounded - a fast topic only touches `bagStore` once per second rather than per message.
+  - **Immediate topic push** on `advertise` / `unadvertise`. Topic additions and removals are pushed to `bagStore` immediately (via `pushSummaryTopics`) so the Topic Inspector sidebar updates as soon as the server advertises new topics.
+
+- **`liveStore`** (`src/store/liveStore.ts`). A separate Zustand store for reactive live state: `revisions: Map<string, number>` (bumped per rAF, drives `useTopicMessages` / `useMessageAtTime` re-renders), `edgeTimes: Map<string, bigint>` (latest message time per bag, used by `useLivePlayhead`), `statuses: Map<string, LiveStatus>` (connecting / connected / disconnected / reconnecting / error), `statusMessages: Map<string, string>` (optional detail, e.g. server name or error text), `followLive: boolean` (default `true`). Kept separate from `bagStore` so revision bumps at message rate do not re-render all `bagStore` subscribers.
+
+- **`addBagLive` in `bagStore`** (`src/store/bagStore.ts`). Synchronous (no loading spinner): creates a `LiveConnection` with an `onSummaryUpdate` callback that merges the live summary into `bagStore`, mints a `BagEntry` with `kind: 'live'`, `source: null`, `liveConn: <connection>`, and adds it to `bags` and `order`. `removeBag` and `clearAll` call `entry.liveConn?.disconnect()` for live entries and skip `disposeParserCachesFor` / `releaseBagWorker` (no worker was ever allocated). `alignmentOffsetFor` returns `0n` for live entries unconditionally - live bags store timestamps as absolute wall-clock epoch nanoseconds so the alignment concept does not apply.
+
+- **Hook integration** (`src/hooks/useTopicMessages.ts`, `src/hooks/useMessageAtTime.ts`). Both hooks detect `entry.kind === 'live'` and branch to a ring-buffer read path: subscribe to `liveRevision` from `liveStore`, and in the live-path `useEffect`, read from `entry.liveConn.ringBuffer` synchronously (no async worker call). The existing file/URL path is guarded with `if (entry.kind === 'live' || !entry.source) return;` so the worker path never fires for live entries. This architecture means all existing panels (Image, Plot, 3D Scene, Trajectory, TFTree, Log) work with live data without any panel-level changes.
+
+- **`useLivePlayhead` hook** (`src/hooks/useLivePlayhead.ts`). Called once in `App.tsx`. On every `edgeTimes` change for the focused live bag, reads `ringBuffer.getTimeRange()` and syncs `playheadStore.startNs / endNs`. When `followLive` is `true`, also calls `seek(range.endNs)` to keep the playhead at the live edge. When the user presses Pause (sets `followLive = false`), the hook stops seeking so the user can scrub freely through the ring buffer.
+
+- **DropZone UI**: a new `WsConnectInput` component below the existing URL input. Emerald-colored Connect button. Shows a spinner while any live connection's status is `connecting`.
+
+- **Toolbar UI**: `BagChip` for live entries shows a `LiveStatusDot` (pulsing emerald/amber/rose/muted dot) instead of the color dot. The format badge reads "LIVE" in emerald. A `FollowLiveButton` appears beside the Edit button for the focused live bag - emerald when following (pause icon + "Live"), grey when paused (arrow icon + "Follow").
+
+- **Timeline UI**: a Follow/Live toggle button at the end of the timeline controls mirrors the Toolbar button.
+
+- **Type system changes**: `BagFormat` gains `'live'`; `BagEntry` gains `kind: 'file' | 'url' | 'live'`, `source: BagSource | null`, `liveConn: LiveConnection | null`. Components that use `entry.source` directly (`BagEditModal`, `PanelShell`, `useDecodedPointCloud`) are guarded to skip or show a "not available for live connections" message.
+
+- **41 new tests** across three new files:
+  - `tests/live/liveRingBuffer.test.ts` (18 tests): push, capacity eviction (shift), `getMessages`, `getTopics`, `getTopicMessageCount`, `getTimeRange` with and without evictions, `getMessageAtTime` with exact match, nearest-before, nearest-after, out-of-range, single-element, and tie-breaking, `clear`, `totalPushed` tracking.
+  - `tests/live/foxgloveClient.test.ts` (9 tests): `serverInfo` / `advertise` / `unadvertise` text frame parsing, status level threshold, MESSAGE_DATA binary frame (u64 timestamp, payload slice), TIME binary frame, short-frame rejection, and `subscribe` JSON serialisation. Uses a `MockWs` class that captures event listeners so tests can fire synthetic events without a real WebSocket.
+  - `tests/store/liveStore.test.ts` (14 tests): `bumpRevision` increment, `edgeTimes` update, multi-bag isolation, all `LiveStatus` values, `setStatus` with and without a message string, `setFollowLive`, `removeEntry` (clears all 4 maps, does not affect other bags, no-op for unknown id).
+
+  **344 passing tests total** (was 303 at v1.4.3, +41 here).
+
+Explicitly out of scope for v1.5.0:
+- **`sensor_msgs/CompressedImage` from live**: the ImageViewer panel's live path calls `getMessageAtTime` from the ring buffer and passes the decoded value to the same rendering pipeline as bag files. CDR-decoded `CompressedImage` values should render correctly, but this has not been tested against a live camera feed; it is a known gap for the follow-up.
+- **Clock / `/use_sim_time` handling**: for live robots the wall clock is almost always the right reference. Bags with `use_sim_time: true` that publish a `/clock` topic are not specially handled - messages are stored at their `logTimeNs` header times, which in sim-time bags are simulation clock values rather than real wall-clock values. A future `/clock` subscriber path could fix this.
+- **Parameter service / service calls**: `foxglove.websocket.v1` supports `callService` and `setParameters` ops beyond the subscribe/publish model. These are not implemented; BAGEL is a visualizer, not a robot control panel.
+
+---
+
 ## v1.4: Analysis and Shareability
 
 v1.4 is a four-part series. The theme is "make the data you already have easier to analyze and share." v1.3 turned BAGEL into a real robotics tool; v1.4 gives it the feedback loop: measure bag quality, derive new signals from raw ones, capture moments as video, and pin timestamps so colleagues see exactly what you're seeing.

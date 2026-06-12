@@ -29,7 +29,7 @@ export function BagHealth({ panelId, topicName, type, bagId }: Props) {
   const effectiveBagId = entry?.id ?? null;
 
   useEffect(() => {
-    if (!entry) return;
+    if (!entry || entry.kind === 'live' || !entry.source) return;
     setLoading(true);
     setError(null);
     setStats(null);

@@ -47,6 +47,16 @@ export function BagEditModal() {
     );
   }
 
+  if (entry.kind === 'live') {
+    return (
+      <ModalShell title="Edit bag" onClose={close} width="md">
+        <div className="px-6 py-6 text-sm text-text-secondary">
+          Clip export is not available for live connections.
+        </div>
+      </ModalShell>
+    );
+  }
+
   return <BagEditForm entry={entry} onClose={close} />;
 }
 
@@ -57,6 +67,8 @@ interface FormProps {
 
 function BagEditForm({ entry, onClose }: FormProps) {
   const summary = entry.summary;
+  // entry.kind is always 'file' | 'url' here (live guard in BagEditModal)
+  const source = entry.source!;
   const bagDurationSec = nsToSeconds(summary.endTime - summary.startTime);
 
   // Trim window kept in bag-local seconds for the slider, converted to ns at
@@ -85,7 +97,7 @@ function BagEditForm({ entry, onClose }: FormProps) {
     }
     let cancelled = false;
     setResolutionLoading(true);
-    void getResolvableTopicsDb3(entry.id, entry.source)
+    void getResolvableTopicsDb3(entry.id, source)
       .then((resolutions) => {
         if (cancelled) return;
         const unresolved = new Set<string>();
@@ -162,7 +174,7 @@ function BagEditForm({ entry, onClose }: FormProps) {
       }
       void estimateEditCount(
         entry.id,
-        entry.source,
+        source,
         summary.format,
         startNs,
         endNs,
@@ -239,7 +251,7 @@ function BagEditForm({ entry, onClose }: FormProps) {
       const endNs = summary.startTime + BigInt(Math.round(endSec * 1_000_000_000));
       const result = await editBag(
         entry.id,
-        entry.source,
+        source,
         summary.format,
         startNs,
         endNs,
