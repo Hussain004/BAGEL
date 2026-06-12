@@ -5,6 +5,7 @@ import {
   type BagEntry,
   type TimeAlignment,
 } from '../../store/bagStore';
+import { useLiveStore, type LiveStatus } from '../../store/liveStore';
 import { usePlayheadStore } from '../../store/playheadStore';
 import { useThemeStore } from '../../store/themeStore';
 import { useUiStore } from '../../store/uiStore';
@@ -38,6 +39,10 @@ export function Toolbar() {
   const setModal = useUiStore((s) => s.setModal);
   const robotModel = useRobotModelStore((s) => s.loaded);
   const clearRobotModel = useRobotModelStore((s) => s.clearLoaded);
+  const followLive = useLiveStore((s) => s.followLive);
+  const setFollowLive = useLiveStore((s) => s.setFollowLive);
+  const liveStatuses = useLiveStore((s) => s.statuses);
+  const liveStatusMessages = useLiveStore((s) => s.statusMessages);
 
   // Anchor placement: pick the focused bag's current bag-local time as the
   // anchor event, then snap aligned time to 0 so the user keeps seeing the
@@ -73,9 +78,10 @@ export function Toolbar() {
   const multi = bagOrder.length > 1;
   // v1.2: bag editing now covers every format BAGEL reads. Output is MCAP
   // regardless of the source - the format-specific edit pipelines hand off
-  // to the same MCAP writer.
+  // to the same MCAP writer. Live connections are not editable.
   const canEditFocusedBag =
     bag.format === 'mcap' || bag.format === 'bag' || bag.format === 'db3';
+  const focusedBagIsLive = bag.format === 'live';
 
   return (
     <header className="glass-strong px-6 py-3 flex items-center justify-between animate-fade-in flex-shrink-0 z-50 gap-4">
@@ -112,6 +118,8 @@ export function Toolbar() {
                 focused={id === focusBagId}
                 showFormat={!multi}
                 anchorBagLocalNs={anchorBagLocalNs}
+                liveStatus={entry.kind === 'live' ? (liveStatuses.get(id) ?? 'connecting') : undefined}
+                liveStatusMessage={liveStatusMessages.get(id)}
                 onFocus={() => setFocusBag(id)}
                 onRemove={() => removeBag(id)}
                 onClearAnchor={() => onClearAnchor(id)}
@@ -173,6 +181,9 @@ export function Toolbar() {
             entry={bags.get(focusBagId)!}
             onSetAnchor={onSetAnchor}
           />
+        )}
+        {focusedBagIsLive && (
+          <FollowLiveButton followLive={followLive} onToggle={() => setFollowLive(!followLive)} />
         )}
         {canEditFocusedBag && (
           <button
@@ -277,6 +288,8 @@ interface BagChipProps {
   /** Bag-local time the anchor points to, in nanoseconds relative to bag start.
    *  `null` when no anchor is set or anchor alignment isn't active. */
   anchorBagLocalNs: bigint | null;
+  liveStatus?: LiveStatus;
+  liveStatusMessage?: string;
   onFocus: () => void;
   onRemove: () => void;
   onClearAnchor: () => void;
@@ -288,12 +301,16 @@ function BagChip({
   focused,
   showFormat,
   anchorBagLocalNs,
+  liveStatus,
+  liveStatusMessage,
   onFocus,
   onRemove,
   onClearAnchor,
 }: BagChipProps) {
   const [hover, setHover] = useState(false);
   const anchorSec = anchorBagLocalNs !== null ? nsToSeconds(anchorBagLocalNs) : null;
+  // For live bags show the chip name as just the ws host, not the full URL.
+  const displayName = format === 'live' ? name.replace(/^wss?:\/\//, '') : name;
   return (
     <div
       onMouseEnter={() => setHover(true)}
@@ -309,18 +326,28 @@ function BagChip({
         title={focused ? `${name} (focused — new panels open against this bag)` : `Focus ${name}`}
         className="flex items-center gap-1.5 min-w-0"
       >
-        <span
-          className="w-2 h-2 rounded-full flex-shrink-0"
-          style={{ backgroundColor: color }}
-        />
-        <span className="truncate mono">{name}</span>
+        {liveStatus ? (
+          <LiveStatusDot status={liveStatus} message={liveStatusMessage} />
+        ) : (
+          <span
+            className="w-2 h-2 rounded-full flex-shrink-0"
+            style={{ backgroundColor: color }}
+          />
+        )}
+        <span className="truncate mono">{displayName}</span>
         {showFormat && (
           <span
             className={`badge flex-shrink-0 ${
-              format === 'mcap' ? 'badge-cyan' : format === 'bag' ? 'badge-amber' : 'badge-violet'
+              format === 'mcap'
+                ? 'badge-cyan'
+                : format === 'bag'
+                ? 'badge-amber'
+                : format === 'live'
+                ? 'badge-emerald'
+                : 'badge-violet'
             }`}
           >
-            {format.toUpperCase()}
+            {format === 'live' ? 'LIVE' : format.toUpperCase()}
           </span>
         )}
       </button>
@@ -366,6 +393,56 @@ function AnchorIcon() {
       <circle cx="12" cy="5" r="2" />
       <path strokeLinecap="round" d="M12 7v14M5 12c0 4 3 7 7 7s7-3 7-7M3 12h4M17 12h4" />
     </svg>
+  );
+}
+
+function LiveStatusDot({ status, message }: { status: LiveStatus; message?: string }) {
+  const { className, title } = (() => {
+    switch (status) {
+      case 'connected':
+        return { className: 'bg-accent-emerald animate-pulse', title: message ? `Connected to ${message}` : 'Connected' };
+      case 'connecting':
+        return { className: 'bg-accent-amber animate-pulse', title: 'Connecting...' };
+      case 'reconnecting':
+        return { className: 'bg-accent-amber animate-pulse', title: 'Reconnecting...' };
+      case 'error':
+        return { className: 'bg-accent-rose', title: message ?? 'Connection error' };
+      case 'disconnected':
+        return { className: 'bg-text-muted', title: 'Disconnected' };
+    }
+  })();
+  return (
+    <span
+      className={`w-2 h-2 rounded-full flex-shrink-0 ${className}`}
+      title={title}
+      aria-label={title}
+    />
+  );
+}
+
+function FollowLiveButton({ followLive, onToggle }: { followLive: boolean; onToggle: () => void }) {
+  return (
+    <button
+      onClick={onToggle}
+      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs border transition-all ${
+        followLive
+          ? 'border-accent-emerald/40 bg-accent-emerald/10 text-accent-emerald hover:bg-accent-emerald/15'
+          : 'border-border text-text-secondary hover:text-text-primary hover:bg-surface-hover hover:border-accent-emerald/40'
+      }`}
+      title={followLive ? 'Following live edge - click to pause and scrub' : 'Paused - click to follow live edge'}
+      aria-label={followLive ? 'Pause live follow' : 'Follow live edge'}
+    >
+      {followLive ? (
+        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      ) : (
+        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />
+        </svg>
+      )}
+      <span className="hidden xl:inline">{followLive ? 'Live' : 'Follow'}</span>
+    </button>
   );
 }
 

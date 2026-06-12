@@ -205,7 +205,7 @@ function ExportMenu({
   if (kind === 'tf') return null;
 
   const handleExport = async (format: ExportFormat) => {
-    if (busy) return;
+    if (busy || !source) return;
     setBusy(format);
     setError(null);
     try {

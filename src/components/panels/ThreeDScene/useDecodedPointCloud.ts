@@ -121,7 +121,7 @@ export function useDecodedCloud({
   }, [entry, topicName, kind]);
 
   useEffect(() => {
-    if (!entry) return;
+    if (!entry || entry.kind === 'live' || !entry.source) return;
     const mySession = sessionRef.current;
     const { id: workerBagId, summary: bag, source } = entry;
 

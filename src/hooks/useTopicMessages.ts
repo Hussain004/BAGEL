@@ -30,6 +30,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useBagStore, resolveBagEntry } from '../store/bagStore';
+import { useLiveStore } from '../store/liveStore';
 import { readDeserializedMessages } from '../parsers';
 import { sourceKey } from '../parsers/source';
 
@@ -81,6 +82,12 @@ export function useTopicMessages(
   // Resolve the bag entry on every render — the resolveBagEntry helper picks
   // the explicit bagId when supplied, falling back to the focused bag.
   const entry = useBagStore((s) => resolveBagEntry(s, bagId));
+
+  // Subscribe to the live revision counter so we re-render on new messages.
+  const liveRevision = useLiveStore((s) =>
+    entry?.kind === 'live' ? (s.revisions.get(entry.id) ?? 0) : 0,
+  );
+
   const [state, setState] = useState<TopicMessagesState>({
     messages: null,
     loading: true,
@@ -94,7 +101,32 @@ export function useTopicMessages(
   const bufferRef = useRef<DecodedMessage[] | null>(null);
   const progressRef = useRef(0);
   const rafRef = useRef<number | null>(null);
+  const liveRafRef = useRef<number | null>(null);
 
+  // ── Live path: read from ring buffer, coalesced to one rAF per revision bump.
+  useEffect(() => {
+    if (!entry || !enabled || !topicName || entry.kind !== 'live' || !entry.liveConn) return;
+
+    const flush = () => {
+      liveRafRef.current = null;
+      const msgs: DecodedMessage[] = entry.liveConn!.ringBuffer
+        .getMessages(topicName)
+        .map((m) => ({ timestamp: m.timeNs, value: m.value }));
+      setState({ messages: msgs, loading: false, progress: msgs.length, error: null });
+    };
+
+    if (liveRafRef.current !== null) cancelAnimationFrame(liveRafRef.current);
+    liveRafRef.current = requestAnimationFrame(flush);
+
+    return () => {
+      if (liveRafRef.current !== null) {
+        cancelAnimationFrame(liveRafRef.current);
+        liveRafRef.current = null;
+      }
+    };
+  }, [entry, topicName, enabled, liveRevision]);
+
+  // ── File / URL path (existing async worker decode).
   useEffect(() => {
     if (!entry || !enabled || !topicName) {
       // Idle state — the caller has either not supplied a bag, opted out via
@@ -107,6 +139,8 @@ export function useTopicMessages(
       setState({ messages: null, loading: false, progress: 0, error: null });
       return;
     }
+    // Live bags are handled by the effect above.
+    if (entry.kind === 'live' || !entry.source) return;
 
     const { id: workerBagId, summary: bag, source } = entry;
     const cacheKey = `${workerBagId}::${sourceKey(source)}::${topicName}::${limit ?? 'all'}`;

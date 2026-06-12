@@ -31,6 +31,7 @@ import {
   releaseBagWorker,
   type BagSource,
 } from '../parsers';
+import { LiveConnection } from '../live/liveConnection';
 import { getTopicColor } from '../utils/color';
 import { useLayoutStore } from './layoutStore';
 import { usePlayheadStore } from './playheadStore';
@@ -41,8 +42,13 @@ export type TimeAlignment = 'wall-clock' | 'bag-start' | 'anchor';
 export interface BagEntry {
   /** Synthetic id assigned at load time. Stable across the bag's lifetime. */
   id: string;
+  /** Source kind: 'file' and 'url' use the parser worker; 'live' uses LiveConnection. */
+  kind: 'file' | 'url' | 'live';
   summary: BagSummary;
-  source: BagSource;
+  /** Null for live connections (no file/URL source). */
+  source: BagSource | null;
+  /** Non-null only for live connections. */
+  liveConn: LiveConnection | null;
   /** Hex colour string used for per-bag overlay tinting (and the toolbar chip). */
   color: string;
   /**
@@ -65,6 +71,7 @@ interface BagState {
 
   addBagFromFile: (file: File) => Promise<string | null>;
   addBagFromUrl: (url: string) => Promise<string | null>;
+  addBagLive: (wsUrl: string) => string;
   removeBag: (id: string) => void;
   setFocusBag: (id: string) => void;
   setAlignment: (mode: TimeAlignment) => void;
@@ -150,7 +157,7 @@ export const useBagStore = create<BagState>((set, get) => ({
       }
       const state = get();
       const color = pickBagColor(id, state.bagOrder.length);
-      const entry: BagEntry = { id, summary, source, color };
+      const entry: BagEntry = { id, kind: 'file', summary, source, liveConn: null, color };
       const newBags = new Map(state.bags);
       newBags.set(id, entry);
       const newOrder = [...state.bagOrder, id];
@@ -196,7 +203,7 @@ export const useBagStore = create<BagState>((set, get) => ({
       }
       const state = get();
       const color = pickBagColor(id, state.bagOrder.length);
-      const entry: BagEntry = { id, summary, source, color };
+      const entry: BagEntry = { id, kind: 'url', summary, source, liveConn: null, color };
       const newBags = new Map(state.bags);
       newBags.set(id, entry);
       const newOrder = [...state.bagOrder, id];
@@ -226,13 +233,82 @@ export const useBagStore = create<BagState>((set, get) => ({
     }
   },
 
+  addBagLive: (wsUrl: string): string => {
+    const state = get();
+    const id = nextBagId();
+    const color = pickBagColor(id, state.bagOrder.length);
+
+    const initialSummary: BagSummary = {
+      format: 'live',
+      fileName: wsUrl,
+      fileSize: 0,
+      startTime: 0n,
+      endTime: 0n,
+      duration: 0,
+      totalMessageCount: 0,
+      topics: [],
+    };
+
+    // LiveConnection calls back here whenever the summary changes (new topics
+    // advertised, or the 1 Hz stats flush). We update the map entry in-place
+    // without touching unrelated bags.
+    const onSummaryUpdate = (summary: BagSummary) => {
+      const s = get();
+      const existing = s.bags.get(id);
+      if (!existing) return;
+      const newBags = new Map(s.bags);
+      newBags.set(id, { ...existing, summary });
+      const isFocus = s.focusBagId === id;
+      set({ bags: newBags, ...(isFocus && { bag: summary }) });
+      if (summary.startTime > 0n) {
+        syncPlayheadRange(newBags, s.bagOrder, s.alignment, false);
+      }
+    };
+
+    const conn = new LiveConnection(id, wsUrl, onSummaryUpdate);
+    const entry: BagEntry = {
+      id,
+      kind: 'live',
+      summary: initialSummary,
+      source: null,
+      liveConn: conn,
+      color,
+    };
+
+    const newBags = new Map(state.bags);
+    newBags.set(id, entry);
+    const newOrder = [...state.bagOrder, id];
+    const wasFirstBag = state.bagOrder.length === 0;
+    const newFocus = state.focusBagId ?? id;
+    const focusEntry = newBags.get(newFocus) ?? entry;
+
+    set({
+      bags: newBags,
+      bagOrder: newOrder,
+      focusBagId: newFocus,
+      bag: focusEntry.summary,
+      source: focusEntry.source,
+      error: null,
+    });
+
+    if (wasFirstBag) {
+      usePlayheadStore.getState().initFromBag(0n, 0n);
+    }
+
+    return id;
+  },
+
   removeBag: (id: string) => {
     const state = get();
     const entry = state.bags.get(id);
     if (!entry) return;
-    // Drop parser caches + tear down the per-bag worker so memory is freed.
-    disposeParserCachesFor(id);
-    releaseBagWorker(id);
+    if (entry.kind === 'live') {
+      entry.liveConn?.disconnect();
+    } else {
+      // Drop parser caches + tear down the per-bag worker so memory is freed.
+      disposeParserCachesFor(id);
+      releaseBagWorker(id);
+    }
     // Close every panel that was reading from this bag so no panel renders
     // against a vanished entry. The static import is one-way (layoutStore
     // doesn't depend on bagStore) so no cycle.
@@ -285,8 +361,13 @@ export const useBagStore = create<BagState>((set, get) => ({
   clearAll: () => {
     const state = get();
     for (const id of state.bagOrder) {
-      disposeParserCachesFor(id);
-      releaseBagWorker(id);
+      const entry = state.bags.get(id);
+      if (entry?.kind === 'live') {
+        entry.liveConn?.disconnect();
+      } else {
+        disposeParserCachesFor(id);
+        releaseBagWorker(id);
+      }
     }
     set({
       bags: new Map(),
@@ -327,6 +408,10 @@ export const useBagStore = create<BagState>((set, get) => ({
 
 /** Aligned-time offset for `entry` under the current alignment mode. */
 export function alignmentOffsetFor(entry: BagEntry, mode: TimeAlignment): bigint {
+  // Live bags use wall-clock time natively (messages arrive at epoch ns).
+  // Always return 0 so the playhead and ring-buffer searches stay in the same
+  // coordinate space regardless of which alignment mode the user has chosen.
+  if (entry.kind === 'live') return 0n;
   switch (mode) {
     case 'wall-clock':
       return 0n;
