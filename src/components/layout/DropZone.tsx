@@ -289,14 +289,12 @@ function WsConnectInput({
   disabled: boolean;
 }) {
   const [url, setUrl] = useState('');
-  const connectingBagIds = useLiveStore((s) => {
-    const ids: string[] = [];
-    s.statuses.forEach((status, id) => {
-      if (status === 'connecting') ids.push(id);
-    });
-    return ids;
+  const isConnecting = useLiveStore((s) => {
+    for (const status of s.statuses.values()) {
+      if (status === 'connecting') return true;
+    }
+    return false;
   });
-  const isConnecting = connectingBagIds.length > 0;
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();

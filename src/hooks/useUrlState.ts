@@ -54,6 +54,7 @@ const PANEL_KIND_VALUES: ReadonlySet<string> = new Set([
   '3d',
   'diagnostic',
   'log',
+  'health',
 ]);
 
 interface ParsedHash {
