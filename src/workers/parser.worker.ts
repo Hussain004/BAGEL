@@ -13,7 +13,7 @@
  * have to keep in sync.
  */
 
-import type { BagFormat, BagSummary, RawMessage } from '../types/bag';
+import type { AllTopicStats, BagFormat, BagSummary, RawMessage } from '../types/bag';
 import {
   parseBag,
   readRawMessages,
@@ -23,6 +23,7 @@ import {
   readLaserScanAtTime,
   getTopicType,
   disposeParserCaches,
+  readAllMessageStats,
 } from '../parsers/core';
 import {
   getSupportedTypes,
@@ -56,7 +57,8 @@ type Method =
   | 'validateSchema'
   | 'estimateEditCount'
   | 'editBag'
-  | 'getResolvableTopicsDb3';
+  | 'getResolvableTopicsDb3'
+  | 'readAllMessageStats';
 
 interface BaseRequest<P> {
   id: number;
@@ -130,6 +132,10 @@ interface EditBagParams {
 interface GetResolvableTopicsDb3Params {
   source: BagSource;
 }
+interface ReadAllMessageStatsParams {
+  source: BagSource;
+  format: BagFormat;
+}
 
 type WorkerRequest =
   | BaseRequest<ParseBagParams>
@@ -144,6 +150,7 @@ type WorkerRequest =
   | BaseRequest<EstimateEditCountParams>
   | BaseRequest<EditBagParams>
   | BaseRequest<GetResolvableTopicsDb3Params>
+  | BaseRequest<ReadAllMessageStatsParams>
   | BaseRequest<undefined>;
 
 interface ProgressResponse {
@@ -200,6 +207,7 @@ export type WorkerResponse =
   | ResultResponse<number>
   | ResultResponse<EditBagResult>
   | ResultResponse<Db3TopicResolutionDto[]>
+  | ResultResponse<AllTopicStats>
   | ResultResponse<void>
   | ErrorResponse;
 
@@ -349,6 +357,16 @@ ctx.addEventListener('message', async (e: MessageEvent<WorkerRequest>) => {
       case 'getResolvableTopicsDb3': {
         const { source } = req.params as GetResolvableTopicsDb3Params;
         respond(await getResolvableTopicsDb3(source));
+        return;
+      }
+      case 'readAllMessageStats': {
+        const { source, format } = req.params as ReadAllMessageStatsParams;
+        const result = await readAllMessageStats(source, format);
+        const transfer: Transferable[] = [];
+        for (const stats of Object.values(result)) {
+          transfer.push(stats.times.buffer, stats.sizes.buffer);
+        }
+        respond(result, transfer);
         return;
       }
       default:

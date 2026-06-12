@@ -14,7 +14,7 @@
 import { McapIndexedReader, McapStreamReader, type DecompressHandlers, type IReadable } from '@mcap/core';
 import { BlobReadable } from '@mcap/browser';
 import { decompress as fzstdDecompress } from 'fzstd';
-import type { BagSummary, RawMessage, TopicInfo } from '../types/bag';
+import type { AllTopicStats, BagSummary, RawMessage, TopicInfo } from '../types/bag';
 import { deserializeWithSchema } from './cdr';
 import {
   HttpReadable,
@@ -553,6 +553,161 @@ export async function getTopicTypeMcap(
 ): Promise<string | undefined> {
   const meta = await loadMcap(source);
   return meta.topicMeta.get(topicName)?.schemaName;
+}
+
+// --- Fast message-index readers (no chunk decompression) -------------------
+
+function readU16LE(b: Uint8Array, o: number): number {
+  return b[o] | (b[o + 1] << 8);
+}
+function readU32LE(b: Uint8Array, o: number): number {
+  return (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0;
+}
+function readU64LENum(b: Uint8Array, o: number): number {
+  // Used only for record body lengths (never exceed 2^53 in practice).
+  return readU32LE(b, o + 4) * 0x100000000 + readU32LE(b, o);
+}
+function readU64LEBig(b: Uint8Array, o: number): bigint {
+  return (BigInt(readU32LE(b, o + 4)) << 32n) | BigInt(readU32LE(b, o));
+}
+
+const MCAP_MAX_SAMPLES_PER_TOPIC = 50_000;
+
+export async function readAllMessageStatsMcap(source: BagSource): Promise<AllTopicStats> {
+  const meta = await loadMcap(source);
+
+  if (meta.reader && meta.reader.chunkIndexes.length > 0) {
+    return readStatsFromMcapIndexes(source, meta);
+  }
+
+  // Stream fallback (non-indexed files, already in memory as meta.buffer).
+  const rawTimes = new Map<string, bigint[]>();
+  const rawSizes = new Map<string, number[]>();
+
+  if (meta.buffer) {
+    const streamReader = new McapStreamReader({ decompressHandlers: meta.decompressHandlers });
+    streamReader.append(meta.buffer);
+    for (let record; (record = streamReader.nextRecord()); ) {
+      if (record.type !== 'Message') continue;
+      const ch = meta.channelById.get(record.channelId);
+      if (!ch) continue;
+      const { topic } = ch;
+      let t = rawTimes.get(topic);
+      if (!t) { t = []; rawTimes.set(topic, t); }
+      if (t.length < MCAP_MAX_SAMPLES_PER_TOPIC) t.push(record.logTime);
+      let s = rawSizes.get(topic);
+      if (!s) { s = []; rawSizes.set(topic, s); }
+      if (s.length < MCAP_MAX_SAMPLES_PER_TOPIC) s.push(record.data.byteLength);
+    }
+  }
+
+  let startNs = 0n;
+  for (const times of rawTimes.values()) {
+    for (const t of times) if (startNs === 0n || t < startNs) startNs = t;
+  }
+
+  const result: AllTopicStats = {};
+  for (const [topic, times] of rawTimes) {
+    const sizes = rawSizes.get(topic)!;
+    const relTimes = new Float64Array(times.length);
+    for (let i = 0; i < times.length; i++) relTimes[i] = Number(times[i] - startNs);
+    result[topic] = { times: relTimes, sizes: new Uint32Array(sizes) };
+  }
+  return result;
+}
+
+/**
+ * Fast path: read MCAP MessageIndex records directly from file without
+ * decompressing any chunk data. MessageIndex records contain (logTime, offset)
+ * pairs for every message in a chunk — exactly the timestamps we need.
+ *
+ * For a typical 1 GB compressed bag this reads ~N*16 bytes of index data
+ * instead of gigabytes of compressed chunks, making it orders of magnitude
+ * faster than readMessages({}).
+ *
+ * Layout of a MessageIndex record (op=0x07):
+ *   op(1) + bodyLen(8) + channelId(2) + recordsByteLen(4) + [(logTime(8)+offset(8))*N]
+ */
+async function readStatsFromMcapIndexes(
+  source: BagSource,
+  meta: CachedMcap,
+): Promise<AllTopicStats> {
+  const reader = meta.reader!;
+  const startNs = reader.statistics?.messageStartTime ?? 0n;
+  const readable = readableFor(source);
+
+  const rawTimes = new Map<string, bigint[]>();
+  const topicTotalBytes = new Map<string, number>();
+  const topicTotalCount = new Map<string, number>();
+
+  for (const chunkIndex of reader.chunkIndexes) {
+    if (chunkIndex.messageIndexOffsets.size === 0 || chunkIndex.messageIndexLength === 0n) continue;
+
+    // Find the file offset of the first MessageIndex record for this chunk.
+    let firstOffset = 0n;
+    let first = true;
+    for (const off of chunkIndex.messageIndexOffsets.values()) {
+      if (first || off < firstOffset) { firstOffset = off; first = false; }
+    }
+
+    // One I/O call reads all MessageIndex records for this chunk.
+    const buf = await readable.read(firstOffset, chunkIndex.messageIndexLength);
+
+    // Parse concatenated MessageIndex records.
+    let pos = 0;
+    while (pos + 9 <= buf.length) {
+      if (buf[pos] !== 0x07) break; // unexpected opcode
+      const bodyLen = readU64LENum(buf, pos + 1);
+      if (pos + 9 + bodyLen > buf.length) break;
+
+      const channelId = readU16LE(buf, pos + 9);
+      const recordsByteLen = readU32LE(buf, pos + 11);
+      const numRecords = Math.floor(recordsByteLen / 16);
+
+      const ch = meta.channelById.get(channelId);
+      if (ch) {
+        const { topic } = ch;
+        let times = rawTimes.get(topic);
+        if (!times) { times = []; rawTimes.set(topic, times); }
+
+        const existing = times.length;
+        const capacity = MCAP_MAX_SAMPLES_PER_TOPIC - existing;
+        const step = capacity > 0 ? Math.max(1, Math.floor(numRecords / Math.min(numRecords, capacity))) : 0;
+
+        if (step > 0) {
+          for (let i = 0; i < numRecords; i += step) {
+            const o = pos + 15 + i * 16;
+            if (o + 8 > buf.length) break;
+            times.push(readU64LEBig(buf, o));
+          }
+        }
+
+        const channelCount = chunkIndex.messageIndexOffsets.size;
+        topicTotalBytes.set(
+          topic,
+          (topicTotalBytes.get(topic) ?? 0) + Number(chunkIndex.uncompressedSize) / channelCount,
+        );
+        topicTotalCount.set(topic, (topicTotalCount.get(topic) ?? 0) + numRecords);
+      }
+
+      pos += 9 + bodyLen;
+    }
+  }
+
+  const result: AllTopicStats = {};
+  for (const [topic, times] of rawTimes) {
+    times.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    const n = times.length;
+    const relTimes = new Float64Array(n);
+    for (let i = 0; i < n; i++) relTimes[i] = Number(times[i] - startNs);
+
+    const totalBytes = topicTotalBytes.get(topic) ?? 0;
+    const totalCount = topicTotalCount.get(topic) ?? n;
+    const avgSize = totalCount > 0 ? Math.round(totalBytes / totalCount) : 100;
+
+    result[topic] = { times: relTimes, sizes: new Uint32Array(n).fill(avgSize) };
+  }
+  return result;
 }
 
 /**

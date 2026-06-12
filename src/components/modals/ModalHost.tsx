@@ -4,6 +4,7 @@ import { ShortcutsModal } from './ShortcutsModal';
 import { SchemaPasteModal } from './SchemaPasteModal';
 import { BagEditModal } from './BagEditModal';
 import { UrdfLoadModal } from './UrdfLoadModal';
+import { ClipExportModal } from './ClipExportModal';
 
 /**
  * ModalHost — Renders whichever modal the UI store has selected. Mounted once
@@ -24,6 +25,7 @@ export function ModalHost() {
       {modal === 'shortcuts' && <ShortcutsModal />}
       {modal === 'bag-edit' && <BagEditModal />}
       {modal === 'urdf-load' && <UrdfLoadModal />}
+      {modal === 'clip-export' && <ClipExportModal />}
       {schemaPaste && <SchemaPasteModal />}
     </>
   );

@@ -37,7 +37,7 @@ import { BlobReader } from '@foxglove/rosbag/web';
 import type { Filelike } from '@foxglove/rosbag';
 import Bunzip from 'seek-bzip';
 import * as lz4 from 'lz4js';
-import type { BagSummary, RawMessage, TopicInfo } from '../types/bag';
+import type { AllTopicStats, BagSummary, RawMessage, TopicInfo } from '../types/bag';
 import { clearRos1ReaderCache, deserializeRos1Message } from './rosbag1';
 import {
   HttpFilelike,
@@ -428,6 +428,69 @@ export async function getTopicTypeBag(
 ): Promise<string | undefined> {
   const meta = await loadBag(source);
   return meta.topicMeta.get(topicName)?.type;
+}
+
+const BAG_MAX_SAMPLES_PER_TOPIC = 50_000;
+
+export async function readAllMessageStatsBag(source: BagSource): Promise<AllTopicStats> {
+  const meta = await loadBag(source);
+  const { bag } = meta;
+  const startNs = timeToNs(bag.startTime);
+
+  // Compute per-topic total message count from the bag's chunk index (cheap metadata read).
+  const connCount = new Map<number, number>();
+  for (const chunkInfo of bag.chunkInfos) {
+    for (const { conn, count } of chunkInfo.connections) {
+      connCount.set(conn, (connCount.get(conn) ?? 0) + count);
+    }
+  }
+  const topicTotal = new Map<string, number>();
+  for (const [connId, conn] of meta.connectionsById) {
+    const c = connCount.get(connId) ?? 0;
+    topicTotal.set(conn.topic, (topicTotal.get(conn.topic) ?? 0) + c);
+  }
+
+  // Compute step per topic for uniform subsampling.
+  const topicStep = new Map<string, number>();
+  const topicCounter = new Map<string, number>();
+  for (const [topic, total] of topicTotal) {
+    topicStep.set(topic, Math.max(1, Math.floor(total / BAG_MAX_SAMPLES_PER_TOPIC)));
+  }
+
+  const rawTimes = new Map<string, number[]>();
+  const rawSizes = new Map<string, number[]>();
+
+  const iterator = bag.messageIterator({});
+  for await (const event of iterator as AsyncIterable<{
+    topic: string;
+    timestamp: { sec: number; nsec: number };
+    data: Uint8Array;
+  }>) {
+    const { topic } = event;
+    const counter = (topicCounter.get(topic) ?? 0) + 1;
+    topicCounter.set(topic, counter);
+
+    const step = topicStep.get(topic) ?? 1;
+    if ((counter - 1) % step !== 0) continue;
+
+    const relNs = Number(timeToNs(event.timestamp) - startNs);
+
+    let t = rawTimes.get(topic);
+    if (!t) { t = []; rawTimes.set(topic, t); }
+    t.push(relNs);
+    let s = rawSizes.get(topic);
+    if (!s) { s = []; rawSizes.set(topic, s); }
+    s.push(event.data.byteLength);
+  }
+
+  const result: AllTopicStats = {};
+  for (const [topic, times] of rawTimes) {
+    result[topic] = {
+      times: new Float64Array(times),
+      sizes: new Uint32Array(rawSizes.get(topic)!),
+    };
+  }
+  return result;
 }
 
 /**

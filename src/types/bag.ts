@@ -28,3 +28,10 @@ export interface RawMessage {
   timestamp: bigint; // nanoseconds since epoch
   data: Uint8Array;
 }
+
+export interface MessageStats {
+  times: Float64Array; // ns since bag start (Float64 safe up to ~104 day bags)
+  sizes: Uint32Array;  // bytes per message
+}
+
+export type AllTopicStats = Record<string, MessageStats>;

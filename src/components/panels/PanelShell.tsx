@@ -39,6 +39,7 @@ const KIND_LABELS: Record<PanelKind, string> = {
   '3d': '3D Scene',
   diagnostic: 'Diagnostics',
   log: 'Log',
+  health: 'Bag Health',
 };
 
 /**

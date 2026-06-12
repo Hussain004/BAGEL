@@ -10,7 +10,7 @@
  * first parseDb3() call so subsequent reads avoid re-parsing the WASM file.
  */
 
-import type { BagSummary, RawMessage, TopicInfo } from '../types/bag';
+import type { AllTopicStats, BagSummary, RawMessage, TopicInfo } from '../types/bag';
 import { deserializeByType } from './cdr';
 import {
   sourceDisplayName,
@@ -424,6 +424,68 @@ export async function getTopicTypeDb3(
 ): Promise<string | undefined> {
   const { topicTypeByName } = await loadDb(source);
   return topicTypeByName.get(topicName);
+}
+
+const DB3_MAX_TOTAL_SAMPLES = 100_000;
+
+export async function readAllMessageStatsDb3(source: BagSource): Promise<AllTopicStats> {
+  const { db } = await loadDb(source);
+
+  const timeResult = db.exec('SELECT MIN(timestamp), COUNT(*) FROM messages');
+  let startNs = 0n;
+  let totalMessages = 0;
+  if (timeResult.length > 0 && timeResult[0].values.length > 0) {
+    const row = timeResult[0].values[0];
+    if (row[0] != null) startNs = BigInt(row[0] as number);
+    if (row[1] != null) totalMessages = row[1] as number;
+  }
+
+  // SQL-level sampling: skip every step-th row to cap total rows fetched.
+  const step = Math.max(1, Math.floor(totalMessages / DB3_MAX_TOTAL_SAMPLES));
+
+  const sql = step <= 1
+    ? `SELECT t.name, m.timestamp, LENGTH(m.data)
+       FROM messages m
+       JOIN topics t ON m.topic_id = t.id
+       ORDER BY m.timestamp ASC`
+    : `SELECT t.name, m.timestamp, LENGTH(m.data)
+       FROM messages m
+       JOIN topics t ON m.topic_id = t.id
+       WHERE (m.rowid - 1) % ${step} = 0
+       ORDER BY m.timestamp ASC`;
+
+  const stmt = db.prepare(sql);
+  const rawTimes = new Map<string, number[]>();
+  const rawSizes = new Map<string, number[]>();
+
+  try {
+    while (stmt.step()) {
+      const row = stmt.get();
+      const topic = row[0] as string;
+      const ts = row[1] as number | bigint;
+      const size = row[2] as number;
+      const tsNs = typeof ts === 'bigint' ? ts : BigInt(ts);
+      const relNs = Number(tsNs - startNs);
+
+      let t = rawTimes.get(topic);
+      if (!t) { t = []; rawTimes.set(topic, t); }
+      t.push(relNs);
+      let s = rawSizes.get(topic);
+      if (!s) { s = []; rawSizes.set(topic, s); }
+      s.push(size);
+    }
+  } finally {
+    stmt.free();
+  }
+
+  const result: AllTopicStats = {};
+  for (const [topic, times] of rawTimes) {
+    result[topic] = {
+      times: new Float64Array(times),
+      sizes: new Uint32Array(rawSizes.get(topic)!),
+    };
+  }
+  return result;
 }
 
 /**
