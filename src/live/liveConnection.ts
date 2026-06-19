@@ -211,6 +211,8 @@ export class LiveConnection {
       useLiveStore.getState().setRecording(this.bagId, {
         messageCount: this.recorder.messageCount,
         byteCount: this.recorder.byteCount,
+        isFull: this.recorder.isFull,
+        topicFilter: this.recorder.topicFilter,
       });
     }
   }
@@ -265,10 +267,15 @@ export class LiveConnection {
     return this.recorder !== null;
   }
 
-  startRecording(): void {
+  startRecording(topicFilter?: ReadonlySet<string> | null): void {
     if (this.recorder) return;
-    this.recorder = new LiveRecorder();
-    useLiveStore.getState().setRecording(this.bagId, { messageCount: 0, byteCount: 0 });
+    this.recorder = new LiveRecorder(topicFilter);
+    useLiveStore.getState().setRecording(this.bagId, {
+      messageCount: 0,
+      byteCount: 0,
+      isFull: false,
+      topicFilter: topicFilter ?? null,
+    });
   }
 
   async stopRecording(): Promise<Uint8Array> {

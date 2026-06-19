@@ -23,6 +23,10 @@ export type LiveStatus =
 export interface RecordingStats {
   messageCount: number;
   byteCount: number;
+  /** True when the in-memory buffer has reached MAX_RECORD_BYTES (500 MB). */
+  isFull: boolean;
+  /** Topics being recorded. Null means all topics. */
+  topicFilter: ReadonlySet<string> | null;
 }
 
 interface LiveState {
