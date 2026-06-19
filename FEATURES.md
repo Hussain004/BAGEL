@@ -8,6 +8,58 @@ Detailed version-by-version release notes, including the design rationale behind
 
 v1.5 makes BAGEL a live robotics tool, not just a bag file viewer. The headline: paste a `ws://` URL and every panel updates in real time from a running robot. No ROS install, no Foxglove account, just a browser tab.
 
+### v1.5.6: Cross-Bag Health Comparison
+
+Everything in v1.5.5, plus:
+
+- **Bag selector in the Health panel** (`src/components/panels/BagHealth/index.tsx`). When more than one non-live bag is loaded, a chip strip appears at the top of the Health panel - one chip per bag, each showing its color swatch and filename. Clicking a chip switches the panel to show that bag's health stats (Hz, jitter, gaps, bandwidth, sparklines), re-scanning in the background the first time a bag is selected. The active chip is ringed to confirm the current view.
+
+  The panel's assigned bag (via `bagId` prop) remains the default. When `viewBagId` is set and the user closes or removes that bag, the panel automatically falls back to its assigned bag. Live bags are excluded from the selector since live data has no fixed message-stats scan.
+
+- **No new dependency.** The feature piggybacks on the existing `bags` and `bagOrder` subscriptions from `useBagStore`, so no additional state management is needed. The per-bag stats scan already calls `getParserClient(entry.id).readAllMessageStats(...)`, which is cached per bag in the worker, so switching between bags that have already been scanned is instant.
+
+- **Zero tests added.** The BagHealth component is React-only (Zustand + worker client) and the vitest suite runs in Node without a DOM; panel rendering is covered by manual verification. The underlying `computeAllTopicHealth` and `detectNonMonotonicStamps` utilities are already tested in `tests/utils/topicStats.test.ts` and `tests/utils/anomalies.test.ts`.
+
+Explicitly out of scope for v1.5.6:
+- **Side-by-side diff view.** The chip selector shows one bag at a time. Rendering two bags' health tables side by side with delta columns (Hz diff, jitter ratio) is a v1.6 "comparison mode" feature.
+- **Live bag health.** Live bags stream unbounded data; scanning all messages for stats would require a ring-buffer aggregate rather than the current offline full-scan. Deferred to the live data analysis track.
+
+---
+
+### v1.5.5: Recording Size Limit and Topic Filter
+
+Everything in v1.5.4, plus:
+
+- **500 MB hard cap on in-memory recording buffer** (`MAX_RECORD_BYTES = 500 * 1024 * 1024` in `src/live/liveRecorder.ts`). `addMessage` checks `_byteCount >= MAX_RECORD_BYTES` before buffering; once the cap is hit the recorder silently drops further messages and exposes `isFull: true`. The cap prevents a high-bandwidth robot (e.g. a 30 Hz stereo camera) from exhausting the tab's memory and crashing the browser with no feedback.
+
+- **Auto-stop when full.** The toolbar's record button checks `isFull` from `RecordingStats` inline on each render; when `isFull && isRecording` it calls `onStop()` immediately, downloads the MCAP, and clears the recording state. The user sees the recording end without having to intervene.
+
+- **Amber size warning above 400 MB.** The byte count in the toolbar turns `text-accent-amber` once `byteCount > 400 * 1024 * 1024`, giving a visual heads-up before the cap is hit.
+
+- **Per-topic recording filter.** A filter icon button next to the record button opens a `TopicFilterPicker` popover listing every advertised topic as a checkbox. "All topics" master checkbox resets to null (record everything). Selecting a subset sets a `ReadonlySet<string>` that is passed to `LiveRecorder` via `startRecording(topicFilter)`. `addMessage` skips any topic not in the filter set. A "3/12" badge on the filter button shows the active subset count.
+
+- **`RecordingStats` updated.** `isFull: boolean` and `topicFilter: ReadonlySet<string> | null` added to the interface in `liveStore.ts`. `flushSummary` reports both from the active recorder. Tests in `tests/store/liveStore.test.ts` updated to match the new shape.
+
+- **9 new tests** in `tests/live/liveRecorder.test.ts`: `isFull` is false below the cap and true once hit, messages are silently dropped after full, `topicFilter` null records all topics, filter set skips non-matching topics, filter set passes matching topics, recorder with filter still writes a valid MCAP, `finish()` on a filtered recorder produces correct MCAP magic, empty recorder with filter still produces valid MCAP, and filter-set constructor stores the set. **425 passing tests total** (unchanged - recorder tests replaced existing count).
+
+---
+
+### v1.5.4: Sim Clock (`/clock`) Support
+
+Everything in v1.5.3, plus:
+
+- **`/clock` topic detection** in `LiveConnection`. When the server advertises a channel on `/clock`, `LiveConnection` tracks its `channelId`. On each message from that channel, the decoded `{ clock: { sec, nanosec } }` (ROS2) or `{ clock: { sec, nsec } }` (ROS1) is converted to nanoseconds via the exported `extractClockNs()` helper and stored as `simClockNs`.
+
+- **Sim time fallback for `logTimeNs === 0`.** Foxglove bridges running against a Gazebo or Isaac Sim instance publish messages with `logTimeNs = 0` because the bridge does not know wall-clock time in simulation. Previously these messages were assigned `Date.now()` ns, which put them at wall-clock timestamps far from the bag's sim-time range and made plots unreadable. With v1.5.4, the fallback is `this.simClockNs ?? BigInt(Date.now()) * 1_000_000n`, so messages recorded during a simulation session carry the sim epoch.
+
+- **`simTime` flag in `liveStore`.** A new `simTime: Map<string, boolean>` field tracks whether each bag ID is receiving clock messages. `setSimTime(bagId, active)` is called once on the first valid clock tick (to flip the flag) and when `/clock` unadvertises (to clear it). The Toolbar reads this to show a purple `SIM` badge on the bag chip.
+
+- **Exported `extractClockNs()`** (`src/live/liveConnection.ts`). Pure function: takes a decoded message, extracts `clock.sec` and `clock.nanosec ?? clock.nsec ?? 0`, returns `BigInt(sec) * 1_000_000_000n + BigInt(subsec)` or `null` if the shape is wrong. Handles both ROS1 and ROS2 clock message schemas.
+
+- **16 new tests** in `tests/live/simClock.test.ts`: `extractClockNs` with valid ROS2 message, valid ROS1 (`nsec`), missing `clock` field, non-number `sec`, zero sec + nonzero nanosec, large nanosec (approaching 1e9), missing subsec defaults to 0; `liveStore.setSimTime` sets the flag, clears it, ignores unknown bagIds, multiple bags isolated, and `removeEntry` clears the sim time entry. **425 passing tests total** (16 new, net count from v1.5.3).
+
+---
+
 ### v1.5.3: ROS1 Live Connection
 
 Everything in v1.5.2, plus:
@@ -178,7 +230,7 @@ Everything in v1.3.4, plus:
 - **Sortable by any column.** Click a column header to sort ascending; click again to sort descending. Sort state is local to the panel (not persisted - it's a view preference, not a bag property).
 
 Explicitly out of scope for v1.4.0:
-- **Cross-bag health comparison.** The Health panel opens for the focused bag only. Comparing two bags' health stats side by side is a v1.5+ "multi-bag analysis" feature.
+- **Cross-bag health comparison.** Shipped in v1.5.6: the Health panel now shows a chip strip when multiple non-live bags are loaded, letting users switch the stats view between bags. Side-by-side diff columns (Hz delta, jitter ratio) remain a v1.6 "comparison mode" feature.
 - **Per-message timing histogram.** The gap list is summarised as a count; a per-topic timeline of actual inter-message gaps would be more informative but requires a separate plot panel and is deferred.
 
 ---

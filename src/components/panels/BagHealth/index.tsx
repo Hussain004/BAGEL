@@ -18,13 +18,38 @@ type SortDir = 'asc' | 'desc';
 
 export function BagHealth({ panelId, topicName, type, bagId }: Props) {
   const bagState = useBagStore((s) => s);
-  const entry = resolveBagEntry(bagState, bagId);
+  const bags = useBagStore((s) => s.bags);
+  const bagOrder = useBagStore((s) => s.bagOrder);
+  const panelEntry = resolveBagEntry(bagState, bagId);
+
+  // viewBagId overrides which bag's health stats are shown; null = use panel's assigned bag.
+  const [viewBagId, setViewBagId] = useState<string | null>(null);
 
   const [stats, setStats] = useState<AllTopicStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>('topic');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
+
+  // Non-live bags available for comparison.
+  const nonLiveBags = useMemo(
+    () => bagOrder.map((id) => bags.get(id)).filter((e) => e && e.kind !== 'live') as NonNullable<ReturnType<typeof bags.get>>[],
+    [bags, bagOrder],
+  );
+
+  // If viewBagId is set and that bag still exists, use it; otherwise fall back to panel's bag.
+  const entry = useMemo(() => {
+    if (viewBagId) {
+      const overrideEntry = bags.get(viewBagId);
+      if (overrideEntry && overrideEntry.kind !== 'live') return overrideEntry;
+    }
+    return panelEntry ?? null;
+  }, [viewBagId, bags, panelEntry]);
+
+  // Reset viewBagId if the selected bag disappears.
+  useEffect(() => {
+    if (viewBagId && !bags.has(viewBagId)) setViewBagId(null);
+  }, [bags, viewBagId]);
 
   const effectiveBagId = entry?.id ?? null;
 
@@ -71,6 +96,8 @@ export function BagHealth({ panelId, topicName, type, bagId }: Props) {
     else { setSortKey(key); setSortDir('desc'); }
   };
 
+  const activeBagId = entry?.id ?? viewBagId ?? bagId ?? null;
+
   return (
     <PanelShell
       panelId={panelId}
@@ -80,6 +107,35 @@ export function BagHealth({ panelId, topicName, type, bagId }: Props) {
       bagId={bagId}
     >
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        {/* Bag selector - only shown when more than one non-live bag is loaded */}
+        {nonLiveBags.length > 1 && (
+          <div className="flex items-center gap-1.5 px-3 py-2 border-b border-border flex-shrink-0 overflow-x-auto">
+            {nonLiveBags.map((e) => {
+              const isActive = e.id === activeBagId;
+              return (
+                <button
+                  key={e.id}
+                  onClick={() => setViewBagId(e.id === panelEntry?.id ? null : e.id)}
+                  title={e.summary.fileName}
+                  className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-xs transition-colors flex-shrink-0 ${
+                    isActive
+                      ? 'bg-surface-hover text-text-primary ring-1 ring-border'
+                      : 'text-text-muted hover:text-text-primary hover:bg-surface-hover/50'
+                  }`}
+                >
+                  <span
+                    className="w-2 h-2 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: e.color }}
+                  />
+                  <span className="max-w-[120px] truncate mono">
+                    {e.summary.fileName}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {!entry && (
           <div className="flex-1 flex items-center justify-center text-text-muted text-sm">
             No bag loaded.
