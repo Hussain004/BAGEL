@@ -12,7 +12,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-8-646cff.svg)](https://vite.dev/)
-[![Version](https://img.shields.io/badge/version-1.5.3-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
+[![Version](https://img.shields.io/badge/version-1.5.6-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
 
 [**→ Live Demo**](https://bagel-ros2.vercel.app) · [Report Bug](https://github.com/Hussain004/BAGEL/issues) · [Request Feature](https://github.com/Hussain004/BAGEL/issues)
 
@@ -106,7 +106,7 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 - **`package://` resolver**: paste a URL prefix or drag-drop a folder per referenced package; URL bindings persist across sessions in `localStorage` under `bagel:package-roots:v1`. No auto-fetch from ROS distros - BAGEL only loads meshes from where you point it.
 - **Bundled sample robot URDF** (`public/sample-bags/sample-robot.urdf`) pairs with `tour.mcap` so the "Try a sample robot" button in the modal demonstrates the full flow on a fresh checkout.
 
-### Live robot data *(v1.5.0 - v1.5.3)*
+### Live robot data *(v1.5.0 - v1.5.6)*
 
 - **Foxglove WebSocket client**: connect to a live robot by pasting a `ws://host:8765` URL into the new "Connect" input. Works with `foxglove_bridge` (ROS2) and `rosbridge_suite` (ROS1/ROS2). Implements `foxglove.websocket.v1` - binary MESSAGE_DATA frames for message payloads, JSON frames for topic advertisement.
 - **Per-topic ring buffer**: the last 10,000 messages per topic are held in memory. All existing panels (Image, Plot, 3D Scene, Trajectory, TF Tree, Log) display live data without any panel-level changes - the hooks detect a live entry and read from the ring buffer instead of the parser worker.
@@ -114,10 +114,13 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 - **Auto-reconnect**: exponential backoff on disconnect: 1s, 2s, 4s, 8s, 16s, 30s. Connection status shown as a pulsing dot (emerald = connected, amber = reconnecting, rose = error) on the toolbar chip.
 - **CDR and JSON decoding** in the main thread. ROS2 CDR via `@foxglove/rosmsg2-serialization`, ROS1 CDR via `@foxglove/rosmsg-serialization` - both already bundled as bag-parsing dependencies, no new packages. *(v1.5.3 adds `encoding: "ros1"` for ROS1 bridges)*
 - **Live MCAP recording** *(v1.5.2)*: `Record` button in the Toolbar (visible when a live connection is active) buffers every incoming message. Click `Stop` to serialize all captured data to a fully-indexed MCAP file and download it instantly. The output opens back in BAGEL or any `mcap`-compatible tool without conversion.
+- **Recording size limit + topic filter** *(v1.5.5)*: 500 MB hard cap auto-stops the recording and downloads immediately. A filter icon lets you select a subset of topics before recording starts. Byte count turns amber above 400 MB as a warning.
+- **Sim clock support** *(v1.5.4)*: when `/clock` is advertised, messages with `logTimeNs = 0` (common in Gazebo/Isaac Sim) use the simulation clock value instead of wall-clock time, keeping plots readable in simulation sessions. A `SIM` badge appears on the toolbar chip.
+- **Cross-bag health comparison** *(v1.5.6)*: the Health panel shows a chip strip at the top when multiple bags are loaded. Click any chip to switch the stats view to that bag without opening a new panel. Active chip is highlighted; live bags are excluded.
 
 ### Analysis tools *(v1.4)*
 
-- **Bag Health dashboard** *(v1.4.0)*: a per-topic analytics panel showing measured Hz, jitter (p50/p95 inter-message gap deviation), gap events (pauses longer than 3x the expected period), and bandwidth (bytes/s). Opens from a `Health` button in the Toolbar that appears once a bag is loaded. Data is computed once per bag in a background scan and cached.
+- **Bag Health dashboard** *(v1.4.0, extended v1.5.6)*: a per-topic analytics panel showing measured Hz, jitter (p50/p95 inter-message gap deviation), gap events (pauses longer than 3x the expected period), and bandwidth (bytes/s). Opens from a `Health` button in the Toolbar. Data is computed once per bag in a background scan and cached. *(v1.5.6)* When multiple bags are loaded, a chip strip at the top lets you switch the view between bags without opening additional panels.
 - **Math expressions in plots** *(v1.4.1)*: type arithmetic expressions (`vel_x * 2 + offset`, `sqrt(x*x + y*y)`) as derived series directly in the TimeSeriesPlot panel. References other numeric fields from the same topic; evaluated in a sandboxed expression engine (no `eval`).
 - **Clip export** *(v1.4.2)*: render any panel to an animated PNG zip or WebM video via a frame-sync protocol. Toolbar Export button opens the modal.
 - **Timeline bookmarks** *(v1.4.3)*: named markers on the scrubber, persisted per bag and shareable via the `bm=` URL hash segment.
@@ -139,6 +142,9 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 
 ### Earlier version highlights at a glance
 
+- **v1.5.6**: Cross-bag health comparison. The Health panel now shows a chip strip at the top when multiple non-live bags are loaded. Click a chip to switch the panel's stats view to that bag. No new tests (React-only panel logic, covered by manual verification). 425 tests total.
+- **v1.5.5**: Recording size limit + topic filter. 500 MB hard cap auto-stops recording and triggers download. Filter icon selects a per-topic subset before recording starts. Amber size warning above 400 MB. `isFull` and `topicFilter` added to `RecordingStats`. 9 new tests in `liveRecorder.test.ts`; 425 total.
+- **v1.5.4**: Sim clock (`/clock`) support. `LiveConnection` tracks the `/clock` channel; messages with `logTimeNs = 0` fall back to `simClockNs` instead of `Date.now()`. Purple `SIM` badge on the toolbar chip. `extractClockNs()` helper handles both ROS1 (`nsec`) and ROS2 (`nanosec`) clock schemas. 16 new tests in `tests/live/simClock.test.ts`; 425 total.
 - **v1.5.3**: ROS1 live connection. Added `encoding: "ros1"` (ROS1 CDR, no RTPS header) to the live decoder alongside the existing `cdr` (ROS2) and `json` paths. `@foxglove/rosmsg-serialization` was already bundled; no new dependencies. Separate reader caches for ROS1 and ROS2 (wire formats are not interchangeable). 16 new tests in `tests/live/liveDecoder.test.ts`; 425 total.
 - **v1.5.2**: Live MCAP recording. A `Record` button appears in the Toolbar while connected to a live robot. Clicking it buffers all incoming messages (raw CDR/JSON bytes + channel metadata); clicking `Stop` serialises the buffer to a fully-indexed MCAP and triggers a browser download. The recorder uses synchronous buffering during capture and dynamic-imports `McapWriter` only at stop time so the main bundle stays clean. 16 new tests (+11 `liveRecorder` + 5 `liveStore` recording state); 360 total.
 - **v1.5.0**: Live robot data via Foxglove WebSocket (`ws://host:8765`). Paste a URL into the new Connect input; all existing panels update in real time. Per-topic ring buffer (10,000 msg/topic), Follow/Pause toggle on the timeline, auto-reconnect with exponential backoff, pulsing status dot on the toolbar chip. CDR + JSON decoding in the main thread via the bundled `@foxglove/rosmsg2-serialization` - no new dependencies. 41 new tests in `tests/live/` and `tests/store/`; 344 total.
