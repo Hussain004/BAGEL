@@ -8,6 +8,9 @@
  *     React re-renders cap at ~60 Hz regardless of message rate.
  *   - Maintains a BagSummary (topics, time range, message count) and
  *     notifies the owner (bagStore) when it changes.
+ *   - Tracks the sim clock from the /clock topic so messages without a
+ *     logTimeNs header (e.g. from sim bridges that omit it) get a consistent
+ *     sim-time timestamp instead of wall-clock time.
  *   - Exposes disconnect() for graceful shutdown.
  *
  * Reconnect strategy: exponential backoff 1s, 2s, 4s, 8s, 16s, 30s (max).
@@ -46,6 +49,13 @@ export class LiveConnection {
 
   private pendingRevBump = false;
   private recorder: LiveRecorder | null = null;
+
+  // Sim clock: channel ID of the /clock topic (null when not advertised), and
+  // the latest decoded sim time in nanoseconds. Used as the timestamp fallback
+  // for messages that arrive with logTimeNs === 0n (no header stamp), which
+  // happens on some Foxglove bridges in simulation mode.
+  private clockChannelId: number | null = null;
+  private simClockNs: bigint | null = null;
 
   constructor(bagId: string, wsUrl: string, onSummaryUpdate: SummaryCallback) {
     this.bagId = bagId;
@@ -91,13 +101,23 @@ export class LiveConnection {
         break;
 
       case 'advertise':
-        for (const ch of event.channels) this.channels.set(ch.id, ch);
+        for (const ch of event.channels) {
+          this.channels.set(ch.id, ch);
+          if (ch.topic === '/clock') this.clockChannelId = ch.id;
+        }
         this.subscribeToChannels(event.channels);
         this.pushSummaryTopics();
         break;
 
       case 'unadvertise':
-        for (const id of event.channelIds) this.channels.delete(id);
+        for (const id of event.channelIds) {
+          if (id === this.clockChannelId) {
+            this.clockChannelId = null;
+            this.simClockNs = null;
+            useLiveStore.getState().setSimTime(this.bagId, false);
+          }
+          this.channels.delete(id);
+        }
         this.pushSummaryTopics();
         break;
 
@@ -109,10 +129,21 @@ export class LiveConnection {
         const value = decodeLiveMessage(ch.encoding, ch.schemaEncoding, ch.schema, event.data);
         if (value === null) break;
 
+        // Track sim time from /clock so messages with no logTimeNs header
+        // get a consistent sim timestamp rather than jumping to wall time.
+        if (channelId === this.clockChannelId) {
+          const ns = extractClockNs(value);
+          if (ns !== null) {
+            const wasSimTime = this.simClockNs !== null;
+            this.simClockNs = ns;
+            if (!wasSimTime) useLiveStore.getState().setSimTime(this.bagId, true);
+          }
+        }
+
         const timeNs =
           event.logTimeNs > 0n
             ? event.logTimeNs
-            : BigInt(Date.now()) * 1_000_000n;
+            : (this.simClockNs ?? BigInt(Date.now()) * 1_000_000n);
 
         this.ringBuffer.push(ch.topic, timeNs, value);
         this.recorder?.addMessage(ch, timeNs, event.data);
@@ -248,9 +279,15 @@ export class LiveConnection {
     return r.finish();
   }
 
+  get isSimTime(): boolean {
+    return this.simClockNs !== null;
+  }
+
   disconnect(): void {
     this.destroyed = true;
     this.recorder = null;
+    this.simClockNs = null;
+    this.clockChannelId = null;
     if (this.reconnectTimer !== null) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -264,6 +301,22 @@ export class LiveConnection {
     this.setStatus('disconnected');
     useLiveStore.getState().removeEntry(this.bagId);
   }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Extract a nanosecond timestamp from a decoded rosgraph_msgs/Clock message.
+ * Works for both ROS1 (nsec field) and ROS2 (nanosec field).
+ *
+ * Exported for unit testing only - not part of the public API.
+ * Returns null if the message doesn't look like a Clock message.
+ */
+export function extractClockNs(msg: Record<string, unknown>): bigint | null {
+  const clock = msg.clock as Record<string, unknown> | undefined;
+  if (!clock || typeof clock.sec !== 'number') return null;
+  const subsec = (clock.nanosec ?? clock.nsec ?? 0) as number;
+  return BigInt(Math.trunc(clock.sec)) * 1_000_000_000n + BigInt(Math.trunc(subsec));
 }
 
 // ── Factory helper ────────────────────────────────────────────────────────────

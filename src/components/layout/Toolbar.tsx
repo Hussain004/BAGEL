@@ -47,6 +47,7 @@ export function Toolbar() {
   const setFollowLive = useLiveStore((s) => s.setFollowLive);
   const liveStatuses = useLiveStore((s) => s.statuses);
   const liveStatusMessages = useLiveStore((s) => s.statusMessages);
+  const liveSimTimes = useLiveStore((s) => s.simTime);
 
   // Anchor placement: pick the focused bag's current bag-local time as the
   // anchor event, then snap aligned time to 0 so the user keeps seeing the
@@ -124,6 +125,7 @@ export function Toolbar() {
                 anchorBagLocalNs={anchorBagLocalNs}
                 liveStatus={entry.kind === 'live' ? (liveStatuses.get(id) ?? 'connecting') : undefined}
                 liveStatusMessage={liveStatusMessages.get(id)}
+                isSimTime={entry.kind === 'live' && (liveSimTimes.get(id) ?? false)}
                 onFocus={() => setFocusBag(id)}
                 onRemove={() => removeBag(id)}
                 onClearAnchor={() => onClearAnchor(id)}
@@ -328,6 +330,8 @@ interface BagChipProps {
   anchorBagLocalNs: bigint | null;
   liveStatus?: LiveStatus;
   liveStatusMessage?: string;
+  /** True when /clock sim time is active for this live bag. */
+  isSimTime?: boolean;
   onFocus: () => void;
   onRemove: () => void;
   onClearAnchor: () => void;
@@ -341,6 +345,7 @@ function BagChip({
   anchorBagLocalNs,
   liveStatus,
   liveStatusMessage,
+  isSimTime,
   onFocus,
   onRemove,
   onClearAnchor,
@@ -386,6 +391,14 @@ function BagChip({
             }`}
           >
             {format === 'live' ? 'LIVE' : format.toUpperCase()}
+          </span>
+        )}
+        {isSimTime && (
+          <span
+            className="badge badge-violet flex-shrink-0"
+            title="Sim time active - timestamps from /clock topic"
+          >
+            SIM
           </span>
         )}
       </button>
