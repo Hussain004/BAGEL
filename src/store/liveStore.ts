@@ -55,10 +55,18 @@ interface LiveState {
    */
   recording: Map<string, RecordingStats>;
 
+  /**
+   * Per-bag sim-time flag. A bag ID is present when the /clock topic has been
+   * advertised and a sim timestamp decoded. Cleared when /clock is unadvertised
+   * or the connection drops.
+   */
+  simTime: Map<string, boolean>;
+
   bumpRevision: (bagId: string, timeNs: bigint) => void;
   setStatus: (bagId: string, status: LiveStatus, message?: string) => void;
   setFollowLive: (v: boolean) => void;
   setRecording: (bagId: string, stats: RecordingStats | null) => void;
+  setSimTime: (bagId: string, active: boolean) => void;
   removeEntry: (bagId: string) => void;
 }
 
@@ -69,6 +77,7 @@ export const useLiveStore = create<LiveState>((set) => ({
   statusMessages: new Map(),
   followLive: true,
   recording: new Map(),
+  simTime: new Map(),
 
   bumpRevision: (bagId, timeNs) =>
     set((s) => {
@@ -102,6 +111,14 @@ export const useLiveStore = create<LiveState>((set) => ({
       return { recording };
     }),
 
+  setSimTime: (bagId, active) =>
+    set((s) => {
+      const simTime = new Map(s.simTime);
+      if (active) simTime.set(bagId, true);
+      else simTime.delete(bagId);
+      return { simTime };
+    }),
+
   removeEntry: (bagId) =>
     set((s) => {
       const revisions = new Map(s.revisions);
@@ -109,11 +126,13 @@ export const useLiveStore = create<LiveState>((set) => ({
       const statuses = new Map(s.statuses);
       const statusMessages = new Map(s.statusMessages);
       const recording = new Map(s.recording);
+      const simTime = new Map(s.simTime);
       revisions.delete(bagId);
       edgeTimes.delete(bagId);
       statuses.delete(bagId);
       statusMessages.delete(bagId);
       recording.delete(bagId);
-      return { revisions, edgeTimes, statuses, statusMessages, recording };
+      simTime.delete(bagId);
+      return { revisions, edgeTimes, statuses, statusMessages, recording, simTime };
     }),
 }));
