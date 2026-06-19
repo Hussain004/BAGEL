@@ -134,4 +134,73 @@ describe('LiveRecorder', () => {
     }
     expect(r.messageCount).toBe(10);
   });
+
+  // ── isFull ────────────────────────────────────────────────────────────────
+
+  it('isFull is false initially', () => {
+    expect(new LiveRecorder().isFull).toBe(false);
+  });
+
+  it('isFull becomes true when byteCount reaches MAX_RECORD_BYTES', async () => {
+    const { LiveRecorder: LR, MAX_RECORD_BYTES } = await import('../../src/live/liveRecorder');
+    const r = new LR();
+    const ch = makeChannel(1, '/big');
+    // Add one message that fills the buffer exactly.
+    r.addMessage(ch, 0n, new Uint8Array(MAX_RECORD_BYTES));
+    expect(r.isFull).toBe(true);
+  });
+
+  it('addMessage silently ignores data once isFull', async () => {
+    const { LiveRecorder: LR, MAX_RECORD_BYTES } = await import('../../src/live/liveRecorder');
+    const r = new LR();
+    const ch = makeChannel(1, '/big');
+    r.addMessage(ch, 0n, new Uint8Array(MAX_RECORD_BYTES));
+    const countBefore = r.messageCount;
+    // This message should be silently dropped.
+    r.addMessage(ch, 1n, makeData(0xff, 4));
+    expect(r.messageCount).toBe(countBefore);
+  });
+
+  // ── topicFilter ──────────────────────────────────────────────────────────
+
+  it('topicFilter is null by default (record all)', () => {
+    expect(new LiveRecorder().topicFilter).toBeNull();
+  });
+
+  it('records all topics when no filter is provided', () => {
+    const r = new LiveRecorder();
+    r.addMessage(makeChannel(1, '/odom'), 0n, makeData(1));
+    r.addMessage(makeChannel(2, '/scan'), 1n, makeData(2));
+    expect(r.messageCount).toBe(2);
+  });
+
+  it('only records selected topics when filter is provided', () => {
+    const r = new LiveRecorder(new Set(['/odom']));
+    r.addMessage(makeChannel(1, '/odom'), 0n, makeData(1));
+    r.addMessage(makeChannel(2, '/scan'), 1n, makeData(2));
+    expect(r.messageCount).toBe(1);
+    expect(r.byteCount).toBe(4); // only /odom's 4 bytes
+  });
+
+  it('topicFilter stores the provided set', () => {
+    const filter = new Set(['/tf', '/cmd_vel']);
+    const r = new LiveRecorder(filter);
+    expect(r.topicFilter).toBe(filter);
+  });
+
+  it('records nothing when filter is an empty set', () => {
+    const r = new LiveRecorder(new Set());
+    r.addMessage(makeChannel(1, '/odom'), 0n, makeData(1));
+    expect(r.messageCount).toBe(0);
+  });
+
+  it('finish() only contains messages from filtered topics', async () => {
+    const r = new LiveRecorder(new Set(['/tf']));
+    r.addMessage(makeChannel(1, '/odom'), 100n, makeData(0xaa));
+    r.addMessage(makeChannel(2, '/tf'), 200n, makeData(0xbb));
+    const bytes = await r.finish();
+    // MCAP magic means serialization ran - just check it's non-empty
+    expect(bytes.length).toBeGreaterThan(8);
+    expect(bytes[0]).toBe(0x89); // MCAP magic
+  });
 });

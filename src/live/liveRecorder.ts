@@ -14,6 +14,9 @@
 
 import type { FoxgloveChannel } from './foxgloveClient';
 
+/** Hard limit on in-memory recording size (500 MB). */
+export const MAX_RECORD_BYTES = 500 * 1024 * 1024;
+
 interface RecordedMsg {
   channelId: number;
   timeNs: bigint;
@@ -26,10 +29,23 @@ export class LiveRecorder {
   private _byteCount = 0;
 
   /**
-   * Buffer a single incoming message. The raw CDR/JSON bytes are copied so
-   * the caller's WebSocket ArrayBuffer can be released immediately.
+   * Optional topic allowlist. When non-null, only messages whose topic is
+   * in this set are buffered. Null means record all advertised topics.
+   */
+  readonly topicFilter: ReadonlySet<string> | null;
+
+  constructor(topicFilter?: ReadonlySet<string> | null) {
+    this.topicFilter = topicFilter ?? null;
+  }
+
+  /**
+   * Buffer a single incoming message. No-ops silently if the topic is excluded
+   * by the filter or if the buffer is already full. The raw CDR/JSON bytes are
+   * copied so the caller's WebSocket ArrayBuffer can be released immediately.
    */
   addMessage(channel: FoxgloveChannel, timeNs: bigint, data: Uint8Array): void {
+    if (this.topicFilter !== null && !this.topicFilter.has(channel.topic)) return;
+    if (this._byteCount >= MAX_RECORD_BYTES) return;
     if (!this.channelMap.has(channel.id)) {
       this.channelMap.set(channel.id, channel);
     }
@@ -37,6 +53,11 @@ export class LiveRecorder {
     copy.set(data);
     this.messages.push({ channelId: channel.id, timeNs, data: copy });
     this._byteCount += data.byteLength;
+  }
+
+  /** True when the buffer has reached MAX_RECORD_BYTES. */
+  get isFull(): boolean {
+    return this._byteCount >= MAX_RECORD_BYTES;
   }
 
   get messageCount(): number {

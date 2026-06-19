@@ -132,28 +132,39 @@ describe('liveStore', () => {
     });
 
     it('setRecording adds stats for a bag', () => {
-      useLiveStore.getState().setRecording('bag1', { messageCount: 42, byteCount: 1024 });
+      useLiveStore.getState().setRecording('bag1', { messageCount: 42, byteCount: 1024, isFull: false, topicFilter: null });
       const s = useLiveStore.getState();
-      expect(s.recording.get('bag1')).toEqual({ messageCount: 42, byteCount: 1024 });
+      expect(s.recording.get('bag1')).toMatchObject({ messageCount: 42, byteCount: 1024, isFull: false });
     });
 
     it('setRecording null removes the bag entry', () => {
-      useLiveStore.getState().setRecording('bag1', { messageCount: 10, byteCount: 100 });
+      useLiveStore.getState().setRecording('bag1', { messageCount: 10, byteCount: 100, isFull: false, topicFilter: null });
       useLiveStore.getState().setRecording('bag1', null);
       expect(useLiveStore.getState().recording.has('bag1')).toBe(false);
     });
 
+    it('setRecording stores isFull flag', () => {
+      useLiveStore.getState().setRecording('bag1', { messageCount: 100, byteCount: 500 * 1024 * 1024, isFull: true, topicFilter: null });
+      expect(useLiveStore.getState().recording.get('bag1')?.isFull).toBe(true);
+    });
+
+    it('setRecording stores topicFilter', () => {
+      const filter = new Set(['/odom', '/scan']);
+      useLiveStore.getState().setRecording('bag1', { messageCount: 0, byteCount: 0, isFull: false, topicFilter: filter });
+      expect(useLiveStore.getState().recording.get('bag1')?.topicFilter).toBe(filter);
+    });
+
     it('setRecording isolates multiple bags', () => {
-      useLiveStore.getState().setRecording('bag1', { messageCount: 5, byteCount: 50 });
-      useLiveStore.getState().setRecording('bag2', { messageCount: 10, byteCount: 100 });
+      useLiveStore.getState().setRecording('bag1', { messageCount: 5, byteCount: 50, isFull: false, topicFilter: null });
+      useLiveStore.getState().setRecording('bag2', { messageCount: 10, byteCount: 100, isFull: false, topicFilter: null });
       useLiveStore.getState().setRecording('bag1', null);
       const s = useLiveStore.getState();
       expect(s.recording.has('bag1')).toBe(false);
-      expect(s.recording.get('bag2')).toEqual({ messageCount: 10, byteCount: 100 });
+      expect(s.recording.get('bag2')).toMatchObject({ messageCount: 10, byteCount: 100 });
     });
 
     it('removeEntry clears recording stats for the bag', () => {
-      useLiveStore.getState().setRecording('bag1', { messageCount: 99, byteCount: 9999 });
+      useLiveStore.getState().setRecording('bag1', { messageCount: 99, byteCount: 9999, isFull: false, topicFilter: null });
       useLiveStore.getState().removeEntry('bag1');
       expect(useLiveStore.getState().recording.has('bag1')).toBe(false);
     });
