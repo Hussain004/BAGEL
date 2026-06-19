@@ -127,51 +127,57 @@ export function PanelShell({
     >
       <header
         onPointerDown={handleHeaderPointerDown}
-        className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-surface/60 cursor-grab active:cursor-grabbing select-none"
+        className="flex items-center gap-2 px-3 py-2.5 border-b border-border bg-surface/60 cursor-grab active:cursor-grabbing select-none"
         title="Drag to dock this panel"
       >
-        <span
-          className="w-2 h-2 rounded-full flex-shrink-0"
-          style={{ backgroundColor: accentColor ?? '#94a3b8' }}
-          aria-hidden="true"
-        />
-        <span className="badge badge-slate flex-shrink-0">{KIND_LABELS[kind]}</span>
-        {bagCount > 1 && entry && (
+        {/* Left section: topic metadata - shrinks when panel is narrow, clips internally */}
+        <div className="flex items-center gap-2 flex-1 min-w-0 overflow-hidden">
           <span
-            className="badge flex-shrink-0 mono text-[10px] px-1.5 py-0.5 rounded"
-            style={{
-              backgroundColor: `${entry.color}22`,
-              color: entry.color,
-              border: `1px solid ${entry.color}44`,
-            }}
-            title={`Reading from ${entry.summary.fileName}`}
+            className="w-2 h-2 rounded-full flex-shrink-0"
+            style={{ backgroundColor: accentColor ?? '#94a3b8' }}
+            aria-hidden="true"
+          />
+          <span className="badge badge-slate flex-shrink-0">{KIND_LABELS[kind]}</span>
+          {bagCount > 1 && entry && (
+            <span
+              className="badge flex-shrink-0 mono text-[10px] px-1.5 py-0.5 rounded"
+              style={{
+                backgroundColor: `${entry.color}22`,
+                color: entry.color,
+                border: `1px solid ${entry.color}44`,
+              }}
+              title={`Reading from ${entry.summary.fileName}`}
+            >
+              {entry.summary.fileName}
+            </span>
+          )}
+          <span
+            className="mono text-sm text-text-primary font-medium truncate flex-1 min-w-0"
+            title={topicName}
           >
-            {entry.summary.fileName}
+            {topicName}
           </span>
-        )}
-        <span
-          className="mono text-sm text-text-primary font-medium truncate flex-1"
-          title={topicName}
-        >
-          {topicName}
-        </span>
-        <div className="flex items-center gap-1.5 flex-shrink-0 text-xs">
-          {pkg && <span className="text-text-muted mono">{pkg}/</span>}
-          <span className="text-text-secondary mono">{shortType}</span>
+          <div className="flex items-center gap-1.5 flex-shrink-0 text-xs">
+            {pkg && <span className="text-text-muted mono">{pkg}/</span>}
+            <span className="text-text-secondary mono">{shortType}</span>
+          </div>
         </div>
-        {headerExtras}
-        <ExportMenu topicName={topicName} kind={kind} bagId={bagId} />
-        <button
-          onClick={() => closePanel(panelId)}
-          className="w-7 h-7 rounded-md flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-surface-hover transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
-          title="Close panel (Esc)"
-          aria-label={`Close ${KIND_LABELS[kind]} panel for ${topicName}`}
-          id={`close-panel-${panelId}`}
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
+        {/* Right section: controls - never shrinks, always reachable */}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {headerExtras}
+          <ExportMenu topicName={topicName} kind={kind} bagId={bagId} />
+          <button
+            onClick={() => closePanel(panelId)}
+            className="w-7 h-7 rounded-md flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-surface-hover transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
+            title="Close panel (Esc)"
+            aria-label={`Close ${KIND_LABELS[kind]} panel for ${topicName}`}
+            id={`close-panel-${panelId}`}
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
       </header>
       <div className="flex-1 flex flex-col min-h-0">{children}</div>
     </div>
