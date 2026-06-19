@@ -16,6 +16,7 @@
 
 import { FoxgloveClient, type FoxgloveChannel, type FoxgloveEvent } from './foxgloveClient';
 import { LiveRingBuffer } from './liveRingBuffer';
+import { LiveRecorder } from './liveRecorder';
 import { decodeLiveMessage } from './liveDecoder';
 import { useLiveStore, type LiveStatus } from '../store/liveStore';
 import type { BagSummary, TopicInfo } from '../types/bag';
@@ -44,6 +45,7 @@ export class LiveConnection {
   private cachedSummary: BagSummary;
 
   private pendingRevBump = false;
+  private recorder: LiveRecorder | null = null;
 
   constructor(bagId: string, wsUrl: string, onSummaryUpdate: SummaryCallback) {
     this.bagId = bagId;
@@ -113,6 +115,7 @@ export class LiveConnection {
             : BigInt(Date.now()) * 1_000_000n;
 
         this.ringBuffer.push(ch.topic, timeNs, value);
+        this.recorder?.addMessage(ch, timeNs, event.data);
         this.summaryDirty = true;
         this.scheduleBump(timeNs);
         break;
@@ -173,6 +176,12 @@ export class LiveConnection {
       duration,
     );
     this.onSummaryUpdate(this.cachedSummary);
+    if (this.recorder) {
+      useLiveStore.getState().setRecording(this.bagId, {
+        messageCount: this.recorder.messageCount,
+        byteCount: this.recorder.byteCount,
+      });
+    }
   }
 
   private buildTopicList(): TopicInfo[] {
@@ -221,8 +230,27 @@ export class LiveConnection {
     return this.cachedSummary;
   }
 
+  get isRecording(): boolean {
+    return this.recorder !== null;
+  }
+
+  startRecording(): void {
+    if (this.recorder) return;
+    this.recorder = new LiveRecorder();
+    useLiveStore.getState().setRecording(this.bagId, { messageCount: 0, byteCount: 0 });
+  }
+
+  async stopRecording(): Promise<Uint8Array> {
+    const r = this.recorder;
+    this.recorder = null;
+    useLiveStore.getState().setRecording(this.bagId, null);
+    if (!r) throw new Error('Not recording');
+    return r.finish();
+  }
+
   disconnect(): void {
     this.destroyed = true;
+    this.recorder = null;
     if (this.reconnectTimer !== null) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;

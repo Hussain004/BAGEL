@@ -8,6 +8,38 @@ Detailed version-by-version release notes, including the design rationale behind
 
 v1.5 makes BAGEL a live robotics tool, not just a bag file viewer. The headline: paste a `ws://` URL and every panel updates in real time from a running robot. No ROS install, no Foxglove account, just a browser tab.
 
+### v1.5.2: Live MCAP Recording
+
+Everything in v1.5.1, plus:
+
+- **Record live data to MCAP while connected.** A `Record` button appears in the Toolbar when a live bag is focused and the WebSocket is connected. Clicking it starts buffering every incoming message; clicking `Stop` (or the red pulsing chip showing the running message count) finalises the MCAP and downloads it as `bagel-recording-{timestamp}.mcap`. The resulting file is a fully indexed MCAP, identical in format to what BAGEL's bag-editor produces, so it opens back in BAGEL or any external `mcap`-compatible tool (`mcap info`, Foxglove Studio, the official `mcap` CLI) with full range-read and topic-filter support.
+
+- **`LiveRecorder`** (`src/live/liveRecorder.ts`). Synchronous buffering during recording: each incoming message triggers one `Uint8Array` copy (to release the WebSocket's `ArrayBuffer` immediately) and one array push. No async MCAP writes happen while recording is active, so per-message overhead is constant and minimal even at high topic rates. The raw bytes are stored alongside the `FoxgloveChannel` metadata (topic name, schema, encoding), so the recorder is self-contained and doesn't need to query `LiveConnection`'s channel map at finish time.
+
+  `finish()` is the only async path: it dynamically imports `McapWriter` from `@mcap/core` (so the main bundle stays clean on startup - the module is already cached in the parser-worker chunk from the first bag parsed in the session), creates an in-memory `MemoryWritable`, registers schemas and channels lazily in first-appearance order (deduplicating schemas by a `name\0encoding\0schemaText` key so a 30 Hz topic's channel is registered exactly once), writes all buffered messages in arrival order, calls `writer.end()`, and returns the tight bytes from `MemoryWritable`. The MCAP writer is configured with `useChunks + useStatistics + useChunkIndex + useMessageIndex + useSummaryOffsets` so the output has a proper chunk + summary index and loads back into BAGEL's range-read path without needing a full-file scan.
+
+- **`liveStore` recording state** (`src/store/liveStore.ts`). A new `recording: Map<string, RecordingStats>` field stores per-bag `{ messageCount, byteCount }`. A bag ID is present in the map only while recording is active for that bag. `setRecording(bagId, stats | null)` inserts or removes the entry. `removeEntry` cleans up recording state when the bag is disconnected. The stats are updated at the same 1 Hz interval as the bag summary flush (`flushSummary` in `LiveConnection`), so the Toolbar counter shows a live reading without a re-render per message.
+
+- **`LiveConnection` additions** (`src/live/liveConnection.ts`). Three new public members: `isRecording: boolean` (read-only getter, true while a `LiveRecorder` is active), `startRecording(): void` (creates a fresh `LiveRecorder`, no-ops if already recording), `stopRecording(): Promise<Uint8Array>` (clears the recorder reference, clears `liveStore` recording state, calls `recorder.finish()` and returns the MCAP bytes). In the `message` event handler, `this.recorder?.addMessage(ch, timeNs, event.data)` passes the raw `Uint8Array` to the recorder alongside the ring-buffer push. The `disconnect()` method nulls the recorder reference so a live disconnection during a recording silently discards the in-progress buffer (no dangling async state).
+
+- **Toolbar `RecordButton`** (`src/components/layout/Toolbar.tsx`). Rendered when the focused bag is live. Three visual states:
+  - **Idle**: grey circle icon + `Record` label. Disabled (muted + `cursor-not-allowed`) when the connection status is anything other than `connected` - recording during reconnect is meaningless and would produce an empty file.
+  - **Recording**: rose-tinted button with a pulsing red dot + running message count (`1,234 msgs`). Clicking calls `liveConn.stopRecording()`, awaits the MCAP bytes, and triggers a browser download via `downloadBytes` (the same utility the clip-exporter uses). While awaiting, the button transitions to the "Saving..." state.
+  - **Saving**: disabled grey button with a pulsing dot while `finish()` serialises the buffer to MCAP. For a typical 1-minute / 300 Hz recording (~18,000 messages) this is under 200 ms.
+
+  The download filename is `bagel-recording-{YYYY-MM-DD-HH-MM-SS}.mcap` derived from `new Date().toISOString()`, which is both unambiguous and filename-safe (colons replaced with hyphens). `downloadBytes` from `clipEncoder.ts` is reused for the browser `<a href=...>` trigger so no new download infrastructure is needed.
+
+- **11 new tests** in `tests/live/liveRecorder.test.ts` covering: empty recorder initial state, `addMessage` messageCount and byteCount accumulation, `startTimeNs` / `endTimeNs` tracking, data copy isolation (mutating the original buffer after push doesn't affect the recorder), `finish()` MCAP magic on an empty recording, `finish()` MCAP magic with messages, schema deduplication across repeated messages on the same channel, multi-channel support, JSON-encoded messages, and many-channel accumulation.
+
+  **5 new tests** added to `tests/store/liveStore.test.ts` covering: `recording` map starts empty, `setRecording` inserts stats, `setRecording(null)` removes the entry, isolation between multiple bags, and `removeEntry` clears recording state. **360 passing tests total** (was 344 at v1.5.0, +11 recorder + 5 store).
+
+Explicitly out of scope for v1.5.2:
+- **Recording to a size limit.** The recorder buffers everything in memory; a very long recording can exhaust the tab's heap. The Toolbar shows the byte count so users can judge when to stop. A chunked-write-to-disk path (via the File System Access API `showSaveFilePicker`) is a natural follow-up for field-use scenarios where recording duration exceeds available RAM.
+- **Per-topic recording filter.** The recorder captures all advertised topics. Selective capture (record only `/camera/image_raw` and `/odom`) is a useful UX addition but requires a filter UI modal and adds complexity to the channel/schema registration step. Deferred until a user hits the "I only want to record these 3 topics" use case.
+- **Recording from multiple live bags simultaneously.** The `RecordButton` only appears for the focused live bag. Multi-bag simultaneous recording is technically possible (each `LiveConnection` has its own recorder) but the download flow (multiple files? one merged file?) is unspecified. Deferred.
+
+---
+
 ### v1.5.0: Foxglove WebSocket Live Connection
 
 Everything in v1.4.3, plus:

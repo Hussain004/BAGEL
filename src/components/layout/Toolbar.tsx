@@ -11,8 +11,10 @@ import { useLayoutStore } from '../../store/layoutStore';
 import { useThemeStore } from '../../store/themeStore';
 import { useUiStore } from '../../store/uiStore';
 import { useRobotModelStore } from '../../store/robotModelStore';
+import type { LiveConnection } from '../../live/liveConnection';
 import { formatFileSize } from '../../utils/bytes';
 import { formatDuration, nsToSeconds } from '../../utils/time';
+import { downloadBytes } from '../../utils/clipEncoder';
 import { APP_VERSION } from '../../utils/version';
 
 /**
@@ -210,6 +212,13 @@ export function Toolbar() {
             <ClipIcon />
             <span className="hidden xl:inline">Export</span>
           </button>
+        )}
+        {focusedBagIsLive && focusBagId && (
+          <RecordButton
+            bagId={focusBagId}
+            liveConn={bags.get(focusBagId)?.liveConn ?? null}
+            status={liveStatuses.get(focusBagId) ?? 'disconnected'}
+          />
         )}
         {focusedBagIsLive && (
           <FollowLiveButton followLive={followLive} onToggle={() => setFollowLive(!followLive)} />
@@ -471,6 +480,85 @@ function FollowLiveButton({ followLive, onToggle }: { followLive: boolean; onTog
         </svg>
       )}
       <span className="hidden xl:inline">{followLive ? 'Live' : 'Follow'}</span>
+    </button>
+  );
+}
+
+interface RecordButtonProps {
+  bagId: string;
+  liveConn: LiveConnection | null;
+  status: LiveStatus;
+}
+function RecordButton({ bagId, liveConn, status }: RecordButtonProps) {
+  const recordingStats = useLiveStore((s) => s.recording.get(bagId));
+  const isRecording = recordingStats !== undefined;
+  const [finishing, setFinishing] = useState(false);
+
+  const onStart = () => {
+    liveConn?.startRecording();
+  };
+
+  const onStop = async () => {
+    if (!liveConn || finishing) return;
+    setFinishing(true);
+    try {
+      const bytes = await liveConn.stopRecording();
+      const ts = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
+      downloadBytes(bytes, `bagel-recording-${ts}.mcap`);
+    } finally {
+      setFinishing(false);
+    }
+  };
+
+  if (finishing) {
+    return (
+      <button
+        disabled
+        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs border border-border text-text-muted cursor-not-allowed"
+        aria-label="Saving recording"
+      >
+        <span className="w-2 h-2 rounded-full bg-accent-rose animate-pulse flex-shrink-0" />
+        <span className="hidden xl:inline">Saving...</span>
+      </button>
+    );
+  }
+
+  if (isRecording) {
+    return (
+      <button
+        onClick={onStop}
+        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs border border-accent-rose/40 bg-accent-rose/10 text-accent-rose hover:bg-accent-rose/15 transition-all"
+        title={`Recording - ${formatNumber(recordingStats.messageCount)} messages, ${formatFileSize(recordingStats.byteCount)}. Click to stop and download.`}
+        aria-label="Stop recording and download MCAP"
+      >
+        <span className="w-2 h-2 rounded-full bg-accent-rose animate-pulse flex-shrink-0" />
+        <span className="tabular-nums hidden xl:inline">
+          {formatNumber(recordingStats.messageCount)} msgs
+        </span>
+      </button>
+    );
+  }
+
+  return (
+    <button
+      onClick={onStart}
+      disabled={status !== 'connected'}
+      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs border transition-all ${
+        status === 'connected'
+          ? 'border-border text-text-secondary hover:text-accent-rose hover:bg-accent-rose/10 hover:border-accent-rose/40'
+          : 'border-border text-text-muted cursor-not-allowed opacity-50'
+      }`}
+      title={
+        status === 'connected'
+          ? 'Record live data to MCAP - capture all incoming messages and download when stopped'
+          : 'Connect to a live robot first to enable recording'
+      }
+      aria-label="Record live data"
+    >
+      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="8" />
+      </svg>
+      <span className="hidden xl:inline">Record</span>
     </button>
   );
 }

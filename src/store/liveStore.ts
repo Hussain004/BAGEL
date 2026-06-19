@@ -20,6 +20,11 @@ export type LiveStatus =
   | 'reconnecting'
   | 'error';
 
+export interface RecordingStats {
+  messageCount: number;
+  byteCount: number;
+}
+
 interface LiveState {
   /**
    * Per-bag revision counter, bumped (via RAF) on every message push.
@@ -44,9 +49,16 @@ interface LiveState {
    */
   followLive: boolean;
 
+  /**
+   * Per-bag recording stats. A bag ID is present in this map only while
+   * recording is active for that bag. Updated at 1 Hz by LiveConnection.
+   */
+  recording: Map<string, RecordingStats>;
+
   bumpRevision: (bagId: string, timeNs: bigint) => void;
   setStatus: (bagId: string, status: LiveStatus, message?: string) => void;
   setFollowLive: (v: boolean) => void;
+  setRecording: (bagId: string, stats: RecordingStats | null) => void;
   removeEntry: (bagId: string) => void;
 }
 
@@ -56,6 +68,7 @@ export const useLiveStore = create<LiveState>((set) => ({
   statuses: new Map(),
   statusMessages: new Map(),
   followLive: true,
+  recording: new Map(),
 
   bumpRevision: (bagId, timeNs) =>
     set((s) => {
@@ -78,16 +91,29 @@ export const useLiveStore = create<LiveState>((set) => ({
 
   setFollowLive: (followLive) => set({ followLive }),
 
+  setRecording: (bagId, stats) =>
+    set((s) => {
+      const recording = new Map(s.recording);
+      if (stats === null) {
+        recording.delete(bagId);
+      } else {
+        recording.set(bagId, stats);
+      }
+      return { recording };
+    }),
+
   removeEntry: (bagId) =>
     set((s) => {
       const revisions = new Map(s.revisions);
       const edgeTimes = new Map(s.edgeTimes);
       const statuses = new Map(s.statuses);
       const statusMessages = new Map(s.statusMessages);
+      const recording = new Map(s.recording);
       revisions.delete(bagId);
       edgeTimes.delete(bagId);
       statuses.delete(bagId);
       statusMessages.delete(bagId);
-      return { revisions, edgeTimes, statuses, statusMessages };
+      recording.delete(bagId);
+      return { revisions, edgeTimes, statuses, statusMessages, recording };
     }),
 }));

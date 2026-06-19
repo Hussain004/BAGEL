@@ -8,6 +8,7 @@ function resetStore() {
     statuses: new Map(),
     statusMessages: new Map(),
     followLive: true,
+    recording: new Map(),
   });
 }
 
@@ -122,6 +123,39 @@ describe('liveStore', () => {
 
     it('is a no-op for unknown bagId', () => {
       expect(() => useLiveStore.getState().removeEntry('nonexistent')).not.toThrow();
+    });
+  });
+
+  describe('setRecording', () => {
+    it('starts with empty recording map', () => {
+      expect(useLiveStore.getState().recording.size).toBe(0);
+    });
+
+    it('setRecording adds stats for a bag', () => {
+      useLiveStore.getState().setRecording('bag1', { messageCount: 42, byteCount: 1024 });
+      const s = useLiveStore.getState();
+      expect(s.recording.get('bag1')).toEqual({ messageCount: 42, byteCount: 1024 });
+    });
+
+    it('setRecording null removes the bag entry', () => {
+      useLiveStore.getState().setRecording('bag1', { messageCount: 10, byteCount: 100 });
+      useLiveStore.getState().setRecording('bag1', null);
+      expect(useLiveStore.getState().recording.has('bag1')).toBe(false);
+    });
+
+    it('setRecording isolates multiple bags', () => {
+      useLiveStore.getState().setRecording('bag1', { messageCount: 5, byteCount: 50 });
+      useLiveStore.getState().setRecording('bag2', { messageCount: 10, byteCount: 100 });
+      useLiveStore.getState().setRecording('bag1', null);
+      const s = useLiveStore.getState();
+      expect(s.recording.has('bag1')).toBe(false);
+      expect(s.recording.get('bag2')).toEqual({ messageCount: 10, byteCount: 100 });
+    });
+
+    it('removeEntry clears recording stats for the bag', () => {
+      useLiveStore.getState().setRecording('bag1', { messageCount: 99, byteCount: 9999 });
+      useLiveStore.getState().removeEntry('bag1');
+      expect(useLiveStore.getState().recording.has('bag1')).toBe(false);
     });
   });
 });
