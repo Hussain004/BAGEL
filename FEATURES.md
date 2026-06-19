@@ -8,6 +8,24 @@ Detailed version-by-version release notes, including the design rationale behind
 
 v1.5 makes BAGEL a live robotics tool, not just a bag file viewer. The headline: paste a `ws://` URL and every panel updates in real time from a running robot. No ROS install, no Foxglove account, just a browser tab.
 
+### v1.5.3: ROS1 Live Connection
+
+Everything in v1.5.2, plus:
+
+- **ROS1 CDR decoding in the live decoder** (`src/live/liveDecoder.ts`). Foxglove bridges on ROS1 robots (via `ros_foxglove_bridge` or the `foxglove_bridge` ROS1 package) advertise channels with `encoding: "ros1"` and `schemaEncoding: "ros1msg"`. ROS1 CDR is structurally similar to ROS2 CDR but omits the 4-byte RTPS encapsulation header that precedes every ROS2 message. Using the ROS2 reader on ROS1 bytes would interpret those bytes as the payload, producing silent garbage output. v1.5.3 adds an explicit `encoding === 'ros1'` path that uses `@foxglove/rosmsg-serialization`'s `MessageReader` (which does not strip a header) and parses the schema with `{ ros2: false }`.
+
+  `@foxglove/rosmsg-serialization` was already a transitive dependency (it's used by the bag-file parser worker for ROS1 `.bag` files), so no new package is required and the main bundle is unaffected.
+
+- **Separate reader caches for ROS1 and ROS2** (`ros1Readers`, `ros2Readers`). Both caches are keyed by schema fingerprint (full schema text for short schemas, prefix + length for long ones). The two caches must stay separate because the readers are not wire-format-compatible: the wrong reader applied to the right bytes would silently decode garbage at the byte boundary shifted by 4. `clearLiveDecoderCache()` now empties both maps.
+
+- **16 new tests** in `tests/live/liveDecoder.test.ts` covering: JSON encoding (simple, nested, malformed), ROS2 CDR (ros2msg, no schemaEncoding, reader caching, truncated bytes), CDR with ros1msg schemaEncoding, ROS1 encoding (basic decode, corrupt bytes from ROS2 writer, separate cache from ROS2, malformed bytes, multi-field numeric), unknown encodings (protobuf, empty string), and `clearLiveDecoderCache` rebuilding both caches. **425 passing tests total** (was 360 at v1.5.2).
+
+Explicitly out of scope for v1.5.3:
+- **ROS1 subscriber re-subscribe on reconnect.** The existing reconnect path in `LiveConnection` re-subscribes using the current `channels` map; since `FoxgloveChannel` objects are the same for ROS1 and ROS2, this works without changes.
+- **ROS1 bag playback over live.** Playing a `.bag` file through a Foxglove bridge and connecting to it from BAGEL now works end-to-end, but seeking / scrubbing is controlled by the bridge's clock - BAGEL's playhead just follows `logTimeNs` values as they arrive and does not send seek commands back to the server. Service-call-based seeking is a parameter-service feature deferred to a later version.
+
+---
+
 ### v1.5.2: Live MCAP Recording
 
 Everything in v1.5.1, plus:

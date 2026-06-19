@@ -12,7 +12,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-8-646cff.svg)](https://vite.dev/)
-[![Version](https://img.shields.io/badge/version-1.5.2-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
+[![Version](https://img.shields.io/badge/version-1.5.3-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
 
 [**→ Live Demo**](https://bagel-ros2.vercel.app) · [Report Bug](https://github.com/Hussain004/BAGEL/issues) · [Request Feature](https://github.com/Hussain004/BAGEL/issues)
 
@@ -106,13 +106,13 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 - **`package://` resolver**: paste a URL prefix or drag-drop a folder per referenced package; URL bindings persist across sessions in `localStorage` under `bagel:package-roots:v1`. No auto-fetch from ROS distros - BAGEL only loads meshes from where you point it.
 - **Bundled sample robot URDF** (`public/sample-bags/sample-robot.urdf`) pairs with `tour.mcap` so the "Try a sample robot" button in the modal demonstrates the full flow on a fresh checkout.
 
-### Live robot data *(v1.5.0 - v1.5.2)*
+### Live robot data *(v1.5.0 - v1.5.3)*
 
 - **Foxglove WebSocket client**: connect to a live robot by pasting a `ws://host:8765` URL into the new "Connect" input. Works with `foxglove_bridge` (ROS2) and `rosbridge_suite` (ROS1/ROS2). Implements `foxglove.websocket.v1` - binary MESSAGE_DATA frames for message payloads, JSON frames for topic advertisement.
 - **Per-topic ring buffer**: the last 10,000 messages per topic are held in memory. All existing panels (Image, Plot, 3D Scene, Trajectory, TF Tree, Log) display live data without any panel-level changes - the hooks detect a live entry and read from the ring buffer instead of the parser worker.
 - **Follow / Pause mode**: the timeline's Follow button (also in the Toolbar chip) keeps the playhead at the live edge. Press Pause to scrub back through buffered history; press Follow to snap forward again.
 - **Auto-reconnect**: exponential backoff on disconnect: 1s, 2s, 4s, 8s, 16s, 30s. Connection status shown as a pulsing dot (emerald = connected, amber = reconnecting, rose = error) on the toolbar chip.
-- **CDR and JSON decoding** in the main thread using the bundled `@foxglove/rosmsg2-serialization` parser - same library used for `.db3` topic decoding, no new dependencies.
+- **CDR and JSON decoding** in the main thread. ROS2 CDR via `@foxglove/rosmsg2-serialization`, ROS1 CDR via `@foxglove/rosmsg-serialization` - both already bundled as bag-parsing dependencies, no new packages. *(v1.5.3 adds `encoding: "ros1"` for ROS1 bridges)*
 - **Live MCAP recording** *(v1.5.2)*: `Record` button in the Toolbar (visible when a live connection is active) buffers every incoming message. Click `Stop` to serialize all captured data to a fully-indexed MCAP file and download it instantly. The output opens back in BAGEL or any `mcap`-compatible tool without conversion.
 
 ### Analysis tools *(v1.4)*
@@ -130,7 +130,7 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 - **Saved Display defaults**: per-data-type defaults for the 3D panel's Display card (colour mode, accumulator, point size, range filter, up axis, camera-frustum master toggle), persisted across sessions. Manageable from the About modal. *(v1.3.3 / v1.3.4)*
 - **Accessibility pass**: ARIA roles + focus management on every modal, `prefers-reduced-motion` respected, focus-visible rings throughout.
 - **Bundled `tour.mcap` sample bag** exercises every panel type. Drop in zero seconds with the "Try a sample bag" button.
-- **360-test Vitest suite** + GitHub Actions CI runs `tsc -b` + `pnpm test` on every PR. *(v1.0, expanded each release)*
+- **425-test Vitest suite** + GitHub Actions CI runs `tsc -b` + `pnpm test` on every PR. *(v1.0, expanded each release)*
 - **Bags well over 2 GB work in the browser**: range reads + lazy decoding throughout the parser stack.
 
 > Looking for the long version with implementation notes and design tradeoffs for each release? See **[FEATURES.md](FEATURES.md)**.
@@ -139,6 +139,7 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 
 ### Earlier version highlights at a glance
 
+- **v1.5.3**: ROS1 live connection. Added `encoding: "ros1"` (ROS1 CDR, no RTPS header) to the live decoder alongside the existing `cdr` (ROS2) and `json` paths. `@foxglove/rosmsg-serialization` was already bundled; no new dependencies. Separate reader caches for ROS1 and ROS2 (wire formats are not interchangeable). 16 new tests in `tests/live/liveDecoder.test.ts`; 425 total.
 - **v1.5.2**: Live MCAP recording. A `Record` button appears in the Toolbar while connected to a live robot. Clicking it buffers all incoming messages (raw CDR/JSON bytes + channel metadata); clicking `Stop` serialises the buffer to a fully-indexed MCAP and triggers a browser download. The recorder uses synchronous buffering during capture and dynamic-imports `McapWriter` only at stop time so the main bundle stays clean. 16 new tests (+11 `liveRecorder` + 5 `liveStore` recording state); 360 total.
 - **v1.5.0**: Live robot data via Foxglove WebSocket (`ws://host:8765`). Paste a URL into the new Connect input; all existing panels update in real time. Per-topic ring buffer (10,000 msg/topic), Follow/Pause toggle on the timeline, auto-reconnect with exponential backoff, pulsing status dot on the toolbar chip. CDR + JSON decoding in the main thread via the bundled `@foxglove/rosmsg2-serialization` - no new dependencies. 41 new tests in `tests/live/` and `tests/store/`; 344 total.
 - **v1.4.3**: Timeline bookmarks. Named amber ticks on the scrubber; double-click the bar (or press `M`, or use the `+` button) to drop a bookmark at any timestamp, click to seek, hover to see the label and delete it. Bookmarks persist to `localStorage` keyed by bag fingerprint and are encoded in the URL hash as `bm=timeSec.3f,label|...` tuples so a shared link opens the bag with the sender's annotations intact. `loadForBag` lets URL-hash bookmarks take priority over localStorage. 11 new tests in `tests/store/annotations.test.ts`; 303 total.
@@ -167,7 +168,7 @@ For the full detail behind each release (including design rationale and implemen
 
 ### Roadmap
 
-v1.0 stabilised the surface BAGEL already covered. v1.1 / v1.2 shipped browser-native bag editing. v1.3.x built "real robotics tool" features (URDF, CameraInfo, image rectification). v1.4 added analysis and shareability: Bag Health dashboard (v1.4.0), math expressions in plots (v1.4.1), frame-by-frame clip export (v1.4.2), and timeline bookmarks shareable via URL hash (v1.4.3). **v1.5.0 shipped live robot data** via Foxglove WebSocket: connect to a running robot, view all panels in real time, scrub the ring buffer when you pause. **v1.5.2 added live MCAP recording**: hit Record while connected, hit Stop to download a fully-indexed MCAP of everything the robot published. Possible future directions:
+v1.0 stabilised the surface BAGEL already covered. v1.1 / v1.2 shipped browser-native bag editing. v1.3.x built "real robotics tool" features (URDF, CameraInfo, image rectification). v1.4 added analysis and shareability: Bag Health dashboard (v1.4.0), math expressions in plots (v1.4.1), frame-by-frame clip export (v1.4.2), and timeline bookmarks shareable via URL hash (v1.4.3). **v1.5.0 shipped live robot data** via Foxglove WebSocket: connect to a running robot, view all panels in real time, scrub the ring buffer when you pause. **v1.5.2 added live MCAP recording**: hit Record while connected, hit Stop to download a fully-indexed MCAP of everything the robot published. **v1.5.3 adds ROS1 live connection**: `encoding: "ros1"` CDR decoding for ROS1 Foxglove bridges - same bundled library, no new dependencies. Possible future directions:
 
 | Idea | Notes |
 |---|---|
