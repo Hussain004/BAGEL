@@ -16,6 +16,7 @@ import { BlobReadable } from '@mcap/browser';
 import { decompress as fzstdDecompress } from 'fzstd';
 import type { AllTopicStats, BagSummary, RawMessage, TopicInfo } from '../types/bag';
 import { deserializeWithSchema } from './cdr';
+import { translateFoxgloveMessage } from './foxgloveSchemas';
 import {
   HttpReadable,
   sourceDisplayName,
@@ -169,9 +170,9 @@ interface CachedMcap {
   size: number;
   reader: McapIndexedReader | null;
   buffer: Uint8Array | null;
-  channelById: Map<number, { topic: string; schemaId: number }>;
+  channelById: Map<number, { topic: string; schemaId: number; messageEncoding: string }>;
   schemaById: Map<number, { name: string; encoding: string; data: Uint8Array }>;
-  topicMeta: Map<string, { schemaName: string; schemaText: string | null }>;
+  topicMeta: Map<string, { schemaName: string; schemaText: string | null; messageEncoding: string }>;
   decompressHandlers: DecompressHandlers;
   chunkCache: ChunkCache;
   /** Per-topic LRU of the most recently returned decoded messages. Keyed
@@ -226,9 +227,9 @@ async function loadMcap(source: BagSource): Promise<CachedMcap> {
 
   let reader: McapIndexedReader | null = null;
   let buffer: Uint8Array | null = null;
-  const channelById = new Map<number, { topic: string; schemaId: number }>();
+  const channelById = new Map<number, { topic: string; schemaId: number; messageEncoding: string }>();
   const schemaById = new Map<number, { name: string; encoding: string; data: Uint8Array }>();
-  const topicMeta = new Map<string, { schemaName: string; schemaText: string | null }>();
+  const topicMeta = new Map<string, { schemaName: string; schemaText: string | null; messageEncoding: string }>();
 
   let indexedError: unknown = null;
   try {
@@ -244,11 +245,13 @@ async function loadMcap(source: BagSource): Promise<CachedMcap> {
       channelById.set(channel.id, {
         topic: channel.topic,
         schemaId: channel.schemaId,
+        messageEncoding: channel.messageEncoding,
       });
       const schema = schemaById.get(channel.schemaId);
       topicMeta.set(channel.topic, {
         schemaName: schema?.name ?? 'unknown',
         schemaText: schema ? decodeSchemaText(schema.data) : null,
+        messageEncoding: channel.messageEncoding,
       });
     }
   } catch (err) {
@@ -283,6 +286,7 @@ async function loadMcap(source: BagSource): Promise<CachedMcap> {
         channelById.set(record.id, {
           topic: record.topic,
           schemaId: record.schemaId,
+          messageEncoding: record.messageEncoding,
         });
       }
     }
@@ -291,6 +295,7 @@ async function loadMcap(source: BagSource): Promise<CachedMcap> {
       topicMeta.set(ch.topic, {
         schemaName: schema?.name ?? 'unknown',
         schemaText: schema ? decodeSchemaText(schema.data) : null,
+        messageEncoding: ch.messageEncoding,
       });
     }
   }
@@ -479,8 +484,9 @@ export async function readDeserializedMessagesMcap(
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null }[]> {
   const meta = await loadMcap(source);
   const topicInfo = meta.topicMeta.get(topicName);
-  if (!topicInfo || !topicInfo.schemaText) return [];
+  if (!topicInfo || (!topicInfo.schemaText && topicInfo.messageEncoding !== 'json')) return [];
   const schemaText = topicInfo.schemaText;
+  const isJson = topicInfo.messageEncoding === 'json';
 
   const out: { timestamp: bigint; value: Record<string, unknown> | null }[] = [];
   // Tracks the boundary between "already streamed via onBatch" and the
@@ -491,7 +497,11 @@ export async function readDeserializedMessagesMcap(
 
   const decodeOne = (raw: Uint8Array): Record<string, unknown> | null => {
     try {
-      return deserializeWithSchema(schemaText, raw);
+      if (isJson) {
+        const parsed = JSON.parse(new TextDecoder().decode(raw)) as Record<string, unknown>;
+        return translateFoxgloveMessage(topicInfo.schemaName, parsed);
+      }
+      return deserializeWithSchema(schemaText!, raw);
     } catch {
       return null;
     }
@@ -789,12 +799,17 @@ export async function readMessageAtTimeMcap(
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null } | null> {
   const meta = await loadMcap(source);
   const topicInfo = meta.topicMeta.get(topicName);
-  if (!topicInfo || !topicInfo.schemaText) return null;
+  if (!topicInfo || (!topicInfo.schemaText && topicInfo.messageEncoding !== 'json')) return null;
 
   const schemaText = topicInfo.schemaText;
+  const isJson = topicInfo.messageEncoding === 'json';
   const decode = (raw: Uint8Array): Record<string, unknown> | null => {
     try {
-      return deserializeWithSchema(schemaText, raw);
+      if (isJson) {
+        const parsed = JSON.parse(new TextDecoder().decode(raw)) as Record<string, unknown>;
+        return translateFoxgloveMessage(topicInfo.schemaName, parsed);
+      }
+      return deserializeWithSchema(schemaText!, raw);
     } catch {
       return null;
     }
