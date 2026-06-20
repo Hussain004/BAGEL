@@ -165,6 +165,8 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
   const cameraInfoRef = useRef<CameraIntrinsics | null>(null);
   cameraInfoRef.current = camera.info;
 
+  const hasContent = isVideo ? !!videoBitmap : !!message;
+
   // Reset zoom/pan when the topic or bag changes.
   useEffect(() => {
     setView({ zoom: 1, panX: 0, panY: 0 });
@@ -279,7 +281,6 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
   }, [message, videoBitmap, isVideo, compressed, settings.rectify]);
 
   const accent = getTopicColor(topicName, type);
-  const hasContent = isVideo ? !!videoBitmap : !!message;
   const showInitialLoading = loading && !hasContent;
   const startNs = bag?.startTime ?? 0n;
 
