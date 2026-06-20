@@ -22,7 +22,7 @@ import {
   getSharedParserClient,
   activeBagWorkerIds,
 } from '../workers/parserClient';
-import type { ColorMode, HeightAxis, PointCloudExtraction } from '../utils/pointcloud';
+import type { AxisClip, ColorMode, HeightAxis, PointCloudExtraction } from '../utils/pointcloud';
 import type { LaserScanExtraction } from '../utils/laserscan';
 import type { BagSource } from './source';
 
@@ -94,6 +94,7 @@ export async function readPointCloudAtTime(
   maxPoints?: number,
   maxRange?: number,
   heightAxis?: HeightAxis,
+  axisClip?: AxisClip,
 ): Promise<(PointCloudExtraction & { timestamp: bigint }) | null> {
   return getParserClient(bagId).readPointCloudAtTime(
     source,
@@ -104,6 +105,7 @@ export async function readPointCloudAtTime(
     maxPoints,
     maxRange,
     heightAxis,
+    axisClip,
   );
 }
 

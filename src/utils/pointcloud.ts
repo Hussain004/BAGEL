@@ -176,6 +176,17 @@ function makeFieldReader(datatype: number): FieldReader | null {
   }
 }
 
+/**
+ * Axis-aligned clip box. Any bound left undefined (or Infinity / -Infinity)
+ * means "no clip on that side". Applied per-axis independently so the user
+ * can shave the ceiling off a flat scan without compressing the XY footprint.
+ */
+export interface AxisClip {
+  xMin?: number; xMax?: number;
+  yMin?: number; yMax?: number;
+  zMin?: number; zMax?: number;
+}
+
 export interface DecodeOptions {
   colorMode?: ColorMode;
   singleColor?: { r: number; g: number; b: number };
@@ -197,6 +208,13 @@ export interface DecodeOptions {
    * conventions (Y-up cameras, NED drones, upside-down PCDs).
    */
   heightAxis?: HeightAxis;
+  /**
+   * Axis-aligned clip box. Drop points outside any of the specified bounds.
+   * Each bound is optional; omitting it means "no clip on that side". This
+   * lets the user remove airborne noise from a wide flat scan (zMax) without
+   * shrinking the horizontal footprint the way a radial range filter would.
+   */
+  axisClip?: AxisClip;
 }
 
 /**
@@ -264,6 +282,20 @@ export function decodePointCloud2(
     options.maxRange && options.maxRange > 0
       ? options.maxRange * options.maxRange
       : Infinity;
+
+  // Per-axis clip bounds. Using ±Infinity as sentinels means the comparisons
+  // are always valid without special-casing undefined. The hasAxisClip guard
+  // lets the common (no clip) path skip all six comparisons entirely.
+  const axClipXMin = options.axisClip?.xMin ?? -Infinity;
+  const axClipXMax = options.axisClip?.xMax ?? Infinity;
+  const axClipYMin = options.axisClip?.yMin ?? -Infinity;
+  const axClipYMax = options.axisClip?.yMax ?? Infinity;
+  const axClipZMin = options.axisClip?.zMin ?? -Infinity;
+  const axClipZMax = options.axisClip?.zMax ?? Infinity;
+  const hasAxisClip =
+    Number.isFinite(axClipXMin) || Number.isFinite(axClipXMax) ||
+    Number.isFinite(axClipYMin) || Number.isFinite(axClipYMax) ||
+    Number.isFinite(axClipZMin) || Number.isFinite(axClipZMax);
   const intensityField =
     fields.find((f) => f.name === 'intensity') ?? fields.find((f) => f.name === 'i');
   const rgbField = fields.find((f) => f.name === 'rgb' || f.name === 'rgba');
@@ -344,6 +376,7 @@ export function decodePointCloud2(
         continue;
       }
       if (x * x + y * y + z * z > rangeSqCap) continue;
+      if (hasAxisClip && (x < axClipXMin || x > axClipXMax || y < axClipYMin || y > axClipYMax || z < axClipZMin || z > axClipZMax)) continue;
       const idx = validCount * 3;
       positions[idx] = x;
       positions[idx + 1] = y;
@@ -397,6 +430,7 @@ export function decodePointCloud2(
         continue;
       }
       if (x * x + y * y + z * z > rangeSqCap) continue;
+      if (hasAxisClip && (x < axClipXMin || x > axClipXMax || y < axClipYMin || y > axClipYMax || z < axClipZMin || z > axClipZMax)) continue;
       const idx = validCount * 3;
       positions[idx] = x;
       positions[idx + 1] = y;

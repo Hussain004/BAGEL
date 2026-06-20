@@ -13,7 +13,7 @@
  */
 
 import type { BagSummary } from '../types/bag';
-import type { PointCloud2Message, PointField, PointCloudExtraction, ColorMode, HeightAxis, DecodeOptions } from '../utils/pointcloud';
+import type { AxisClip, PointCloud2Message, PointField, PointCloudExtraction, ColorMode, HeightAxis, DecodeOptions } from '../utils/pointcloud';
 import { POINT_FIELD_TYPE, decodePointCloud2 } from '../utils/pointcloud';
 import { sourceKey, sourceReadAll, type BagSource } from './source';
 
@@ -311,9 +311,10 @@ export async function readPointCloudAtTimePcd(
   maxPoints?: number,
   maxRange?: number,
   heightAxis: HeightAxis = '+z',
+  axisClip?: AxisClip,
 ): Promise<(PointCloudExtraction & { timestamp: bigint }) | null> {
   const cloud = await loadPcdCloud(source);
-  const opts: DecodeOptions = { colorMode, maxPoints, maxRange, heightAxis };
+  const opts: DecodeOptions = { colorMode, maxPoints, maxRange, heightAxis, axisClip };
   const decoded = decodePointCloud2(cloud, opts);
   if (!decoded) return null;
   return { ...decoded, timestamp: 0n };

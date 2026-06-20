@@ -22,7 +22,7 @@
  */
 
 import type { AllTopicStats, BagFormat, BagSummary, RawMessage } from '../types/bag';
-import type { ColorMode, HeightAxis, PointCloudExtraction } from '../utils/pointcloud';
+import type { AxisClip, ColorMode, HeightAxis, PointCloudExtraction } from '../utils/pointcloud';
 import type { LaserScanExtraction } from '../utils/laserscan';
 import type { BagSource } from '../parsers/source';
 
@@ -210,6 +210,7 @@ class ParserClient {
     maxPoints?: number,
     maxRange?: number,
     heightAxis?: HeightAxis,
+    axisClip?: AxisClip,
   ): Promise<DecodedPointCloud> {
     return this.request<DecodedPointCloud>('readPointCloudAtTime', {
       source,
@@ -220,6 +221,7 @@ class ParserClient {
       maxPoints,
       maxRange,
       heightAxis,
+      axisClip,
     });
   }
 

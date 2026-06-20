@@ -36,7 +36,7 @@ import {
 import { useMessageAtTime } from '../../../hooks/useMessageAtTime';
 import { useTopicMessages, type DecodedMessage } from '../../../hooks/useTopicMessages';
 import { useTFGraph, type TFGraph } from '../TFTree/useTFGraph';
-import type { ColorMode, HeightAxis } from '../../../utils/pointcloud';
+import type { AxisClip, ColorMode, HeightAxis } from '../../../utils/pointcloud';
 import { useScene } from './useScene';
 import {
   createGroundGrid,
@@ -337,6 +337,13 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     cameraFrustumsOn,
     cameraFrustumFar,
     hiddenFrustumTopics,
+    clipBoxOn,
+    clipXMin,
+    clipXMax,
+    clipYMin,
+    clipYMax,
+    clipZMin,
+    clipZMax,
   } = settings;
 
   const setColorMode = (v: ColorMode) => updateSettings(panelId, { colorMode: v });
@@ -371,6 +378,28 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     else cur.delete(t);
     updateSettings(panelId, { hiddenFrustumTopics: Array.from(cur).sort() });
   };
+
+  const setClipBoxOn = (v: boolean) => updateSettings(panelId, { clipBoxOn: v });
+  const onSetClipBound = (
+    axis: 'x' | 'y' | 'z',
+    side: 'min' | 'max',
+    v: number | null,
+  ) => {
+    const key = `clip${axis.toUpperCase()}${side === 'min' ? 'Min' : 'Max'}` as
+      | 'clipXMin' | 'clipXMax' | 'clipYMin' | 'clipYMax' | 'clipZMin' | 'clipZMax';
+    updateSettings(panelId, { [key]: v });
+  };
+
+  const axisClip: AxisClip | undefined = clipBoxOn
+    ? {
+        ...(clipXMin !== null ? { xMin: clipXMin } : {}),
+        ...(clipXMax !== null ? { xMax: clipXMax } : {}),
+        ...(clipYMin !== null ? { yMin: clipYMin } : {}),
+        ...(clipYMax !== null ? { yMax: clipYMax } : {}),
+        ...(clipZMin !== null ? { zMin: clipZMin } : {}),
+        ...(clipZMax !== null ? { zMax: clipZMax } : {}),
+      }
+    : undefined;
 
   // v1.3.3 - issue #44: "Save as default" snapshots the current panel's
   // settings as the kind-level user default; "Reset to default" applies the
@@ -423,6 +452,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     // PointCloud2 / CustomCloud — pass it conditionally to keep scans' cache
     // key minimal.
     heightAxis: sceneKind === 'pointcloud' ? heightAxis : undefined,
+    axisClip: sceneKind === 'pointcloud' ? axisClip : undefined,
     bagId,
   });
   const poseState = useMessageAtTime(topicName, playheadNs, bagId);
@@ -1489,6 +1519,10 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
               onSaveAsDefault={handleSaveAsDefault}
               onResetToDefault={handleResetToDefault}
               onClearSavedDefault={handleClearSavedDefault}
+              clipBoxOn={clipBoxOn}
+              setClipBoxOn={setClipBoxOn}
+              clipBounds={{ xMin: clipXMin, xMax: clipXMax, yMin: clipYMin, yMax: clipYMax, zMin: clipZMin, zMax: clipZMax }}
+              onSetClipBound={onSetClipBound}
             />
           </div>
 
@@ -1677,6 +1711,11 @@ interface ControlsCardProps {
   onSaveAsDefault: () => void;
   onResetToDefault: () => void;
   onClearSavedDefault: () => void;
+  /** Per-axis clip box (v1.6.1). */
+  clipBoxOn: boolean;
+  setClipBoxOn: (v: boolean) => void;
+  clipBounds: { xMin: number | null; xMax: number | null; yMin: number | null; yMax: number | null; zMin: number | null; zMax: number | null };
+  onSetClipBound: (axis: 'x' | 'y' | 'z', side: 'min' | 'max', v: number | null) => void;
 }
 
 function ControlsCard({
@@ -1734,6 +1773,10 @@ function ControlsCard({
   onSaveAsDefault,
   onResetToDefault,
   onClearSavedDefault,
+  clipBoxOn,
+  setClipBoxOn,
+  clipBounds,
+  onSetClipBound,
 }: ControlsCardProps) {
   const [open, setOpen] = useState(false);
   const allFrames = useMemo(() => (graph ? Array.from(graph.frames).sort() : []), [graph]);
@@ -1837,6 +1880,41 @@ function ControlsCard({
                 onChange={(e) => setMaxRange(Number(e.target.value))}
                 className="w-full accent-accent-blue disabled:opacity-40"
               />
+            </div>
+          )}
+          {sceneKind === 'pointcloud' && (
+            <div className="pt-1 border-t border-border/60">
+              <label className="flex items-center gap-1.5 text-text-secondary cursor-pointer mb-1.5">
+                <input
+                  type="checkbox"
+                  checked={clipBoxOn}
+                  onChange={(e) => setClipBoxOn(e.target.checked)}
+                  className="accent-accent-blue"
+                />
+                clip box
+              </label>
+              {clipBoxOn && (
+                <div className="space-y-1">
+                  {(['x', 'y', 'z'] as const).map((axis) => (
+                    <div key={axis} className="flex items-center gap-1.5">
+                      <span className="text-text-tertiary w-3 uppercase text-center">{axis}</span>
+                      <ClipBoundInput
+                        value={clipBounds[`${axis}Min`]}
+                        onChange={(v) => onSetClipBound(axis, 'min', v)}
+                        placeholder="min"
+                      />
+                      <ClipBoundInput
+                        value={clipBounds[`${axis}Max`]}
+                        onChange={(v) => onSetClipBound(axis, 'max', v)}
+                        placeholder="max"
+                      />
+                    </div>
+                  ))}
+                  <p className="text-text-muted text-[9px] leading-tight pt-0.5">
+                    empty = no clip on that side
+                  </p>
+                </div>
+              )}
             </div>
           )}
           {sceneKind === 'pointcloud' && (
@@ -2181,6 +2259,30 @@ function ControlsCard({
         </div>
       )}
     </div>
+  );
+}
+
+function ClipBoundInput({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: number | null;
+  onChange: (v: number | null) => void;
+  placeholder: string;
+}) {
+  return (
+    <input
+      type="number"
+      step="any"
+      placeholder={placeholder}
+      value={value ?? ''}
+      onChange={(e) => {
+        const v = parseFloat(e.target.value);
+        onChange(Number.isFinite(v) ? v : null);
+      }}
+      className="flex-1 px-1.5 py-0.5 rounded bg-surface border border-border text-text-primary text-[10px] mono placeholder:text-text-muted focus:outline-none focus:border-accent-blue/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+    />
   );
 }
 
