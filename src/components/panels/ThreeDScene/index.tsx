@@ -1896,8 +1896,8 @@ function ControlsCard({
               {clipBoxOn && (
                 <div className="space-y-1">
                   {(['x', 'y', 'z'] as const).map((axis) => (
-                    <div key={axis} className="flex items-center gap-1.5">
-                      <span className="text-text-tertiary w-3 uppercase text-center">{axis}</span>
+                    <div key={axis} className="grid items-center gap-1" style={{ gridTemplateColumns: '0.75rem 1fr 1fr' }}>
+                      <span className="text-text-tertiary uppercase text-center">{axis}</span>
                       <ClipBoundInput
                         value={clipBounds[`${axis}Min`]}
                         onChange={(v) => onSetClipBound(axis, 'min', v)}
@@ -2281,7 +2281,7 @@ function ClipBoundInput({
         const v = parseFloat(e.target.value);
         onChange(Number.isFinite(v) ? v : null);
       }}
-      className="flex-1 px-1.5 py-0.5 rounded bg-surface border border-border text-text-primary text-[10px] mono placeholder:text-text-muted focus:outline-none focus:border-accent-blue/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+      className="w-full min-w-0 px-1.5 py-0.5 rounded bg-surface border border-border text-text-primary text-[10px] mono placeholder:text-text-muted focus:outline-none focus:border-accent-blue/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
     />
   );
 }
