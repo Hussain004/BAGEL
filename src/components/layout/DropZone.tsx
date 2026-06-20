@@ -137,7 +137,7 @@ export function DropZone() {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".db3,.mcap,.bag"
+            accept=".db3,.mcap,.bag,.pcd,.ply"
             onChange={handleFileInput}
             className="hidden"
             data-testid="file-input"
@@ -220,6 +220,10 @@ export function DropZone() {
           <span className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-accent-emerald/50" />
             Foxglove live (ws://)
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-accent-rose/50" />
+            .pcd / .ply point clouds
           </span>
         </div>
       </div>
@@ -428,7 +432,7 @@ function IdleState({ isDragOver }: { isDragOver: boolean }) {
           {isDragOver ? 'Release to explore' : 'Drop your bag file here'}
         </p>
         <p className="text-text-tertiary text-sm mt-1">
-          or click to browse • supports .mcap, .db3, .bag
+          or click to browse • supports .mcap, .db3, .bag, .pcd, .ply
         </p>
       </div>
     </div>

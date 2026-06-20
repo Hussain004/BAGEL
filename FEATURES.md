@@ -4,6 +4,62 @@ Detailed version-by-version release notes, including the design rationale behind
 
 ---
 
+## v1.6: Format Breadth and RViz Parity
+
+v1.6 broadens the set of file types BAGEL understands, starting with standalone point cloud formats used throughout the wider robotics ecosystem.
+
+### v1.6.0: Standalone `.pcd` / `.ply` Viewer
+
+Drop a `.pcd` or `.ply` file straight into BAGEL. No bag wrapping required. The cloud appears immediately in the ThreeDScene panel with all existing color modes (height, intensity, rgb, single), range filters, point-accumulation toggles, and multi-file overlay.
+
+**Design approach.** Both parsers produce a synthetic `sensor_msgs/PointCloud2` message that feeds directly into the existing `decodePointCloud2` path. This means every colormap, range-filter, maxPoints limit, and height-axis setting works unchanged - the parsers do format-specific decoding and then hand off, so there is no duplicated rendering code anywhere.
+
+**PCD parser** (`src/parsers/pcd.ts`):
+
+- Header fields parsed: `FIELDS`, `SIZE`, `TYPE`, `COUNT`, `WIDTH`, `HEIGHT`, `POINTS`, `DATA`. Comments (`#`) and blank lines skipped. Case-insensitive keywords.
+- Three data encodings:
+  - `ascii`: each line is a whitespace-delimited row of field values; output is normalized to FLOAT32.
+  - `binary`: the raw data section is used as-is; a `PointCloud2Message` is built by mapping PCD `TYPE`+`SIZE` pairs to `POINT_FIELD_TYPE` constants (F4 -> FLOAT32, U1 -> UINT8, I2 -> INT16, etc.).
+  - `binary_compressed`: 4-byte compressed size + 4-byte uncompressed size header, then LZF-compressed binary blob. A 30-line `lzfDecompress` implements the LZF algorithm (literal runs for `ctrl < 32`, back-references for `ctrl >= 32`) with no external dependency.
+- Multi-count fields (e.g. `COUNT 3` for a normal vector) are expanded as `field_0`, `field_1`, `field_2` in the PointCloud2 field array.
+- Source results are cached by `sourceKey` so reopening the file or switching color mode hits memory, not disk.
+
+**PLY parser** (`src/parsers/ply.ts`):
+
+- Header parsed: `format`, `element vertex` count, `property` declarations (type + name), `end_header` byte offset.
+- Three data encodings: `ascii`, `binary_little_endian`, `binary_big_endian`.
+- Only the `element vertex` block is consumed; face and edge elements are ignored.
+- Output is normalized to FLOAT32. `red`/`green`/`blue` uchar properties (0-255) or `rgb`/`rgba` float properties are packed into the standard ROS packed-rgb FLOAT32 field (`uint32 0x00RRGGBB` reinterpreted as float32, matching the convention used by `decodePointCloud2`'s rgb color mode). A float `intensity` property maps to the `intensity` field.
+- All PLY property types (`float`, `double`, `uchar`, `ushort`, `int`, ...) are handled via `plyTypeInfo` + `DataView` reads; big-endian binary files use `littleEndian = false` throughout.
+
+**Integration** (`src/parsers/core.ts`):
+
+- `detectFormat` checks extension first (`.pcd` -> `'pcd'`, `.ply` -> `'ply'`), then magic-byte sniff for extension-less URLs (`# .PCD` prefix, `ply` prefix).
+- `parseBag` dispatches to `parsePcd` / `parsePly`.
+- `readPointCloudAtTime` short-circuits to `readPointCloudAtTimePcd` / `readPointCloudAtTimePly` before the message-read path (pcd/ply have no per-timestamp messages).
+- `readRawMessages`, `readDeserializedMessages`, `readMessageAtTime`, `readAllMessageStats` all return empty / null for `pcd` and `ply` formats.
+- `getTopicType` returns `'sensor_msgs/PointCloud2'` for both.
+- `disposeParserCaches` calls `disposePcdCache()` and `disposePlyCache()`.
+
+**DropZone** (`src/components/layout/DropZone.tsx`):
+
+- File input `accept` extended to `.db3,.mcap,.bag,.pcd,.ply`.
+- Idle state subtitle updated to list `.pcd, .ply`.
+- A new format chip `.pcd / .ply point clouds` added to the supported-formats row at the bottom of the landing page.
+
+**Tests** (`tests/parsers/pcd.test.ts`, `tests/parsers/ply.test.ts`):
+
+- **PCD**: 13 tests covering ascii summary shape, file name, binary summary, binary xyz positions, binary intensity field, rgb packed float decoding, empty cloud, maxPoints limit, cache hit, cache invalidation, and `PCD_MAGIC` constant.
+- **PLY**: 15 tests covering ascii summary shape, file name, missing `end_header` error, missing xyz error, ascii positions, ascii colors, ascii rgb uchar packing, ascii intensity, maxPoints limit, binary LE xyz, binary LE rgb, binary BE xyz, cache hit, cache invalidation, and `PLY_MAGIC` constant.
+- **28 new tests; 453 total.**
+
+Explicitly out of scope for v1.6.0:
+- **Face / mesh rendering.** PLY files with `element face` blocks are common (scan meshes, CAD exports). Only the vertex cloud is displayed; mesh triangles are ignored. A future version could render the mesh via `THREE.BufferGeometry` when faces are present.
+- **Binary_compressed PLY.** Not part of the PLY spec; some tools write it anyway. Not supported in v1.6.0.
+- **Multiple element blocks in PCD.** PCD 0.7 supports a single point cloud per file; multi-element files are exotic and not handled.
+
+---
+
 ## v1.5: Live Robot Data
 
 v1.5 makes BAGEL a live robotics tool, not just a bag file viewer. The headline: paste a `ws://` URL and every panel updates in real time from a running robot. No ROS install, no Foxglove account, just a browser tab.

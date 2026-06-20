@@ -34,6 +34,18 @@ import {
   disposeBagCache,
   readAllMessageStatsBag,
 } from './bag';
+import {
+  parsePcd,
+  readPointCloudAtTimePcd,
+  disposePcdCache,
+  PCD_MAGIC,
+} from './pcd';
+import {
+  parsePly,
+  readPointCloudAtTimePly,
+  disposePlyCache,
+  PLY_MAGIC,
+} from './ply';
 import { checkMagicBytes } from '../utils/bytes';
 import { sourceDisplayName, sourceReadSlice, type BagSource } from './source';
 import {
@@ -61,15 +73,19 @@ export async function detectFormat(source: BagSource): Promise<BagFormat | 'unkn
   if (ext === 'mcap') return 'mcap';
   if (ext === 'db3') return 'db3';
   if (ext === 'bag') return 'bag';
+  if (ext === 'pcd') return 'pcd';
+  if (ext === 'ply') return 'ply';
 
-  // Extension-less URL (e.g. `https://api.example.com/datasets/abc123/download`)
-  // — sniff the first 16 bytes. One Range request for a few bytes is cheap
-  // even on slow links, and it covers the case where a CDN strips the
-  // extension via Content-Disposition.
+  // Extension-less URL - sniff the first 16 bytes.
   const header = await sourceReadSlice(source, 0, 16);
   if (checkMagicBytes(header, MCAP_MAGIC)) return 'mcap';
   if (checkMagicBytes(header, SQLITE_MAGIC)) return 'db3';
   if (checkMagicBytes(header, ROSBAG_V2_MAGIC)) return 'bag';
+
+  // PCD: first line starts with "# .PCD"
+  const headerText = new TextDecoder('ascii').decode(header);
+  if (headerText.startsWith(PCD_MAGIC)) return 'pcd';
+  if (headerText.startsWith(PLY_MAGIC)) return 'ply';
 
   return 'unknown';
 }
@@ -84,10 +100,14 @@ export async function parseBag(source: BagSource): Promise<BagSummary> {
       return parseDb3(source);
     case 'bag':
       return parseBagFile(source);
+    case 'pcd':
+      return parsePcd(source);
+    case 'ply':
+      return parsePly(source);
     default:
       throw new Error(
         `Unsupported file format: "${sourceDisplayName(source)}". ` +
-          'BAGEL supports .mcap (MCAP), .db3 (ROS2 SQLite), and .bag (ROS1) bag files.',
+          'BAGEL supports .mcap, .db3, .bag, .pcd, and .ply files.',
       );
   }
 }
@@ -99,6 +119,7 @@ export async function readRawMessages(
   topicName: string,
   limit?: number,
 ): Promise<RawMessage[]> {
+  if (format === 'pcd' || format === 'ply') return [];
   if (format === 'mcap') return readRawMessagesMcap(source, topicName, limit);
   if (format === 'bag') return readRawMessagesBag(source, topicName, limit);
   return readRawMessagesDb3(source, topicName, limit);
@@ -113,6 +134,7 @@ export async function readDeserializedMessages(
   onProgress?: (decoded: number) => void,
   onBatch?: (batch: { timestamp: bigint; value: Record<string, unknown> | null }[]) => void,
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null }[]> {
+  if (format === 'pcd' || format === 'ply') return [];
   if (format === 'mcap')
     return readDeserializedMessagesMcap(source, topicName, limit, onProgress, onBatch);
   if (format === 'bag')
@@ -121,7 +143,7 @@ export async function readDeserializedMessages(
 }
 
 /**
- * Read just one message — the one nearest `timeNs` — for a topic.
+ * Read just one message - the one nearest `timeNs` - for a topic.
  *
  * Used by panels that only need the current frame at the playhead time
  * (Image, Raw inspector). Skips loading every message on the topic,
@@ -133,6 +155,7 @@ export async function readMessageAtTime(
   topicName: string,
   timeNs: bigint,
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null } | null> {
+  if (format === 'pcd' || format === 'ply') return null;
   if (format === 'mcap') return readMessageAtTimeMcap(source, topicName, timeNs);
   if (format === 'bag') return readMessageAtTimeBag(source, topicName, timeNs);
   return readMessageAtTimeDb3(source, topicName, timeNs);
@@ -143,6 +166,7 @@ export async function getTopicType(
   format: BagFormat,
   topicName: string,
 ): Promise<string | undefined> {
+  if (format === 'pcd' || format === 'ply') return 'sensor_msgs/PointCloud2';
   if (format === 'mcap') return getTopicTypeMcap(source, topicName);
   if (format === 'bag') return getTopicTypeBag(source, topicName);
   return getTopicTypeDb3(source, topicName);
@@ -152,12 +176,15 @@ export function disposeParserCaches(): void {
   disposeMcapCache();
   disposeDb3Cache();
   disposeBagCache();
+  disposePcdCache();
+  disposePlyCache();
 }
 
 export async function readAllMessageStats(
   source: BagSource,
   format: BagFormat,
 ): Promise<AllTopicStats> {
+  if (format === 'pcd' || format === 'ply') return {};
   if (format === 'mcap') return readAllMessageStatsMcap(source);
   if (format === 'bag') return readAllMessageStatsBag(source);
   return readAllMessageStatsDb3(source);
@@ -181,6 +208,13 @@ export async function readPointCloudAtTime(
   maxRange?: number,
   heightAxis: HeightAxis = '+z',
 ): Promise<(PointCloudExtraction & { timestamp: bigint }) | null> {
+  if (format === 'pcd') {
+    return readPointCloudAtTimePcd(source, colorMode, maxPoints, maxRange, heightAxis);
+  }
+  if (format === 'ply') {
+    return readPointCloudAtTimePly(source, colorMode, maxPoints, maxRange, heightAxis);
+  }
+
   const message =
     format === 'mcap'
       ? await readMessageAtTimeMcap(source, topicName, timeNs)
