@@ -72,12 +72,14 @@ export function isImageType(type: string): boolean {
     type.includes('sensor_msgs/msg/Image') ||
     type.includes('sensor_msgs/Image') ||
     type.includes('sensor_msgs/msg/CompressedImage') ||
-    type.includes('sensor_msgs/CompressedImage')
+    type.includes('sensor_msgs/CompressedImage') ||
+    type === 'foxglove.CompressedImage' ||
+    type === 'foxglove.RawImage'
   );
 }
 
 export function isCompressedImageType(type: string): boolean {
-  return type.includes('CompressedImage');
+  return type.includes('CompressedImage') || type === 'foxglove.CompressedImage';
 }
 
 /**
@@ -131,12 +133,12 @@ export function isCustomLidarType(type: string): boolean {
 
 /** True if a type is any point cloud the 3D scene can render. */
 export function isCloudType(type: string): boolean {
-  return isPointCloud2Type(type) || isCustomLidarType(type);
+  return isPointCloud2Type(type) || isCustomLidarType(type) || type === 'foxglove.PointCloud';
 }
 
 /** True if a ROS2 type is sensor_msgs/LaserScan. */
 export function isLaserScanType(type: string): boolean {
-  return type.endsWith('/LaserScan');
+  return type.endsWith('/LaserScan') || type === 'foxglove.LaserScan';
 }
 
 /**
