@@ -324,7 +324,7 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
 
           <div className="px-4 py-1.5 border-t border-border flex items-center justify-between text-text-muted text-xs mono">
             <span>
-              t = {nsToSeconds(message.timestamp - startNs).toFixed(3)}s
+              t = {nsToSeconds((isVideo ? playheadNs : (message?.timestamp ?? playheadNs)) - startNs).toFixed(3)}s
             </span>
             {meta && (
               <span>
