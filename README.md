@@ -12,7 +12,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-8-646cff.svg)](https://vite.dev/)
-[![Version](https://img.shields.io/badge/version-1.5.6-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
+[![Version](https://img.shields.io/badge/version-1.6.0-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
 
 [**→ Live Demo**](https://bagel-ros2.vercel.app) · [Report Bug](https://github.com/Hussain004/BAGEL/issues) · [Request Feature](https://github.com/Hussain004/BAGEL/issues)
 
@@ -22,7 +22,7 @@
 
 ## What is BAGEL?
 
-**BAGEL** is a fully static web application that lets you explore ROS bag files (`.mcap`, `.db3`, and `.bag`) entirely in your browser needing no server, no installation, no account. Just drag and drop!
+**BAGEL** is a fully static web application that lets you explore ROS bag files (`.mcap`, `.db3`, `.bag`) and standalone point cloud files (`.pcd`, `.ply`) entirely in your browser needing no server, no installation, no account. Just drag and drop!
 
 Robotics engineers and researchers frequently generate bag files during experiments, SLAM runs, and sensor calibration. Inspecting these files currently requires a full ROS1 or ROS2 installation, Foxglove Studio (increasingly commercial), or writing custom Python scripts for every inspection task.
 
@@ -69,6 +69,8 @@ A condensed feature list is below. **Detailed version-by-version release notes (
 | ROS1 `.bag` | Including `bz2` and `lz4` compressed chunks |
 | Remote URLs | HTTP Range requests, so only the chunks you scrub through hit the network. `.mcap` / `.bag` stream lazily; `.db3` eager-fetches (sql.js needs it in memory). |
 | **Foxglove WebSocket** *(v1.5.0)* | Paste a `ws://` or `wss://` URL to connect to a live robot running `foxglove_bridge` or `rosbridge_suite`. All panels update in real time. Per-topic ring buffer holds the last 10,000 messages per topic; Follow/Pause button lets you scrub back into history without disconnecting. Auto-reconnect with exponential backoff. |
+| **`.pcd` point clouds** *(v1.6.0)* | All three PCD 0.7 encodings: `ascii`, `binary`, `binary_compressed` (LZF). All color modes (height, intensity, rgb, single). Feeds directly into the ThreeDScene panel via a synthetic `sensor_msgs/PointCloud2` message. |
+| **`.ply` point clouds** *(v1.6.0)* | ASCII + `binary_little_endian` + `binary_big_endian`. RGB from `red`/`green`/`blue` uchar properties or packed `rgb` float. Drop a `.ply` and the cloud appears instantly in the 3D panel with all existing color, range-filter, and accumulator settings. |
 
 ### Visualization panels
 
@@ -133,7 +135,7 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 - **Saved Display defaults**: per-data-type defaults for the 3D panel's Display card (colour mode, accumulator, point size, range filter, up axis, camera-frustum master toggle), persisted across sessions. Manageable from the About modal. *(v1.3.3 / v1.3.4)*
 - **Accessibility pass**: ARIA roles + focus management on every modal, `prefers-reduced-motion` respected, focus-visible rings throughout.
 - **Bundled `tour.mcap` sample bag** exercises every panel type. Drop in zero seconds with the "Try a sample bag" button.
-- **425-test Vitest suite** + GitHub Actions CI runs `tsc -b` + `pnpm test` on every PR. *(v1.0, expanded each release)*
+- **453-test Vitest suite** + GitHub Actions CI runs `tsc -b` + `pnpm test` on every PR. *(v1.0, expanded each release)*
 - **Bags well over 2 GB work in the browser**: range reads + lazy decoding throughout the parser stack.
 
 > Looking for the long version with implementation notes and design tradeoffs for each release? See **[FEATURES.md](FEATURES.md)**.
@@ -142,6 +144,7 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 
 ### Earlier version highlights at a glance
 
+- **v1.6.0**: Standalone `.pcd` / `.ply` viewer. Drop any PCD or PLY point cloud directly into BAGEL - no ROS bag required. PCD supports all three encodings (`ascii`, `binary`, `binary_compressed` with LZF). PLY supports ASCII and both binary byte orders. Both produce a synthetic `sensor_msgs/PointCloud2` that feeds the existing ThreeDScene pipeline unchanged - all color modes, range filters, and multi-file overlays work out of the box. 28 new tests in `tests/parsers/pcd.test.ts` and `tests/parsers/ply.test.ts`; 453 total.
 - **v1.5.6**: Cross-bag health comparison. The Health panel now shows a chip strip at the top when multiple non-live bags are loaded. Click a chip to switch the panel's stats view to that bag. No new tests (React-only panel logic, covered by manual verification). 425 tests total.
 - **v1.5.5**: Recording size limit + topic filter. 500 MB hard cap auto-stops recording and triggers download. Filter icon selects a per-topic subset before recording starts. Amber size warning above 400 MB. `isFull` and `topicFilter` added to `RecordingStats`. 9 new tests in `liveRecorder.test.ts`; 425 total.
 - **v1.5.4**: Sim clock (`/clock`) support. `LiveConnection` tracks the `/clock` channel; messages with `logTimeNs = 0` fall back to `simClockNs` instead of `Date.now()`. Purple `SIM` badge on the toolbar chip. `extractClockNs()` helper handles both ROS1 (`nsec`) and ROS2 (`nanosec`) clock schemas. 16 new tests in `tests/live/simClock.test.ts`; 425 total.
