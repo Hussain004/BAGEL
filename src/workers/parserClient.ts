@@ -25,6 +25,7 @@ import type { AllTopicStats, BagFormat, BagSummary, RawMessage } from '../types/
 import type { AxisClip, ColorMode, HeightAxis, PointCloudExtraction } from '../utils/pointcloud';
 import type { LaserScanExtraction } from '../utils/laserscan';
 import type { BagSource } from '../parsers/source';
+import type { VideoChunksResult } from '../parsers/video';
 
 type DecodedMessage = { timestamp: bigint; value: Record<string, unknown> | null };
 type DecodedPointCloud = (PointCloudExtraction & { timestamp: bigint }) | null;
@@ -232,6 +233,20 @@ class ParserClient {
     timeNs: bigint,
   ): Promise<DecodedLaserScan> {
     return this.request<DecodedLaserScan>('readLaserScanAtTime', {
+      source,
+      format,
+      topicName,
+      timeNs,
+    });
+  }
+
+  readVideoChunksAtTime(
+    source: BagSource,
+    format: BagFormat,
+    topicName: string,
+    timeNs: bigint,
+  ): Promise<VideoChunksResult | null> {
+    return this.request<VideoChunksResult | null>('readVideoChunksAtTime', {
       source,
       format,
       topicName,

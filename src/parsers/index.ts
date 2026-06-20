@@ -25,6 +25,7 @@ import {
 import type { AxisClip, ColorMode, HeightAxis, PointCloudExtraction } from '../utils/pointcloud';
 import type { LaserScanExtraction } from '../utils/laserscan';
 import type { BagSource } from './source';
+import type { VideoChunksResult } from './video';
 
 type DecodedMessage = { timestamp: bigint; value: Record<string, unknown> | null };
 
@@ -117,6 +118,16 @@ export async function readLaserScanAtTime(
   timeNs: bigint,
 ): Promise<(LaserScanExtraction & { timestamp: bigint }) | null> {
   return getParserClient(bagId).readLaserScanAtTime(source, format, topicName, timeNs);
+}
+
+export async function readVideoChunksAtTime(
+  bagId: string,
+  source: BagSource,
+  format: BagFormat,
+  topicName: string,
+  timeNs: bigint,
+): Promise<VideoChunksResult | null> {
+  return getParserClient(bagId).readVideoChunksAtTime(source, format, topicName, timeNs);
 }
 
 export async function getTopicType(

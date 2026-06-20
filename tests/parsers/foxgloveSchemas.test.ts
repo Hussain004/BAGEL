@@ -20,6 +20,10 @@ describe('isFoxgloveSchema', () => {
     expect(isFoxgloveSchema('foxglove.FrameTransform')).toBe(true);
   });
 
+  it('returns true for foxglove.CompressedVideo', () => {
+    expect(isFoxgloveSchema('foxglove.CompressedVideo')).toBe(true);
+  });
+
   it('returns false for unknown / ROS types', () => {
     expect(isFoxgloveSchema('sensor_msgs/CompressedImage')).toBe(false);
     expect(isFoxgloveSchema('foxglove.Unknown')).toBe(false);
@@ -214,5 +218,28 @@ describe('translateFoxgloveMessage - foxglove.FrameTransform', () => {
     const transform = result['transform'] as Record<string, unknown>;
     expect(transform['translation']).toEqual({ x: 1, y: 2, z: 3 });
     expect(transform['rotation']).toEqual({ x: 0, y: 0, z: 0, w: 1 });
+  });
+});
+
+describe('translateFoxgloveMessage - foxglove.CompressedVideo', () => {
+  const nalBytes = new Uint8Array([0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0xC0, 0x1F]);
+  const msg = {
+    timestamp: { sec: 3, nsec: 0 },
+    frame_id: 'camera',
+    data: toBase64(nalBytes),
+    format: 'h264',
+  };
+
+  it('maps to header + format + data shape', () => {
+    const result = translateFoxgloveMessage('foxglove.CompressedVideo', msg);
+    expect(result['format']).toBe('h264');
+    expect(result['header']).toEqual({ stamp: { sec: 3, nsec: 0 }, frame_id: 'camera' });
+  });
+
+  it('decodes base64 NAL data to Uint8Array', () => {
+    const result = translateFoxgloveMessage('foxglove.CompressedVideo', msg);
+    const data = result['data'] as Uint8Array;
+    expect(data).toBeInstanceOf(Uint8Array);
+    expect(Array.from(data)).toEqual([0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0xC0, 0x1F]);
   });
 });
