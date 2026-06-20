@@ -154,12 +154,61 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
   const [meta, setMeta] = useState<{ width: number; height: number; encoding: string } | null>(
     null,
   );
+  const [view, setView] = useState({ zoom: 1, panX: 0, panY: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
 
   // Keep the latest CameraInfo in a ref so the decode effect can read it
   // inside the async IIFE without making camera.info a dep (which would
   // re-trigger the expensive decode on every CameraInfo tick).
   const cameraInfoRef = useRef<CameraIntrinsics | null>(null);
   cameraInfoRef.current = camera.info;
+
+  const hasContent = isVideo ? !!videoBitmap : !!message;
+
+  // Reset zoom/pan when the topic or bag changes.
+  useEffect(() => {
+    setView({ zoom: 1, panX: 0, panY: 0 });
+  }, [topicName, bagId]);
+
+  // Non-passive wheel listener so we can call preventDefault() to block page scroll.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left - rect.width / 2;
+      const mouseY = e.clientY - rect.top - rect.height / 2;
+      const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+      setView((prev) => {
+        const newZoom = Math.max(0.1, Math.min(10, prev.zoom * factor));
+        const ratio = newZoom / prev.zoom;
+        return {
+          zoom: newZoom,
+          panX: prev.panX * ratio + mouseX * (1 - ratio),
+          panY: prev.panY * ratio + mouseY * (1 - ratio),
+        };
+      });
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [hasContent]);
+
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setIsDragging(true);
+    dragRef.current = { startX: e.clientX, startY: e.clientY, panX: view.panX, panY: view.panY };
+  };
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current) return;
+    const dx = e.clientX - dragRef.current.startX;
+    const dy = e.clientY - dragRef.current.startY;
+    setView((v) => ({ ...v, panX: dragRef.current!.panX + dx, panY: dragRef.current!.panY + dy }));
+  };
+  const onPointerUp = () => { dragRef.current = null; setIsDragging(false); };
+  const onDoubleClick = () => setView({ zoom: 1, panX: 0, panY: 0 });
 
   // Draw the current frame onto the canvas.
   // Handles both the standard message path (JPEG/raw) and the video path
@@ -232,7 +281,6 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
   }, [message, videoBitmap, isVideo, compressed, settings.rectify]);
 
   const accent = getTopicColor(topicName, type);
-  const hasContent = isVideo ? !!videoBitmap : !!message;
   const showInitialLoading = loading && !hasContent;
   const startNs = bag?.startTime ?? 0n;
 
@@ -276,7 +324,16 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
       )}
       {hasContent && (
         <div className="flex-1 flex flex-col min-h-0">
-          <div className="flex-1 flex items-center justify-center bg-bg-primary/60 overflow-hidden min-h-[200px] p-3 relative">
+          <div
+            ref={containerRef}
+            className="flex-1 flex items-center justify-center bg-bg-primary/60 overflow-hidden min-h-[200px] relative select-none"
+            style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
+            onDoubleClick={onDoubleClick}
+          >
             {renderError ? (
               <div className="text-center max-w-md">
                 <div className="text-accent-rose text-sm font-medium mb-1">
@@ -285,11 +342,19 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
                 <div className="text-text-muted text-xs">{renderError}</div>
               </div>
             ) : (
-              <CanvasWithOverlay
-                canvasRef={canvasRef}
-                showOverlay={overlayOn}
-                camera={camera.info}
-              />
+              <div
+                style={{
+                  transform: `translate(${view.panX}px, ${view.panY}px) scale(${view.zoom})`,
+                  transformOrigin: 'center',
+                  willChange: 'transform',
+                }}
+              >
+                <CanvasWithOverlay
+                  canvasRef={canvasRef}
+                  showOverlay={overlayOn}
+                  camera={camera.info}
+                />
+              </div>
             )}
             {loading && (
               <div
@@ -326,12 +391,17 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
             <span>
               t = {nsToSeconds((isVideo ? playheadNs : (message?.timestamp ?? playheadNs)) - startNs).toFixed(3)}s
             </span>
-            {meta && (
-              <span>
-                <span className="text-text-primary">{meta.width}×{meta.height}</span>
-                <span className="text-text-muted ml-2">{meta.encoding}</span>
-              </span>
-            )}
+            <span className="flex items-center gap-3">
+              {view.zoom !== 1 && (
+                <span>{Math.round(view.zoom * 100)}%</span>
+              )}
+              {meta && (
+                <span>
+                  <span className="text-text-primary">{meta.width}×{meta.height}</span>
+                  <span className="text-text-muted ml-2">{meta.encoding}</span>
+                </span>
+              )}
+            </span>
           </div>
         </div>
       )}

@@ -12,7 +12,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-8-646cff.svg)](https://vite.dev/)
-[![Version](https://img.shields.io/badge/version-1.6.0-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
+[![Version](https://img.shields.io/badge/version-1.6.3-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
 
 [**→ Live Demo**](https://bagel-ros2.vercel.app) · [Report Bug](https://github.com/Hussain004/BAGEL/issues) · [Request Feature](https://github.com/Hussain004/BAGEL/issues)
 
@@ -64,7 +64,7 @@ A condensed feature list is below. **Detailed version-by-version release notes (
 
 | Format | Notes |
 |---|---|
-| ROS2 `.mcap` | Including `zstd`-compressed chunks (the new ROS2 default) |
+| ROS2 `.mcap` | Including `zstd`-compressed chunks (the new ROS2 default). Foxglove Studio JSON-encoded channels (`schemaEncoding: "jsonschema"`, `encoding: "json"`) supported from v1.6.1. |
 | ROS2 `.db3` | SQLite via `sql.js` / WASM |
 | ROS1 `.bag` | Including `bz2` and `lz4` compressed chunks |
 | Remote URLs | HTTP Range requests, so only the chunks you scrub through hit the network. `.mcap` / `.bag` stream lazily; `.db3` eager-fetches (sql.js needs it in memory). |
@@ -75,7 +75,7 @@ A condensed feature list is below. **Detailed version-by-version release notes (
 ### Visualization panels
 
 - **TimeSeriesPlot**: chart any numeric leaf field (`linear.x`, `orientation.w`, etc.) on uPlot. Math expressions as derived series: type `field_a * 2 + field_b` in the series editor to plot any arithmetic combination of fields from the same topic without writing code. *(v1.4.1)*
-- **ImageViewer**: `sensor_msgs/Image` (`rgb8` / `bgr8` / `rgba8` / `mono8` / `mono16`) and `CompressedImage` (`jpeg` / `png`) with lazy single-message reads. Optional `sensor_msgs/CameraInfo` overlay (principal-point reticle + focal-length badge + calibration-likely-unfilled chip) toggles from the panel header. *(v1.3.2)* `undistort` button applies per-frame plumb-bob (Brown-Conrady) undistortion using the paired CameraInfo's D coefficients. *(v1.3.4)*
+- **ImageViewer**: `sensor_msgs/Image` (`rgb8` / `bgr8` / `rgba8` / `mono8` / `mono16`) and `CompressedImage` (`jpeg` / `png`) with lazy single-message reads. Foxglove equivalents (`foxglove.RawImage`, `foxglove.CompressedImage`) supported via JSON schema translation. *(v1.6.1)* H264/H265 video via `foxglove.CompressedVideo` using the browser's WebCodecs `VideoDecoder` with a fast keyframe index for efficient seeking. *(v1.6.2)* Scroll to zoom (cursor-centered), drag to pan, double-click to reset; zoom percentage shown in the footer. *(v1.6.3)* Optional `sensor_msgs/CameraInfo` overlay (principal-point reticle + focal-length badge + calibration-likely-unfilled chip) toggles from the panel header. *(v1.3.2)* `undistort` button applies per-frame plumb-bob (Brown-Conrady) undistortion using the paired CameraInfo's D coefficients. *(v1.3.4)*
 - **ThreeDScene** (Three.js): `PointCloud2`, `LaserScan`, `MarkerArray` (all twelve primitives: `CUBE` / `SPHERE` / `CYLINDER` / `ARROW` / `LINE_STRIP` / `LINE_LIST` / `CUBE_LIST` / `SPHERE_LIST` / `POINTS` / `TEXT_VIEW_FACING` / `MESH_RESOURCE` / `TRIANGLE_LIST` from v1.3.1), `OccupancyGrid`, pose markers, **camera frustums** for every `sensor_msgs/CameraInfo` topic with per-camera hide checkboxes on multi-camera rigs (v1.3.2 / v1.3.4). Custom orbit pivot, range filter, point accumulation, configurable up-axis.
 - **TrajectoryPlot**: Odometry / Pose / PoseWithCovariance / TransformStamped / NavSatFix as a 2D polyline, with an opt-in OpenStreetMap tile underlay for GPS traces.
 - **TFTree**: `/tf` + `/tf_static` hierarchy with current transforms at the playhead time.
@@ -135,7 +135,7 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 - **Saved Display defaults**: per-data-type defaults for the 3D panel's Display card (colour mode, accumulator, point size, range filter, up axis, camera-frustum master toggle), persisted across sessions. Manageable from the About modal. *(v1.3.3 / v1.3.4)*
 - **Accessibility pass**: ARIA roles + focus management on every modal, `prefers-reduced-motion` respected, focus-visible rings throughout.
 - **Bundled `tour.mcap` sample bag** exercises every panel type. Drop in zero seconds with the "Try a sample bag" button.
-- **453-test Vitest suite** + GitHub Actions CI runs `tsc -b` + `pnpm test` on every PR. *(v1.0, expanded each release)*
+- **491-test Vitest suite** + GitHub Actions CI runs `tsc -b` + `pnpm test` on every PR. *(v1.0, expanded each release)*
 - **Bags well over 2 GB work in the browser**: range reads + lazy decoding throughout the parser stack.
 
 > Looking for the long version with implementation notes and design tradeoffs for each release? See **[FEATURES.md](FEATURES.md)**.
@@ -144,6 +144,9 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 
 ### Earlier version highlights at a glance
 
+- **v1.6.3**: Image zoom and pan in the ImageViewer panel. Scroll to zoom (centered on the cursor, `newPanX = panX * ratio + mouseX * (1 - ratio)`), drag to pan (pointer capture keeps tracking out-of-bounds), double-click to reset. Zoom percentage shown in the footer when not at 100%. View resets on topic or bag change. No new tests (pure UI state).
+- **v1.6.2**: WebCodecs H264/H265 video decoding for `foxglove.CompressedVideo` topics. The parser worker builds a per-topic keyframe index (scanning only the first 24 base64 chars per message for speed), returns all frames from the last keyframe to the target time, and transfers them zero-copy via ArrayBuffer transfer. The main thread runs the browser's `VideoDecoder` API to accumulate reference frames and produce the correct `ImageBitmap`. `isH264Keyframe` / `isH265Keyframe` helpers detect IDR/SPS/VPS NAL types in Annex B streams. 19 new tests (+3 CompressedVideo in `foxgloveSchemas.test.ts`, 16 in `tests/parsers/video.test.ts`); 491 total.
+- **v1.6.1**: Foxglove Studio MCAP schema support. Foxglove exports channels with `schemaEncoding: "jsonschema"` and `encoding: "json"`; BAGEL now decodes these with `JSON.parse` + a schema translator (`foxgloveSchemas.ts`) that maps Foxglove field names to ROS equivalents. Supported: `foxglove.CompressedImage`, `foxglove.RawImage`, `foxglove.PointCloud` (including NumericType remapping and base64 binary fields), `foxglove.LaserScan` (start/end angle to angle_min/max), `foxglove.FrameTransform`. All existing rendering panels (ImageViewer, ThreeDScene, LaserScan) work unchanged. 19 new tests in `tests/parsers/foxgloveSchemas.test.ts`; 472 total.
 - **v1.6.0**: Standalone `.pcd` / `.ply` viewer. Drop any PCD or PLY point cloud directly into BAGEL - no ROS bag required. PCD supports all three encodings (`ascii`, `binary`, `binary_compressed` with LZF). PLY supports ASCII and both binary byte orders. Both produce a synthetic `sensor_msgs/PointCloud2` that feeds the existing ThreeDScene pipeline unchanged - all color modes, range filters, and multi-file overlays work out of the box. 28 new tests in `tests/parsers/pcd.test.ts` and `tests/parsers/ply.test.ts`; 453 total.
 - **v1.5.6**: Cross-bag health comparison. The Health panel now shows a chip strip at the top when multiple non-live bags are loaded. Click a chip to switch the panel's stats view to that bag. No new tests (React-only panel logic, covered by manual verification). 425 tests total.
 - **v1.5.5**: Recording size limit + topic filter. 500 MB hard cap auto-stops recording and triggers download. Filter icon selects a per-topic subset before recording starts. Amber size warning above 400 MB. `isFull` and `topicFilter` added to `RecordingStats`. 9 new tests in `liveRecorder.test.ts`; 425 total.
@@ -177,7 +180,7 @@ For the full detail behind each release (including design rationale and implemen
 
 ### Roadmap
 
-v1.0 stabilised the surface BAGEL already covered. v1.1 / v1.2 shipped browser-native bag editing. v1.3.x built "real robotics tool" features (URDF, CameraInfo, image rectification). v1.4 added analysis and shareability: Bag Health dashboard (v1.4.0), math expressions in plots (v1.4.1), frame-by-frame clip export (v1.4.2), and timeline bookmarks shareable via URL hash (v1.4.3). **v1.5.0 shipped live robot data** via Foxglove WebSocket: connect to a running robot, view all panels in real time, scrub the ring buffer when you pause. **v1.5.2 added live MCAP recording**: hit Record while connected, hit Stop to download a fully-indexed MCAP of everything the robot published. **v1.5.3 adds ROS1 live connection**: `encoding: "ros1"` CDR decoding for ROS1 Foxglove bridges - same bundled library, no new dependencies. Possible future directions:
+v1.0 stabilised the surface BAGEL already covered. v1.1 / v1.2 shipped browser-native bag editing. v1.3.x built "real robotics tool" features (URDF, CameraInfo, image rectification). v1.4 added analysis and shareability: Bag Health dashboard (v1.4.0), math expressions in plots (v1.4.1), frame-by-frame clip export (v1.4.2), and timeline bookmarks shareable via URL hash (v1.4.3). **v1.5.0 shipped live robot data** via Foxglove WebSocket: connect to a running robot, view all panels in real time, scrub the ring buffer when you pause. **v1.5.2 added live MCAP recording**: hit Record while connected, hit Stop to download a fully-indexed MCAP of everything the robot published. **v1.5.3 added ROS1 live connection** via `encoding: "ros1"` CDR decoding for ROS1 Foxglove bridges. **v1.6.0 added standalone `.pcd` / `.ply` viewing** with no bag wrapper required. **v1.6.1 added Foxglove Studio MCAP support**: JSON-encoded channels from Foxglove exports now decode correctly across all existing panels. **v1.6.2 added WebCodecs H264/H265 video decoding** for `foxglove.CompressedVideo` topics. **v1.6.3 added image zoom and pan** to the ImageViewer panel. Possible future directions:
 
 | Idea | Notes |
 |---|---|
@@ -505,7 +508,7 @@ tests/
     └── real-db3.test.ts        # test_files/db3/sample.db3 (skipped on CI; gitignored)
 ```
 
-Run with `pnpm test` (one-shot, under 20 s wall time, 276 passing tests) or `pnpm test:watch` for HMR-style re-runs. `pnpm test:coverage` adds an `@vitest/coverage-v8` report under `coverage/`. The `tests/` directory uses synthetic fixtures (no disk hit) and the bundled `tour.mcap` as the integration layer, so a fresh checkout has everything the suite needs without downloading any new fixtures.
+Run with `pnpm test` (one-shot, under 20 s wall time, 491 passing tests) or `pnpm test:watch` for HMR-style re-runs. `pnpm test:coverage` adds an `@vitest/coverage-v8` report under `coverage/`. The `tests/` directory uses synthetic fixtures (no disk hit) and the bundled `tour.mcap` as the integration layer, so a fresh checkout has everything the suite needs without downloading any new fixtures.
 
 ---
 

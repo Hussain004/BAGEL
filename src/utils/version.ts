@@ -4,4 +4,4 @@
  * Surfaced in the toolbar logo tooltip and the About modal so the user can
  * always tell which build is live.
  */
-export const APP_VERSION = '1.6.2';
+export const APP_VERSION = '1.6.3';
