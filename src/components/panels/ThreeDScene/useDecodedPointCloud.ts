@@ -24,7 +24,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
 import { readLaserScanAtTime, readPointCloudAtTime } from '../../../parsers';
-import type { ColorMode, HeightAxis, PointCloudExtraction } from '../../../utils/pointcloud';
+import type { AxisClip, ColorMode, HeightAxis, PointCloudExtraction } from '../../../utils/pointcloud';
 import type { LaserScanExtraction } from '../../../utils/laserscan';
 
 export type DecodedCloud =
@@ -54,6 +54,8 @@ interface Options {
    * (PointCloud2 / CustomCloud only — LaserScan is colored by range.)
    */
   heightAxis?: HeightAxis;
+  /** Per-axis clip box. Drop points outside any active bound (PointCloud2 only). */
+  axisClip?: AxisClip;
   /** Optional bag id; defaults to the focused bag. */
   bagId?: string;
 }
@@ -66,6 +68,7 @@ export function useDecodedCloud({
   maxPoints,
   maxRange,
   heightAxis,
+  axisClip,
   bagId,
 }: Options): DecodedCloudState {
   const entry = useBagStore((s) => resolveBagEntry(s, bagId));
@@ -86,6 +89,7 @@ export function useDecodedCloud({
     maxPoints: number | undefined;
     maxRange: number | undefined;
     heightAxis: HeightAxis | undefined;
+    axisClip: AxisClip | undefined;
   } | null>(null);
   const fireRef = useRef<() => void>(() => {});
   // Session id keyed on (bag, file, topic, kind). Bumped only when one of
@@ -144,6 +148,7 @@ export function useDecodedCloud({
               target.maxPoints,
               target.maxRange,
               target.heightAxis,
+              target.axisClip,
             )
           : readLaserScanAtTime(workerBagId, source, bag.format, topicName, target.timeNs);
 
@@ -157,7 +162,11 @@ export function useDecodedCloud({
           if (cloud) {
             // heightAxis is in the cache key so flipping the up-axis triggers
             // a re-decode (otherwise the same-timestamp dedupe would suppress it).
-            const key = `${target.colorMode}|${target.maxRange ?? 0}|${target.heightAxis ?? '+z'}|${cloud.timestamp.toString()}`;
+            const ac = target.axisClip;
+            const clipKey = ac
+              ? `${ac.xMin ?? ''}:${ac.xMax ?? ''}:${ac.yMin ?? ''}:${ac.yMax ?? ''}:${ac.zMin ?? ''}:${ac.zMax ?? ''}`
+              : '';
+            const key = `${target.colorMode}|${target.maxRange ?? 0}|${target.heightAxis ?? '+z'}|${clipKey}|${cloud.timestamp.toString()}`;
             if (lastResultKeyRef.current === key) {
               // Same frame + same color settings; don't notify React (avoids
               // a redundant scene rebuild on the same data).
@@ -183,7 +192,7 @@ export function useDecodedCloud({
         });
     };
 
-    pendingRef.current = { timeNs, colorMode, maxPoints, maxRange, heightAxis };
+    pendingRef.current = { timeNs, colorMode, maxPoints, maxRange, heightAxis, axisClip };
     fireRef.current = fire;
     // Only flip the spinner when nothing is in flight, so during playback the
     // existing frame stays painted until the next one arrives (no flicker).
@@ -191,7 +200,7 @@ export function useDecodedCloud({
       setState((s) => ({ ...s, loading: true, error: null }));
     }
     fire();
-  }, [entry, topicName, timeNs, colorMode, maxPoints, maxRange, heightAxis, kind]);
+  }, [entry, topicName, timeNs, colorMode, maxPoints, maxRange, heightAxis, axisClip, kind]);
 
   return state;
 }

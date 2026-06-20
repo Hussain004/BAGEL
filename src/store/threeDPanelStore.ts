@@ -83,6 +83,21 @@ export interface ThreeDPanelSettings {
    * per-kind saved defaults (listed in NON_PORTABLE_FIELDS).
    */
   hiddenFrustumTopics: string[];
+  /**
+   * Axis-aligned clip box for PointCloud2 panels (v1.6.1). When on, points
+   * outside any of the specified bounds are dropped before coloring. Each
+   * bound is null when inactive (no clip on that side). Unlike the radial
+   * range filter, these bounds are independent per axis - so the user can
+   * shave airborne noise off a wide flat scan by setting zMax only, without
+   * compressing the horizontal footprint.
+   */
+  clipBoxOn: boolean;
+  clipXMin: number | null;
+  clipXMax: number | null;
+  clipYMin: number | null;
+  clipYMax: number | null;
+  clipZMin: number | null;
+  clipZMax: number | null;
 }
 
 /**
@@ -110,6 +125,13 @@ export const DEFAULT_THREE_D_SETTINGS: ThreeDPanelSettings = {
   cameraFrustumsOn: false,
   cameraFrustumFar: 5,
   hiddenFrustumTopics: [],
+  clipBoxOn: false,
+  clipXMin: null,
+  clipXMax: null,
+  clipYMin: null,
+  clipYMax: null,
+  clipZMin: null,
+  clipZMax: null,
 };
 
 interface ThreeDPanelState {
