@@ -202,10 +202,11 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
     dragRef.current = { startX: e.clientX, startY: e.clientY, panX: view.panX, panY: view.panY };
   };
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!dragRef.current) return;
-    const dx = e.clientX - dragRef.current.startX;
-    const dy = e.clientY - dragRef.current.startY;
-    setView((v) => ({ ...v, panX: dragRef.current!.panX + dx, panY: dragRef.current!.panY + dy }));
+    const drag = dragRef.current;
+    if (!drag) return;
+    const dx = e.clientX - drag.startX;
+    const dy = e.clientY - drag.startY;
+    setView((v) => ({ ...v, panX: drag.panX + dx, panY: drag.panY + dy }));
   };
   const onPointerUp = () => { dragRef.current = null; setIsDragging(false); };
   const onDoubleClick = () => setView({ zoom: 1, panX: 0, panY: 0 });
