@@ -17,6 +17,7 @@ import { decompress as fzstdDecompress } from 'fzstd';
 import type { AllTopicStats, BagSummary, RawMessage, TopicInfo } from '../types/bag';
 import { deserializeWithSchema } from './cdr';
 import { translateFoxgloveMessage } from './foxgloveSchemas';
+import { isVideoKeyframe, type VideoChunk, type VideoChunksResult } from './video';
 import {
   HttpReadable,
   sourceDisplayName,
@@ -179,6 +180,8 @@ interface CachedMcap {
    *  by topic and indexed by message logTime — lets scrubbing inside a
    *  single frame's validity range short-circuit the entire read pipeline. */
   messageCache: Map<string, Map<bigint, Record<string, unknown> | null>>;
+  /** Per-video-topic keyframe timestamp index. Built lazily on first seek. */
+  videoIndex: Map<string, { format: string; keyframeTimes: bigint[] }>;
 }
 
 let cached: CachedMcap | null = null;
@@ -216,6 +219,7 @@ async function loadMcap(source: BagSource): Promise<CachedMcap> {
   const chunkCache = new ChunkCache(CHUNK_CACHE_MAX_BYTES);
   const decompressHandlers = makeDecompressHandlers(chunkCache);
   const messageCache = new Map<string, Map<bigint, Record<string, unknown> | null>>();
+  const videoIndex = new Map<string, { format: string; keyframeTimes: bigint[] }>();
 
   const size = sourceSize(source);
   const displayName = sourceDisplayName(source);
@@ -312,6 +316,7 @@ async function loadMcap(source: BagSource): Promise<CachedMcap> {
     decompressHandlers,
     chunkCache,
     messageCache,
+    videoIndex,
   };
   return cached;
 }
@@ -866,4 +871,168 @@ export async function readMessageAtTimeMcap(
     }
   }
   return null;
+}
+
+// ─── Video chunk reader ─────────────────────────────────────────────────────
+
+const TEXT_DEC = new TextDecoder();
+
+/**
+ * Extract raw H264/H265 bytes and keyframe status from a raw MCAP message
+ * payload for a video topic, handling both JSON and CDR encodings.
+ */
+function extractVideoChunk(
+  topicInfo: { schemaName: string; messageEncoding: string },
+  logTime: bigint,
+  raw: Uint8Array,
+  format: string,
+): VideoChunk {
+  let data: Uint8Array;
+  if (topicInfo.messageEncoding === 'json') {
+    try {
+      const parsed = JSON.parse(TEXT_DEC.decode(raw)) as Record<string, unknown>;
+      const xlated = translateFoxgloveMessage(topicInfo.schemaName, parsed);
+      const d = xlated['data'];
+      data = d instanceof Uint8Array ? d : new Uint8Array(0);
+    } catch {
+      data = new Uint8Array(0);
+    }
+  } else {
+    // CDR: assume the message carries raw NAL bytes directly
+    data = new Uint8Array(raw);
+  }
+  return { data, timestamp: logTime, isKeyframe: isVideoKeyframe(data, format) };
+}
+
+/**
+ * Build a per-topic keyframe index by scanning all messages and checking
+ * the first few NAL unit bytes for IDR/SPS headers.
+ *
+ * For JSON MCAP (Foxglove), only the first ~20 bytes of the base64 payload
+ * are decoded to determine keyframe status, keeping index construction fast.
+ */
+async function getOrBuildVideoIndex(
+  meta: CachedMcap,
+  topicName: string,
+): Promise<{ format: string; keyframeTimes: bigint[] } | null> {
+  const existing = meta.videoIndex.get(topicName);
+  if (existing) return existing;
+
+  const topicInfo = meta.topicMeta.get(topicName);
+  if (!topicInfo) return null;
+
+  const isJson = topicInfo.messageEncoding === 'json';
+  let format = 'h264';
+  const keyframeTimes: bigint[] = [];
+
+  const inspect = (logTime: bigint, raw: Uint8Array): void => {
+    let data: Uint8Array;
+    if (isJson) {
+      try {
+        // Fast path: only decode the first 24 base64 chars (~18 raw bytes) -
+        // enough to read the start code and first NAL header byte.
+        const obj = JSON.parse(TEXT_DEC.decode(raw)) as Record<string, unknown>;
+        if (typeof obj['format'] === 'string' && obj['format']) format = obj['format'] as string;
+        const b64 = obj['data'] as string;
+        if (typeof b64 !== 'string' || b64.length === 0) return;
+        const sample = atob(b64.substring(0, Math.min(24, b64.length)));
+        data = new Uint8Array(sample.length);
+        for (let k = 0; k < sample.length; k++) data[k] = sample.charCodeAt(k);
+      } catch {
+        return;
+      }
+    } else {
+      data = raw;
+    }
+    if (isVideoKeyframe(data, format)) keyframeTimes.push(logTime);
+  };
+
+  if (meta.reader) {
+    for await (const msg of meta.reader.readMessages({ topics: [topicName] })) {
+      const raw = msg.data instanceof Uint8Array ? msg.data : new Uint8Array(msg.data);
+      inspect(msg.logTime, raw);
+    }
+  } else if (meta.buffer) {
+    const reader = new McapStreamReader({ decompressHandlers: meta.decompressHandlers });
+    reader.append(meta.buffer);
+    const channelIdsForTopic = new Set<number>();
+    for (const [id, ch] of meta.channelById) {
+      if (ch.topic === topicName) channelIdsForTopic.add(id);
+    }
+    for (let record; (record = reader.nextRecord()); ) {
+      if (record.type !== 'Message' || !channelIdsForTopic.has(record.channelId)) continue;
+      const raw = record.data instanceof Uint8Array ? record.data : new Uint8Array(record.data);
+      inspect(record.logTime, raw);
+    }
+  }
+
+  const index = { format, keyframeTimes };
+  meta.videoIndex.set(topicName, index);
+  return index;
+}
+
+/**
+ * Read video chunks from the last keyframe at or before `timeNs` through
+ * `timeNs`, ready for the main-thread VideoDecoder to decode.
+ *
+ * Building the keyframe index on first call may take a few seconds for long
+ * recordings, but subsequent seeks are O(GOP size) - typically 1-60 frames.
+ */
+export async function readVideoChunksMcap(
+  source: BagSource,
+  topicName: string,
+  timeNs: bigint,
+): Promise<VideoChunksResult | null> {
+  const meta = await loadMcap(source);
+  const topicInfo = meta.topicMeta.get(topicName);
+  if (!topicInfo) return null;
+
+  const index = await getOrBuildVideoIndex(meta, topicName);
+  if (!index) return null;
+
+  // Binary search: last keyframe at or before timeNs
+  const { format, keyframeTimes } = index;
+  let lo = 0;
+  let hi = keyframeTimes.length - 1;
+  let keyframeNs: bigint | null = null;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (keyframeTimes[mid] <= timeNs) {
+      keyframeNs = keyframeTimes[mid];
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  if (keyframeNs === null) return null;
+
+  const chunks: VideoChunk[] = [];
+
+  if (meta.reader) {
+    for await (const msg of meta.reader.readMessages({
+      topics: [topicName],
+      startTime: keyframeNs,
+      endTime: timeNs,
+    })) {
+      const raw = msg.data instanceof Uint8Array ? msg.data : new Uint8Array(msg.data);
+      chunks.push(extractVideoChunk(topicInfo, msg.logTime, raw, format));
+    }
+  } else if (meta.buffer) {
+    const reader = new McapStreamReader({ decompressHandlers: meta.decompressHandlers });
+    reader.append(meta.buffer);
+    const channelIdsForTopic = new Set<number>();
+    for (const [id, ch] of meta.channelById) {
+      if (ch.topic === topicName) channelIdsForTopic.add(id);
+    }
+    for (let record; (record = reader.nextRecord()); ) {
+      if (record.type !== 'Message' || !channelIdsForTopic.has(record.channelId)) continue;
+      if (record.logTime < keyframeNs || record.logTime > timeNs) continue;
+      const raw = record.data instanceof Uint8Array ? record.data : new Uint8Array(record.data);
+      chunks.push(extractVideoChunk(topicInfo, record.logTime, raw, format));
+    }
+    // stream reader gives messages in file order, so sort by timestamp
+    chunks.sort((a, b) => (a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0));
+  }
+
+  return chunks.length > 0 ? { chunks, format } : null;
 }

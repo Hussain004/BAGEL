@@ -15,7 +15,9 @@ import {
   getTopicTypeMcap,
   disposeMcapCache,
   readAllMessageStatsMcap,
+  readVideoChunksMcap,
 } from './mcap';
+import type { VideoChunksResult } from './video';
 import {
   parseDb3,
   readRawMessagesDb3,
@@ -267,6 +269,21 @@ export async function readLaserScanAtTime(
   const decoded = decodeLaserScan(message.value as LaserScanMessage);
   if (!decoded) return null;
   return { ...decoded, timestamp: message.timestamp };
+}
+
+/**
+ * Read video chunks from the last keyframe at or before `timeNs` through
+ * `timeNs`, ready for the main-thread VideoDecoder. Only MCAP is supported
+ * since Foxglove CompressedVideo only appears in MCAP files.
+ */
+export async function readVideoChunksAtTime(
+  source: BagSource,
+  format: BagFormat,
+  topicName: string,
+  timeNs: bigint,
+): Promise<VideoChunksResult | null> {
+  if (format !== 'mcap') return null;
+  return readVideoChunksMcap(source, topicName, timeNs);
 }
 
 export { parseMcap } from './mcap';

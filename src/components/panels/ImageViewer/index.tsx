@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useMessageAtTime } from '../../../hooks/useMessageAtTime';
 import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
 import { useBagLocalPlayhead } from '../../../hooks/useBagLocalPlayhead';
-import { isCompressedImageType } from '../../../utils/messages';
+import { isCompressedImageType, isVideoType } from '../../../utils/messages';
+import { readVideoChunksAtTime } from '../../../parsers';
+import { decodeVideoFrames } from '../../../parsers/video';
 import { nsToSeconds } from '../../../utils/time';
 import { PanelShell } from '../PanelShell';
 import { getTopicColor } from '../../../utils/color';
@@ -25,6 +27,85 @@ interface ImageViewerProps {
   bagId?: string;
 }
 
+interface VideoFrameState {
+  bitmap: ImageBitmap | null;
+  loading: boolean;
+  error: string | null;
+}
+
+/**
+ * Fetch + WebCodecs-decode a single video frame at `timeNs`.
+ *
+ * Strategy: the worker finds the last keyframe at or before `timeNs`, reads
+ * every frame from it to `timeNs`, and returns them as raw bytes. The main
+ * thread runs VideoDecoder to accumulate the reference frames and produce the
+ * correct output frame. The decoded ImageBitmap is kept in a ref so the canvas
+ * draw effect can access it without triggering re-renders.
+ *
+ * `enabled` must be false for non-video topics — the hook is always called
+ * (React rule) but returns empty state immediately when disabled.
+ */
+function useVideoFrame(
+  topicName: string,
+  timeNs: bigint,
+  bagId: string | undefined,
+  enabled: boolean,
+): VideoFrameState {
+  const entry = useBagStore((s) => resolveBagEntry(s, bagId));
+  const [state, setState] = useState<VideoFrameState>({ bitmap: null, loading: false, error: null });
+  const bitmapRef = useRef<ImageBitmap | null>(null);
+
+  // Close the previous bitmap when a new one arrives or the component unmounts.
+  useEffect(() => {
+    return () => {
+      bitmapRef.current?.close();
+      bitmapRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!enabled || !entry || entry.kind === 'live' || !entry.source) return;
+    const { id: workerBagId, summary: bag, source } = entry;
+
+    let cancelled = false;
+    setState((s) => ({ ...s, loading: true, error: null }));
+
+    void (async () => {
+      try {
+        const result = await readVideoChunksAtTime(
+          workerBagId,
+          source,
+          bag.format,
+          topicName,
+          timeNs,
+        );
+        if (cancelled) return;
+        if (!result || result.chunks.length === 0) {
+          setState({ bitmap: null, loading: false, error: null });
+          return;
+        }
+        const bitmap = await decodeVideoFrames(result.chunks, result.format);
+        if (cancelled) {
+          bitmap?.close();
+          return;
+        }
+        const old = bitmapRef.current;
+        bitmapRef.current = bitmap;
+        old?.close();
+        setState({ bitmap, loading: false, error: null });
+      } catch (err) {
+        if (cancelled) return;
+        setState({ bitmap: null, loading: false, error: err instanceof Error ? err.message : String(err) });
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [entry, topicName, timeNs, enabled]);
+
+  if (!enabled) return { bitmap: null, loading: false, error: null };
+  return state;
+}
+
 /**
  * ImageViewer - Renders the current frame for a sensor_msgs/Image or
  * sensor_msgs/CompressedImage topic at the global playhead time.
@@ -43,11 +124,20 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
   const entry = useBagStore((s) => resolveBagEntry(s, bagId));
   const bag = entry?.summary ?? null;
   const playheadNs = useBagLocalPlayhead(bagId);
-  const compressed = isCompressedImageType(type);
+  const isVideo = isVideoType(type);
+  const compressed = !isVideo && isCompressedImageType(type);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => registerCapture(panelId, () => canvasRef.current), [panelId]);
 
-  const { message, loading, error } = useMessageAtTime(topicName, playheadNs, bagId);
+  // Standard single-message path (JPEG, raw pixels, Foxglove images).
+  const { message, loading: msgLoading, error: msgError } = useMessageAtTime(topicName, playheadNs, bagId);
+  // Video path (H264/H265 via WebCodecs). No-op when isVideo is false.
+  const { bitmap: videoBitmap, loading: videoLoading, error: videoError } = useVideoFrame(
+    topicName, playheadNs, bagId, isVideo,
+  );
+
+  const loading = isVideo ? videoLoading : msgLoading;
+  const error = isVideo ? videoError : msgError;
 
   const settings =
     useImagePanelStore((s) => s.byId[panelId]) ?? DEFAULT_IMAGE_SETTINGS;
@@ -72,16 +162,47 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
   cameraInfoRef.current = camera.info;
 
   // Draw the current frame onto the canvas.
+  // Handles both the standard message path (JPEG/raw) and the video path
+  // (H264/H265 bitmap pre-decoded by useVideoFrame).
   useEffect(() => {
-    // Reset the error banner when a new message arrives. This was the
-    // pre-v1.3.2 behaviour; the lint rule sees `setRenderError` and a
-    // useEffect together and complains, but the reset has no cascade
-    // because the same effect immediately decodes the new frame.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setRenderError(null);
-    if (!message?.value || !canvasRef.current) return;
 
-    const rectifyWanted = settings.rectify;
+    const drawBitmap = (bitmap: ImageBitmap, encoding: string) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.drawImage(bitmap, 0, 0);
+
+      const ci = cameraInfoRef.current;
+      if (
+        settings.rectify &&
+        ci &&
+        ci.width === bitmap.width &&
+        ci.height === bitmap.height &&
+        isPlumbBobModel(ci.distortionModel)
+      ) {
+        const imageData = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+        const map = buildRemapMap(ci);
+        const rectified = applyRemap(imageData.data, map);
+        ctx.putImageData(new ImageData(rectified, bitmap.width, bitmap.height), 0, 0);
+      }
+
+      setMeta({ width: bitmap.width, height: bitmap.height, encoding });
+    };
+
+    // Video path: bitmap is already decoded by useVideoFrame.
+    if (isVideo) {
+      if (!videoBitmap || !canvasRef.current) return;
+      drawBitmap(videoBitmap, 'h264/h265');
+      return;
+    }
+
+    // Standard path: decode the message on this tick.
+    if (!message?.value || !canvasRef.current) return;
 
     let cancelled = false;
     (async () => {
@@ -93,51 +214,26 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
           bitmap?.close?.();
           return;
         }
-        const canvas = canvasRef.current!;
-        canvas.width = bitmap.width;
-        canvas.height = bitmap.height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-        ctx.drawImage(bitmap, 0, 0);
+        drawBitmap(
+          bitmap,
+          (message.value!.encoding as string) ?? (compressed ? 'compressed' : 'raw'),
+        );
         bitmap.close?.();
-
-        // Plumb-bob undistortion: read the latest CameraInfo from the ref
-        // so this block runs on the same bitmap, not a later decode.
-        const ci = cameraInfoRef.current;
-        if (
-          rectifyWanted &&
-          ci &&
-          ci.width === bitmap.width &&
-          ci.height === bitmap.height &&
-          isPlumbBobModel(ci.distortionModel)
-        ) {
-          const raw = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
-          const map = buildRemapMap(ci);
-          const rectified = applyRemap(raw.data, map);
-          ctx.putImageData(new ImageData(rectified, bitmap.width, bitmap.height), 0, 0);
-        }
-
-        setMeta({
-          width: bitmap.width,
-          height: bitmap.height,
-          encoding: (message.value!.encoding as string) ?? (compressed ? 'compressed' : 'raw'),
-        });
       } catch (err) {
         if (cancelled) return;
         setRenderError(err instanceof Error ? err.message : String(err));
       }
     })();
 
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
     // settings.rectify is intentionally included so toggling rectify
     // re-decodes the current frame immediately.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [message, compressed, settings.rectify]);
+  }, [message, videoBitmap, isVideo, compressed, settings.rectify]);
 
   const accent = getTopicColor(topicName, type);
-  const showInitialLoading = loading && !message;
+  const hasContent = isVideo ? !!videoBitmap : !!message;
+  const showInitialLoading = loading && !hasContent;
   const startNs = bag?.startTime ?? 0n;
 
   const overlayOn = settings.cameraInfoOverlay && !!camera.info;
@@ -174,11 +270,11 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
       headerExtras={headerExtras}
     >
       {showInitialLoading && <PanelLoadingState message="Loading frame..." />}
-      {error && !message && <PanelErrorState message={error} />}
-      {!loading && !error && !message && (
+      {error && !hasContent && <PanelErrorState message={error} />}
+      {!loading && !error && !hasContent && (
         <PanelEmptyState message="No image messages on this topic." />
       )}
-      {message && (
+      {hasContent && (
         <div className="flex-1 flex flex-col min-h-0">
           <div className="flex-1 flex items-center justify-center bg-bg-primary/60 overflow-hidden min-h-[200px] p-3 relative">
             {renderError ? (

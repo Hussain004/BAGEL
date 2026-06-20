@@ -137,6 +137,18 @@ function translateLaserScan(
   };
 }
 
+function translateCompressedVideo(
+  msg: Record<string, unknown>,
+): Record<string, unknown> {
+  const raw = msg['data'];
+  const data = typeof raw === 'string' ? base64ToUint8Array(raw) : raw;
+  return {
+    header: toHeader(msg),
+    format: msg['format'] ?? 'h264',
+    data,
+  };
+}
+
 function translateFrameTransform(
   msg: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -160,6 +172,7 @@ type Translator = (msg: Record<string, unknown>) => Record<string, unknown>;
 const TRANSLATORS: Record<string, Translator> = {
   'foxglove.CompressedImage': translateCompressedImage,
   'foxglove.RawImage': translateRawImage,
+  'foxglove.CompressedVideo': translateCompressedVideo,
   'foxglove.PointCloud': translatePointCloud,
   'foxglove.LaserScan': translateLaserScan,
   'foxglove.FrameTransform': translateFrameTransform,

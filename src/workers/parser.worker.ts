@@ -21,10 +21,12 @@ import {
   readMessageAtTime,
   readPointCloudAtTime,
   readLaserScanAtTime,
+  readVideoChunksAtTime,
   getTopicType,
   disposeParserCaches,
   readAllMessageStats,
 } from '../parsers/core';
+import type { VideoChunksResult } from '../parsers/video';
 import {
   getSupportedTypes,
   setCustomSchemas,
@@ -50,6 +52,7 @@ type Method =
   | 'readMessageAtTime'
   | 'readPointCloudAtTime'
   | 'readLaserScanAtTime'
+  | 'readVideoChunksAtTime'
   | 'getTopicType'
   | 'disposeParserCaches'
   | 'getSupportedTypes'
@@ -94,6 +97,12 @@ interface ReadPointCloudAtTimeParams {
   axisClip?: AxisClip;
 }
 interface ReadLaserScanAtTimeParams {
+  source: BagSource;
+  format: BagFormat;
+  topicName: string;
+  timeNs: bigint;
+}
+interface ReadVideoChunksAtTimeParams {
   source: BagSource;
   format: BagFormat;
   topicName: string;
@@ -202,6 +211,7 @@ export type WorkerResponse =
   | ResultResponse<DecodedMessage | null>
   | ResultResponse<(PointCloudExtraction & { timestamp: bigint }) | null>
   | ResultResponse<(LaserScanExtraction & { timestamp: bigint }) | null>
+  | ResultResponse<VideoChunksResult | null>
   | ResultResponse<string | undefined>
   | ResultResponse<string[]>
   | ResultResponse<{ ok: true } | { ok: false; error: string }>
@@ -295,6 +305,18 @@ ctx.addEventListener('message', async (e: MessageEvent<WorkerRequest>) => {
           ? [result.positions.buffer, result.colors.buffer]
           : undefined;
         respond(result, transfer as Transferable[] | undefined);
+        return;
+      }
+      case 'readVideoChunksAtTime': {
+        const { source, format, topicName, timeNs } =
+          req.params as ReadVideoChunksAtTimeParams;
+        const result = await readVideoChunksAtTime(source, format, topicName, timeNs);
+        // Transfer the underlying ArrayBuffers so large video frames don't
+        // get copied through structured clone.
+        const transfer = result
+          ? result.chunks.map((c) => c.data.buffer as ArrayBuffer)
+          : undefined;
+        respond(result, transfer);
         return;
       }
       case 'getTopicType': {
