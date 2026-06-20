@@ -60,6 +60,92 @@ Explicitly out of scope for v1.6.0:
 
 ---
 
+### v1.6.1: Foxglove Studio MCAP Schema Support
+
+Foxglove Studio exports MCAP files with channel `schemaEncoding: "jsonschema"` and message `encoding: "json"`. Every message payload is a JSON object rather than a CDR binary blob, with binary fields base64-encoded. Previous BAGEL versions would skip these topics because the CDR deserialization path requires a `ros2msg` or `ros1msg` schema - a JSON channel has neither.
+
+**Schema encoding detection.** `channelById` now stores `messageEncoding` from the MCAP channel record alongside `topic` and `schemaId`. `topicMeta` stores the same field from the schema record. The guard in `readDeserializedMessagesMcap` that skips topics with no `schemaText` is narrowed to `(!schemaText && messageEncoding !== 'json')`, so JSON-encoded channels are always processed even when their `jsonschema` is absent or incomplete.
+
+**JSON decode path.** When `messageEncoding === 'json'`, the raw bytes are decoded via `TextDecoder` + `JSON.parse` rather than the CDR reader. The result is then passed through `translateFoxgloveMessage(schemaName, parsed)` to normalise Foxglove field names to their ROS equivalents before the existing rendering pipeline sees the message.
+
+**`foxgloveSchemas.ts`** (`src/parsers/foxgloveSchemas.ts`). A new module containing a translator per supported Foxglove schema:
+
+- **`foxglove.CompressedImage`** - maps `timestamp` + `frame_id` to a `header`, decodes base64 `data` to `Uint8Array`, passes `format` through unchanged. Shape matches `sensor_msgs/CompressedImage` so the ImageViewer's existing JPEG/PNG decode path handles it unmodified.
+- **`foxglove.RawImage`** - maps to `sensor_msgs/Image` shape: `encoding`, `width`, `height`, `step`, decoded `data`, `is_bigendian: 0`.
+- **`foxglove.PointCloud`** - renames `point_stride` to `point_step`, computes `width = data.length / point_step`, sets `height: 1`, remaps Foxglove `NumericType` integers to ROS `PointField.datatype` values (the two enumerations diverge: Foxglove UINT8=1 maps to ROS UINT8=2, INT8=2 maps to ROS INT8=1, etc.), and decodes base64 `data`.
+- **`foxglove.LaserScan`** - maps `start_angle` / `end_angle` to ROS `angle_min` / `angle_max`, derives `angle_increment = (end - start) / max(n - 1, 1)`, passes `ranges` and `intensities` through.
+- **`foxglove.FrameTransform`** - maps `parent_frame_id` into `header.frame_id`, preserves `child_frame_id`, wraps `translation` and `rotation` in a `transform` object matching `geometry_msgs/TransformStamped`.
+
+**`utils/messages.ts`** extended: `isImageType` includes `foxglove.CompressedImage`, `foxglove.RawImage`; `isCompressedImageType` includes `foxglove.CompressedImage`; `isCloudType` includes `foxglove.PointCloud`; `isLaserScanType` includes `foxglove.LaserScan`.
+
+**19 new tests** in `tests/parsers/foxgloveSchemas.test.ts` covering `isFoxgloveSchema` (known/unknown schemas), passthrough for unrecognised names, and per-translator assertions: CompressedImage shape + base64 decode, RawImage shape + pixel decode, PointCloud `point_stride` rename + `width` computation + NumericType remapping (FLOAT32 identity, UINT8/INT8 swap) + data decode, LaserScan field mapping + `angle_increment` derivation + single-point divide-by-zero guard, FrameTransform parent/child mapping + transform wrapper. **472 total tests** (453 at v1.6.0 + 19).
+
+Explicitly out of scope for v1.6.1:
+- **`foxglove.CompressedVideo`** - added in v1.6.2 alongside the WebCodecs video decoder it requires.
+- **Protobuf-encoded Foxglove MCAP.** Foxglove Studio can also export `protobuf` channels. Protobuf decoding requires a generated codec per schema and is not currently in scope.
+- **`ros2` CDR Foxglove channels.** Some tools write `encoding: "cdr"` with `schemaEncoding: "ros2msg"` - these already work through the existing CDR path without any v1.6.1 changes.
+
+---
+
+### v1.6.2: WebCodecs H264/H265 Video Decoding
+
+`foxglove.CompressedVideo` topics carry H264 or H265 Annex B NAL unit streams, one message per frame. Standard image panels cannot display them - the data is not a JPEG or raw pixel array. v1.6.2 adds a WebCodecs-based decoder path: the parser worker builds a per-topic keyframe index and returns frame sequences to the main thread; the main thread runs `VideoDecoder` to produce `ImageBitmap`s that the existing canvas draw path renders.
+
+**`foxglove.CompressedVideo` translator** (added to `foxgloveSchemas.ts`). Decodes base64 `data` to `Uint8Array` and passes `format` through. The translated shape carries `{ header, format, data }` used by the video chunk extraction path.
+
+**Keyframe detection** (`src/parsers/video.ts`):
+- `isH264Keyframe(data)`: scans up to 512 bytes of Annex B NAL units (start codes `00 00 00 01` or `00 00 01`), extracting `nal_unit_type = byte & 0x1F`. Returns true for type 5 (IDR) or type 7 (SPS).
+- `isH265Keyframe(data)`: reads the 2-byte H265 NAL header, extracts `nal_unit_type = (byte0 >> 1) & 0x3F`. Returns true for types 19/20 (IDR) or 32 (VPS).
+- `isVideoKeyframe(data, format)`: routes to the correct detector based on format string (`'h264'` / `'avc'` -> H264; `'h265'` / `'hevc'` -> H265).
+
+**Fast keyframe index** (`readVideoChunksMcap` in `src/parsers/mcap.ts`). A per-topic `keyframeTimes: bigint[]` array is built lazily on first seek. To avoid decoding full video frames just to classify them, each message is scanned using only the first 24 base64 characters (~18 decoded bytes) - enough to reach the start code and NAL type byte. The full keyframe index for a typical 30 Hz / 1-hour recording builds in under 100 ms.
+
+**Seeking strategy.** Binary search the `keyframeTimes` array for the last keyframe at or before the target `timeNs`. Read all messages from that keyframe forward to `timeNs`. The parser returns them as `VideoChunksResult { chunks: VideoChunk[]; format: string }`.
+
+**`decodeVideoFrames`** (`src/parsers/video.ts`). Called on the main thread (WebCodecs runs on the window). Creates a `VideoDecoder` with the appropriate codec string; feeds each chunk as an `EncodedVideoChunk` with the correct `type` (`'key'` or `'delta'`) and timestamp converted from nanoseconds to microseconds. Converts each output `VideoFrame` to `ImageBitmap` via `createImageBitmap` and closes the frame immediately to avoid GPU memory leaks. Returns the last decoded `ImageBitmap`, representing the frame at the target time.
+
+**Worker chain.** `readVideoChunksAtTime` propagates through the standard RPC chain (`parsers/core.ts` -> `parsers/index.ts` -> `workers/parserClient.ts` -> `workers/parser.worker.ts`). The worker dispatches with ArrayBuffer transfer so multi-MB video payloads cross the worker boundary with zero copy; the main thread reconstructs `Uint8Array` views from the transferred buffers.
+
+**`useVideoFrame` hook** (`src/components/panels/ImageViewer/index.tsx`). Calls `readVideoChunksAtTime` then `decodeVideoFrames` in an async effect. Tracks the previous `ImageBitmap` in a ref and calls `.close()` before replacing, preventing GPU memory accumulation across seeks. Returns `{ bitmap, loading, error }`. Always called unconditionally (React hook rules); internally short-circuits when `enabled` is false.
+
+**`utils/messages.ts`**: added `isVideoType(type) -> type === 'foxglove.CompressedVideo'`. `isImageType` extended to include `foxglove.CompressedVideo` so the TopicInspector routes video topics to the ImageViewer panel automatically.
+
+**19 new tests** (3 in `foxgloveSchemas.test.ts` for CompressedVideo shape + base64 decode; 16 in `tests/parsers/video.test.ts`): `isH264Keyframe` - IDR (type 5), SPS (type 7), P-frame false, SPS+PPS+IDR concatenated, 3-byte start code, empty buffer, non-IDR P-frame, NAL type mask via high bits; `isH265Keyframe` - IDR_W_RADL (19), IDR_N_LP (20), VPS (32), TRAIL_R false, empty buffer; `isVideoKeyframe` - routes to H264 for `h264` / `avc`, H265 for `h265`. **491 total tests** (472 at v1.6.1 + 19).
+
+Explicitly out of scope for v1.6.2:
+- **Codec string auto-detection from SPS.** The `avc1.PPCCLL` string can be parsed from the SPS NAL unit's profile, constraint, and level bytes. The current implementation uses a safe fallback (`'avc1.42E01E'` for H264, `'hev1.1.6.L93.B0'` for H265) that most browsers accept for conformant streams.
+- **AV1 / VP9 decoding.** The WebCodecs `VideoDecoder` supports additional codecs, but no Foxglove bridge currently emits AV1 or VP9 `CompressedVideo` messages in practice. The format routing table can be extended when needed.
+- **Live video seeking.** During live playback the ring buffer holds the last 10,000 messages per topic, so the seek window is bounded by the buffer size and does not require a pre-built keyframe index.
+
+---
+
+### v1.6.3: Image Zoom and Pan
+
+The ImageViewer panel now supports interactive zoom and pan for inspecting image detail: scroll to zoom (centered on the cursor), drag to pan, double-click to reset. The feature works identically for all image types - JPEG, raw pixel, Foxglove images, and WebCodecs video frames.
+
+**Zoom-at-cursor math.** With CSS `transform: translate(panX, panY) scale(zoom)` and `transform-origin: center`, the visual position of an image point `(ix, iy)` relative to the panel center is `(ix * zoom + panX, iy * zoom + panY)`. To keep the point under the cursor fixed during a zoom step, the new pan values satisfy `newPanX = panX * ratio + mouseX * (1 - ratio)` where `ratio = newZoom / zoom` and `mouseX` is the cursor offset from the panel center. The same formula applies for Y. Zoom is clamped to `[0.1, 10]`.
+
+**Non-passive wheel listener.** `e.preventDefault()` must be called to suppress the browser's page scroll. React's synthetic `onWheel` cannot do this because React registers wheel listeners as passive in recent versions. A `useEffect` attaches the listener with `{ passive: false }` and cleans it up on unmount. The effect depends on `hasContent` so the listener is attached the moment image content first arrives and re-attached if the topic changes while content is present.
+
+**Drag-to-pan with pointer capture.** `onPointerDown` calls `e.currentTarget.setPointerCapture(e.pointerId)`, routing all subsequent `onPointerMove` events to the container div even when the cursor leaves it mid-drag. The initial pan position is stored in `dragRef` at drag start; `onPointerMove` computes the pixel delta from the drag origin and writes it via `setView`'s functional update form to avoid stale closure issues. `onPointerCancel` handles unexpected interruptions (e.g. losing focus on mobile).
+
+**Cursor state.** An `isDragging` boolean drives `style={{ cursor: isDragging ? 'grabbing' : 'grab' }}` on the container. It is set on `pointerdown` and cleared on `pointerup` / `pointercancel` - two state updates per drag, not per pixel, so the cursor change has negligible render cost.
+
+**State and reset.** `view: { zoom, panX, panY }` is React state initialised to `{ 1, 0, 0 }`. A `useEffect([topicName, bagId])` resets it to identity whenever the topic or bag changes so a new topic opens at full scale. Double-click calls `setView({ zoom: 1, panX: 0, panY: 0 })` inline.
+
+**Zoom percentage in the footer.** When `view.zoom !== 1`, a `{Math.round(zoom * 100)}%` chip appears in the footer right cluster alongside the existing pixel-dimensions and encoding metadata. It disappears once the view is reset to 100%.
+
+**Camera info reticle.** The principal-point reticle (v1.3.2) is rendered inside `CanvasWithOverlay`, which is the element the CSS transform is applied to. The reticle positions itself using `canvas.getBoundingClientRect()` minus `wrapperRef.current.getBoundingClientRect()` - both return post-transform visual coordinates - so the reticle automatically follows zoom and pan with no additional math.
+
+**No new tests.** The zoom/pan logic is pure React state updates with no extractable pure functions. **491 total tests** (unchanged from v1.6.2).
+
+Explicitly out of scope for v1.6.3:
+- **Pinch-to-zoom on touch screens.** `touch-action: none` plus `e.touches[0]` / `e.touches[1]` pinch distance would be needed. Deferred; pointer events cover the desktop case used by most bag review workflows.
+- **Animated zoom transitions.** CSS `transition: transform 0.1s ease-out` would add latency between scroll ticks and is intentionally omitted. The transform updates synchronously on each wheel event for immediate response.
+- **Pan constraints.** The pan is unconstrained - the image can be scrolled off screen. Double-click resets it. Bounds clamping requires knowing the rendered image size inside the container at runtime, adding complexity not justified by the use case.
+
+---
+
 ## v1.5: Live Robot Data
 
 v1.5 makes BAGEL a live robotics tool, not just a bag file viewer. The headline: paste a `ws://` URL and every panel updates in real time from a running robot. No ROS install, no Foxglove account, just a browser tab.
