@@ -30,7 +30,7 @@ export function DropZone() {
       const trimmed = url.trim();
       if (!trimmed) return;
       clearError();
-      loadBagFromUrl(trimmed);
+      void loadBagFromUrl(trimmed).catch(() => {});
     },
     [loadBagFromUrl, clearError],
   );

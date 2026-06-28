@@ -411,7 +411,7 @@ export function useUrlState(): void {
     const parsed = parseHash(window.location.hash);
     if (!parsed.bagUrl) return;
     urlAutoLoadStartedRef.current = true;
-    void loadBagFromUrl(parsed.bagUrl);
+    void loadBagFromUrl(parsed.bagUrl).catch(() => {});
   }, [bag, isLoading, error, loadBagFromUrl]);
 
   // ── Restore on bag load ────────────────────────────────────────────────

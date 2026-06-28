@@ -70,7 +70,7 @@ interface BagState {
   loadProgress: number;
 
   addBagFromFile: (file: File) => Promise<string | null>;
-  addBagFromUrl: (url: string) => Promise<string | null>;
+  addBagFromUrl: (url: string) => Promise<string>;
   addBagLive: (wsUrl: string) => string;
   removeBag: (id: string) => void;
   setFocusBag: (id: string) => void;
@@ -229,7 +229,7 @@ export const useBagStore = create<BagState>((set, get) => ({
           : 'An unknown error occurred while fetching the bag from the URL.';
       console.error('Failed to load bag from URL:', err);
       set({ isLoading: false, error: message, loadProgress: 0 });
-      return null;
+      throw err;
     }
   },
 
