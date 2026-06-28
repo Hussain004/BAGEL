@@ -276,7 +276,21 @@ async function loadMcap(source: BagSource): Promise<CachedMcap> {
       );
     }
 
-    buffer = await sourceReadAll(source);
+    try {
+      buffer = await sourceReadAll(source);
+    } catch (streamErr) {
+      const indexedDetail =
+        indexedError instanceof Error ? indexedError.message : String(indexedError);
+      const streamDetail =
+        streamErr instanceof Error ? streamErr.message : String(streamErr);
+      throw new Error(
+        `Failed to load "${displayName}": the MCAP index could not be read ` +
+          `(${indexedDetail}), and the full-file fallback also failed (${streamDetail}). ` +
+          `If this file was loaded from a URL, try clearing your browser cache ` +
+          `(Ctrl+Shift+R / Cmd+Shift+R) and reloading.`,
+        { cause: streamErr },
+      );
+    }
     const streamReader = new McapStreamReader({ decompressHandlers });
     streamReader.append(buffer);
     for (let record; (record = streamReader.nextRecord()); ) {
