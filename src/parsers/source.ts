@@ -106,6 +106,56 @@ export async function sourceReadSlice(
 }
 
 /**
+ * LRU cache for raw HTTP Range responses, keyed by "offset:size".
+ *
+ * Seeking backward in the timeline causes the MCAP IndexedReader (and the
+ * rosbag Bag reader) to request the same chunk bytes repeatedly. Without
+ * this cache every backward seek re-fetches the compressed chunk over the
+ * network, even though the decompressed result may already be in the
+ * ChunkCache in mcap.ts — the fingerprint can't be checked without the
+ * bytes, and uncompressed chunks have no ChunkCache entry at all.
+ *
+ * Keying by (offset, size) is exact for MCAP: the IndexedReader always
+ * requests each chunk at a fixed (offset, uncompressedSize) pair derived
+ * from the chunk index, so cache hits are guaranteed for repeated seeks
+ * into the same chunk.
+ *
+ * The 64 MB limit covers ~30 typical compressed chunks, enough to absorb
+ * a backward scrub of ≈30 seconds in a bag with 1-second chunk granularity.
+ */
+const HTTP_RANGE_CACHE_MAX_BYTES = 64 * 1024 * 1024;
+
+class HttpRangeCache {
+  private readonly entries = new Map<string, Uint8Array>();
+  private totalBytes = 0;
+  private readonly maxBytes: number;
+
+  constructor(maxBytes: number) {
+    this.maxBytes = maxBytes;
+  }
+
+  get(key: string): Uint8Array | undefined {
+    const entry = this.entries.get(key);
+    if (!entry) return undefined;
+    // LRU: move to most-recently-used end.
+    this.entries.delete(key);
+    this.entries.set(key, entry);
+    return entry;
+  }
+
+  set(key: string, data: Uint8Array): void {
+    if (this.entries.has(key)) return;
+    while (this.totalBytes + data.byteLength > this.maxBytes && this.entries.size > 0) {
+      const oldest = this.entries.keys().next().value!;
+      this.totalBytes -= this.entries.get(oldest)!.byteLength;
+      this.entries.delete(oldest);
+    }
+    this.entries.set(key, data);
+    this.totalBytes += data.byteLength;
+  }
+}
+
+/**
  * MCAP `IReadable` over HTTP Range. Holds the size as a cached bigint so
  * the indexed reader doesn't re-fetch HEAD on every probe.
  *
@@ -115,6 +165,7 @@ export async function sourceReadSlice(
 export class HttpReadable implements IReadable {
   private readonly url: string;
   private readonly sizeBytes: bigint;
+  private readonly rangeCache = new HttpRangeCache(HTTP_RANGE_CACHE_MAX_BYTES);
   constructor(url: string, sizeBytes: bigint) {
     this.url = url;
     this.sizeBytes = sizeBytes;
@@ -123,7 +174,12 @@ export class HttpReadable implements IReadable {
     return this.sizeBytes;
   }
   async read(offset: bigint, size: bigint): Promise<Uint8Array> {
-    return rangeFetch(this.url, Number(offset), Number(size));
+    const key = `${offset}:${size}`;
+    const hit = this.rangeCache.get(key);
+    if (hit) return hit;
+    const data = await rangeFetch(this.url, Number(offset), Number(size));
+    this.rangeCache.set(key, data);
+    return data;
   }
 }
 
@@ -131,6 +187,7 @@ export class HttpReadable implements IReadable {
 export class HttpFilelike implements Filelike {
   private readonly url: string;
   private readonly contentLength: number;
+  private readonly rangeCache = new HttpRangeCache(HTTP_RANGE_CACHE_MAX_BYTES);
   constructor(url: string, contentLength: number) {
     this.url = url;
     this.contentLength = contentLength;
@@ -139,7 +196,12 @@ export class HttpFilelike implements Filelike {
     return this.contentLength;
   }
   async read(offset: number, length: number): Promise<Uint8Array> {
-    return rangeFetch(this.url, offset, length);
+    const key = `${offset}:${length}`;
+    const hit = this.rangeCache.get(key);
+    if (hit) return hit;
+    const data = await rangeFetch(this.url, offset, length);
+    this.rangeCache.set(key, data);
+    return data;
   }
 }
 
