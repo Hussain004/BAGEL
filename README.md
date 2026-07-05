@@ -526,4 +526,6 @@ Run with `pnpm test` (one-shot, under 20 s wall time, 491 passing tests) or `pnp
 
 *If BAGEL saves you time, consider giving it a ⭐ on [GitHub](https://github.com/Hussain004/BAGEL)!*
 
+*Want to support development directly? [Donate here](https://donatr.ee/hussain/)*
+
 </div>
