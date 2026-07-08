@@ -21,10 +21,16 @@
  * encoders (streaming compression without a known total size upfront)
  * routinely produce frames like this, it's not just a theoretical case.
  * `stream()` decompresses incrementally via `ZSTD_decompressStream` and
- * doesn't need the frame to declare its size at all. The final size is
- * taken from MCAP's own chunk-record `decompressedSize` (always present,
- * independent of whatever the zstd frame itself does or doesn't encode),
- * so the output buffer is still allocated once up front.
+ * doesn't need the frame to declare its size at all.
+ *
+ * `decompressedSize` (MCAP's chunk-record `uncompressed_size`) is used
+ * only as an initial allocation hint, not trusted as authoritative - a
+ * real-world bag surfaced chunks where this field didn't match the actual
+ * decompressed length (`fzstd`, the decoder this replaced, never hit this
+ * because it measures the real output length as it decompresses and
+ * ignores any size hint that turns out to be wrong; this must too). The
+ * output buffer grows if the real data exceeds the hint and is trimmed if
+ * the real data is smaller.
  */
 
 import { Decompressor } from 'zstd-wasm';
@@ -47,16 +53,16 @@ export function decompressZstdWasm(buffer: Uint8Array, decompressedSize: bigint)
   if (!decompressor) {
     throw new Error('decompressZstdWasm() called before ensureZstdWasmReady() resolved.');
   }
-  const out = new Uint8Array(Number(decompressedSize));
+  let out = new Uint8Array(Number(decompressedSize) || 0);
   let offset = 0;
   for (const chunk of decompressor.stream(buffer)) {
+    if (offset + chunk.length > out.length) {
+      const grown = new Uint8Array(Math.max(out.length * 2, offset + chunk.length));
+      grown.set(out.subarray(0, offset));
+      out = grown;
+    }
     out.set(chunk, offset);
     offset += chunk.length;
   }
-  if (offset !== out.length) {
-    throw new Error(
-      `[zstd] decompressed size mismatch: expected ${out.length} bytes, got ${offset}.`,
-    );
-  }
-  return out;
+  return offset === out.length ? out : out.slice(0, offset);
 }
