@@ -148,11 +148,11 @@ function fingerprintBuffer(buf: Uint8Array): string {
 
 function makeDecompressHandlers(chunkCache: ChunkCache): DecompressHandlers {
   return {
-    zstd: (buffer) => {
+    zstd: (buffer, decompressedSize) => {
       const key = fingerprintBuffer(buffer);
       const hit = chunkCache.get(key);
       if (hit) return hit;
-      const out = decompressZstdWasm(buffer);
+      const out = decompressZstdWasm(buffer, decompressedSize);
       chunkCache.set(key, out);
       return out;
     },

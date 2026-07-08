@@ -13,6 +13,18 @@
  * awaited once (per worker/module lifetime) before any read that might hit
  * a zstd chunk; after that, `decompressZstdWasm()` is a plain synchronous
  * call, matching what the MCAP reader expects.
+ *
+ * Uses `Decompressor.stream()` rather than the one-shot `decompress()`.
+ * `decompress()` calls `ZSTD_getFrameContentSize`, which throws
+ * ("[zstd] Unable to get frame content size") whenever the zstd frame
+ * doesn't have its content size embedded in the header - real-world
+ * encoders (streaming compression without a known total size upfront)
+ * routinely produce frames like this, it's not just a theoretical case.
+ * `stream()` decompresses incrementally via `ZSTD_decompressStream` and
+ * doesn't need the frame to declare its size at all. The final size is
+ * taken from MCAP's own chunk-record `decompressedSize` (always present,
+ * independent of whatever the zstd frame itself does or doesn't encode),
+ * so the output buffer is still allocated once up front.
  */
 
 import { Decompressor } from 'zstd-wasm';
@@ -31,9 +43,20 @@ export function ensureZstdWasmReady(): Promise<void> {
 }
 
 /** Synchronous zstd decompression. `ensureZstdWasmReady()` must have already resolved. */
-export function decompressZstdWasm(buffer: Uint8Array): Uint8Array {
+export function decompressZstdWasm(buffer: Uint8Array, decompressedSize: bigint): Uint8Array {
   if (!decompressor) {
     throw new Error('decompressZstdWasm() called before ensureZstdWasmReady() resolved.');
   }
-  return decompressor.decompress(buffer);
+  const out = new Uint8Array(Number(decompressedSize));
+  let offset = 0;
+  for (const chunk of decompressor.stream(buffer)) {
+    out.set(chunk, offset);
+    offset += chunk.length;
+  }
+  if (offset !== out.length) {
+    throw new Error(
+      `[zstd] decompressed size mismatch: expected ${out.length} bytes, got ${offset}.`,
+    );
+  }
+  return out;
 }

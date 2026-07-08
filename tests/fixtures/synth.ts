@@ -15,7 +15,7 @@
 
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { zstdCompressSync } from 'node:zlib';
+import { zstdCompressSync, constants as zstdConstants } from 'node:zlib';
 
 import { McapWriter } from '@mcap/core';
 import { MessageWriter } from '@foxglove/rosmsg2-serialization';
@@ -152,6 +152,15 @@ export interface SynthOptions {
    * synthetic bags.
    */
   compress?: boolean;
+  /**
+   * Only meaningful with `compress: true`. Disables zstd's content-size
+   * flag, so the compressed frame doesn't declare its decompressed size in
+   * its own header - some real-world encoders (streaming compression
+   * without a known total size upfront) produce frames like this. Exists
+   * to regression-test against relying on the zstd frame's own
+   * self-reported size instead of MCAP's chunk-record `decompressedSize`.
+   */
+  compressOmitContentSize?: boolean;
 }
 
 /**
@@ -178,7 +187,12 @@ export async function writeSyntheticMcap(
       ? {
           compressChunk: (chunkData: Uint8Array) => ({
             compression: 'zstd',
-            compressedData: zstdCompressSync(chunkData),
+            compressedData: zstdCompressSync(
+              chunkData,
+              options.compressOmitContentSize
+                ? { params: { [zstdConstants.ZSTD_c_contentSizeFlag]: 0 } }
+                : undefined,
+            ),
           }),
         }
       : {}),
