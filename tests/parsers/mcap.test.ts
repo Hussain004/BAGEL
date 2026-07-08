@@ -11,6 +11,7 @@ import type { BagSource } from '../../src/parsers/source';
 import {
   bytesToFile,
   chatterBag,
+  compressedChatterBag,
   multiTopicBag,
   writeSyntheticMcap,
 } from '../fixtures/synth';
@@ -163,6 +164,50 @@ describe('mcap/readDeserializedMessagesMcap', () => {
       },
     );
     expect(totalBatched).toBe(1100);
+  });
+});
+
+describe('mcap/zstd-compressed chunks', () => {
+  it('parses summary + decodes messages from a zstd-compressed bag (via zstd-wasm)', async () => {
+    const source = fileSource(bytesToFile(await compressedChatterBag(), 'chatter-zstd.mcap'));
+    const summary = await parseMcap(source);
+    expect(summary.totalMessageCount).toBe(3);
+    expect(summary.topics[0]).toMatchObject({ name: '/chatter', messageCount: 3 });
+
+    const decoded = await readDeserializedMessagesMcap(source, '/chatter');
+    expect(decoded.map((m) => m.value)).toEqual([
+      { data: 'hello' },
+      { data: 'world' },
+      { data: 'bagel' },
+    ]);
+  });
+
+  it('reads a single message at a timestamp from a zstd-compressed bag', async () => {
+    const source = fileSource(bytesToFile(await compressedChatterBag(), 'chatter-zstd.mcap'));
+    const message = await readMessageAtTimeMcap(source, '/chatter', 2_000_000_000n);
+    expect(message?.value).toEqual({ data: 'world' });
+  });
+
+  it('decodes a zstd-compressed bag large enough to span multiple chunks', async () => {
+    const bytes = await writeSyntheticMcap(
+      [
+        {
+          topic: '/spam',
+          type: 'std_msgs/msg/Int32',
+          messages: Array.from({ length: 600 }, (_, i) => ({
+            logTime: BigInt(i + 1) * 1_000_000n,
+            value: { data: i },
+          })),
+        },
+      ],
+      { compress: true },
+    );
+    const source = fileSource(bytesToFile(bytes, 'spam-zstd.mcap'));
+    const decoded = await readDeserializedMessagesMcap(source, '/spam');
+    expect(decoded).toHaveLength(600);
+    expect(decoded.map((m) => m.value)).toEqual(
+      Array.from({ length: 600 }, (_, i) => ({ data: i })),
+    );
   });
 });
 

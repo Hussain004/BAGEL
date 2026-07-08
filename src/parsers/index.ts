@@ -13,7 +13,7 @@
  *
  * The actual parser implementations live in `./core.ts`; only the worker
  * imports them, which keeps the main bundle slim (no @mcap/core, sql.js, or
- * fzstd in the React render path).
+ * zstd-wasm in the React render path).
  */
 
 import type { BagFormat, BagSummary, RawMessage } from '../types/bag';
