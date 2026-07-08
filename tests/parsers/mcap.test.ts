@@ -209,6 +209,35 @@ describe('mcap/zstd-compressed chunks', () => {
       Array.from({ length: 600 }, (_, i) => ({ data: i })),
     );
   });
+
+  // Regression test: a real-world bag broke with "[zstd] Unable to get
+  // frame content size" because its zstd frames didn't declare their
+  // decompressed size in the frame header (some encoders omit this in
+  // streaming mode). decompressZstdWasm must not depend on the frame
+  // knowing its own size, MCAP's chunk-record decompressedSize is enough.
+  it('decodes a zstd-compressed bag whose frames omit the content-size header', async () => {
+    const bytes = await writeSyntheticMcap(
+      [
+        {
+          topic: '/chatter',
+          type: 'std_msgs/msg/String',
+          messages: [
+            { logTime: 1_000_000_000n, value: { data: 'hello' } },
+            { logTime: 2_000_000_000n, value: { data: 'world' } },
+            { logTime: 3_000_000_000n, value: { data: 'bagel' } },
+          ],
+        },
+      ],
+      { compress: true, compressOmitContentSize: true },
+    );
+    const source = fileSource(bytesToFile(bytes, 'chatter-zstd-nosize.mcap'));
+    const decoded = await readDeserializedMessagesMcap(source, '/chatter');
+    expect(decoded.map((m) => m.value)).toEqual([
+      { data: 'hello' },
+      { data: 'world' },
+      { data: 'bagel' },
+    ]);
+  });
 });
 
 describe('mcap/readMessageAtTimeMcap', () => {
