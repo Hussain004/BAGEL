@@ -19,6 +19,7 @@ import {
   applyRemap,
 } from '../../../utils/imageRectify';
 import { registerCapture } from '../../../utils/captureRegistry';
+import { decodeCompressedDepthImage } from '../../../utils/compressedDepth';
 
 interface ImageViewerProps {
   panelId: string;
@@ -266,7 +267,9 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
         }
         drawBitmap(
           bitmap,
-          (message.value!.encoding as string) ?? (compressed ? 'compressed' : 'raw'),
+          (message.value!.encoding as string) ??
+            (message.value!.format as string) ??
+            (compressed ? 'compressed' : 'raw'),
         );
         bitmap.close?.();
       } catch (err) {
@@ -638,12 +641,58 @@ function RectifyHeaderToggle({
 async function decodeCompressed(msg: Record<string, unknown>): Promise<ImageBitmap> {
   const data = msg.data as Uint8Array;
   const format = (msg.format as string) || 'jpeg';
+
+  const depthMatch = /compressedDepth(\s+(\w+))?/.exec(format);
+  if (depthMatch) {
+    return decodeCompressedDepth(data, format, depthMatch[2] ?? 'png');
+  }
+
   const mimeFormat = format.toLowerCase().includes('png') ? 'png' : 'jpeg';
   // Copy into a fresh ArrayBuffer so TS doesn't flag SharedArrayBuffer compatibility.
   const copy = new Uint8Array(data.byteLength);
   copy.set(data);
   const blob = new Blob([copy.buffer], { type: `image/${mimeFormat}` });
   return await createImageBitmap(blob);
+}
+
+/**
+ * Decode `compressed_depth_image_transport` data to a viewable frame. The
+ * byte-level parsing and dequantization live in utils/compressedDepth.ts
+ * (unit-tested there); this just normalizes the resulting depth samples to
+ * grayscale, since BAGEL doesn't have a depth colormap yet.
+ */
+async function decodeCompressedDepth(
+  data: Uint8Array,
+  format: string,
+  subFormat: string,
+): Promise<ImageBitmap> {
+  if (subFormat.toLowerCase() === 'rvl') {
+    throw new Error(
+      'This depth stream uses the RVL compressed_depth_image_transport codec, which is not supported yet (PNG-backed compressedDepth is).',
+    );
+  }
+
+  const imageEncoding = format.split(';')[0] ?? '';
+  const { width, height, depth } = decodeCompressedDepthImage(data, imageEncoding);
+
+  let maxDepth = 0;
+  for (const d of depth) {
+    if (Number.isFinite(d) && d > maxDepth) maxDepth = d;
+  }
+
+  const rgba = new Uint8ClampedArray(width * height * 4);
+  const scale = maxDepth > 0 ? 255 / maxDepth : 0;
+  for (let i = 0; i < depth.length; i++) {
+    const d = depth[i]!;
+    const v = Number.isFinite(d) ? Math.round(d * scale) : 0;
+    rgba[i * 4] = v;
+    rgba[i * 4 + 1] = v;
+    rgba[i * 4 + 2] = v;
+    rgba[i * 4 + 3] = 255;
+  }
+
+  const imageData = new ImageData(rgba, width, height);
+  return await createImageBitmap(imageData);
 }
 
 /** Decode a sensor_msgs/Image (raw pixels in a supported encoding). */

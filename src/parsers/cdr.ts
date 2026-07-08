@@ -22,16 +22,25 @@ const readerCache = new Map<string, MessageReader>();
 function getOrCreateReader(key: string, definitions: MessageDefinition[]): MessageReader {
   const cached = readerCache.get(key);
   if (cached) return cached;
-  
+
   const reader = new MessageReader(definitions);
   readerCache.set(key, reader);
   return reader;
 }
 
+// Cache the parsed MessageReader by the full schema text. Grammar-parsing a
+// ROS2 .msg definition (nested Header/Quaternion/covariance arrays etc.) is
+// real work; without this cache it reran on every single message instead of
+// once per topic, which dominated multi-thousand-message topics (Imu,
+// BatteryState) even though only the reader was being cached before. Keyed
+// on the full text (not a truncated prefix) so two schemas that happen to
+// share a common prefix can't collide onto the wrong reader.
+const schemaReaderCache = new Map<string, MessageReader>();
+
 /**
  * Deserialize a CDR-encoded message using a pre-parsed schema.
  * Used primarily for .mcap files where schemas are embedded.
- * 
+ *
  * @param schemaText - Raw schema text (ROS2 message definition format)
  * @param data - CDR-encoded message bytes
  * @returns Deserialized JavaScript object
@@ -40,8 +49,12 @@ export function deserializeWithSchema(
   schemaText: string,
   data: Uint8Array
 ): Record<string, unknown> {
-  const definitions = parseMessageDefinition(schemaText, { ros2: true });
-  const reader = getOrCreateReader(`schema:${schemaText.slice(0, 100)}`, definitions);
+  let reader = schemaReaderCache.get(schemaText);
+  if (!reader) {
+    const definitions = parseMessageDefinition(schemaText, { ros2: true });
+    reader = new MessageReader(definitions);
+    schemaReaderCache.set(schemaText, reader);
+  }
   return reader.readMessage(data) as Record<string, unknown>;
 }
 
@@ -69,4 +82,5 @@ export async function deserializeByType(
  */
 export function clearReaderCache(): void {
   readerCache.clear();
+  schemaReaderCache.clear();
 }
