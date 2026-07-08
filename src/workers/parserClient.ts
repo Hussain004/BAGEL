@@ -66,7 +66,7 @@ class ParserClient {
   private ensureWorker(): Worker {
     if (this.worker) return this.worker;
     // Vite's import.meta.url syntax: keeps the worker as a sibling chunk,
-    // bundled with its own dependency graph (mcap, sql.js, fzstd, foxglove
+    // bundled with its own dependency graph (mcap, sql.js, zstd-wasm, foxglove
     // libs) so none of that ships in the main bundle.
     this.worker = new Worker(new URL('./parser.worker.ts', import.meta.url), {
       type: 'module',

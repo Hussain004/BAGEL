@@ -20,6 +20,15 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    // zstd-wasm's internal imports (e.g. `./binary`) omit file extensions,
+    // which only resolves through Vite's module graph, not Node's native
+    // ESM loader. Vitest externalizes node_modules by default under
+    // environment: 'node'; inlining forces it through Vite's resolver.
+    server: {
+      deps: {
+        inline: ['zstd-wasm'],
+      },
+    },
     // Per-test timeout. Real-bag integration tests open multi-MB fixtures
     // through the same code paths as the browser, which can take a few
     // seconds when sql.js initialises its WASM blob on the first call.

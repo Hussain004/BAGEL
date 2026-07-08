@@ -15,6 +15,7 @@
 
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { zstdCompressSync } from 'node:zlib';
 
 import { McapWriter } from '@mcap/core';
 import { MessageWriter } from '@foxglove/rosmsg2-serialization';
@@ -144,6 +145,13 @@ export interface SynthOptions {
   useSummaryOffsets?: boolean;
   /** Library name written into the MCAP header. Lets a test distinguish bags. */
   library?: string;
+  /**
+   * zstd-compress chunk data on write (via Node's built-in `zstdCompressSync`),
+   * so reading the bag back exercises the real decompress path
+   * (src/parsers/zstdWasm.ts) instead of only ever parsing uncompressed
+   * synthetic bags.
+   */
+  compress?: boolean;
 }
 
 /**
@@ -166,6 +174,14 @@ export async function writeSyntheticMcap(
     useChunkIndex: options.useChunkIndex ?? true,
     useMessageIndex: options.useMessageIndex ?? true,
     useSummaryOffsets: options.useSummaryOffsets ?? true,
+    ...(options.compress
+      ? {
+          compressChunk: (chunkData: Uint8Array) => ({
+            compression: 'zstd',
+            compressedData: zstdCompressSync(chunkData),
+          }),
+        }
+      : {}),
   });
 
   await writer.start({
@@ -261,6 +277,24 @@ export async function chatterBag(library?: string): Promise<Uint8Array> {
       },
     ],
     library !== undefined ? { library } : {},
+  );
+}
+
+/** Same messages as `chatterBag`, but with zstd-compressed chunks. */
+export async function compressedChatterBag(): Promise<Uint8Array> {
+  return writeSyntheticMcap(
+    [
+      {
+        topic: '/chatter',
+        type: 'std_msgs/msg/String',
+        messages: [
+          { logTime: 1_000_000_000n, value: { data: 'hello' } },
+          { logTime: 2_000_000_000n, value: { data: 'world' } },
+          { logTime: 3_000_000_000n, value: { data: 'bagel' } },
+        ],
+      },
+    ],
+    { compress: true },
   );
 }
 
