@@ -3,7 +3,7 @@ import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
 import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
 import { useBagLocalPlayhead } from '../../../hooks/useBagLocalPlayhead';
-import { useTopicMessages } from '../../../hooks/useTopicMessages';
+import { useTopicMessages, type DecodedMessage } from '../../../hooks/useTopicMessages';
 import { flattenNumeric } from '../../../utils/messages';
 import { PanelShell } from '../PanelShell';
 import { getTopicColor } from '../../../utils/color';
@@ -66,30 +66,81 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
   const truncated = messages != null && totalMessages > messages.length;
 
   // Numeric series extracted from the messages: dict of field-path → values aligned with time array.
-  const series = useMemo(() => {
-    if (!messages || messages.length === 0) return null;
+  //
+  // `messages` streams in via useTopicMessages: batches append to a grow-only
+  // array, so `messages[0]` stays referentially the same object across the
+  // whole stream (see useTopicMessages.ts). We use that to detect "same
+  // stream, more messages arrived" and only flatten the newly-arrived tail in
+  // an effect, instead of re-flattening every message from scratch on every
+  // batch — the old approach was O(n^2) in message count (a 6k-message topic
+  // streaming in batches of 500 did ~12x the necessary flattenNumeric calls).
+  // The accumulator lives in a ref but is only ever touched inside the effect
+  // below, never during render, per the rules of hooks. The one exception is
+  // the final onComplete swap in useTopicMessages, which replaces `messages`
+  // with a fresh array from the worker and triggers one full rebuild here —
+  // accepted as a safe fallback rather than adding fragile heuristics to also
+  // skip that.
+  const seriesAccumRef = useRef<{
+    time: number[];
+    values: Record<string, (number | null)[]>;
+    fieldNames: string[];
+    baseNs: bigint;
+    firstMessage: DecodedMessage;
+    processedCount: number;
+  } | null>(null);
 
-    const firstFlat = flattenNumeric(messages[0].value);
-    const fieldNames = Object.keys(firstFlat);
-    if (fieldNames.length === 0) return null;
+  const [series, setSeries] = useState<{
+    time: number[];
+    values: Record<string, (number | null)[]>;
+    fieldNames: string[];
+    baseNs: bigint;
+  } | null>(null);
 
-    // Use bag startTime (or first message timestamp) as t=0 for the x axis.
-    const baseNs = messages[0].timestamp;
-
-    const time: number[] = new Array(messages.length);
-    const values: Record<string, (number | null)[]> = {};
-    for (const f of fieldNames) values[f] = new Array(messages.length).fill(null);
-
-    for (let i = 0; i < messages.length; i++) {
-      const m = messages[i];
-      time[i] = Number(m.timestamp - baseNs) / 1e9;
-      const flat = flattenNumeric(m.value);
-      for (const f of fieldNames) {
-        if (f in flat) values[f][i] = flat[f];
-      }
+  useEffect(() => {
+    if (!messages || messages.length === 0) {
+      seriesAccumRef.current = null;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSeries(null);
+      return;
     }
 
-    return { time, values, fieldNames, baseNs };
+    const prev = seriesAccumRef.current;
+    const continuing =
+      !!prev && prev.firstMessage === messages[0] && messages.length >= prev.processedCount;
+
+    if (!continuing) {
+      const firstFlat = flattenNumeric(messages[0].value);
+      const fieldNames = Object.keys(firstFlat);
+      if (fieldNames.length === 0) {
+        seriesAccumRef.current = null;
+        setSeries(null);
+        return;
+      }
+      const values: Record<string, (number | null)[]> = {};
+      for (const f of fieldNames) values[f] = [];
+      seriesAccumRef.current = {
+        time: [],
+        values,
+        fieldNames,
+        // Use bag startTime (or first message timestamp) as t=0 for the x axis.
+        baseNs: messages[0].timestamp,
+        firstMessage: messages[0],
+        processedCount: 0,
+      };
+    }
+
+    const acc = seriesAccumRef.current!;
+    for (let i = acc.processedCount; i < messages.length; i++) {
+      const m = messages[i];
+      acc.time.push(Number(m.timestamp - acc.baseNs) / 1e9);
+      const flat = flattenNumeric(m.value);
+      for (const f of acc.fieldNames) {
+        acc.values[f].push(f in flat ? flat[f] : null);
+      }
+    }
+    acc.processedCount = messages.length;
+
+    setSeries({ time: acc.time, values: acc.values, fieldNames: acc.fieldNames, baseNs: acc.baseNs });
   }, [messages]);
 
   // Per-panel UI state — visibility toggles, saved zoom, and math expressions.
