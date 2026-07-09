@@ -29,7 +29,7 @@ export default defineConfig({
         manualChunks(id: string) {
           if (id.includes('sql.js')) return 'sql-js';
           if (id.includes('@mcap/') || id.includes('@mcap\\\\')) return 'mcap';
-          if (id.includes('zstd-wasm')) return 'mcap-decompress';
+          if (id.includes('fzstd')) return 'mcap-decompress';
           if (id.includes('@foxglove/')) return 'foxglove';
           if (id.includes('node_modules/three/') || id.includes('node_modules\\three\\')) return 'three';
         },

@@ -35,6 +35,9 @@ importers:
       fflate:
         specifier: ^0.8.3
         version: 0.8.3
+      fzstd:
+        specifier: ^0.1.1
+        version: 0.1.1
       lz4js:
         specifier: ^0.2.0
         version: 0.2.0
@@ -59,9 +62,6 @@ importers:
       uplot:
         specifier: ^1.6.32
         version: 1.6.32
-      zstd-wasm:
-        specifier: ^0.0.9
-        version: 0.0.9
       zustand:
         specifier: ^5.0.13
         version: 5.0.13(@types/react@19.2.15)(react@19.2.6)
@@ -1266,6 +1266,9 @@ packages:
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
 
+  fzstd@0.1.1:
+    resolution: {integrity: sha512-dkuVSOKKwh3eas5VkJy1AW1vFpet8TA/fGmVA5krThl8YcOVE/8ZIoEA1+U1vEn5ckxxhLirSdY837azmbaNHA==}
+
   gensync@1.0.0-beta.2:
     resolution: {integrity: sha512-3hN7NaskYvMDLQY55gnW3NQ+mesEAepTqlg+VEbj7zzqEMBVNhzcGYYeqFo/TlYz6eQiFcp1HcsCZO+nGgS8zg==}
     engines: {node: '>=6.9.0'}
@@ -1936,9 +1939,6 @@ packages:
 
   zod@4.4.3:
     resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
-
-  zstd-wasm@0.0.9:
-    resolution: {integrity: sha512-V96PWYhAKv4LfdhH92ntYUlTY1cPtvuxGBoZNDd20UyC9ALwlM9Ae1SKik+KI7NwU9xd62MTXVZAP6fq8SfKVg==}
 
   zustand@5.0.13:
     resolution: {integrity: sha512-efI2tVaVQPqtOh114loML/Z80Y4NP3yc+Ff0fYiZJPauNeWZeIp/bRFD7I9bfmCOYBh/PHxlglQ9+wvlwnPikQ==}
@@ -2998,6 +2998,8 @@ snapshots:
   fsevents@2.3.3:
     optional: true
 
+  fzstd@0.1.1: {}
+
   gensync@1.0.0-beta.2: {}
 
   glob-parent@5.1.2:
@@ -3583,8 +3585,6 @@ snapshots:
       zod: 4.4.3
 
   zod@4.4.3: {}
-
-  zstd-wasm@0.0.9: {}
 
   zustand@5.0.13(@types/react@19.2.15)(react@19.2.6):
     optionalDependencies:
