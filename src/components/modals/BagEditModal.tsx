@@ -22,7 +22,7 @@ import type { TopicInfo } from '../../types/bag';
  * funnels them all through the same MCAP writer.
  *
  * Surface limitations the UI still surfaces:
- *   - Output is always uncompressed MCAP. zstd-wasm is decompress-only so we
+ *   - Output is always uncompressed MCAP. fzstd is decompress-only so we
  *     can't write zstd chunks yet; output bags reload identically and just
  *     weigh a bit more on disk.
  *   - `.db3` topics whose type isn't in the bundled registry are flagged

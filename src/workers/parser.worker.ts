@@ -2,7 +2,7 @@
 /**
  * BAGEL parser worker.
  *
- * Owns the heavy parsing surface (`@mcap/core`, `sql.js`, `zstd-wasm`, the
+ * Owns the heavy parsing surface (`@mcap/core`, `sql.js`, `fzstd`, the
  * `@foxglove/rosmsg*` family) so initial bag parsing and per-topic decoding
  * don't block the React render loop. Implements a tiny request/response RPC:
  * every request carries a numeric `id`; the worker streams zero or more

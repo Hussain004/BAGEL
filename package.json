@@ -22,6 +22,7 @@
     "@mcap/browser": "^1.1.0",
     "@mcap/core": "^2.2.1",
     "fflate": "^0.8.3",
+    "fzstd": "^0.1.1",
     "lz4js": "^0.2.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
@@ -30,7 +31,6 @@
     "sql.js": "^1.14.1",
     "three": "^0.184.0",
     "uplot": "^1.6.32",
-    "zstd-wasm": "^0.0.9",
     "zustand": "^5.0.13"
   },
   "devDependencies": {

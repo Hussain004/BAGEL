@@ -13,7 +13,7 @@
 
 import { McapIndexedReader, McapStreamReader, type DecompressHandlers, type IReadable } from '@mcap/core';
 import { BlobReadable } from '@mcap/browser';
-import { ensureZstdWasmReady, decompressZstdWasm } from './zstdWasm';
+import { decompress as fzstdDecompress } from 'fzstd';
 import type { AllTopicStats, BagSummary, RawMessage, TopicInfo } from '../types/bag';
 import { deserializeWithSchema } from './cdr';
 import { translateFoxgloveMessage } from './foxgloveSchemas';
@@ -47,12 +47,23 @@ function readableFor(source: BagSource): IReadable {
  * IndexedReader rejects every compressed chunk with "Unsupported
  * compression zstd".
  *
- * zstd decompression runs through `zstd-wasm` (see zstdWasm.ts) rather
- * than the official `@foxglove/wasm-zstd`, because that package's CJS
- * require() form doesn't bundle under Vite 8's Rolldown bundler; `zstd-wasm`
- * ships genuine ESM and works, at ~3x the decode speed of the pure-JS
- * fallback this replaced. lz4 and bz2 are not implemented; an unsupported
- * compression will surface a clear error at read time.
+ * We use `fzstd`, a pure-JS zstd decoder, instead of a WASM
+ * implementation. `zstd-wasm` was tried (v1.6.4, ~3x faster) but reverted
+ * (v1.6.7) after real-world testing surfaced a genuine memory-corruption
+ * bug in that package: its streaming decompress method never properly
+ * frees the zstd DCtx it creates (the WASM build doesn't even export
+ * `ZSTD_freeDCtx`), so reusing one `Decompressor` instance across many
+ * chunks (required, since instantiating a fresh WASM module per chunk
+ * would mean the decompress handler couldn't stay synchronous)
+ * eventually corrupts decompressed output on real bags. Confirmed via a
+ * 60-call stress test: 8 silent failures, some returning wildly wrong
+ * lengths, some passing length checks with wrong content. Not something
+ * fixable from the calling side. `@foxglove/wasm-zstd` (the official
+ * package) still doesn't bundle under Vite 8's Rolldown (CJS require()).
+ * A WASM decoder may be worth revisiting with a more mature package or a
+ * custom build with the missing export, but not under time pressure with
+ * a corrupting dependency. lz4 and bz2 are not implemented; an
+ * unsupported compression will surface a clear error at read time.
  *
  * Chunk caching: every call to `readMessages({ startTime })` from the
  * IndexedReader causes the chunk containing that timestamp to be
@@ -152,7 +163,16 @@ function makeDecompressHandlers(chunkCache: ChunkCache): DecompressHandlers {
       const key = fingerprintBuffer(buffer);
       const hit = chunkCache.get(key);
       if (hit) return hit;
-      const out = decompressZstdWasm(buffer, decompressedSize);
+      const out = fzstdDecompress(
+        // fzstd accepts a typed array and an optional output buffer of the
+        // expected size; pre-allocating avoids resize overhead. Unlike the
+        // zstd-wasm attempt this replaced, fzstd doesn't trust this as
+        // authoritative, it measures the real decompressed length itself
+        // and returns a correctly-sized result regardless of whether the
+        // hint (MCAP's chunk-record decompressedSize) is accurate.
+        buffer,
+        new Uint8Array(Number(decompressedSize)),
+      );
       chunkCache.set(key, out);
       return out;
     },
@@ -210,11 +230,6 @@ async function loadMcap(source: BagSource): Promise<CachedMcap> {
   if (cached && cached.sourceKey === key) {
     return cached;
   }
-
-  // The zstd WASM module must finish instantiating before any decompress
-  // handler can run (the handler itself has to stay synchronous, see
-  // zstdWasm.ts) — await it once per bag load, before it's ever needed.
-  await ensureZstdWasmReady();
 
   // Per-bag chunk cache so consecutive image-playback frames don't keep
   // re-decompressing the same multi-megabyte zstd chunk.

@@ -20,7 +20,7 @@
  *     registry, not the bag itself) plus message-encoding round-tripping
  *     for ROS1 (`ros1msg` schemas + `ros1` message encoding), which is
  *     enough surface area to deserve its own pass.
- *   - **Uncompressed output.** `zstd-wasm` is decompress-only; we don't bundle
+ *   - **Uncompressed output.** `fzstd` is decompress-only; we don't bundle
  *     a zstd encoder yet. Output bags are written with the default chunk
  *     size and no chunk compression. They reload identically; only the
  *     on-disk size differs from a zstd-compressed equivalent.

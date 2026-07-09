@@ -12,7 +12,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-8-646cff.svg)](https://vite.dev/)
-[![Version](https://img.shields.io/badge/version-1.6.6-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
+[![Version](https://img.shields.io/badge/version-1.6.7-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
 
 [**→ Live Demo**](https://bagel-ros2.vercel.app) · [Report Bug](https://github.com/Hussain004/BAGEL/issues) · [Request Feature](https://github.com/Hussain004/BAGEL/issues)
 
@@ -180,13 +180,13 @@ For the full detail behind each release (including design rationale and implemen
 
 ### Roadmap
 
-v1.0 stabilised the surface BAGEL already covered. v1.1 / v1.2 shipped browser-native bag editing. v1.3.x built "real robotics tool" features (URDF, CameraInfo, image rectification). v1.4 added analysis and shareability: Bag Health dashboard (v1.4.0), math expressions in plots (v1.4.1), frame-by-frame clip export (v1.4.2), and timeline bookmarks shareable via URL hash (v1.4.3). **v1.5.0 shipped live robot data** via Foxglove WebSocket: connect to a running robot, view all panels in real time, scrub the ring buffer when you pause. **v1.5.2 added live MCAP recording**: hit Record while connected, hit Stop to download a fully-indexed MCAP of everything the robot published. **v1.5.3 added ROS1 live connection** via `encoding: "ros1"` CDR decoding for ROS1 Foxglove bridges. **v1.6.0 added standalone `.pcd` / `.ply` viewing** with no bag wrapper required. **v1.6.1 added Foxglove Studio MCAP support**: JSON-encoded channels from Foxglove exports now decode correctly across all existing panels. **v1.6.2 added WebCodecs H264/H265 video decoding** for `foxglove.CompressedVideo` topics. **v1.6.3 added image zoom and pan** to the ImageViewer panel. **v1.6.4 added `compressed_depth_image_transport` decoding**, fixed two real time-series loading bottlenecks, and swapped MCAP zstd decompression from pure-JS to WASM (~3x faster) after a ROS Discourse user's bug report on a real 3.5 GB bag. **v1.6.5 fixed a same-day regression** from that swap: zstd frames without an embedded content-size header (produced by some real-world encoders) failed to decompress at all. **v1.6.6 fixed a second same-day regression**: the declared decompressed size in a bag's own chunk records isn't always accurate either, the zstd decoder now measures the real output instead of trusting any size hint. Possible future directions:
+v1.0 stabilised the surface BAGEL already covered. v1.1 / v1.2 shipped browser-native bag editing. v1.3.x built "real robotics tool" features (URDF, CameraInfo, image rectification). v1.4 added analysis and shareability: Bag Health dashboard (v1.4.0), math expressions in plots (v1.4.1), frame-by-frame clip export (v1.4.2), and timeline bookmarks shareable via URL hash (v1.4.3). **v1.5.0 shipped live robot data** via Foxglove WebSocket: connect to a running robot, view all panels in real time, scrub the ring buffer when you pause. **v1.5.2 added live MCAP recording**: hit Record while connected, hit Stop to download a fully-indexed MCAP of everything the robot published. **v1.5.3 added ROS1 live connection** via `encoding: "ros1"` CDR decoding for ROS1 Foxglove bridges. **v1.6.0 added standalone `.pcd` / `.ply` viewing** with no bag wrapper required. **v1.6.1 added Foxglove Studio MCAP support**: JSON-encoded channels from Foxglove exports now decode correctly across all existing panels. **v1.6.2 added WebCodecs H264/H265 video decoding** for `foxglove.CompressedVideo` topics. **v1.6.3 added image zoom and pan** to the ImageViewer panel. **v1.6.4 added `compressed_depth_image_transport` decoding**, fixed two real time-series loading bottlenecks, and swapped MCAP zstd decompression from pure-JS to WASM (~3x faster) after a ROS Discourse user's bug report on a real 3.5 GB bag. **v1.6.5 fixed a same-day regression** from that swap: zstd frames without an embedded content-size header (produced by some real-world encoders) failed to decompress at all. **v1.6.6 fixed a second same-day regression**: the declared decompressed size in a bag's own chunk records isn't always accurate either, the zstd decoder now measures the real output instead of trusting any size hint. **v1.6.7 reverted the WASM zstd decoder entirely**: a third real-world failure traced to a genuine memory-corruption bug in that package (a WASM export it needs for proper cleanup was never compiled in), so MCAP decompression is back to the proven pure-JS `fzstd`, the `compressed_depth_image_transport` and time-series fixes from v1.6.4 are unaffected. Possible future directions:
 
 | Idea | Notes |
 |---|---|
 | Fisheye / equidistant undistortion | v1.3.4 covers plumb-bob (~95% of bags). `fisheye` (OpenCV `CALIB_CAMERA_FISHEYE`) and `equidistant` (Kalibr) need a different remap math; earmarked for a follow-up once a bag with one of these models surfaces for testing. |
 | Collada texture-dependency resolution | `.dae` files reference texture image files via relative paths; the v1.3.1 mesh loader handles top-level mesh files but not their textures. A small texture-pre-resolution pass through the same `packageResolver` would close this for moveit / nav2 bags whose mesh markers carry per-link decals. |
-| Zstd-compressed edit output | Edited bags are always uncompressed because `zstd-wasm` is decompress-only; we don't bundle a zstd *encoder* yet. Output bags reload identically; they just weigh 2-4x the zstd equivalent. Lands once a sensible encoder is available. |
+| Zstd-compressed edit output | Edited bags are always uncompressed because `fzstd` is decompress-only; we don't bundle a zstd *encoder* yet. Output bags reload identically; they just weigh 2-4x the zstd equivalent. Lands once a sensible encoder is available. |
 | Plugin panels | Lets users build custom views (e.g. depth-image colorisation, vendor-specific marker overlays, OBD-II decoders) against a stable panel API. Earmarked once internal panels have stabilised so the API becomes a stability contract; shipping it half-baked is a one-way door. |
 | Cloud-hosted shareable URLs | The local hash is great for personal reuse (a tiny Vercel function + KV store would unlock real link-sharing with layouts that survive a bag move). Designed in the v1.0 plan, deferred to a follow-up so it can land with the deploy infra change. |
 | Streaming `.db3` over HTTP Range | `sql.js-httpvfs` would do real partial reads via a custom SQLite VFS; current URL loading eager-fetches the whole `.db3` because sql.js needs it in memory. Deferred until someone hits the practical ~250 MB cap in the wild. |
@@ -253,7 +253,7 @@ The shortcuts modal (`?`) lists everything at runtime (adding a binding in `src/
 | **Resizable layout** | react-resizable-panels | Drag-to-resize sidebar + panels |
 | **Charting** | uPlot | High-perf canvas time-series |
 | **MCAP Parsing** | @mcap/core + @mcap/browser | Official MCAP reader (range-read from File) |
-| **Zstd decode** | zstd-wasm | WASM zstd for compressed MCAP chunks *(v1.6.4)* |
+| **Zstd decode** | fzstd | Pure-JS zstd for compressed MCAP chunks |
 | **ZIP encode** | fflate | Zero-copy PNG zip for clip export *(v1.4.2)* |
 | **SQLite** | sql.js (WASM) | Parse .db3 files in-browser |
 | **ROS1 Parsing** | @foxglove/rosbag | Indexed reader for legacy .bag files (range-read from File) |
@@ -307,7 +307,7 @@ User's Browser
       │
       ├── Format detect (.db3, .mcap, or .bag?)
       │     ├── .mcap → @mcap/core IndexedReader (uses the adapter)
-      │     │              └── zstd-wasm (decompress zstd chunks)
+      │     │              └── fzstd (decompress zstd chunks)
       │     ├── .db3  → sql.js (SQLite compiled to WASM, eager-fetches the whole file)
       │     │              └── nearest-row-at-time SQL
       │     └── .bag  → @foxglove/rosbag (uses the adapter)
@@ -322,7 +322,7 @@ User's Browser
                   + recursive { sec, nsec } → { sec, nsec, nanosec } alias pass
 ```
 
-The main bundle no longer ships `@mcap/core`, `sql.js`, `zstd-wasm`, or the
+The main bundle no longer ships `@mcap/core`, `sql.js`, `fzstd`, or the
 `@foxglove/*` libraries which are bundled into the worker chunk that
 Vite emits as a sibling of `index.js`. Each loaded bag owns its own
 worker instance (v0.9 multi-bag), so the worker's MCAP reader, sql.js
@@ -361,7 +361,7 @@ src/
 │   ├── index.ts          # Thin shim: forwards every call to the parser worker
 │   ├── core.ts           # Worker-only: format detect + unified parse + read APIs
 │   ├── source.ts         # BagSource abstraction (File or URL), HTTP-Range readers
-│   ├── mcap.ts           # MCAP reader (range reads, zstd-wasm decompress, lazy seek)
+│   ├── mcap.ts           # MCAP reader (range reads, fzstd decompress, lazy seek)
 │   ├── db3.ts            # SQLite reader (cached Database, nearest-at-time query)
 │   ├── bag.ts            # ROS1 .bag reader (cached Bag, type-name normalisation)
 │   ├── cdr.ts            # CDR deserializer (cached MessageReader per type)
