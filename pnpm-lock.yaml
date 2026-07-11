@@ -32,6 +32,9 @@ importers:
       '@mcap/core':
         specifier: ^2.2.1
         version: 2.2.1
+      '@mkkellogg/gaussian-splats-3d':
+        specifier: ^0.4.7
+        version: 0.4.7(three@0.184.0)
       fflate:
         specifier: ^0.8.3
         version: 0.8.3
@@ -495,6 +498,11 @@ packages:
 
   '@mcap/core@2.2.1':
     resolution: {integrity: sha512-Qj0NSqxmFA6DlwYZqlnYHApcQl6jaVAFcUlYxFJCRKK6dymJAfdw98EIGnzAxLi/xw6rjQ8GFRyVzuoswFn+UA==}
+
+  '@mkkellogg/gaussian-splats-3d@0.4.7':
+    resolution: {integrity: sha512-0vy9/i9sJLFH/v3WJZ4axCsqjkToe8UsV3xY7bvK5EUC0akiRsWZODoCiSzpxhTLNyzSKTsyQKozIFeNA5RWRA==}
+    peerDependencies:
+      three: '>=0.160.0'
 
   '@napi-rs/wasm-runtime@1.1.4':
     resolution: {integrity: sha512-3NQNNgA1YSlJb/kMH1ildASP9HW7/7kYnRI2szWJaofaS1hWmbGI4H+d3+22aGzXXN9IJ+n+GiFVcGipJP18ow==}
@@ -2294,6 +2302,10 @@ snapshots:
       '@foxglove/crc': 0.0.3
       heap-js: 2.7.1
       tslib: 2.8.1
+
+  '@mkkellogg/gaussian-splats-3d@0.4.7(three@0.184.0)':
+    dependencies:
+      three: 0.184.0
 
   '@napi-rs/wasm-runtime@1.1.4(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)':
     dependencies:
