@@ -34,7 +34,8 @@ export type PanelKind =
   | '3d'
   | 'diagnostic'
   | 'log'
-  | 'health';
+  | 'health'
+  | 'splat';
 
 export interface PanelLeaf {
   node: 'panel';

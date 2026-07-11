@@ -40,6 +40,7 @@ const KIND_LABELS: Record<PanelKind, string> = {
   diagnostic: 'Diagnostics',
   log: 'Log',
   health: 'Bag Health',
+  splat: 'Gaussian Splat',
 };
 
 /**

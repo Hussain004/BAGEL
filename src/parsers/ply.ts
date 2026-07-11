@@ -31,7 +31,7 @@ export const PLY_MAGIC = 'ply';
 type PlyFormat = 'ascii' | 'binary_little_endian' | 'binary_big_endian';
 
 /** One PLY property declaration. */
-interface PlyProp {
+export interface PlyProp {
   name: string;
   /** PLY type string, e.g. 'float', 'uchar', 'double', 'int' */
   typeName: string;
@@ -65,7 +65,7 @@ function plyTypeInfo(typeName: string): { byteSize: number; isFloat: boolean; is
   }
 }
 
-interface PlyHeader {
+export interface PlyHeader {
   format: PlyFormat;
   vertexCount: number;
   props: PlyProp[];
@@ -73,7 +73,7 @@ interface PlyHeader {
   dataByteOffset: number;
 }
 
-function parsePlyHeader(bytes: Uint8Array): PlyHeader {
+export function parsePlyHeader(bytes: Uint8Array): PlyHeader {
   const headSlice = bytes.subarray(0, Math.min(8192, bytes.length));
   const text = new TextDecoder('ascii').decode(headSlice);
 

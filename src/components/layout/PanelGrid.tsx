@@ -18,6 +18,7 @@ import { ThreeDScene } from '../panels/ThreeDScene';
 import { DiagnosticArray } from '../panels/DiagnosticArray';
 import { Log } from '../panels/Log';
 import { BagHealth } from '../panels/BagHealth';
+import { SplatViewer } from '../panels/SplatViewer';
 
 /**
  * PanelGrid — Recursive renderer for the layout tree.
@@ -129,6 +130,8 @@ function Visualisation({ leaf }: { leaf: PanelLeaf }) {
       return <Log {...props} />;
     case 'health':
       return <BagHealth {...props} />;
+    case 'splat':
+      return <SplatViewer {...props} />;
   }
 }
 

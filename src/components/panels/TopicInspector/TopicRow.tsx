@@ -8,6 +8,7 @@ import {
   isMarkerArrayType,
   isMarkerType,
   isOccupancyGridType,
+  isSplatType,
   isTfTopic,
   isTrajectoryCapableType,
 } from '../../../utils/messages';
@@ -44,6 +45,7 @@ interface TopicRowProps {
 function suggestPanelKind(topic: TopicInfo): PanelKind {
   if (isTfTopic(topic.name, topic.type)) return 'tf';
   if (isImageType(topic.type)) return 'image';
+  if (isSplatType(topic.type)) return 'splat';
   // Point cloud-ish topics default to the 3D view — that's the whole point.
   if (isCloudType(topic.type) || isLaserScanType(topic.type)) return '3d';
   // MarkerArrays / Markers live in 3D space — there is no useful 2D view.
@@ -71,6 +73,7 @@ function suggestPanelKind(topic: TopicInfo): PanelKind {
 function panelOptionsFor(topic: TopicInfo): PanelKind[] {
   if (isTfTopic(topic.name, topic.type)) return ['tf', 'raw'];
   if (isImageType(topic.type)) return ['image', 'raw'];
+  if (isSplatType(topic.type)) return ['splat', 'raw'];
   if (isCloudType(topic.type)) return ['3d', 'raw'];
   if (isLaserScanType(topic.type)) return ['3d', 'plot', 'raw'];
   if (isMarkerArrayType(topic.type) || isMarkerType(topic.type)) {
@@ -104,6 +107,7 @@ const KIND_BUTTON_LABEL: Record<PanelKind, string> = {
   diagnostic: 'Diag',
   log: 'Log',
   health: 'Health',
+  splat: 'Splat',
 };
 
 const KIND_BUTTON_TITLE: Record<PanelKind, string> = {
@@ -116,6 +120,7 @@ const KIND_BUTTON_TITLE: Record<PanelKind, string> = {
   diagnostic: 'Open diagnostic timeline',
   log: 'Open log viewer',
   health: 'Open bag health dashboard',
+  splat: 'Open gaussian splat viewer',
 };
 
 /**

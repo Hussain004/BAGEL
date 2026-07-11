@@ -142,6 +142,16 @@ export function isCloudType(type: string): boolean {
   return isPointCloud2Type(type) || isCustomLidarType(type) || type === 'foxglove.PointCloud';
 }
 
+/**
+ * True if a type is BAGEL's synthetic gaussian splat topic (see
+ * `src/parsers/splat.ts`). Kept as its own check rather than folded into
+ * `isCloudType` — splats need the dedicated SplatViewer panel, not the
+ * point-cloud decoder, which has no room for opacity/scale/rotation/SH data.
+ */
+export function isSplatType(type: string): boolean {
+  return type === 'gaussian/GaussianSplat';
+}
+
 /** True if a ROS2 type is sensor_msgs/LaserScan. */
 export function isLaserScanType(type: string): boolean {
   return type.endsWith('/LaserScan') || type === 'foxglove.LaserScan';
