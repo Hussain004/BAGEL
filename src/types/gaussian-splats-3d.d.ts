@@ -30,6 +30,7 @@ declare module '@mkkellogg/gaussian-splats-3d' {
   export class SplatMesh extends THREE.Mesh {
     computeBoundingBox(applySceneTransforms?: boolean, sceneIndex?: number): THREE.Box3;
     getSplatCount(includeSinceLastBuild?: boolean): number;
+    getSplatCenter(globalIndex: number, outCenter: THREE.Vector3, applySceneTransform?: boolean): void;
   }
 
   export class DropInViewer extends THREE.Group {

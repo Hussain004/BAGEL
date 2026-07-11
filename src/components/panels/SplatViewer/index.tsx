@@ -53,16 +53,55 @@ function sceneFormatFor(name: string): GaussianSplats3D.SceneFormat {
   return GaussianSplats3D.SceneFormat.Ply;
 }
 
-/** Fit the scene's camera to the splat mesh's current bounding box, if it has one yet. */
+/** Cap on how many splat centers to sample for the robust fit below. Real
+ * scenes can carry millions of splats; a few thousand evenly-strided samples
+ * are plenty to estimate the dense cluster's extent without reading every one. */
+const FIT_SAMPLE_CAP = 20_000;
+
+/**
+ * Fit the scene's camera to the splat mesh, ignoring stray outliers.
+ *
+ * `computeBoundingBox()`'s min/max is not safe to fit a camera to: real
+ * trained gaussian splat scenes very commonly carry a handful of stray
+ * "floater" splats far from the main subject (a well-known training
+ * artifact), and even one of them inflates the box enough to push the
+ * camera back until the actual scene is a barely-visible speck. Instead,
+ * sample splat centers directly, take the coordinate-wise median as a
+ * robust centroid (unlike the box center, one outlier can't drag a median
+ * far), and size the fit off the 90th-percentile distance from it rather
+ * than the true max, so the handful of outlier splats in the excluded tail
+ * don't determine the framing.
+ */
 function fitCameraToSplats(
   refs: { resetCamera: (target: THREE.Vector3, radius: number) => void },
   viewer: GaussianSplats3D.DropInViewer,
 ): void {
-  const box = viewer.splatMesh?.computeBoundingBox();
-  if (!box || box.isEmpty()) return;
-  const center = box.getCenter(new THREE.Vector3());
-  const size = box.getSize(new THREE.Vector3());
-  const radius = Math.max(size.length() * 0.7, 3);
+  const mesh = viewer.splatMesh;
+  const count = mesh?.getSplatCount() ?? 0;
+  if (!mesh || count === 0) return;
+
+  const stride = Math.max(1, Math.floor(count / FIT_SAMPLE_CAP));
+  const tmp = new THREE.Vector3();
+  const xs: number[] = [];
+  const ys: number[] = [];
+  const zs: number[] = [];
+  for (let i = 0; i < count; i += stride) {
+    mesh.getSplatCenter(i, tmp, true);
+    xs.push(tmp.x);
+    ys.push(tmp.y);
+    zs.push(tmp.z);
+  }
+  if (xs.length === 0) return;
+
+  xs.sort((a, b) => a - b);
+  ys.sort((a, b) => a - b);
+  zs.sort((a, b) => a - b);
+  const mid = Math.floor(xs.length / 2);
+  const center = new THREE.Vector3(xs[mid], ys[mid], zs[mid]);
+
+  const dists = xs.map((_, i) => center.distanceTo(new THREE.Vector3(xs[i], ys[i], zs[i]))).sort((a, b) => a - b);
+  const p90 = dists[Math.floor(dists.length * 0.9)];
+  const radius = Math.max(p90 * 1.5, 3);
   refs.resetCamera(center, radius);
 }
 
