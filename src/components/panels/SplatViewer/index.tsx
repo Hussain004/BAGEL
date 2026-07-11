@@ -19,6 +19,9 @@
  * which needs COOP/COEP response headers. BAGEL already ships those (see
  * vercel.json, required for sql.js), but keeping the splat path independent
  * of that config means it still works if those headers are ever removed.
+ * `dynamicScene: true` is on so the up-axis correction (see
+ * ORIENTATION_PRESETS below) can actually be cycled after load instead of
+ * requiring a hardcoded guess baked in once at load time.
  */
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
@@ -58,15 +61,30 @@ function sceneFormatFor(name: string): GaussianSplats3D.SceneFormat {
  * Gaussian splat training pipelines (the INRIA reference implementation and
  * everything descended from it: nerfstudio/gsplat, Postshot, Polycam, Luma,
  * ...) inherit their world frame from COLMAP/OpenGL camera math, which is
- * Y-up. BAGEL's whole scene is Z-up (ROS convention, `camera.up` is fixed to
- * (0,0,1) in useScene.ts) for every other panel, so a splat scene loaded
- * with no correction renders rotated - reported as "upside down." A +90deg
- * rotation around X maps the data's +Y (its "up") to +Z (BAGEL's "up")
- * without flipping it, verified directly: applying this quaternion to
- * (0,1,0) yields (0,0,1), not (0,0,-1).
+ * conventionally Y-up, while BAGEL's whole scene is Z-up (ROS convention,
+ * `camera.up` is fixed to (0,0,1) in useScene.ts) for every other panel. But
+ * "conventionally" is doing a lot of work there - there's no single
+ * standard every capture tool actually follows, so a single hardcoded guess
+ * isn't reliable enough to commit to as the only option. This is a small
+ * cycle of plausible corrections the user can step through with a key press
+ * until one looks right.
+ *
+ * Mutating a loaded scene's `quaternion` only reaches the renderer if the
+ * viewer was constructed with `dynamicScene: true` (see the DropInViewer
+ * options below) - with the library's default (static) scenes, the vertex
+ * shader never reads a scene's transform at all, so the same mutation
+ * silently changes nothing on screen while still changing what
+ * `getSplatCenter()` reports (that CPU accessor applies the scene transform
+ * regardless of mode), which made a stale-render bug here easy to mistake
+ * for a working fix. `dynamicScene: true` forgoes a few static-scene
+ * optimizations (a per-vertex transform multiply, extra sort-worker
+ * bookkeeping) in exchange for `updateTransforms()` actually mattering.
  */
-const SPLAT_UP_AXIS_CORRECTION: [number, number, number, number] = [
-  Math.SQRT1_2, 0, 0, Math.SQRT1_2,
+const ORIENTATION_PRESETS: { label: string; quaternion: THREE.Quaternion }[] = [
+  { label: 'Y-up', quaternion: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2) },
+  { label: 'Y-up (flipped)', quaternion: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2) },
+  { label: 'Z-up (as loaded)', quaternion: new THREE.Quaternion() },
+  { label: 'Z-up (flipped)', quaternion: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI) },
 ];
 
 /**
@@ -150,12 +168,88 @@ function fitCameraToSplats(
   refs.resetCamera(bounds.center, Math.max(bounds.radius * 2.0, 3));
 }
 
+/**
+ * Fit the camera to the current splat bounds and create/move the ground
+ * grid + axes reference geometry to match. Called after initial load and
+ * again after every V-cycle orientation change, since rotating the scene
+ * moves its bounds.
+ */
+function applyOrientationFit(
+  refs: {
+    resetCamera: (target: THREE.Vector3, radius: number) => void;
+    worldGroup: THREE.Group;
+  },
+  viewer: GaussianSplats3D.DropInViewer,
+  referenceGeometryRef: { current: { grid: THREE.GridHelper; axes: THREE.AxesHelper } | null },
+): void {
+  const bounds = robustSplatBounds(viewer);
+  const fitRadius = bounds ? Math.max(bounds.radius * 2.0, 3) : 10;
+  const center = bounds?.center ?? new THREE.Vector3();
+  refs.resetCamera(center, fitRadius);
+
+  const existing = referenceGeometryRef.current;
+  if (existing) {
+    existing.grid.position.set(center.x, center.y, center.z - fitRadius * 0.7);
+    existing.axes.position.copy(center);
+  } else {
+    // Splats have no floor/wall geometry of their own to judge movement
+    // against (unlike a real room, there's nothing here that visually
+    // recedes or gets taller as the camera moves), so without some
+    // reference, "forward" and "up" both just look like "the blob changed
+    // size" - the same problem doesn't exist for ThreeDScene's point clouds
+    // because those are almost always sparse/thin enough that empty space
+    // around them already reads as space. Reuse ThreeDScene's own ground
+    // grid + axes helpers, sized off the fitted radius so they're a
+    // sensible reference regardless of whether the scene is tabletop-sized
+    // or room-sized.
+    const gridSize = Math.max(fitRadius * 4, 10);
+    const grid = createGroundGrid(gridSize, Math.round(Math.min(Math.max(gridSize / 2, 10), 100)));
+    grid.position.set(center.x, center.y, center.z - fitRadius * 0.7);
+    const axes = createWorldAxes(Math.max(fitRadius * 0.3, 1));
+    axes.position.copy(center);
+    refs.worldGroup.add(grid);
+    refs.worldGroup.add(axes);
+    referenceGeometryRef.current = { grid, axes };
+  }
+}
+
+/** Load the splat scene with an initial up-axis correction, then fit the
+ * camera and reference geometry to it. */
+async function loadSplatScene(
+  refs: {
+    resetCamera: (target: THREE.Vector3, radius: number) => void;
+    worldGroup: THREE.Group;
+    renderOnce: () => void;
+  },
+  viewer: GaussianSplats3D.DropInViewer,
+  path: string,
+  format: GaussianSplats3D.SceneFormat,
+  initialQuaternion: THREE.Quaternion,
+  referenceGeometryRef: { current: { grid: THREE.GridHelper; axes: THREE.AxesHelper } | null },
+  onProgress: (percent: number) => void,
+): Promise<number> {
+  await viewer.addSplatScene(path, {
+    format,
+    showLoadingUI: false,
+    splatAlphaRemovalThreshold: SPLAT_ALPHA_REMOVAL_THRESHOLD,
+    rotation: initialQuaternion.toArray() as [number, number, number, number],
+    onProgress: (percent) => {
+      onProgress(percent);
+      refs.renderOnce();
+    },
+  });
+  applyOrientationFit(refs, viewer, referenceGeometryRef);
+  return viewer.splatMesh?.getSplatCount() ?? 0;
+}
+
 export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProps) {
   const entry = useBagStore((s) => resolveBagEntry(s, bagId));
   const source = entry?.source ?? null;
   const { containerRef, sceneRef } = useScene();
   const [loadState, setLoadState] = useState<LoadState>({ status: 'idle' });
   const [pivot, setPivot] = useState<{ x: number; y: number; z: number } | null>(null);
+  const [orientationIndex, setOrientationIndex] = useState(0);
+  const orientationIndexRef = useRef(0);
   const viewerRef = useRef<GaussianSplats3D.DropInViewer | null>(null);
   const pivotMarkerRef = useRef<THREE.Mesh | null>(null);
   const isHoveringRef = useRef(false);
@@ -173,9 +267,12 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
       camera: refs.camera,
       sharedMemoryForWorkers: false,
       gpuAcceleratedSort: false,
+      dynamicScene: true,
     });
     refs.scene.add(viewer);
     viewerRef.current = viewer;
+    orientationIndexRef.current = 0;
+    setOrientationIndex(0);
     setLoadState({ status: 'loading', percent: 0 });
 
     const path =
@@ -184,48 +281,21 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
         : source.url;
     const format = sceneFormatFor(sourceFileName(source));
 
-    viewer
-      .addSplatScene(path, {
-        format,
-        showLoadingUI: false,
-        rotation: SPLAT_UP_AXIS_CORRECTION,
-        splatAlphaRemovalThreshold: SPLAT_ALPHA_REMOVAL_THRESHOLD,
-        onProgress: (percent) => {
-          if (cancelled) return;
-          setLoadState({ status: 'loading', percent });
-          refs.renderOnce();
-        },
-      })
-      .then(() => {
+    loadSplatScene(
+      refs,
+      viewer,
+      path,
+      format,
+      ORIENTATION_PRESETS[0].quaternion,
+      referenceGeometryRef,
+      (percent) => {
         if (cancelled) return;
-        const bounds = robustSplatBounds(viewer);
-        if (bounds) {
-          const fitRadius = Math.max(bounds.radius * 2.0, 3);
-          refs.resetCamera(bounds.center, fitRadius);
-
-          // Splats have no floor/wall geometry of their own to judge movement
-          // against (unlike a real room, there's nothing here that visually
-          // recedes or gets taller as the camera moves), so without some
-          // reference, "forward" and "up" both just look like "the blob
-          // changed size" - the same problem doesn't exist for ThreeDScene's
-          // point clouds because those are almost always sparse/thin enough
-          // that empty space around them already reads as space. Reuse
-          // ThreeDScene's own ground grid + axes helpers, sized off the
-          // fitted radius so they're a sensible reference regardless of
-          // whether the scene is tabletop-sized or room-sized.
-          const gridSize = Math.max(fitRadius * 4, 10);
-          const grid = createGroundGrid(gridSize, Math.round(Math.min(Math.max(gridSize / 2, 10), 100)));
-          grid.position.set(bounds.center.x, bounds.center.y, bounds.center.z - fitRadius * 0.7);
-          const axes = createWorldAxes(Math.max(fitRadius * 0.3, 1));
-          axes.position.copy(bounds.center);
-          refs.worldGroup.add(grid);
-          refs.worldGroup.add(axes);
-          referenceGeometryRef.current = { grid, axes };
-        }
-        setLoadState({
-          status: 'loaded',
-          splatCount: viewer.splatMesh?.getSplatCount() ?? 0,
-        });
+        setLoadState({ status: 'loading', percent });
+      },
+    )
+      .then((splatCount) => {
+        if (cancelled) return;
+        setLoadState({ status: 'loaded', splatCount });
         refs.renderOnce();
       })
       .catch((err: unknown) => {
@@ -302,8 +372,12 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
   // orbiting around the target - a real "turn your head", distinct from
   // mouse-drag rotate), R/F move up/down, Z/C orbit left/right around the
   // current pivot (target stays fixed, camera swings around it - the
-  // keyboard equivalent of mouse-drag rotate, unlike Q/E). Deliberately NOT
-  // bound to arrow keys/Space - those are already global app shortcuts
+  // keyboard equivalent of mouse-drag rotate, unlike Q/E). V cycles the
+  // up-axis orientation preset (see ORIENTATION_PRESETS) - there's no single
+  // convention every gaussian-splatting capture tool actually follows, so
+  // rather than commit to one hardcoded guess, this is a fast, no-reload way
+  // to step through the plausible ones until one looks right. Deliberately
+  // NOT bound to arrow keys/Space - those are already global app shortcuts
   // (playhead step, play/pause) bound on `window`, and reusing them here
   // would fire both at once ('A' used to be About, freed up for strafe - see
   // useKeyboardShortcuts.ts). Active only while the pointer is over this
@@ -324,7 +398,21 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!isHoveringRef.current || !FLY_CODES.has(e.code) || isTypingTarget(e.target)) return;
+      if (!isHoveringRef.current || isTypingTarget(e.target)) return;
+      if (e.code === 'KeyV') {
+        const viewer = viewerRef.current;
+        const mesh = viewer?.splatMesh;
+        if (!mesh || mesh.getSplatCount() === 0) return;
+        const next = (orientationIndexRef.current + 1) % ORIENTATION_PRESETS.length;
+        mesh.getScene(0).quaternion.copy(ORIENTATION_PRESETS[next].quaternion);
+        mesh.updateTransforms();
+        orientationIndexRef.current = next;
+        setOrientationIndex(next);
+        applyOrientationFit(refs, viewer, referenceGeometryRef);
+        refs.renderOnce();
+        return;
+      }
+      if (!FLY_CODES.has(e.code)) return;
       heldKeys.add(e.code);
     };
     const onKeyUp = (e: KeyboardEvent) => heldKeys.delete(e.code);
@@ -524,8 +612,9 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
           )}
 
           {loadState.status === 'loaded' && (
-            <div className="absolute bottom-2 left-2 px-2 py-1 rounded-md text-xs mono bg-surface/80 border border-border text-text-secondary pointer-events-none">
-              {loadState.splatCount.toLocaleString()} splats
+            <div className="absolute bottom-2 left-2 flex items-center gap-2 px-2 py-1 rounded-md text-xs mono bg-surface/80 border border-border text-text-secondary pointer-events-none">
+              <span>{loadState.splatCount.toLocaleString()} splats</span>
+              <span className="text-text-tertiary">· {ORIENTATION_PRESETS[orientationIndex].label} (V to cycle)</span>
             </div>
           )}
         </div>

@@ -25,12 +25,28 @@ declare module '@mkkellogg/gaussian-splats-3d' {
     sharedMemoryForWorkers?: boolean;
     gpuAcceleratedSort?: boolean;
     halfPrecisionCovariancesOnGPU?: boolean;
+    /** Enables per-frame reading of each scene's transform (position/
+     * quaternion/scale) in the shader. Without this, a static scene's
+     * transform is baked away and mutating it after load has no visible
+     * effect - see SplatViewer's ORIENTATION_PRESETS comment. */
+    dynamicScene?: boolean;
+  }
+
+  /** A single loaded splat scene's own transform, mutable after load only
+   * when the viewer was constructed with `dynamicScene: true`. */
+  export interface SplatSceneHandle {
+    position: THREE.Vector3;
+    quaternion: THREE.Quaternion;
+    scale: THREE.Vector3;
   }
 
   export class SplatMesh extends THREE.Mesh {
     computeBoundingBox(applySceneTransforms?: boolean, sceneIndex?: number): THREE.Box3;
     getSplatCount(includeSinceLastBuild?: boolean): number;
     getSplatCenter(globalIndex: number, outCenter: THREE.Vector3, applySceneTransform?: boolean): void;
+    getScene(sceneIndex: number): SplatSceneHandle;
+    /** Rebuilds each scene's shader-visible transform from its position/quaternion/scale. */
+    updateTransforms(): void;
   }
 
   export class DropInViewer extends THREE.Group {
