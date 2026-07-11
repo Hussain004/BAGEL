@@ -54,6 +54,34 @@ function sceneFormatFor(name: string): GaussianSplats3D.SceneFormat {
   return GaussianSplats3D.SceneFormat.Ply;
 }
 
+/**
+ * Gaussian splat training pipelines (the INRIA reference implementation and
+ * everything descended from it: nerfstudio/gsplat, Postshot, Polycam, Luma,
+ * ...) inherit their world frame from COLMAP/OpenGL camera math, which is
+ * Y-up. BAGEL's whole scene is Z-up (ROS convention, `camera.up` is fixed to
+ * (0,0,1) in useScene.ts) for every other panel, so a splat scene loaded
+ * with no correction renders rotated - reported as "upside down." A +90deg
+ * rotation around X maps the data's +Y (its "up") to +Z (BAGEL's "up")
+ * without flipping it, verified directly: applying this quaternion to
+ * (0,1,0) yields (0,0,1), not (0,0,-1).
+ */
+const SPLAT_UP_AXIS_CORRECTION: [number, number, number, number] = [
+  Math.SQRT1_2, 0, 0, Math.SQRT1_2,
+];
+
+/**
+ * Splats with essentially-zero opacity are near-universal noise in real
+ * captures (the training optimizer rarely converges exactly to 0), and
+ * unlike genuinely-translucent surface detail, they're just as likely to be
+ * scattered far from the subject as near it - exactly the kind of outlier
+ * that wrecks a bounding-box-based camera fit. The library's own load-time
+ * filter (default 1 - only near-fully-transparent splats) is raised
+ * slightly to catch more of this class before it ever reaches the fit
+ * calculation or the renderer, without touching splats with any real
+ * visible contribution (this is still under 2% opacity).
+ */
+const SPLAT_ALPHA_REMOVAL_THRESHOLD = 5;
+
 /** Cap on how many splat centers to sample for the robust fit below. Real
  * scenes can carry millions of splats; a few thousand evenly-strided samples
  * are plenty to estimate the dense cluster's extent without reading every one. */
@@ -63,15 +91,23 @@ const FIT_SAMPLE_CAP = 20_000;
  * Robust centroid + spread of a splat mesh, ignoring stray outliers.
  *
  * `computeBoundingBox()`'s min/max is not safe to fit a camera to: real
- * trained gaussian splat scenes very commonly carry a handful of stray
- * "floater" splats far from the main subject (a well-known training
- * artifact), and even one of them inflates the box enough to push the
- * camera back until the actual scene is a barely-visible speck. Instead,
- * sample splat centers directly, take the coordinate-wise median as a
- * robust centroid (unlike the box center, one outlier can't drag a median
- * far), and size the spread off the 90th-percentile distance from it rather
- * than the true max, so the handful of outlier splats in the excluded tail
- * don't determine the framing.
+ * trained gaussian splat scenes very commonly carry stray "floater" splats
+ * far from the main subject (a well-known training artifact), and even one
+ * of them inflates the box enough to push the camera back until the actual
+ * scene is a barely-visible speck. Sample splat centers directly and take
+ * the coordinate-wise **median** as the centroid - unlike a box center or a
+ * mean, a handful of outliers can't drag a median far.
+ *
+ * The spread uses the **median distance** from that centroid (not a high
+ * percentile like the 90th): a median has a 50% breakdown point, meaning it
+ * stays a meaningful "typical distance" even if up to half the sampled
+ * splats are stray noise, whereas a 90th-percentile cutoff is only safe up
+ * to 10% contamination before the cutoff itself starts being pulled outward
+ * by the very outliers it's supposed to exclude. Real captures can have a
+ * lot more low-level noise than a "handful of floaters" - the caller
+ * multiplies this by a padding factor to get an actual fit radius, since
+ * "median distance" alone is tighter than the point where most splats
+ * actually sit.
  */
 function robustSplatBounds(
   viewer: GaussianSplats3D.DropInViewer,
@@ -100,7 +136,7 @@ function robustSplatBounds(
   const center = new THREE.Vector3(xs[mid], ys[mid], zs[mid]);
 
   const dists = xs.map((_, i) => center.distanceTo(new THREE.Vector3(xs[i], ys[i], zs[i]))).sort((a, b) => a - b);
-  const radius = dists[Math.floor(dists.length * 0.9)];
+  const radius = dists[Math.floor(dists.length * 0.5)];
   return { center, radius };
 }
 
@@ -111,7 +147,7 @@ function fitCameraToSplats(
 ): void {
   const bounds = robustSplatBounds(viewer);
   if (!bounds) return;
-  refs.resetCamera(bounds.center, Math.max(bounds.radius * 1.5, 3));
+  refs.resetCamera(bounds.center, Math.max(bounds.radius * 2.0, 3));
 }
 
 export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProps) {
@@ -152,6 +188,8 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
       .addSplatScene(path, {
         format,
         showLoadingUI: false,
+        rotation: SPLAT_UP_AXIS_CORRECTION,
+        splatAlphaRemovalThreshold: SPLAT_ALPHA_REMOVAL_THRESHOLD,
         onProgress: (percent) => {
           if (cancelled) return;
           setLoadState({ status: 'loading', percent });
@@ -162,7 +200,8 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
         if (cancelled) return;
         const bounds = robustSplatBounds(viewer);
         if (bounds) {
-          refs.resetCamera(bounds.center, Math.max(bounds.radius * 1.5, 3));
+          const fitRadius = Math.max(bounds.radius * 2.0, 3);
+          refs.resetCamera(bounds.center, fitRadius);
 
           // Splats have no floor/wall geometry of their own to judge movement
           // against (unlike a real room, there's nothing here that visually
@@ -174,10 +213,10 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
           // ThreeDScene's own ground grid + axes helpers, sized off the
           // fitted radius so they're a sensible reference regardless of
           // whether the scene is tabletop-sized or room-sized.
-          const gridSize = Math.max(bounds.radius * 6, 10);
+          const gridSize = Math.max(fitRadius * 4, 10);
           const grid = createGroundGrid(gridSize, Math.round(Math.min(Math.max(gridSize / 2, 10), 100)));
-          grid.position.set(bounds.center.x, bounds.center.y, bounds.center.z - bounds.radius);
-          const axes = createWorldAxes(Math.max(bounds.radius * 0.5, 1));
+          grid.position.set(bounds.center.x, bounds.center.y, bounds.center.z - fitRadius * 0.7);
+          const axes = createWorldAxes(Math.max(fitRadius * 0.3, 1));
           axes.position.copy(bounds.center);
           refs.worldGroup.add(grid);
           refs.worldGroup.add(axes);
@@ -261,10 +300,12 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
   // to control. W/S move forward/back, A/D strafe left/right, Q/E turn
   // left/right (rotating the view around the camera's own position, not
   // orbiting around the target - a real "turn your head", distinct from
-  // mouse-drag rotate), R/F move up/down. Deliberately NOT bound to arrow
-  // keys/Space - those are already global app shortcuts (playhead step,
-  // play/pause) bound on `window`, and reusing them here would fire both at
-  // once ('A' used to be About, freed up for strafe - see
+  // mouse-drag rotate), R/F move up/down, Z/C orbit left/right around the
+  // current pivot (target stays fixed, camera swings around it - the
+  // keyboard equivalent of mouse-drag rotate, unlike Q/E). Deliberately NOT
+  // bound to arrow keys/Space - those are already global app shortcuts
+  // (playhead step, play/pause) bound on `window`, and reusing them here
+  // would fire both at once ('A' used to be About, freed up for strafe - see
   // useKeyboardShortcuts.ts). Active only while the pointer is over this
   // panel, so it doesn't hijack keys from other panels or the rest of the
   // app; keys are read on `window` (hover alone doesn't grant keyboard focus)
@@ -273,7 +314,7 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
     const refs = sceneRef.current;
     if (!refs) return;
     const heldKeys = new Set<string>();
-    const FLY_CODES = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyR', 'KeyF']);
+    const FLY_CODES = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyR', 'KeyF', 'KeyZ', 'KeyC']);
     const TURN_SPEED = 1.5; // radians/sec
 
     const isTypingTarget = (target: EventTarget | null): boolean => {
@@ -334,10 +375,27 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
         live.controls.target.copy(live.camera.position).add(offset);
       }
 
+      // Orbit around the pivot (target stays fixed, camera swings around
+      // it) - the keyboard equivalent of mouse-drag rotate, as distinct from
+      // Q/E above which turns in place around the camera itself. Unlike
+      // W/A/S/D/R/F/Q/E, this never moves the target, so it doesn't
+      // invalidate a custom shift+click pivot - orbiting around exactly
+      // that point is the point.
+      let orbit = 0;
+      if (heldKeys.has('KeyZ')) orbit += TURN_SPEED * dt;
+      if (heldKeys.has('KeyC')) orbit -= TURN_SPEED * dt;
+      if (orbit !== 0) {
+        offset.copy(live.camera.position).sub(live.controls.target);
+        offset.applyAxisAngle(live.camera.up, orbit);
+        live.camera.position.copy(live.controls.target).add(offset);
+      }
+
       if (delta.lengthSq() > 0 || yaw !== 0) {
+        setPivot(null);
+      }
+      if (delta.lengthSq() > 0 || yaw !== 0 || orbit !== 0) {
         live.controls.update();
         live.renderOnce();
-        setPivot(null);
       }
     }
 
@@ -424,7 +482,7 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
           {loadState.status === 'loaded' && (
             <div className="absolute top-2 left-2 text-xs mono text-text-tertiary pointer-events-none leading-relaxed">
               <div>shift+click sets orbit centre</div>
-              <div>hover + W/S forward/back, A/D strafe, Q/E turn, R/F up/down</div>
+              <div>hover + W/S forward/back, A/D strafe, Q/E turn, R/F up/down, Z/C orbit</div>
             </div>
           )}
 
