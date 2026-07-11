@@ -35,7 +35,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import * as GaussianSplats3D from '@mkkellogg/gaussian-splats-3d';
-import { useScene } from '../ThreeDScene/useScene';
+import { useScene, type SceneRefs } from '../ThreeDScene/useScene';
 import { createGroundGrid, createWorldAxes, disposeObject } from '../ThreeDScene/sceneObjects';
 import { PanelShell } from '../PanelShell';
 import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
@@ -101,6 +101,14 @@ const ORIENTATION_PRESETS: { label: string; quaternion: THREE.Quaternion }[] = [
   { label: 'Z-up (as loaded)', quaternion: new THREE.Quaternion() },
   { label: 'Z-up (flipped)', quaternion: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI) },
 ];
+
+/** Fixed world axes for the B/N/I/K/U/J splat-spin keys below - `camera.up`
+ * is itself always (0,0,1) (see useScene.ts's Z-up convention, set once and
+ * never reassigned), so spinning around "world Z" and around `camera.up`
+ * are the same thing; X and Y get their own constants since nothing else
+ * already exposes them as a live camera property. */
+const WORLD_X_AXIS = new THREE.Vector3(1, 0, 0);
+const WORLD_Y_AXIS = new THREE.Vector3(0, 1, 0);
 
 /**
  * Splats with essentially-zero opacity are near-universal noise in real
@@ -387,28 +395,38 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
   // orbiting around the target - a real "turn your head", distinct from
   // mouse-drag rotate), R/F move up/down, Z/C orbit left/right around the
   // current pivot (target stays fixed, camera swings around it - the
-  // keyboard equivalent of mouse-drag rotate, unlike Q/E). B/N spin the
-  // splat itself left/right around that same pivot - camera and reference
-  // grid stay completely still, only the object turns, which is the point:
-  // Z/C moves your viewpoint around the object, B/N moves the object under
-  // a fixed viewpoint, useful for lining the scene up against the grid
-  // without the camera's perspective distortion changing mid-adjustment. V
-  // cycles the up-axis orientation preset (see ORIENTATION_PRESETS) - there's
-  // no single convention every gaussian-splatting capture tool actually
-  // follows, so rather than commit to one hardcoded guess, this is a fast,
-  // no-reload way to step through the plausible ones until one looks right.
-  // Deliberately NOT bound to arrow keys/Space - those are already global
-  // app shortcuts (playhead step, play/pause) bound on `window`, and reusing
-  // them here would fire both at once ('A' used to be About, freed up for
-  // strafe - see useKeyboardShortcuts.ts). Active only while the pointer is
-  // over this panel, so it doesn't hijack keys from other panels or the rest
-  // of the app; keys are read on `window` (hover alone doesn't grant
-  // keyboard focus) but gated by the hover flag.
+  // keyboard equivalent of mouse-drag rotate, unlike Q/E).
+  //
+  // B/N, I/K, U/J spin the splat itself around the pivot on each of the
+  // three world axes (Z, X, Y respectively) - camera and reference grid stay
+  // completely still, only the object turns, which is the point: Z/C moves
+  // your viewpoint around the object, these move the object under a fixed
+  // viewpoint, useful for lining the scene up against the grid without the
+  // camera's perspective distortion changing mid-adjustment. Fixed world
+  // axes rather than camera-relative ones, so a given key always does the
+  // same thing regardless of which way the camera is currently facing -
+  // consistent with Z/C already orbiting around `camera.up`, which is
+  // itself a fixed world axis, not a view-relative one.
+  //
+  // V cycles the up-axis orientation preset (see ORIENTATION_PRESETS) -
+  // there's no single convention every gaussian-splatting capture tool
+  // actually follows, so rather than commit to one hardcoded guess, this is
+  // a fast, no-reload way to step through the plausible ones until one looks
+  // right. Deliberately NOT bound to arrow keys/Space - those are already
+  // global app shortcuts (playhead step, play/pause) bound on `window`, and
+  // reusing them here would fire both at once ('A' used to be About, freed
+  // up for strafe - see useKeyboardShortcuts.ts). Active only while the
+  // pointer is over this panel, so it doesn't hijack keys from other panels
+  // or the rest of the app; keys are read on `window` (hover alone doesn't
+  // grant keyboard focus) but gated by the hover flag.
   useEffect(() => {
     const refs = sceneRef.current;
     if (!refs) return;
     const heldKeys = new Set<string>();
-    const FLY_CODES = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyR', 'KeyF', 'KeyZ', 'KeyC', 'KeyB', 'KeyN']);
+    const FLY_CODES = new Set([
+      'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyR', 'KeyF', 'KeyZ', 'KeyC',
+      'KeyB', 'KeyN', 'KeyI', 'KeyK', 'KeyU', 'KeyJ',
+    ]);
     const TURN_SPEED = 1.5; // radians/sec
 
     const isTypingTarget = (target: EventTarget | null): boolean => {
@@ -425,12 +443,13 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
         if (!mesh || mesh.getSplatCount() === 0) return;
         const next = (orientationIndexRef.current + 1) % ORIENTATION_PRESETS.length;
         const scene = mesh.getScene(0);
-        // Resets position too, not just quaternion: B/N (spin) can leave the
-        // scene's position offset from origin (it rotates position along with
-        // quaternion to spin around the pivot rather than the object's own
-        // local origin - see the fly-through tick loop). A preset should
-        // always be a clean, canonical orientation, not compounded with
-        // whatever spinning happened before this press.
+        // Resets position too, not just quaternion: the spin keys (B/N/I/K/
+        // U/J) can leave the scene's position offset from origin (they
+        // rotate position along with quaternion to spin around the pivot
+        // rather than the object's own local origin - see
+        // spinSplatAroundPivot in the fly-through tick loop). A preset
+        // should always be a clean, canonical orientation, not compounded
+        // with whatever spinning happened before this press.
         scene.position.set(0, 0, 0);
         scene.quaternion.copy(ORIENTATION_PRESETS[next].quaternion);
         mesh.updateTransforms();
@@ -458,6 +477,25 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
     const spinOffset = new THREE.Vector3();
     let lastTime = performance.now();
     let rafId = requestAnimationFrame(tick);
+
+    // Spin the splat itself around the pivot (camera and target both stay
+    // put) - the object-space counterpart to Z/C's camera orbit, shared by
+    // all three spin axes below. Rotating just the scene's quaternion would
+    // swing the cloud around its own (usually off-center) local origin
+    // instead of the pivot the user is actually looking at, so the position
+    // is counter-rotated too: the point currently sitting at the pivot stays
+    // there, everything else swings around it.
+    function spinSplatAroundPivot(live: SceneRefs, axis: THREE.Vector3, angle: number) {
+      const mesh = viewerRef.current?.splatMesh;
+      if (!mesh || mesh.getSplatCount() === 0) return;
+      const scene = mesh.getScene(0);
+      spinQuat.setFromAxisAngle(axis, angle);
+      spinOffset.copy(scene.position).sub(live.controls.target);
+      spinOffset.applyQuaternion(spinQuat);
+      scene.position.copy(live.controls.target).add(spinOffset);
+      scene.quaternion.premultiply(spinQuat);
+      mesh.updateTransforms();
+    }
 
     function tick(now: number) {
       rafId = requestAnimationFrame(tick);
@@ -508,33 +546,31 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
         live.camera.position.copy(live.controls.target).add(offset);
       }
 
-      // Spin the splat itself around the pivot (camera and target both stay
-      // put) - the object-space counterpart to Z/C's camera orbit. Rotating
-      // just the scene's quaternion would swing the cloud around its own
-      // (usually off-center) local origin instead of the pivot the user is
-      // actually looking at, so the position is counter-rotated too: the
-      // point currently sitting at the pivot stays there, everything else
-      // swings around it.
-      let objectYaw = 0;
-      if (heldKeys.has('KeyB')) objectYaw += TURN_SPEED * dt;
-      if (heldKeys.has('KeyN')) objectYaw -= TURN_SPEED * dt;
-      if (objectYaw !== 0) {
-        const mesh = viewerRef.current?.splatMesh;
-        if (mesh && mesh.getSplatCount() > 0) {
-          const scene = mesh.getScene(0);
-          spinQuat.setFromAxisAngle(live.camera.up, objectYaw);
-          spinOffset.copy(scene.position).sub(live.controls.target);
-          spinOffset.applyQuaternion(spinQuat);
-          scene.position.copy(live.controls.target).add(spinOffset);
-          scene.quaternion.premultiply(spinQuat);
-          mesh.updateTransforms();
-        }
-      }
+      // Spin the splat itself around the pivot on each of the three world
+      // axes - B/N around Z (up), I/K around X, U/J around Y. Fixed world
+      // axes (not camera-relative) so a given key always spins the same way
+      // regardless of which direction the camera currently faces.
+      let objectSpinZ = 0;
+      if (heldKeys.has('KeyB')) objectSpinZ += TURN_SPEED * dt;
+      if (heldKeys.has('KeyN')) objectSpinZ -= TURN_SPEED * dt;
+      if (objectSpinZ !== 0) spinSplatAroundPivot(live, live.camera.up, objectSpinZ);
+
+      let objectSpinX = 0;
+      if (heldKeys.has('KeyI')) objectSpinX += TURN_SPEED * dt;
+      if (heldKeys.has('KeyK')) objectSpinX -= TURN_SPEED * dt;
+      if (objectSpinX !== 0) spinSplatAroundPivot(live, WORLD_X_AXIS, objectSpinX);
+
+      let objectSpinY = 0;
+      if (heldKeys.has('KeyU')) objectSpinY += TURN_SPEED * dt;
+      if (heldKeys.has('KeyJ')) objectSpinY -= TURN_SPEED * dt;
+      if (objectSpinY !== 0) spinSplatAroundPivot(live, WORLD_Y_AXIS, objectSpinY);
+
+      const objectSpun = objectSpinZ !== 0 || objectSpinX !== 0 || objectSpinY !== 0;
 
       if (delta.lengthSq() > 0 || yaw !== 0) {
         setPivot(null);
       }
-      if (delta.lengthSq() > 0 || yaw !== 0 || orbit !== 0 || objectYaw !== 0) {
+      if (delta.lengthSq() > 0 || yaw !== 0 || orbit !== 0 || objectSpun) {
         live.controls.update();
         live.renderOnce();
       }
@@ -624,7 +660,7 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
             <div className="absolute top-2 left-2 text-xs mono text-text-tertiary pointer-events-none leading-relaxed">
               <div>shift+click sets orbit centre</div>
               <div>hover + W/S forward/back, A/D strafe, Q/E turn, R/F up/down, Z/C orbit</div>
-              <div>B/N spin the splat, V cycle orientation</div>
+              <div>B/N, I/K, U/J spin the splat (Z/X/Y), V cycle orientation</div>
             </div>
           )}
 
