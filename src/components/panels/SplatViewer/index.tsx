@@ -121,6 +121,7 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
   const [pivot, setPivot] = useState<{ x: number; y: number; z: number } | null>(null);
   const viewerRef = useRef<GaussianSplats3D.DropInViewer | null>(null);
   const pivotMarkerRef = useRef<THREE.Mesh | null>(null);
+  const isHoveringRef = useRef(false);
 
   useEffect(() => {
     const refs = sceneRef.current;
@@ -221,6 +222,95 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
     return () => canvas.removeEventListener('pointerdown', handlePointerDown);
   }, [sceneRef]);
 
+  // Keyboard fly-through: mouse-drag orbit alone is awkward for exploring a
+  // splat scene the way it's fine for a bounded point-cloud scan - splats are
+  // usually a walkable room/space, and OrbitControls' pan speed (scaled by
+  // camera-to-target distance) makes fine-grained movement through one hard
+  // to control. W/S move forward/back and Q/E turn left/right (rotating the
+  // view around the camera's own position, not orbiting around the target -
+  // a real "turn your head", distinct from mouse-drag rotate), R/F move
+  // up/down. Deliberately NOT bound to arrow keys/Space/A - those are already
+  // global app shortcuts (playhead step, play/pause, About) bound on
+  // `window`, and reusing them here would fire both at once. Active only
+  // while the pointer is over this panel, so it doesn't hijack keys from
+  // other panels or the rest of the app; keys are read on `window` (hover
+  // alone doesn't grant keyboard focus) but gated by the hover flag.
+  useEffect(() => {
+    const refs = sceneRef.current;
+    if (!refs) return;
+    const heldKeys = new Set<string>();
+    const FLY_CODES = new Set(['KeyW', 'KeyS', 'KeyQ', 'KeyE', 'KeyR', 'KeyF']);
+    const TURN_SPEED = 1.5; // radians/sec
+
+    const isTypingTarget = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      if (target.isContentEditable) return true;
+      return target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT';
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!isHoveringRef.current || !FLY_CODES.has(e.code) || isTypingTarget(e.target)) return;
+      heldKeys.add(e.code);
+    };
+    const onKeyUp = (e: KeyboardEvent) => heldKeys.delete(e.code);
+    const onBlur = () => heldKeys.clear();
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
+
+    const forward = new THREE.Vector3();
+    const offset = new THREE.Vector3();
+    const delta = new THREE.Vector3();
+    let lastTime = performance.now();
+    let rafId = requestAnimationFrame(tick);
+
+    function tick(now: number) {
+      rafId = requestAnimationFrame(tick);
+      const dt = Math.min((now - lastTime) / 1000, 0.1);
+      lastTime = now;
+      if (heldKeys.size === 0) return;
+      const live = sceneRef.current;
+      if (!live) return;
+
+      const distance = live.camera.position.distanceTo(live.controls.target);
+      const moveSpeed = Math.min(Math.max(distance * 0.6, 0.5), 200);
+
+      live.camera.getWorldDirection(forward);
+      delta.set(0, 0, 0);
+      if (heldKeys.has('KeyW')) delta.addScaledVector(forward, moveSpeed * dt);
+      if (heldKeys.has('KeyS')) delta.addScaledVector(forward, -moveSpeed * dt);
+      if (heldKeys.has('KeyR')) delta.addScaledVector(live.camera.up, moveSpeed * dt);
+      if (heldKeys.has('KeyF')) delta.addScaledVector(live.camera.up, -moveSpeed * dt);
+      if (delta.lengthSq() > 0) {
+        live.camera.position.add(delta);
+        live.controls.target.add(delta);
+      }
+
+      let yaw = 0;
+      if (heldKeys.has('KeyQ')) yaw += TURN_SPEED * dt;
+      if (heldKeys.has('KeyE')) yaw -= TURN_SPEED * dt;
+      if (yaw !== 0) {
+        offset.copy(live.controls.target).sub(live.camera.position);
+        offset.applyAxisAngle(live.camera.up, yaw);
+        live.controls.target.copy(live.camera.position).add(offset);
+      }
+
+      if (delta.lengthSq() > 0 || yaw !== 0) {
+        live.controls.update();
+        live.renderOnce();
+        setPivot(null);
+      }
+    }
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, [sceneRef]);
+
   // Visual marker at the custom pivot - wireframe sphere, depthTest off so it
   // stays visible against the splat cloud, matching ThreeDScene's convention.
   useEffect(() => {
@@ -286,12 +376,17 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
   return (
     <PanelShell panelId={panelId} kind="splat" topicName={topicName} type={type} bagId={bagId}>
       <div className="flex-1 flex flex-col min-h-0">
-        <div className="flex-1 min-h-[260px] relative bg-bg-primary/60 overflow-hidden">
+        <div
+          className="flex-1 min-h-[260px] relative bg-bg-primary/60 overflow-hidden"
+          onMouseEnter={() => { isHoveringRef.current = true; }}
+          onMouseLeave={() => { isHoveringRef.current = false; }}
+        >
           <div ref={containerRef} className="absolute inset-0" />
 
           {loadState.status === 'loaded' && (
-            <div className="absolute top-2 left-2 text-xs mono text-text-tertiary pointer-events-none">
-              shift+click sets orbit centre
+            <div className="absolute top-2 left-2 text-xs mono text-text-tertiary pointer-events-none leading-relaxed">
+              <div>shift+click sets orbit centre</div>
+              <div>hover + W/S forward/back, Q/E turn, R/F up/down</div>
             </div>
           )}
 
