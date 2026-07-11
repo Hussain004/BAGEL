@@ -37,7 +37,6 @@ export const SHORTCUTS: ShortcutDescription[] = [
   { keys: 'Shift + Esc', description: 'Close every open panel', group: 'Panels' },
   { keys: 'O', description: 'Open a different bag file', group: 'Navigation' },
   { keys: '?', description: 'Show this shortcuts list', group: 'Help' },
-  { keys: 'A', description: 'About BAGEL', group: 'Help' },
 ];
 
 /**
@@ -88,20 +87,15 @@ export function useKeyboardShortcuts(): void {
 
       if (typing) return;
 
-      // Help / About modals — fire before the playback bindings so '?' isn't
-      // swallowed by anything else.
+      // Fires before the playback bindings so '?' isn't swallowed by anything
+      // else. 'A' used to open About here too, freed up for panel-scoped 3D
+      // fly controls (strafe left) - About stays reachable via the toolbar
+      // button.
       if (e.key === '?') {
         e.preventDefault();
         useUiStore.getState().setModal('shortcuts');
         return;
       }
-      if (e.key === 'a' || e.key === 'A') {
-        if (e.ctrlKey || e.metaKey || e.altKey) return;
-        e.preventDefault();
-        useUiStore.getState().setModal('about');
-        return;
-      }
-
       if (e.key === 't' || e.key === 'T') {
         if (e.ctrlKey || e.metaKey || e.altKey) return;
         e.preventDefault();

@@ -24,6 +24,7 @@ import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import * as GaussianSplats3D from '@mkkellogg/gaussian-splats-3d';
 import { useScene } from '../ThreeDScene/useScene';
+import { createGroundGrid, createWorldAxes, disposeObject } from '../ThreeDScene/sceneObjects';
 import { PanelShell } from '../PanelShell';
 import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
 import type { BagSource } from '../../../parsers';
@@ -122,6 +123,7 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
   const viewerRef = useRef<GaussianSplats3D.DropInViewer | null>(null);
   const pivotMarkerRef = useRef<THREE.Mesh | null>(null);
   const isHoveringRef = useRef(false);
+  const referenceGeometryRef = useRef<{ grid: THREE.GridHelper; axes: THREE.AxesHelper } | null>(null);
 
   useEffect(() => {
     const refs = sceneRef.current;
@@ -158,7 +160,29 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
       })
       .then(() => {
         if (cancelled) return;
-        fitCameraToSplats(refs, viewer);
+        const bounds = robustSplatBounds(viewer);
+        if (bounds) {
+          refs.resetCamera(bounds.center, Math.max(bounds.radius * 1.5, 3));
+
+          // Splats have no floor/wall geometry of their own to judge movement
+          // against (unlike a real room, there's nothing here that visually
+          // recedes or gets taller as the camera moves), so without some
+          // reference, "forward" and "up" both just look like "the blob
+          // changed size" - the same problem doesn't exist for ThreeDScene's
+          // point clouds because those are almost always sparse/thin enough
+          // that empty space around them already reads as space. Reuse
+          // ThreeDScene's own ground grid + axes helpers, sized off the
+          // fitted radius so they're a sensible reference regardless of
+          // whether the scene is tabletop-sized or room-sized.
+          const gridSize = Math.max(bounds.radius * 6, 10);
+          const grid = createGroundGrid(gridSize, Math.round(Math.min(Math.max(gridSize / 2, 10), 100)));
+          grid.position.set(bounds.center.x, bounds.center.y, bounds.center.z - bounds.radius);
+          const axes = createWorldAxes(Math.max(bounds.radius * 0.5, 1));
+          axes.position.copy(bounds.center);
+          refs.worldGroup.add(grid);
+          refs.worldGroup.add(axes);
+          referenceGeometryRef.current = { grid, axes };
+        }
         setLoadState({
           status: 'loaded',
           splatCount: viewer.splatMesh?.getSplatCount() ?? 0,
@@ -177,6 +201,14 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
       refs.scene.remove(viewer);
       viewer.dispose().catch(() => {});
       if (objectUrl) URL.revokeObjectURL(objectUrl);
+      const ref = referenceGeometryRef.current;
+      if (ref) {
+        refs.worldGroup.remove(ref.grid);
+        refs.worldGroup.remove(ref.axes);
+        disposeObject(ref.grid);
+        disposeObject(ref.axes);
+        referenceGeometryRef.current = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- sceneRef/source drive this; refs is a ref object
   }, [source]);
@@ -226,20 +258,22 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
   // splat scene the way it's fine for a bounded point-cloud scan - splats are
   // usually a walkable room/space, and OrbitControls' pan speed (scaled by
   // camera-to-target distance) makes fine-grained movement through one hard
-  // to control. W/S move forward/back and Q/E turn left/right (rotating the
-  // view around the camera's own position, not orbiting around the target -
-  // a real "turn your head", distinct from mouse-drag rotate), R/F move
-  // up/down. Deliberately NOT bound to arrow keys/Space/A - those are already
-  // global app shortcuts (playhead step, play/pause, About) bound on
-  // `window`, and reusing them here would fire both at once. Active only
-  // while the pointer is over this panel, so it doesn't hijack keys from
-  // other panels or the rest of the app; keys are read on `window` (hover
-  // alone doesn't grant keyboard focus) but gated by the hover flag.
+  // to control. W/S move forward/back, A/D strafe left/right, Q/E turn
+  // left/right (rotating the view around the camera's own position, not
+  // orbiting around the target - a real "turn your head", distinct from
+  // mouse-drag rotate), R/F move up/down. Deliberately NOT bound to arrow
+  // keys/Space - those are already global app shortcuts (playhead step,
+  // play/pause) bound on `window`, and reusing them here would fire both at
+  // once ('A' used to be About, freed up for strafe - see
+  // useKeyboardShortcuts.ts). Active only while the pointer is over this
+  // panel, so it doesn't hijack keys from other panels or the rest of the
+  // app; keys are read on `window` (hover alone doesn't grant keyboard focus)
+  // but gated by the hover flag.
   useEffect(() => {
     const refs = sceneRef.current;
     if (!refs) return;
     const heldKeys = new Set<string>();
-    const FLY_CODES = new Set(['KeyW', 'KeyS', 'KeyQ', 'KeyE', 'KeyR', 'KeyF']);
+    const FLY_CODES = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyR', 'KeyF']);
     const TURN_SPEED = 1.5; // radians/sec
 
     const isTypingTarget = (target: EventTarget | null): boolean => {
@@ -260,6 +294,7 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
     window.addEventListener('blur', onBlur);
 
     const forward = new THREE.Vector3();
+    const right = new THREE.Vector3();
     const offset = new THREE.Vector3();
     const delta = new THREE.Vector3();
     let lastTime = performance.now();
@@ -277,9 +312,12 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
       const moveSpeed = Math.min(Math.max(distance * 0.6, 0.5), 200);
 
       live.camera.getWorldDirection(forward);
+      right.crossVectors(forward, live.camera.up).normalize();
       delta.set(0, 0, 0);
       if (heldKeys.has('KeyW')) delta.addScaledVector(forward, moveSpeed * dt);
       if (heldKeys.has('KeyS')) delta.addScaledVector(forward, -moveSpeed * dt);
+      if (heldKeys.has('KeyD')) delta.addScaledVector(right, moveSpeed * dt);
+      if (heldKeys.has('KeyA')) delta.addScaledVector(right, -moveSpeed * dt);
       if (heldKeys.has('KeyR')) delta.addScaledVector(live.camera.up, moveSpeed * dt);
       if (heldKeys.has('KeyF')) delta.addScaledVector(live.camera.up, -moveSpeed * dt);
       if (delta.lengthSq() > 0) {
@@ -386,7 +424,7 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
           {loadState.status === 'loaded' && (
             <div className="absolute top-2 left-2 text-xs mono text-text-tertiary pointer-events-none leading-relaxed">
               <div>shift+click sets orbit centre</div>
-              <div>hover + W/S forward/back, Q/E turn, R/F up/down</div>
+              <div>hover + W/S forward/back, A/D strafe, Q/E turn, R/F up/down</div>
             </div>
           )}
 
