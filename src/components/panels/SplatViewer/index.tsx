@@ -14,11 +14,20 @@
  * The library's `DropInViewer` is built to be added to someone else's
  * three.js scene as a plain `Object3D` rather than own the render loop, so
  * it slots into the same `useScene()` renderer/camera/OrbitControls this
- * app already uses for ThreeDScene. `sharedMemoryForWorkers`/
- * `gpuAcceleratedSort` stay off - the faster path needs SharedArrayBuffer,
- * which needs COOP/COEP response headers. BAGEL already ships those (see
- * vercel.json, required for sql.js), but keeping the splat path independent
- * of that config means it still works if those headers are ever removed.
+ * app already uses for ThreeDScene. `sharedMemoryForWorkers` (worker/main-
+ * thread sort data uses a `SharedArrayBuffer` instead of being copied every
+ * frame) needs COOP/COEP response headers; BAGEL ships those (see
+ * vercel.json and vite.config.ts, originally required for sql.js) so it's on
+ * whenever the page is actually cross-origin isolated. That's checked at
+ * runtime (`window.crossOriginIsolated`) rather than assumed, so the splat
+ * path degrades to the slower copy-based path instead of throwing if those
+ * headers are ever removed for an unrelated reason (e.g. sql.js stops
+ * needing them). `gpuAcceleratedSort` stays off despite needing the same
+ * headers: it renders a blank panel with no console error under this app's
+ * own Playwright/SwiftShader test setup (likely a WebGL2 transform-feedback
+ * quirk under software rendering), and there's no way to verify from here
+ * whether that's specific to software rendering or a broader compatibility
+ * issue, so it's not worth the silent-failure risk for real users.
  * `dynamicScene: true` is on so the up-axis correction (see
  * ORIENTATION_PRESETS below) can actually be cycled after load instead of
  * requiring a hardcoded guess baked in once at load time.
@@ -56,6 +65,12 @@ function sceneFormatFor(name: string): GaussianSplats3D.SceneFormat {
   if (ext === 'ksplat') return GaussianSplats3D.SceneFormat.KSplat;
   return GaussianSplats3D.SceneFormat.Ply;
 }
+
+/** `SharedArrayBuffer` only exists when the page is cross-origin isolated
+ * (COOP/COEP headers), which is what actually gates the library's faster
+ * sort path - checking this directly is more robust than assuming the
+ * headers are present just because BAGEL currently ships them. */
+const HAS_SHARED_ARRAY_BUFFER = typeof window !== 'undefined' && window.crossOriginIsolated === true;
 
 /**
  * Gaussian splat training pipelines (the INRIA reference implementation and
@@ -265,7 +280,7 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
       threeScene: refs.scene,
       renderer: refs.renderer,
       camera: refs.camera,
-      sharedMemoryForWorkers: false,
+      sharedMemoryForWorkers: HAS_SHARED_ARRAY_BUFFER,
       gpuAcceleratedSort: false,
       dynamicScene: true,
     });
