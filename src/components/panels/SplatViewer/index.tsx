@@ -53,17 +53,64 @@ function sceneFormatFor(name: string): GaussianSplats3D.SceneFormat {
   return GaussianSplats3D.SceneFormat.Ply;
 }
 
-/** Fit the scene's camera to the splat mesh's current bounding box, if it has one yet. */
+/** Cap on how many splat centers to sample for the robust fit below. Real
+ * scenes can carry millions of splats; a few thousand evenly-strided samples
+ * are plenty to estimate the dense cluster's extent without reading every one. */
+const FIT_SAMPLE_CAP = 20_000;
+
+/**
+ * Robust centroid + spread of a splat mesh, ignoring stray outliers.
+ *
+ * `computeBoundingBox()`'s min/max is not safe to fit a camera to: real
+ * trained gaussian splat scenes very commonly carry a handful of stray
+ * "floater" splats far from the main subject (a well-known training
+ * artifact), and even one of them inflates the box enough to push the
+ * camera back until the actual scene is a barely-visible speck. Instead,
+ * sample splat centers directly, take the coordinate-wise median as a
+ * robust centroid (unlike the box center, one outlier can't drag a median
+ * far), and size the spread off the 90th-percentile distance from it rather
+ * than the true max, so the handful of outlier splats in the excluded tail
+ * don't determine the framing.
+ */
+function robustSplatBounds(
+  viewer: GaussianSplats3D.DropInViewer,
+): { center: THREE.Vector3; radius: number } | null {
+  const mesh = viewer.splatMesh;
+  const count = mesh?.getSplatCount() ?? 0;
+  if (!mesh || count === 0) return null;
+
+  const stride = Math.max(1, Math.floor(count / FIT_SAMPLE_CAP));
+  const tmp = new THREE.Vector3();
+  const xs: number[] = [];
+  const ys: number[] = [];
+  const zs: number[] = [];
+  for (let i = 0; i < count; i += stride) {
+    mesh.getSplatCenter(i, tmp, true);
+    xs.push(tmp.x);
+    ys.push(tmp.y);
+    zs.push(tmp.z);
+  }
+  if (xs.length === 0) return null;
+
+  xs.sort((a, b) => a - b);
+  ys.sort((a, b) => a - b);
+  zs.sort((a, b) => a - b);
+  const mid = Math.floor(xs.length / 2);
+  const center = new THREE.Vector3(xs[mid], ys[mid], zs[mid]);
+
+  const dists = xs.map((_, i) => center.distanceTo(new THREE.Vector3(xs[i], ys[i], zs[i]))).sort((a, b) => a - b);
+  const radius = dists[Math.floor(dists.length * 0.9)];
+  return { center, radius };
+}
+
+/** Fit the scene's camera (position + orbit target) to the splat mesh. */
 function fitCameraToSplats(
   refs: { resetCamera: (target: THREE.Vector3, radius: number) => void },
   viewer: GaussianSplats3D.DropInViewer,
 ): void {
-  const box = viewer.splatMesh?.computeBoundingBox();
-  if (!box || box.isEmpty()) return;
-  const center = box.getCenter(new THREE.Vector3());
-  const size = box.getSize(new THREE.Vector3());
-  const radius = Math.max(size.length() * 0.7, 3);
-  refs.resetCamera(center, radius);
+  const bounds = robustSplatBounds(viewer);
+  if (!bounds) return;
+  refs.resetCamera(bounds.center, Math.max(bounds.radius * 1.5, 3));
 }
 
 export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProps) {
@@ -71,7 +118,9 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
   const source = entry?.source ?? null;
   const { containerRef, sceneRef } = useScene();
   const [loadState, setLoadState] = useState<LoadState>({ status: 'idle' });
+  const [pivot, setPivot] = useState<{ x: number; y: number; z: number } | null>(null);
   const viewerRef = useRef<GaussianSplats3D.DropInViewer | null>(null);
+  const pivotMarkerRef = useRef<THREE.Mesh | null>(null);
 
   useEffect(() => {
     const refs = sceneRef.current;
@@ -131,6 +180,94 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
     // eslint-disable-next-line react-hooks/exhaustive-deps -- sceneRef/source drive this; refs is a ref object
   }, [source]);
 
+  // Shift+Click -> pick a custom orbit pivot, matching ThreeDScene's point-
+  // cloud panel. Splats have no raycastable geometry through the public
+  // library API (its own splat-tree raycaster isn't exported), so the pick
+  // point comes from a plane facing the camera through the current orbit
+  // target's depth instead. That always resolves to a hit and keeps the
+  // pivot roughly where the user is looking, without assuming any floor/up
+  // convention - unlike ThreeDScene's z=0 ground-plane fallback, real
+  // captured splat scenes aren't reliably floor-aligned.
+  useEffect(() => {
+    const refs = sceneRef.current;
+    if (!refs) return;
+    const canvas = refs.renderer.domElement;
+    const raycaster = new THREE.Raycaster();
+    const ndc = new THREE.Vector2();
+    const plane = new THREE.Plane();
+    const planeHit = new THREE.Vector3();
+    const viewDir = new THREE.Vector3();
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!event.shiftKey || event.button !== 0) return;
+      // Block OrbitControls from interpreting this as a drag-start.
+      event.preventDefault();
+      event.stopPropagation();
+
+      const rect = canvas.getBoundingClientRect();
+      ndc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      ndc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(ndc, refs.camera);
+
+      refs.camera.getWorldDirection(viewDir);
+      plane.setFromNormalAndCoplanarPoint(viewDir, refs.controls.target);
+      if (!raycaster.ray.intersectPlane(plane, planeHit)) return;
+
+      refs.setOrbitTarget(planeHit);
+      setPivot({ x: planeHit.x, y: planeHit.y, z: planeHit.z });
+    };
+
+    canvas.addEventListener('pointerdown', handlePointerDown);
+    return () => canvas.removeEventListener('pointerdown', handlePointerDown);
+  }, [sceneRef]);
+
+  // Visual marker at the custom pivot - wireframe sphere, depthTest off so it
+  // stays visible against the splat cloud, matching ThreeDScene's convention.
+  useEffect(() => {
+    const refs = sceneRef.current;
+    if (!refs) return;
+    const geometry = new THREE.SphereGeometry(0.15, 12, 8);
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.85,
+      depthTest: false,
+    });
+    const marker = new THREE.Mesh(geometry, material);
+    marker.renderOrder = 999;
+    marker.visible = false;
+    refs.worldGroup.add(marker);
+    pivotMarkerRef.current = marker;
+    return () => {
+      refs.worldGroup.remove(marker);
+      geometry.dispose();
+      material.dispose();
+      pivotMarkerRef.current = null;
+    };
+  }, [sceneRef]);
+
+  useEffect(() => {
+    const marker = pivotMarkerRef.current;
+    if (!marker) return;
+    if (pivot) {
+      marker.position.set(pivot.x, pivot.y, pivot.z);
+      marker.visible = true;
+    } else {
+      marker.visible = false;
+    }
+    sceneRef.current?.renderOnce();
+  }, [pivot, sceneRef]);
+
+  const handleResetPivot = () => {
+    const refs = sceneRef.current;
+    const viewer = viewerRef.current;
+    if (!refs) return;
+    const bounds = viewer ? robustSplatBounds(viewer) : null;
+    refs.setOrbitTarget(bounds ? bounds.center : new THREE.Vector3(0, 0, 0));
+    setPivot(null);
+  };
+
   const handleResetCamera = () => {
     const refs = sceneRef.current;
     const viewer = viewerRef.current;
@@ -140,6 +277,10 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
     } else {
       refs.resetCamera(new THREE.Vector3(0, 0, 0), 10);
     }
+    // Fit re-centres the orbit on the whole scene, which implicitly
+    // overrides any manual pivot - drop the marker so the user isn't left
+    // wondering why orbiting no longer happens around their picked point.
+    setPivot(null);
   };
 
   return (
@@ -148,14 +289,31 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
         <div className="flex-1 min-h-[260px] relative bg-bg-primary/60 overflow-hidden">
           <div ref={containerRef} className="absolute inset-0" />
 
+          {loadState.status === 'loaded' && (
+            <div className="absolute top-2 left-2 text-xs mono text-text-tertiary pointer-events-none">
+              shift+click sets orbit centre
+            </div>
+          )}
+
           <div className="absolute top-2 right-2 flex flex-col gap-1.5 items-end">
-            <button
-              onClick={handleResetCamera}
-              className="px-2 py-1 rounded-md text-xs mono bg-surface/80 border border-border hover:border-accent-blue/40 hover:text-accent-blue text-text-secondary transition-all"
-              title="Reset camera"
-            >
-              Fit
-            </button>
+            <div className="flex gap-1">
+              {pivot && (
+                <button
+                  onClick={handleResetPivot}
+                  className="px-2 py-1 rounded-md text-xs mono bg-surface/80 border border-border hover:border-accent-blue/40 hover:text-accent-blue text-text-secondary transition-all"
+                  title="Return orbit centre to the auto-fit point"
+                >
+                  Reset pivot
+                </button>
+              )}
+              <button
+                onClick={handleResetCamera}
+                className="px-2 py-1 rounded-md text-xs mono bg-surface/80 border border-border hover:border-accent-blue/40 hover:text-accent-blue text-text-secondary transition-all"
+                title="Reset camera"
+              >
+                Fit
+              </button>
+            </div>
           </div>
 
           {loadState.status === 'loading' && (
