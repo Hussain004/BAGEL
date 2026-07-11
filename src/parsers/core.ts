@@ -48,6 +48,7 @@ import {
   disposePlyCache,
   PLY_MAGIC,
 } from './ply';
+import { parseSplat, isSplatPly, disposeSplatCache, SPLAT_TYPE } from './splat';
 import { checkMagicBytes } from '../utils/bytes';
 import { sourceDisplayName, sourceReadSlice, type BagSource } from './source';
 import {
@@ -77,7 +78,14 @@ export async function detectFormat(source: BagSource): Promise<BagFormat | 'unkn
   if (ext === 'db3') return 'db3';
   if (ext === 'bag') return 'bag';
   if (ext === 'pcd') return 'pcd';
-  if (ext === 'ply') return 'ply';
+  if (ext === 'splat' || ext === 'ksplat') return 'splat';
+  if (ext === 'ply') {
+    // A splat-flavored PLY (SH color / opacity / scale / rotation
+    // properties) routes to the dedicated splat renderer instead of the
+    // point-cloud one, which has no room for that data.
+    const head = await sourceReadSlice(source, 0, 8192);
+    return isSplatPly(head) ? 'splat' : 'ply';
+  }
 
   // Extension-less URL - sniff the first 16 bytes.
   const header = await sourceReadSlice(source, 0, 16);
@@ -88,7 +96,10 @@ export async function detectFormat(source: BagSource): Promise<BagFormat | 'unkn
   // PCD: first line starts with "# .PCD"
   const headerText = new TextDecoder('ascii').decode(header);
   if (headerText.startsWith(PCD_MAGIC)) return 'pcd';
-  if (headerText.startsWith(PLY_MAGIC)) return 'ply';
+  if (headerText.startsWith(PLY_MAGIC)) {
+    const fullHead = await sourceReadSlice(source, 0, 8192);
+    return isSplatPly(fullHead) ? 'splat' : 'ply';
+  }
 
   return 'unknown';
 }
@@ -107,10 +118,12 @@ export async function parseBag(source: BagSource): Promise<BagSummary> {
       return parsePcd(source);
     case 'ply':
       return parsePly(source);
+    case 'splat':
+      return parseSplat(source);
     default:
       throw new Error(
         `Unsupported file format: "${sourceDisplayName(source)}". ` +
-          'BAGEL supports .mcap, .db3, .bag, .pcd, and .ply files.',
+          'BAGEL supports .mcap, .db3, .bag, .pcd, .ply, .splat, and .ksplat files.',
       );
   }
 }
@@ -122,7 +135,7 @@ export async function readRawMessages(
   topicName: string,
   limit?: number,
 ): Promise<RawMessage[]> {
-  if (format === 'pcd' || format === 'ply') return [];
+  if (format === 'pcd' || format === 'ply' || format === 'splat') return [];
   if (format === 'mcap') return readRawMessagesMcap(source, topicName, limit);
   if (format === 'bag') return readRawMessagesBag(source, topicName, limit);
   return readRawMessagesDb3(source, topicName, limit);
@@ -137,7 +150,7 @@ export async function readDeserializedMessages(
   onProgress?: (decoded: number) => void,
   onBatch?: (batch: { timestamp: bigint; value: Record<string, unknown> | null }[]) => void,
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null }[]> {
-  if (format === 'pcd' || format === 'ply') return [];
+  if (format === 'pcd' || format === 'ply' || format === 'splat') return [];
   if (format === 'mcap')
     return readDeserializedMessagesMcap(source, topicName, limit, onProgress, onBatch);
   if (format === 'bag')
@@ -158,7 +171,7 @@ export async function readMessageAtTime(
   topicName: string,
   timeNs: bigint,
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null } | null> {
-  if (format === 'pcd' || format === 'ply') return null;
+  if (format === 'pcd' || format === 'ply' || format === 'splat') return null;
   if (format === 'mcap') return readMessageAtTimeMcap(source, topicName, timeNs);
   if (format === 'bag') return readMessageAtTimeBag(source, topicName, timeNs);
   return readMessageAtTimeDb3(source, topicName, timeNs);
@@ -170,6 +183,7 @@ export async function getTopicType(
   topicName: string,
 ): Promise<string | undefined> {
   if (format === 'pcd' || format === 'ply') return 'sensor_msgs/PointCloud2';
+  if (format === 'splat') return SPLAT_TYPE;
   if (format === 'mcap') return getTopicTypeMcap(source, topicName);
   if (format === 'bag') return getTopicTypeBag(source, topicName);
   return getTopicTypeDb3(source, topicName);
@@ -181,13 +195,14 @@ export function disposeParserCaches(): void {
   disposeBagCache();
   disposePcdCache();
   disposePlyCache();
+  disposeSplatCache();
 }
 
 export async function readAllMessageStats(
   source: BagSource,
   format: BagFormat,
 ): Promise<AllTopicStats> {
-  if (format === 'pcd' || format === 'ply') return {};
+  if (format === 'pcd' || format === 'ply' || format === 'splat') return {};
   if (format === 'mcap') return readAllMessageStatsMcap(source);
   if (format === 'bag') return readAllMessageStatsBag(source);
   return readAllMessageStatsDb3(source);
@@ -218,6 +233,9 @@ export async function readPointCloudAtTime(
   if (format === 'ply') {
     return readPointCloudAtTimePly(source, colorMode, maxPoints, maxRange, heightAxis, axisClip);
   }
+  // Splats never go through the point-cloud decoder - SplatViewer reads the
+  // raw file/URL directly and hands it to the splat-rendering library.
+  if (format === 'splat') return null;
 
   const message =
     format === 'mcap'

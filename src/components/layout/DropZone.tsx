@@ -137,7 +137,7 @@ export function DropZone() {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".db3,.mcap,.bag,.pcd,.ply"
+            accept=".db3,.mcap,.bag,.pcd,.ply,.splat,.ksplat"
             onChange={handleFileInput}
             className="hidden"
             data-testid="file-input"
@@ -224,6 +224,10 @@ export function DropZone() {
           <span className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-accent-rose/50" />
             .pcd / .ply point clouds
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-accent-blue/50" />
+            .splat / .ksplat gaussian splats
           </span>
         </div>
       </div>
@@ -432,7 +436,7 @@ function IdleState({ isDragOver }: { isDragOver: boolean }) {
           {isDragOver ? 'Release to explore' : 'Drop your bag file here'}
         </p>
         <p className="text-text-tertiary text-sm mt-1">
-          or click to browse • supports .mcap, .db3, .bag, .pcd, .ply
+          or click to browse • supports .mcap, .db3, .bag, .pcd, .ply, .splat, .ksplat
         </p>
       </div>
     </div>
