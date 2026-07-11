@@ -30,6 +30,11 @@ declare module '@mkkellogg/gaussian-splats-3d' {
      * transform is baked away and mutating it after load has no visible
      * effect - see SplatViewer's ORIENTATION_PRESETS comment. */
     dynamicScene?: boolean;
+    /** Hard cap, in screen-space pixels, on any single splat's rendered
+     * size. Defaults to 1024 - large enough that a splat close to the
+     * camera can balloon to cover most of the viewport, which costs a lot
+     * of fill-rate for very little visual benefit. */
+    maxScreenSpaceSplatSize?: number;
   }
 
   /** A single loaded splat scene's own transform, mutable after load only

@@ -31,6 +31,12 @@
  * `dynamicScene: true` is on so the up-axis correction (see
  * ORIENTATION_PRESETS below) can actually be cycled after load instead of
  * requiring a hardcoded guess baked in once at load time.
+ *
+ * `maxScreenSpaceSplatSize` is lowered from the library's 1024px default
+ * (see SPLAT_MAX_SCREEN_SPACE_SIZE below) - zooming in close to any splat
+ * is the single most fill-rate-expensive thing this panel can do, since
+ * every covered pixel is an alpha-blended shader invocation, and 1024px
+ * lets one splat balloon to nearly the size of the whole panel.
  */
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
@@ -122,6 +128,19 @@ const WORLD_Y_AXIS = new THREE.Vector3(0, 1, 0);
  * visible contribution (this is still under 2% opacity).
  */
 const SPLAT_ALPHA_REMOVAL_THRESHOLD = 5;
+
+/**
+ * Cap on a single splat's rendered size in screen-space pixels. The
+ * library's own default (1024) is sized for a full-screen viewer; BAGEL's
+ * panels are usually a fraction of that, so an up-close splat hitting the
+ * default cap can still cover most of the panel in one alpha-blended
+ * fragment shader invocation per pixel - exactly the kind of fill-rate cost
+ * that makes zooming in feel laggy on integrated/CPU-bound graphics. 256px
+ * still lets a close-up splat read as large and soft (real captures rarely
+ * have a reason to view a single splat larger than that), while bounding
+ * the worst case well below "fills the whole panel."
+ */
+const SPLAT_MAX_SCREEN_SPACE_SIZE = 256;
 
 /** Cap on how many splat centers to sample for the robust fit below. Real
  * scenes can carry millions of splats; a few thousand evenly-strided samples
@@ -291,6 +310,7 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
       sharedMemoryForWorkers: HAS_SHARED_ARRAY_BUFFER,
       gpuAcceleratedSort: false,
       dynamicScene: true,
+      maxScreenSpaceSplatSize: SPLAT_MAX_SCREEN_SPACE_SIZE,
     });
     refs.scene.add(viewer);
     viewerRef.current = viewer;
