@@ -109,14 +109,14 @@ export function DropZone() {
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-3 mb-4">
             <BagelIcon />
-            <h1 className="text-5xl font-bold tracking-tight text-gradient">
+            <h1 className="text-6xl font-bold tracking-tight text-gradient">
               BAGEL
             </h1>
           </div>
-          <p className="text-text-secondary text-lg font-light">
+          <p className="text-text-secondary text-xl font-normal">
             BAG ExpLoration: Explore ROS bag files in your browser
           </p>
-          <p className="text-text-tertiary text-sm mt-2">
+          <p className="text-text-secondary/70 text-sm mt-2">
             No installation required. No data leaves your machine.
           </p>
         </div>
@@ -150,15 +150,17 @@ export function DropZone() {
           )}
         </div>
 
-        {/* Or paste a URL — fetches via HTTP Range so multi-GB bags only
-            pull the chunks the user scrubs through. Public S3 / GitHub
-            release assets / personal servers all work as long as CORS +
-            Content-Length are exposed. */}
-        <UrlInput onLoad={handleUrl} disabled={isLoading} />
+        <div className="mt-6 flex flex-col gap-3">
+          {/* Or paste a URL - fetches via HTTP Range so multi-GB bags only
+              pull the chunks the user scrubs through. Public S3 / GitHub
+              release assets / personal servers all work as long as CORS +
+              Content-Length are exposed. */}
+          <UrlInput onLoad={handleUrl} disabled={isLoading} />
 
-        {/* Or connect to a live robot running Foxglove WebSocket bridge
-            (ros2 run foxglove_bridge foxglove_bridge) or rosbridge. */}
-        <WsConnectInput onConnect={handleWsConnect} disabled={isLoading} />
+          {/* Or connect to a live robot running Foxglove WebSocket bridge
+              (ros2 run foxglove_bridge foxglove_bridge) or rosbridge. */}
+          <WsConnectInput onConnect={handleWsConnect} disabled={isLoading} />
+        </div>
 
         {/* Error Display */}
         {error && (
@@ -204,31 +206,18 @@ export function DropZone() {
         </div>
 
         {/* Supported formats */}
-        <div className="mt-6 flex items-center justify-center gap-6 text-text-muted text-xs flex-wrap">
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-accent-cyan/50" />
-            .mcap files
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-accent-violet/50" />
-            .db3 (ROS2 SQLite)
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-accent-amber/50" />
-            .bag (ROS1)
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-accent-emerald/50" />
-            Foxglove live (ws://)
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-accent-rose/50" />
-            .pcd / .ply point clouds
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-accent-blue/50" />
-            .splat / .ksplat gaussian splats
-          </span>
+        <div className="mt-6">
+          <p className="text-center text-text-muted text-[10px] font-medium uppercase tracking-wider mb-2">
+            Supported formats
+          </p>
+          <div className="flex items-center justify-center gap-2 flex-wrap">
+            <FormatBadge accent="cyan">.mcap</FormatBadge>
+            <FormatBadge accent="violet">.db3 (ROS2 SQLite)</FormatBadge>
+            <FormatBadge accent="amber">.bag (ROS1)</FormatBadge>
+            <FormatBadge accent="emerald">Foxglove live (ws://)</FormatBadge>
+            <FormatBadge accent="rose">.pcd / .ply point clouds</FormatBadge>
+            <FormatBadge accent="blue">.splat / .ksplat gaussian splats</FormatBadge>
+          </div>
         </div>
       </div>
     </div>
@@ -258,7 +247,7 @@ function UrlInput({
   return (
     <form
       onSubmit={submit}
-      className="mt-4 flex items-center gap-2"
+      className="flex items-center gap-2.5"
       aria-label="Load bag from URL"
     >
       <input
@@ -272,12 +261,12 @@ function UrlInput({
         // Trim leading/trailing spaces invisibly so a copy-paste with
         // surrounding whitespace doesn't fail with "invalid URL".
         onBlur={(e) => setUrl(e.target.value.trim())}
-        className="flex-1 px-3 py-2 rounded-md bg-surface border border-border text-text-primary text-sm mono placeholder:text-text-tertiary focus:outline-none focus:border-accent-blue/50 disabled:opacity-50"
+        className="flex-1 px-4 py-2.5 rounded-md bg-surface border border-border text-text-primary text-sm mono placeholder:text-text-tertiary hover:border-border-hover focus:outline-none focus:border-accent-blue/60 focus:ring-2 focus:ring-accent-blue/15 disabled:opacity-50 transition-colors"
       />
       <button
         type="submit"
         disabled={disabled || url.trim().length === 0}
-        className="w-28 px-4 py-2 rounded-md border border-accent-blue/30 bg-accent-blue/10 text-accent-blue text-sm font-medium hover:bg-accent-blue/20 hover:border-accent-blue/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
+        className="w-28 px-4 py-2.5 rounded-md border border-accent-blue/30 bg-accent-blue/10 text-accent-blue text-sm font-medium hover:bg-accent-blue/20 hover:border-accent-blue/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
       >
         Open URL
       </button>
@@ -315,7 +304,7 @@ function WsConnectInput({
   return (
     <form
       onSubmit={submit}
-      className="mt-3 flex items-center gap-2"
+      className="flex items-center gap-2.5"
       aria-label="Connect to a live robot"
     >
       <input
@@ -327,12 +316,12 @@ function WsConnectInput({
         autoComplete="off"
         disabled={disabled}
         onBlur={(e) => setUrl(e.target.value.trim())}
-        className="flex-1 px-3 py-2 rounded-md bg-surface border border-border text-text-primary text-sm mono placeholder:text-text-tertiary focus:outline-none focus:border-accent-emerald/50 disabled:opacity-50"
+        className="flex-1 px-4 py-2.5 rounded-md bg-surface border border-border text-text-primary text-sm mono placeholder:text-text-tertiary hover:border-border-hover focus:outline-none focus:border-accent-emerald/60 focus:ring-2 focus:ring-accent-emerald/15 disabled:opacity-50 transition-colors"
       />
       <button
         type="submit"
         disabled={disabled || !url.trim().startsWith('ws')}
-        className="w-28 px-4 py-2 rounded-md border border-accent-emerald/30 bg-accent-emerald/10 text-accent-emerald text-sm font-medium hover:bg-accent-emerald/20 hover:border-accent-emerald/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-emerald/60 flex items-center justify-center gap-1.5"
+        className="w-28 px-4 py-2.5 rounded-md border border-accent-emerald/30 bg-accent-emerald/10 text-accent-emerald text-sm font-medium hover:bg-accent-emerald/20 hover:border-accent-emerald/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-emerald/60 flex items-center justify-center gap-1.5"
       >
         {isConnecting ? (
           <svg className="w-3.5 h-3.5 animate-spin-slow" fill="none" viewBox="0 0 24 24">
@@ -420,9 +409,9 @@ function SampleBagButton({
 function IdleState({ isDragOver }: { isDragOver: boolean }) {
   return (
     <div className="flex flex-col items-center gap-4">
-      <div className={`w-16 h-16 rounded-2xl flex items-center justify-center transition-all ${isDragOver ? 'bg-accent-blue/20 scale-110' : 'bg-surface'}`}>
+      <div className={`w-20 h-20 rounded-2xl flex items-center justify-center transition-all ${isDragOver ? 'bg-accent-blue/20 scale-110' : 'bg-surface'}`}>
         <svg
-          className={`w-8 h-8 transition-colors ${isDragOver ? 'text-accent-blue' : 'text-text-tertiary'}`}
+          className={`w-9 h-9 transition-colors ${isDragOver ? 'text-accent-blue' : 'text-text-tertiary'}`}
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -432,10 +421,10 @@ function IdleState({ isDragOver }: { isDragOver: boolean }) {
         </svg>
       </div>
       <div className="text-center">
-        <p className={`text-lg font-medium transition-colors ${isDragOver ? 'text-accent-blue' : 'text-text-primary'}`}>
+        <p className={`text-xl font-semibold transition-colors ${isDragOver ? 'text-accent-blue' : 'text-text-primary'}`}>
           {isDragOver ? 'Release to explore' : 'Drop your bag file here'}
         </p>
-        <p className="text-text-tertiary text-sm mt-1">
+        <p className="text-text-secondary/70 text-sm mt-1.5">
           or click to browse • supports .mcap, .db3, .bag, .pcd, .ply, .splat, .ksplat
         </p>
       </div>
@@ -447,15 +436,15 @@ function IdleState({ isDragOver }: { isDragOver: boolean }) {
 function LoadingState({ progress }: { progress: number }) {
   return (
     <div className="flex flex-col items-center gap-4">
-      <div className="w-16 h-16 rounded-2xl bg-accent-blue/10 flex items-center justify-center">
-        <svg className="w-8 h-8 text-accent-blue animate-spin-slow" fill="none" viewBox="0 0 24 24">
+      <div className="w-20 h-20 rounded-2xl bg-accent-blue/10 flex items-center justify-center">
+        <svg className="w-9 h-9 text-accent-blue animate-spin-slow" fill="none" viewBox="0 0 24 24">
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
         </svg>
       </div>
       <div className="text-center">
-        <p className="text-text-primary font-medium">Parsing bag file...</p>
-        <p className="text-text-tertiary text-sm mt-1">
+        <p className="text-text-primary text-xl font-semibold">Parsing bag file...</p>
+        <p className="text-text-secondary/70 text-sm mt-1.5">
           Reading and analyzing topics
         </p>
       </div>
@@ -472,11 +461,34 @@ function LoadingState({ progress }: { progress: number }) {
 /** BAGEL logo icon */
 function BagelIcon() {
   return (
-    <div className="relative w-12 h-12">
+    <div className="relative w-14 h-14">
       <div className="absolute inset-0 rounded-full bg-gradient-to-br from-accent-blue via-accent-cyan to-accent-violet opacity-80 animate-spin-slow" />
       <div className="absolute inset-[3px] rounded-full bg-bg-primary" />
       <div className="absolute inset-[6px] rounded-full bg-gradient-to-br from-accent-blue/20 to-accent-violet/20" />
       <div className="absolute inset-[10px] rounded-full bg-bg-primary" />
     </div>
   );
+}
+
+/** Per-accent pill classes for the supported-formats legend. Full class
+ * strings (not interpolated) so Tailwind's static scanner generates them -
+ * reuses the existing `.badge` shape/type treatment with each format's
+ * already-established accent colour, no new hex values. */
+const FORMAT_BADGE_CLASSES = {
+  cyan: 'bg-accent-cyan/15 text-accent-cyan border-accent-cyan/25',
+  violet: 'bg-accent-violet/15 text-accent-violet border-accent-violet/25',
+  amber: 'bg-accent-amber/15 text-accent-amber border-accent-amber/25',
+  emerald: 'bg-accent-emerald/15 text-accent-emerald border-accent-emerald/25',
+  rose: 'bg-accent-rose/15 text-accent-rose border-accent-rose/25',
+  blue: 'bg-accent-blue/15 text-accent-blue border-accent-blue/25',
+} as const;
+
+function FormatBadge({
+  accent,
+  children,
+}: {
+  accent: keyof typeof FORMAT_BADGE_CLASSES;
+  children: React.ReactNode;
+}) {
+  return <span className={`badge border ${FORMAT_BADGE_CLASSES[accent]}`}>{children}</span>;
 }

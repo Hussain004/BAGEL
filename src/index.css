@@ -431,18 +431,25 @@ select option {
   border: 1px solid rgba(100, 116, 139, 0.2);
 }
 
-/* ── Drop Zone ── */
+/* ── Drop Zone ──
+   The single most important control on the page, so it needs to read as a
+   focal object at rest, not just react on hover: a faint persistent surface
+   tint + ambient shadow lifts it off the flat background before the user
+   ever touches it. */
 .dropzone {
-  border: 2px dashed var(--color-border);
+  border: 2.5px dashed var(--color-border);
   border-radius: var(--radius-xl);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-panel);
   transition: all 0.3s ease;
 }
 
 .dropzone:hover,
 .dropzone-active {
   border-color: var(--color-accent-blue);
-  background: rgba(59, 130, 246, 0.04);
+  background: rgba(59, 130, 246, 0.05);
   box-shadow: var(--shadow-glow-blue);
+  transform: translateY(-1px);
 }
 
 .dropzone-active {
