@@ -486,9 +486,15 @@ select option {
   box-shadow: var(--shadow-glow-cyan);
 }
 
-/* ── Logo Gradient Text ── */
+/* ── Logo Gradient Text ──
+   Two analogous hues (cyan → blue, adjacent on the wheel) instead of the
+   earlier three-stop blue→cyan→violet span, which read as muddy at
+   wordmark size - a tighter hue range reads as a single deliberate tone
+   shift rather than a rainbow. Reads off the accent CSS variables directly
+   rather than hardcoding hex, so it now follows the light-theme override
+   automatically instead of needing its own duplicate block below. */
 .text-gradient {
-  background: linear-gradient(135deg, #3b82f6, #06b6d4, #8b5cf6);
+  background: linear-gradient(135deg, var(--color-accent-cyan), var(--color-accent-blue));
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -512,15 +518,6 @@ select option {
      swap to a dark foreground that has solid contrast against the tint. */
   background: rgba(59, 130, 246, 0.25);
   color: #0f172a;
-}
-
-/* The gradient logo text uses bright cyan that washes out on white. Same
-   trio of hues, shifted darker so the gradient still reads as the BAGEL
-   brand mark in light mode. */
-:root[data-theme='light'] .text-gradient {
-  background: linear-gradient(135deg, #1d4ed8, #0e7490, #6d28d9);
-  -webkit-background-clip: text;
-  background-clip: text;
 }
 
 /* ── Focus rings ──
