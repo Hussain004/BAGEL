@@ -2,7 +2,7 @@
 
 Status of each item from [IMPROVEMENTS.md](./IMPROVEMENTS.md). Updated as work lands.
 
-**Done: 13 / 21, 1 partial** (quick wins: 11/11 - all done, medium: 2/9 done + 1 partial, larger initiatives: 0/5 - the larger ones need a design decision first)
+**Done: 13 / 21, 2 partial** (quick wins: 11/11 - all done, medium: 2/9 done + 2 partial, larger initiatives: 0/5 - the larger ones need a design decision first)
 
 ## Quick Wins
 
@@ -30,7 +30,7 @@ Status of each item from [IMPROVEMENTS.md](./IMPROVEMENTS.md). Updated as work l
 | 15 | Docking discoverability + keyboard path | Todo | |
 | 16 | Sample bag lands on a curated cockpit layout | Todo | |
 | 17 | Live status: consolidate buttons, aria-live, buffer extent | Todo | |
-| 18 | Error copy with next steps | Todo | |
+| 18 | Error copy with next steps | Partial | Scoped down deliberately: investigated the actual error paths and found source-level messages already carry real next-step guidance where one exists (createUrlSource already explains CORS/Content-Length/Accept-Ranges failures inline; schema-missing topics route to the paste-schema modal instead of erroring). Building a downstream error->action classifier on top of that would duplicate it, not improve it. Shipped the honest remaining gap instead: a "Copy error details" button on the DropZone parse-failure box and the shared PanelErrorState, for the unscripted cases (corrupt file, worker exception) that don't have a real next step beyond filing a bug report |
 | 19 | Modal focus trap | **Done** | Tab/Shift+Tab now wrap inside the dialog; no component-test harness exists in this repo (all tests are logic-only .ts), so no automated test was added for this one |
 | 20 | Micro-interactions motion spec (CSS-only) | Todo | |
 
