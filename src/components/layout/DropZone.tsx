@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import { useBagStore } from '../../store/bagStore';
 import { useUiStore } from '../../store/uiStore';
 import { useLiveStore } from '../../store/liveStore';
+import { CopyErrorButton } from '../panels/shared/CopyErrorButton';
 
 /**
  * DropZone — Full-screen drag-and-drop file input for bag files.
@@ -179,6 +180,7 @@ export function DropZone() {
               <div>
                 <p className="text-accent-rose font-medium text-sm">Failed to parse bag file</p>
                 <p className="text-text-secondary text-sm mt-1">{error}</p>
+                <CopyErrorButton text={error} />
               </div>
               <button
                 onClick={(e) => {

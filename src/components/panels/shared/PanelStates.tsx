@@ -5,6 +5,8 @@
  * everywhere instead of drifting per panel.
  */
 
+import { CopyErrorButton } from './CopyErrorButton';
+
 export function PanelLoadingState({ message }: { message: string }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-3 p-8">
@@ -28,6 +30,7 @@ export function PanelErrorState({
     <div className="flex-1 flex flex-col items-center justify-center gap-2 p-8 text-center">
       <div className="text-accent-rose text-sm font-medium">{title}</div>
       <div className="text-text-secondary text-xs max-w-md">{message}</div>
+      <CopyErrorButton text={`${title}\n${message}`} />
     </div>
   );
 }
