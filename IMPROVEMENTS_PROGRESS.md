@@ -2,7 +2,7 @@
 
 Status of each item from [IMPROVEMENTS.md](./IMPROVEMENTS.md). Updated as work lands.
 
-**Done: 6 / 21** (quick wins: 6/11, medium: 0/9, larger initiatives: 0/5 - the larger ones need a design decision first)
+**Done: 12 / 21** (quick wins: 11/11 - all done, medium: 1/9, larger initiatives: 0/5 - the larger ones need a design decision first)
 
 ## Quick Wins
 
@@ -13,12 +13,12 @@ Status of each item from [IMPROVEMENTS.md](./IMPROVEMENTS.md). Updated as work l
 | 3 | Topic-row buttons visible on keyboard focus | **Done** | group-focus-within added to the button strip and stats fade |
 | 4 | Esc ordering (popovers before panels) | **Done** | New useEscapeToClose hook; export menu and 3D Display card consume Esc; panel-close undo toast not included (tracked as follow-up) |
 | 5 | Light theme inside data surfaces (uPlot + 3D clear color + theme-color meta) | **Done** | New utils/chartTheme.ts; uPlot axes, trajectory canvas ink, 3D clear color, and the theme-color meta all follow the theme now; also fixed canvas font strings broken by the variable-font rename |
-| 6 | "Copy link" button for the shareable URL layout | Todo | |
-| 7 | Replace transition-all with explicit properties | Todo | |
-| 8 | Typography and copy consistency (ellipsis, casing, tabular-nums) | Todo | |
+| 6 | "Copy link" button for the shareable URL layout | **Done** | Toolbar button copies location.href, 2s "Copied" confirmation |
+| 7 | Replace transition-all with explicit properties | **Done** | Swept ~65 occurrences across 19 files; each one checked against its actual state branches (color-only -> transition-colors, opacity/transform/size toggles -> explicit property list) so nothing silently lost its fade/resize |
+| 8 | Typography and copy consistency (ellipsis, casing, tabular-nums) | **Done** | All "..." -> "…" in UI strings; tabular-nums added to Toolbar stat values |
 | 9 | Timeline slider focusable + scrub/bookmark hint | **Done** | tabIndex added (global arrow shortcuts already operate the playhead); title hints at double-click bookmarks |
-| 10 | content-visibility on topic rows | Todo | |
-| 11 | Narrow-viewport banner + timeline wrap | Todo | |
+| 10 | content-visibility on topic rows | **Done** | content-visibility: auto + contain-intrinsic-size on .topic-row |
+| 11 | Narrow-viewport banner + timeline wrap | **Done** | Dismissible sm:hidden notice on DropZone; Timeline row gets flex-wrap |
 
 ## Medium Effort
 
@@ -31,7 +31,7 @@ Status of each item from [IMPROVEMENTS.md](./IMPROVEMENTS.md). Updated as work l
 | 16 | Sample bag lands on a curated cockpit layout | Todo | |
 | 17 | Live status: consolidate buttons, aria-live, buffer extent | Todo | |
 | 18 | Error copy with next steps | Todo | |
-| 19 | Modal focus trap | Todo | |
+| 19 | Modal focus trap | **Done** | Tab/Shift+Tab now wrap inside the dialog; no component-test harness exists in this repo (all tests are logic-only .ts), so no automated test was added for this one |
 | 20 | Micro-interactions motion spec (CSS-only) | Todo | |
 
 ## Larger Initiatives (blocked on a design decision)
