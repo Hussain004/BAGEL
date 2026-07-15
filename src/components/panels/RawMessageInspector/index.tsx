@@ -5,6 +5,7 @@ import { useBagLocalPlayhead } from '../../../hooks/useBagLocalPlayhead';
 import { toHexDump } from '../../../utils/bytes';
 import { nsToSeconds } from '../../../utils/time';
 import { PanelShell } from '../PanelShell';
+import { PanelLoadingState, PanelErrorState, PanelEmptyState } from '../shared/PanelStates';
 import { getTopicColor } from '../../../utils/color';
 
 interface RawMessageInspectorProps {
@@ -38,10 +39,10 @@ export function RawMessageInspector({ panelId, topicName, type, bagId }: RawMess
       accentColor={getTopicColor(topicName, type)}
       bagId={bagId}
     >
-      {showInitialLoading && <Loading />}
-      {error && !message && <ErrorState message={error} />}
+      {showInitialLoading && <PanelLoadingState message="Decoding messages…" />}
+      {error && !message && <PanelErrorState title="Failed to load messages" message={error} />}
       {!loading && !error && !message && (
-        <EmptyState message="No messages on this topic." />
+        <PanelEmptyState message="No messages on this topic." />
       )}
       {message && (
         <div className="flex-1 flex flex-col min-h-0">
@@ -192,27 +193,3 @@ function CollapsibleNode({
   );
 }
 
-function Loading() {
-  return (
-    <div className="flex-1 flex items-center justify-center text-text-secondary text-sm p-8">
-      Decoding messages…
-    </div>
-  );
-}
-
-function ErrorState({ message }: { message: string }) {
-  return (
-    <div className="flex-1 flex flex-col items-center justify-center gap-2 p-8 text-center">
-      <div className="text-accent-rose text-sm font-medium">Failed to load messages</div>
-      <div className="text-text-secondary text-xs max-w-md">{message}</div>
-    </div>
-  );
-}
-
-function EmptyState({ message }: { message: string }) {
-  return (
-    <div className="flex-1 flex items-center justify-center text-text-muted text-sm p-8">
-      {message}
-    </div>
-  );
-}

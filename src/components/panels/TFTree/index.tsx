@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
 import { useBagLocalPlayhead } from '../../../hooks/useBagLocalPlayhead';
 import { PanelShell } from '../PanelShell';
+import { PanelLoadingState, PanelErrorState, PanelEmptyState } from '../shared/PanelStates';
 import { getTopicColor } from '../../../utils/color';
 import { nsToSeconds } from '../../../utils/time';
 import {
@@ -113,13 +114,21 @@ export function TFTree({ panelId, topicName, type, bagId }: TFTreeProps) {
       accentColor={accent}
       bagId={bagId}
     >
-      {loading && <Loading progress={progress} />}
-      {error && <ErrorState message={error} />}
+      {loading && (
+        <PanelLoadingState
+          message={
+            progress.tf + progress.tf_static > 0
+              ? `Decoded ${(progress.tf + progress.tf_static).toLocaleString()} TF messages…`
+              : 'Loading TF data…'
+          }
+        />
+      )}
+      {error && <PanelErrorState title="Failed to load TF data" message={error} />}
       {!loading && !error && missing && (
-        <EmptyState message="No /tf or /tf_static topic in this bag." />
+        <PanelEmptyState message="No /tf or /tf_static topic in this bag." />
       )}
       {!loading && !error && graph && graph.frames.size === 0 && (
-        <EmptyState message="The /tf topic contains no transforms." />
+        <PanelEmptyState message="The /tf topic contains no transforms." />
       )}
       {graph && layout && graph.frames.size > 0 && (
         <div className="flex-1 flex min-h-0">
@@ -431,51 +440,4 @@ function quatToEuler(q: Quat): { roll: number; pitch: number; yaw: number } {
   const yaw = Math.atan2(siny_cosp, cosy_cosp);
 
   return { roll, pitch, yaw };
-}
-
-function Loading({ progress }: { progress: { tf: number; tf_static: number } }) {
-  const total = progress.tf + progress.tf_static;
-  return (
-    <div className="flex-1 flex flex-col items-center justify-center gap-3 p-8">
-      <svg
-        className="w-6 h-6 text-accent-blue animate-spin-slow"
-        fill="none"
-        viewBox="0 0 24 24"
-      >
-        <circle
-          className="opacity-25"
-          cx="12"
-          cy="12"
-          r="10"
-          stroke="currentColor"
-          strokeWidth="3"
-        />
-        <path
-          className="opacity-75"
-          fill="currentColor"
-          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-        />
-      </svg>
-      <span className="text-text-secondary text-sm">
-        {total > 0 ? `Decoded ${total.toLocaleString()} TF messages…` : 'Loading TF data…'}
-      </span>
-    </div>
-  );
-}
-
-function ErrorState({ message }: { message: string }) {
-  return (
-    <div className="flex-1 flex flex-col items-center justify-center gap-2 p-8 text-center">
-      <div className="text-accent-rose text-sm font-medium">Failed to load TF data</div>
-      <div className="text-text-secondary text-xs max-w-md">{message}</div>
-    </div>
-  );
-}
-
-function EmptyState({ message }: { message: string }) {
-  return (
-    <div className="flex-1 flex items-center justify-center text-text-muted text-sm p-8">
-      {message}
-    </div>
-  );
 }

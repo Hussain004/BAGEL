@@ -41,6 +41,7 @@ import {
 import { usePlayheadStore } from '../../../store/playheadStore';
 import { nsToSeconds } from '../../../utils/time';
 import { PanelShell } from '../PanelShell';
+import { PanelLoadingState, PanelErrorState, PanelEmptyState } from '../shared/PanelStates';
 import { getTopicColor } from '../../../utils/color';
 import { nearestMessageIndex } from '../../../utils/messages';
 
@@ -196,10 +197,12 @@ export function DiagnosticArray({
       accentColor={getTopicColor(topicName, type)}
       bagId={bagId}
     >
-      {error && !messages && <ErrorState message={error} />}
-      {loading && !messages && <Loading progress={progress} />}
+      {error && !messages && <PanelErrorState title="Failed to load diagnostics" message={error} />}
+      {loading && !messages && (
+        <PanelLoadingState message={`Loading diagnostics… (${progress} reports decoded)`} />
+      )}
       {messages && messages.length === 0 && !loading && (
-        <EmptyState message="This topic has no messages." />
+        <PanelEmptyState message="This topic has no messages." />
       )}
       {messages && messages.length > 0 && (
         <div className="flex-1 flex flex-col min-h-0">
@@ -594,27 +597,3 @@ function Inspector({
   );
 }
 
-function Loading({ progress }: { progress: number }) {
-  return (
-    <div className="flex-1 flex items-center justify-center text-text-secondary text-sm p-8">
-      Loading diagnostics… ({progress} reports decoded)
-    </div>
-  );
-}
-function ErrorState({ message }: { message: string }) {
-  return (
-    <div className="flex-1 flex flex-col items-center justify-center gap-2 p-8 text-center">
-      <div className="text-accent-rose text-sm font-medium">
-        Failed to load diagnostics
-      </div>
-      <div className="text-text-secondary text-xs max-w-md">{message}</div>
-    </div>
-  );
-}
-function EmptyState({ message }: { message: string }) {
-  return (
-    <div className="flex-1 flex items-center justify-center text-text-muted text-sm p-8">
-      {message}
-    </div>
-  );
-}

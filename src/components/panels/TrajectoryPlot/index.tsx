@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
 import { useBagLocalPlayhead } from '../../../hooks/useBagLocalPlayhead';
 import { PanelShell } from '../PanelShell';
+import { PanelLoadingState, PanelErrorState, PanelEmptyState } from '../shared/PanelStates';
 import { getTopicColor } from '../../../utils/color';
 import { useThemeStore } from '../../../store/themeStore';
 import { chartTheme, type ChartTheme } from '../../../utils/chartTheme';
@@ -403,7 +404,7 @@ export function TrajectoryPlot({ panelId, topicName, type, bagId }: TrajectoryPl
           }
         />
       )}
-      {error && <PanelErrorState message={error} />}
+      {error && <PanelErrorState title="Failed to load trajectory" message={error} />}
       {!loading && !error && points.length === 0 && (
         <PanelEmptyState message="No usable pose data on this topic." />
       )}
@@ -736,48 +737,3 @@ function formatDistance(metres: number): string {
   return `${(metres * 100).toFixed(0)} cm`;
 }
 
-function PanelLoadingState({ message }: { message: string }) {
-  return (
-    <div className="flex-1 flex flex-col items-center justify-center gap-3 p-8">
-      <svg
-        className="w-6 h-6 text-accent-blue animate-spin-slow"
-        fill="none"
-        viewBox="0 0 24 24"
-      >
-        <circle
-          className="opacity-25"
-          cx="12"
-          cy="12"
-          r="10"
-          stroke="currentColor"
-          strokeWidth="3"
-        />
-        <path
-          className="opacity-75"
-          fill="currentColor"
-          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-        />
-      </svg>
-      <span className="text-text-secondary text-sm">{message}</span>
-    </div>
-  );
-}
-
-function PanelErrorState({ message }: { message: string }) {
-  return (
-    <div className="flex-1 flex flex-col items-center justify-center gap-2 p-8 text-center">
-      <div className="text-accent-rose text-sm font-medium">
-        Failed to load trajectory
-      </div>
-      <div className="text-text-secondary text-xs max-w-md">{message}</div>
-    </div>
-  );
-}
-
-function PanelEmptyState({ message }: { message: string }) {
-  return (
-    <div className="flex-1 flex items-center justify-center text-text-muted text-sm p-8">
-      {message}
-    </div>
-  );
-}
