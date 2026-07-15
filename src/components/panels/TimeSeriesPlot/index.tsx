@@ -5,6 +5,8 @@ import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
 import { useBagLocalPlayhead } from '../../../hooks/useBagLocalPlayhead';
 import { useTopicMessages, type DecodedMessage } from '../../../hooks/useTopicMessages';
 import { flattenNumeric } from '../../../utils/messages';
+import { useThemeStore } from '../../../store/themeStore';
+import { chartTheme } from '../../../utils/chartTheme';
 import { PanelShell } from '../PanelShell';
 import { getTopicColor } from '../../../utils/color';
 import {
@@ -200,13 +202,15 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
   expressionResultsRef.current = expressionResults;
 
   // Mount key: re-build uPlot when the field set changes OR when the
-  // expression list changes (add/remove triggers a series count change).
+  // expression list changes (add/remove triggers a series count change) OR
+  // when the theme flips (axis/grid colours are baked into uPlot options).
+  const theme = useThemeStore((s) => s.theme);
   const fieldNamesKey = useMemo(
     () => series?.fieldNames.join('|') ?? '',
     [series],
   );
   const exprKey = expressions.map(e => e.id).join(',');
-  const mountKey = fieldNamesKey + '||' + exprKey;
+  const mountKey = fieldNamesKey + '||' + exprKey + '||' + theme;
 
   const handleAddExpr = () => {
     const trimmed = exprDraft.trim();
@@ -241,6 +245,9 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
 
     const exprs = expressionsRef.current;
     const exprRes = expressionResultsRef.current;
+    // Read via getState: `theme` is part of mountKey, so this effect re-runs
+    // on toggle and always sees the current value.
+    const axisColors = chartTheme(useThemeStore.getState().theme);
 
     const colors = current.fieldNames.map(
       (_, i) => SERIES_PALETTE[i % SERIES_PALETTE.length],
@@ -265,15 +272,15 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
       },
       axes: [
         {
-          stroke: '#94a3b8',
-          grid: { stroke: 'rgba(255,255,255,0.05)' },
-          ticks: { stroke: 'rgba(255,255,255,0.1)' },
+          stroke: axisColors.axis,
+          grid: { stroke: axisColors.grid },
+          ticks: { stroke: axisColors.tick },
           values: (_u, ticks) => ticks.map((t) => `${t.toFixed(2)}s`),
         },
         {
-          stroke: '#94a3b8',
-          grid: { stroke: 'rgba(255,255,255,0.05)' },
-          ticks: { stroke: 'rgba(255,255,255,0.1)' },
+          stroke: axisColors.axis,
+          grid: { stroke: axisColors.grid },
+          ticks: { stroke: axisColors.tick },
         },
       ],
       series: [

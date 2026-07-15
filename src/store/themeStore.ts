@@ -6,11 +6,10 @@
  * only when no explicit choice has been saved — subsequent visits respect
  * the user's manual toggle even if their OS switches to a different theme.
  *
- * v1.0 scope: theme drives CSS variables (handled by an attribute on the
- * <html> element). The Three.js scene's clear colour and the grid colours
- * stay dark across both themes — they're a self-contained visual context
- * (point clouds, axes, lighting) and re-painting them on theme change is a
- * v1.x polish item, not a v1.0 blocker.
+ * Theme drives CSS variables (via an attribute on the <html> element).
+ * Canvas-rendered surfaces (uPlot axes, the trajectory canvas, the Three.js
+ * clear colour) can't read CSS variables, so they follow the store through
+ * utils/chartTheme.ts instead.
  */
 
 import { create } from 'zustand';
@@ -69,4 +68,9 @@ export function applyTheme(theme: Theme): void {
   if (typeof document === 'undefined') return;
   document.documentElement.dataset.theme = theme;
   document.documentElement.style.colorScheme = theme;
+  // Keep the browser chrome (mobile address bar, PWA title bar) matched to
+  // --color-bg-primary; the static value in index.html only covers first paint.
+  document
+    .querySelector('meta[name="theme-color"]')
+    ?.setAttribute('content', theme === 'light' ? '#fafbfc' : '#06080f');
 }

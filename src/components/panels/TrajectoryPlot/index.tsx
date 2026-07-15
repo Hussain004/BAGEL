@@ -3,6 +3,8 @@ import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
 import { useBagLocalPlayhead } from '../../../hooks/useBagLocalPlayhead';
 import { PanelShell } from '../PanelShell';
 import { getTopicColor } from '../../../utils/color';
+import { useThemeStore } from '../../../store/themeStore';
+import { chartTheme, type ChartTheme } from '../../../utils/chartTheme';
 import { nsToSeconds } from '../../../utils/time';
 import { nearestPointIndex } from '../../../utils/trajectory';
 import { useTrajectory } from './useTrajectory';
@@ -52,6 +54,9 @@ export function TrajectoryPlot({ panelId, topicName, type, bagId }: TrajectoryPl
   const bagCount = useBagStore((s) => s.bagOrder.length);
   const bagColor = entry?.color ?? null;
   const playheadNs = useBagLocalPlayhead(bagId);
+  // Canvas ink follows the app theme (CSS variables can't reach into 2D
+  // canvas draws); the render effect below re-runs on toggle.
+  const themeColors = chartTheme(useThemeStore((s) => s.theme));
 
   const {
     points,
@@ -274,7 +279,7 @@ export function TrajectoryPlot({ panelId, topicName, type, bagId }: TrajectoryPl
       drawTileUnderlay(ctx, cw, ch, view, navSatRef);
     }
 
-    drawGrid(ctx, cw, ch, view);
+    drawGrid(ctx, cw, ch, view, themeColors);
 
     // Polyline tinting:
     //   - Single bag: the v0.3 blue→red gradient (recognisable; direction
@@ -317,6 +322,7 @@ export function TrajectoryPlot({ panelId, topicName, type, bagId }: TrajectoryPl
       -start.y * view.scale + view.offsetY,
       '#3b82f6',
       'S',
+      themeColors,
     );
     if (points.length > 1) {
       drawMarker(
@@ -325,6 +331,7 @@ export function TrajectoryPlot({ panelId, topicName, type, bagId }: TrajectoryPl
         -end.y * view.scale + view.offsetY,
         '#f43f5e',
         'E',
+        themeColors,
       );
     }
 
@@ -338,7 +345,7 @@ export function TrajectoryPlot({ panelId, topicName, type, bagId }: TrajectoryPl
         const len = 22;
         const ax = px + Math.cos(ph.yaw) * len;
         const ay = py - Math.sin(ph.yaw) * len;
-        ctx.strokeStyle = '#f1f5f9';
+        ctx.strokeStyle = themeColors.fg;
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(px, py);
@@ -360,8 +367,8 @@ export function TrajectoryPlot({ panelId, topicName, type, bagId }: TrajectoryPl
         );
         ctx.stroke();
       }
-      ctx.fillStyle = '#f1f5f9';
-      ctx.strokeStyle = '#0c1020';
+      ctx.fillStyle = themeColors.fg;
+      ctx.strokeStyle = themeColors.fgOutline;
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(px, py, 5, 0, Math.PI * 2);
@@ -369,8 +376,8 @@ export function TrajectoryPlot({ panelId, topicName, type, bagId }: TrajectoryPl
       ctx.stroke();
     }
 
-    drawScaleBar(ctx, cw, ch, view);
-  }, [points, view, playheadNs, projected, showMapTiles, navSatRef, tileGeneration, bagColor, bagCount]);
+    drawScaleBar(ctx, cw, ch, view, themeColors);
+  }, [points, view, playheadNs, projected, showMapTiles, navSatRef, tileGeneration, bagColor, bagCount, themeColors]);
 
   const accent = getTopicColor(topicName, type);
   const startNs = bag?.startTime ?? 0n;
@@ -600,7 +607,13 @@ function drawTileUnderlay(
   }
 }
 
-function drawGrid(ctx: CanvasRenderingContext2D, w: number, h: number, view: View) {
+function drawGrid(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  view: View,
+  t: ChartTheme,
+) {
   // Pick a grid step that fits nicely in the current zoom: ~80 px between lines.
   const targetPx = 80;
   const targetWorld = targetPx / view.scale;
@@ -608,7 +621,7 @@ function drawGrid(ctx: CanvasRenderingContext2D, w: number, h: number, view: Vie
   const stepPx = step * view.scale;
   if (!Number.isFinite(stepPx) || stepPx < 4) return;
 
-  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  ctx.strokeStyle = t.grid;
   ctx.lineWidth = 1;
   ctx.beginPath();
 
@@ -627,7 +640,7 @@ function drawGrid(ctx: CanvasRenderingContext2D, w: number, h: number, view: Vie
   ctx.stroke();
 
   // Highlight the (0, 0) axes so the user has a frame of reference.
-  ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+  ctx.strokeStyle = t.origin;
   ctx.beginPath();
   ctx.moveTo(view.offsetX, 0);
   ctx.lineTo(view.offsetX, h);
@@ -656,16 +669,17 @@ function drawMarker(
   y: number,
   color: string,
   label: string,
+  t: ChartTheme,
 ) {
   ctx.fillStyle = color;
-  ctx.strokeStyle = '#0c1020';
+  ctx.strokeStyle = t.fgOutline;
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.arc(x, y, 6, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
-  ctx.fillStyle = '#f1f5f9';
-  ctx.font = '600 10px JetBrains Mono';
+  ctx.fillStyle = t.fg;
+  ctx.font = "600 10px 'JetBrains Mono Variable', monospace";
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(label, x, y + 14);
@@ -676,6 +690,7 @@ function drawScaleBar(
   w: number,
   h: number,
   view: View,
+  t: ChartTheme,
 ) {
   // Aim for a 100 px scale bar; snap to a nice round metres value. Anchored
   // bottom-right so the canvas overlay buttons (Fit, source label) stay
@@ -686,8 +701,8 @@ function drawScaleBar(
   const px = step * view.scale;
   const x0 = w - 16 - px;
   const y0 = h - 16;
-  ctx.strokeStyle = '#f1f5f9';
-  ctx.fillStyle = '#f1f5f9';
+  ctx.strokeStyle = t.fg;
+  ctx.fillStyle = t.fg;
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.moveTo(x0, y0);
@@ -697,7 +712,7 @@ function drawScaleBar(
   ctx.moveTo(x0 + px, y0 - 4);
   ctx.lineTo(x0 + px, y0 + 4);
   ctx.stroke();
-  ctx.font = '500 10px JetBrains Mono';
+  ctx.font = "500 10px 'JetBrains Mono Variable', monospace";
   ctx.textAlign = 'center';
   ctx.textBaseline = 'bottom';
   ctx.fillText(`${formatDistance(step)}`, x0 + px / 2, y0 - 6);

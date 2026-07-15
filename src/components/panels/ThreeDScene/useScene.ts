@@ -16,6 +16,8 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { useThemeStore } from '../../../store/themeStore';
+import { chartTheme } from '../../../utils/chartTheme';
 
 export interface SceneRefs {
   renderer: THREE.WebGLRenderer;
@@ -58,7 +60,9 @@ export function useScene(): {
       preserveDrawingBuffer: true, // required for canvas.toBlob() in clip export
     });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setClearColor(0x0c1020, 1.0);
+    // Clear colour follows the app theme so a light UI doesn't frame a
+    // permanently dark viewport. Subscription below repaints on toggle.
+    renderer.setClearColor(chartTheme(useThemeStore.getState().theme).sceneClear, 1.0);
     renderer.setSize(container.clientWidth, container.clientHeight, false);
     container.appendChild(renderer.domElement);
     renderer.domElement.style.display = 'block';
@@ -130,6 +134,12 @@ export function useScene(): {
     });
     ro.observe(container);
 
+    // Repaint with the new clear colour when the user toggles the theme.
+    const unsubTheme = useThemeStore.subscribe((state) => {
+      renderer.setClearColor(chartTheme(state.theme).sceneClear, 1.0);
+      needsRender = true;
+    });
+
     const renderOnce = () => {
       needsRender = true;
     };
@@ -166,6 +176,7 @@ export function useScene(): {
     return () => {
       cancelAnimationFrame(rafId);
       ro.disconnect();
+      unsubTheme();
       controls.dispose();
       // Dispose every geometry / material we ever attached.
       scene.traverse((obj) => {
