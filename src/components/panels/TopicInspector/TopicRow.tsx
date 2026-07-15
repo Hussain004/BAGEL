@@ -249,7 +249,7 @@ export function TopicRow({ topic, index, bagId }: TopicRowProps) {
           every row and sit flush against the right edge of the sidebar. The
           Hz slot is always rendered (invisible when the topic has no rate)
           so rows without a frequency don't shift their msgs column left. */}
-      <div className="flex items-center gap-4 flex-shrink-0 ml-2 transition-opacity group-hover:opacity-0 pointer-events-none">
+      <div className="flex items-center gap-4 flex-shrink-0 ml-2 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0 pointer-events-none">
         <div className="text-right min-w-[60px] whitespace-nowrap">
           <span className="text-text-primary text-sm font-medium mono">
             {topic.messageCount.toLocaleString()}
@@ -273,7 +273,7 @@ export function TopicRow({ topic, index, bagId }: TopicRowProps) {
           "Add schema" affordance instead of the panel set, since opening
           panels with no decoder is just confusing. */}
       <div
-        className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+        className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity z-10"
         onClick={(e) => e.stopPropagation()}
       >
         {schemaMissing ? (
