@@ -2,7 +2,7 @@
 
 Status of each item from [IMPROVEMENTS.md](./IMPROVEMENTS.md). Updated as work lands.
 
-**Done: 4 / 21** (quick wins: 4/11, medium: 0/8, larger initiatives: 0/5 - the larger ones need a design decision first)
+**Done: 6 / 21** (quick wins: 6/11, medium: 0/9, larger initiatives: 0/5 - the larger ones need a design decision first)
 
 ## Quick Wins
 
@@ -12,11 +12,11 @@ Status of each item from [IMPROVEMENTS.md](./IMPROVEMENTS.md). Updated as work l
 | 2 | Drop zone keyboard operability | **Done** | Enter/Space now opens the file picker |
 | 3 | Topic-row buttons visible on keyboard focus | **Done** | group-focus-within added to the button strip and stats fade |
 | 4 | Esc ordering (popovers before panels) | **Done** | New useEscapeToClose hook; export menu and 3D Display card consume Esc; panel-close undo toast not included (tracked as follow-up) |
-| 5 | Light theme inside data surfaces (uPlot + 3D clear color + theme-color meta) | Todo | |
+| 5 | Light theme inside data surfaces (uPlot + 3D clear color + theme-color meta) | **Done** | New utils/chartTheme.ts; uPlot axes, trajectory canvas ink, 3D clear color, and the theme-color meta all follow the theme now; also fixed canvas font strings broken by the variable-font rename |
 | 6 | "Copy link" button for the shareable URL layout | Todo | |
 | 7 | Replace transition-all with explicit properties | Todo | |
 | 8 | Typography and copy consistency (ellipsis, casing, tabular-nums) | Todo | |
-| 9 | Timeline slider focusable + local arrow keys | Todo | |
+| 9 | Timeline slider focusable + scrub/bookmark hint | **Done** | tabIndex added (global arrow shortcuts already operate the playhead); title hints at double-click bookmarks |
 | 10 | content-visibility on topic rows | Todo | |
 | 11 | Narrow-viewport banner + timeline wrap | Todo | |
 
