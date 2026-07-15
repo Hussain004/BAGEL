@@ -2,7 +2,7 @@
 
 Status of each item from [IMPROVEMENTS.md](./IMPROVEMENTS.md). Updated as work lands.
 
-**Done: 12 / 21, 1 partial** (quick wins: 11/11 - all done, medium: 1/9 done + 1 partial, larger initiatives: 0/5 - the larger ones need a design decision first)
+**Done: 13 / 21, 1 partial** (quick wins: 11/11 - all done, medium: 2/9 done + 1 partial, larger initiatives: 0/5 - the larger ones need a design decision first)
 
 ## Quick Wins
 
@@ -25,7 +25,7 @@ Status of each item from [IMPROVEMENTS.md](./IMPROVEMENTS.md). Updated as work l
 | # | Item | Status | Notes |
 |---|------|--------|-------|
 | 12 | Shared PanelStates + OverlayCard (cohesion) | Partial | PanelStates half done: extracted src/components/panels/shared/PanelStates.tsx, eliminated 13 duplicate Loading/Error/Empty implementations across 7 panels. OverlayCard (the floating in-canvas control card pattern used by 3D Display, plot controls, etc.) not started |
-| 13 | 3D Display card progressive disclosure | Todo | |
+| 13 | 3D Display card progressive disclosure | **Done** | Only color-by/point-size/grid/axes visible by default; rest behind 3 native `<details>` sections (Coordinate frame, Range and clipping, Accumulation, Overlays) with expand-state persisted per-panel in threeDPanelStore; defaults save/reset moved to a pinned footer; manually verified in-browser (dark + light theme, expand-state survives close/reopen) |
 | 14 | Timeline data-density strip | Todo | |
 | 15 | Docking discoverability + keyboard path | Todo | |
 | 16 | Sample bag lands on a curated cockpit layout | Todo | |
