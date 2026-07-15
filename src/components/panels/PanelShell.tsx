@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { useEscapeToClose } from '../../hooks/useEscapeToClose';
 import { useLayoutStore, type PanelKind } from '../../store/layoutStore';
 import { useDragDockStore } from '../../store/dragDockStore';
 import { useBagStore, resolveBagEntry } from '../../store/bagStore';
@@ -204,6 +205,12 @@ function ExportMenu({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<ExportFormat | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Esc dismisses the menu instead of falling through to the global
+  // "close most recent panel" shortcut.
+  useEscapeToClose(open, () => {
+    setOpen(false);
+    setError(null);
+  });
 
   if (!entry) return null;
   const { id: workerBagId, summary: bag, source } = entry;

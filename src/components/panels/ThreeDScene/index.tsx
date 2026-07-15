@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
 import { useBagLocalPlayhead } from '../../../hooks/useBagLocalPlayhead';
+import { useEscapeToClose } from '../../../hooks/useEscapeToClose';
 import {
   DEFAULT_THREE_D_SETTINGS,
   useThreeDPanelStore,
@@ -1779,6 +1780,8 @@ function ControlsCard({
   onSetClipBound,
 }: ControlsCardProps) {
   const [open, setOpen] = useState(false);
+  // Esc closes the Display card, not the whole panel (see useEscapeToClose).
+  useEscapeToClose(open, () => setOpen(false));
   const allFrames = useMemo(() => (graph ? Array.from(graph.frames).sort() : []), [graph]);
   const hiddenSet = useMemo(
     () => new Set(hiddenMarkerNamespaces),
