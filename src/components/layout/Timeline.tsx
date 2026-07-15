@@ -236,6 +236,11 @@ export function Timeline() {
         onDoubleClick={handleTrackDoubleClick}
         id="timeline-track"
         role="slider"
+        // Focusable so the slider role is honest; arrow/Home/End handling
+        // comes from the global shortcuts, which act on the playhead
+        // regardless of focus.
+        tabIndex={0}
+        title="Click or drag to seek. Double-click to add a bookmark."
         aria-label="Playhead - drag or use arrow keys to scrub"
         aria-valuemin={0}
         aria-valuemax={Math.round(duration * 1000) / 1000}
