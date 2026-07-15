@@ -1,5 +1,8 @@
-/* ── Google Fonts ── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
+/* Self-hosted fonts (bundled by Vite from node_modules): no request leaves
+   the machine, which keeps the "no data leaves your machine" promise honest
+   and works offline / air-gapped. */
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/jetbrains-mono';
 
 @import "tailwindcss";
 
@@ -42,8 +45,8 @@
   --color-text-tertiary: #64748b;
   --color-text-muted: #475569;
 
-  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --font-sans: 'Inter Variable', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, monospace;
 
   --radius-sm: 6px;
   --radius-md: 10px;
