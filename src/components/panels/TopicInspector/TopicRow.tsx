@@ -209,7 +209,7 @@ export function TopicRow({ topic, index, bagId }: TopicRowProps) {
       }${schemaMissing ? ', schema missing' : ''}`}
     >
       <div
-        className={`w-1.5 h-8 rounded-full flex-shrink-0 transition-all ${
+        className={`w-1.5 h-8 rounded-full flex-shrink-0 transition-opacity ${
           schemaMissing ? 'opacity-30' : ''
         }`}
         style={{ backgroundColor: color }}
@@ -322,7 +322,7 @@ function PanelButton({
       title={title}
       aria-label={title}
       onClick={onClick}
-      className={`px-2 py-1 rounded-md text-[10px] font-medium mono border transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60 ${
+      className={`px-2 py-1 rounded-md text-[10px] font-medium mono border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60 ${
         accent
           ? 'bg-accent-blue/10 border-accent-blue/40 text-accent-blue hover:bg-accent-blue/15'
           : 'bg-surface border-border hover:border-accent-blue/40 hover:text-accent-blue text-text-secondary'

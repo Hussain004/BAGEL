@@ -198,10 +198,10 @@ export function Timeline() {
   const fraction = endNs > startNs ? elapsed / duration : 0;
 
   return (
-    <div className="border-t border-border bg-bg-secondary/70 backdrop-blur-md px-4 py-3 flex items-center gap-4 animate-fade-in flex-shrink-0">
+    <div className="border-t border-border bg-bg-secondary/70 backdrop-blur-md px-4 py-3 flex items-center gap-4 flex-wrap animate-fade-in flex-shrink-0">
       <button
         onClick={() => setPlaying(!playing)}
-        className="w-9 h-9 rounded-full flex items-center justify-center bg-accent-blue/15 hover:bg-accent-blue/25 border border-accent-blue/30 text-accent-blue transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
+        className="w-9 h-9 rounded-full flex items-center justify-center bg-accent-blue/15 hover:bg-accent-blue/25 border border-accent-blue/30 text-accent-blue transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
         title={playing ? 'Pause (Space)' : 'Play (Space)'}
         aria-label={playing ? 'Pause playback' : 'Start playback'}
         id="timeline-play-pause"
@@ -317,7 +317,7 @@ export function Timeline() {
 
       <button
         onClick={addBookmarkHere}
-        className="w-8 h-8 rounded-md flex items-center justify-center border border-border text-text-secondary hover:border-accent-amber/40 hover:text-accent-amber transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber/60"
+        className="w-8 h-8 rounded-md flex items-center justify-center border border-border text-text-secondary hover:border-accent-amber/40 hover:text-accent-amber transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber/60"
         title="Add bookmark at playhead (M)"
         aria-label="Add timeline bookmark"
         id="timeline-bookmark-btn"
@@ -327,7 +327,7 @@ export function Timeline() {
 
       <button
         onClick={() => setLoop(!loop)}
-        className={`w-8 h-8 rounded-md flex items-center justify-center border transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60 ${
+        className={`w-8 h-8 rounded-md flex items-center justify-center border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60 ${
           loop
             ? 'bg-accent-blue/15 border-accent-blue/40 text-accent-blue'
             : 'border-border text-text-secondary hover:border-accent-blue/40 hover:text-accent-blue'
@@ -350,7 +350,7 @@ export function Timeline() {
       {isLive && (
         <button
           onClick={() => setFollowLive(!followLive)}
-          className={`flex items-center gap-1.5 h-8 px-2.5 rounded-md border text-xs transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-emerald/60 ${
+          className={`flex items-center gap-1.5 h-8 px-2.5 rounded-md border text-xs transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-emerald/60 ${
             followLive
               ? 'bg-accent-emerald/15 border-accent-emerald/40 text-accent-emerald'
               : 'border-border text-text-secondary hover:border-accent-emerald/40 hover:text-accent-emerald'
@@ -419,7 +419,7 @@ function AnnotationTick({ annotation, fraction, isEditing, onSeek, onRemove, onR
     >
       {/* Tick bar - centered in the hit area */}
       <div
-        className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-sm cursor-pointer transition-all ${
+        className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-sm cursor-pointer transition-[width,height,background-color] ${
           isEditing
             ? 'w-1.5 h-5 bg-accent-amber'
             : 'w-1 h-4 bg-accent-amber/70 group-hover:bg-accent-amber'

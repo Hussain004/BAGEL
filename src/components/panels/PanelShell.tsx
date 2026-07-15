@@ -170,7 +170,7 @@ export function PanelShell({
           <ExportMenu topicName={topicName} kind={kind} bagId={bagId} />
           <button
             onClick={() => closePanel(panelId)}
-            className="w-7 h-7 rounded-md flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-surface-hover transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
+            className="w-7 h-7 rounded-md flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-surface-hover transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
             title="Close panel (Esc)"
             aria-label={`Close ${KIND_LABELS[kind]} panel for ${topicName}`}
             id={`close-panel-${panelId}`}
@@ -249,7 +249,7 @@ function ExportMenu({
     <div className="relative">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="ml-1 px-2 h-7 rounded-md flex items-center gap-1 text-xs text-text-tertiary hover:text-text-primary hover:bg-surface-hover transition-all border border-transparent hover:border-border focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
+        className="ml-1 px-2 h-7 rounded-md flex items-center gap-1 text-xs text-text-tertiary hover:text-text-primary hover:bg-surface-hover transition-colors border border-transparent hover:border-border focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
         title="Export topic data"
         aria-label="Export topic data"
         aria-expanded={open}

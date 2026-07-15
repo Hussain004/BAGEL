@@ -428,7 +428,7 @@ export function TrajectoryPlot({ panelId, topicName, type, bagId }: TrajectoryPl
               <div className="flex gap-1">
                 <button
                   onClick={resetView}
-                  className="px-2 py-1 rounded-md text-xs mono bg-surface/80 border border-border hover:border-accent-blue/40 hover:text-accent-blue text-text-secondary transition-all"
+                  className="px-2 py-1 rounded-md text-xs mono bg-surface/80 border border-border hover:border-accent-blue/40 hover:text-accent-blue text-text-secondary transition-colors"
                   title="Reset view"
                 >
                   Fit

@@ -483,7 +483,7 @@ function BagEditForm({ entry, onClose }: FormProps) {
             </div>
             <div className="mt-1 h-1 rounded-full bg-bg-primary overflow-hidden">
               <div
-                className="h-full bg-accent-blue/70 transition-all"
+                className="h-full bg-accent-blue/70 transition-colors"
                 style={{
                   width: estimateMsgs
                     ? `${Math.min(100, (progress / Math.max(1, estimateMsgs)) * 100)}%`

@@ -197,7 +197,7 @@ export function ClipExportModal() {
                     key={f}
                     onClick={() => setFps(f)}
                     disabled={isRunning}
-                    className={`px-3 py-1 rounded-md text-xs mono border transition-all disabled:opacity-50 ${
+                    className={`px-3 py-1 rounded-md text-xs mono border transition-[background-color,border-color,color,opacity] disabled:opacity-50 ${
                       fps === f
                         ? 'bg-accent-blue/10 border-accent-blue/40 text-accent-blue'
                         : 'bg-surface border-border text-text-secondary hover:border-accent-blue/40 hover:text-text-primary'
@@ -258,13 +258,13 @@ export function ClipExportModal() {
               <span className="text-xs text-text-secondary mono">
                 {exportState.phase === 'capturing'
                   ? `Capturing frame ${exportState.frame} / ${exportState.total}`
-                  : 'Encoding video...'}
+                  : 'Encoding video…'}
               </span>
               <span className="text-xs text-text-muted mono">{progressPct}%</span>
             </div>
             <div className="h-1.5 bg-surface rounded-full overflow-hidden">
               <div
-                className="h-full bg-accent-blue rounded-full transition-all duration-100"
+                className="h-full bg-accent-blue rounded-full transition-colors duration-100"
                 style={{ width: `${progressPct}%` }}
               />
             </div>
@@ -287,7 +287,7 @@ export function ClipExportModal() {
         {isRunning ? (
           <button
             onClick={() => { cancelRef.current = true; }}
-            className="px-3 py-1.5 rounded-md text-xs border border-border text-text-secondary hover:border-accent-rose/40 hover:text-accent-rose transition-all"
+            className="px-3 py-1.5 rounded-md text-xs border border-border text-text-secondary hover:border-accent-rose/40 hover:text-accent-rose transition-colors"
           >
             Cancel
           </button>
@@ -295,14 +295,14 @@ export function ClipExportModal() {
           <>
             <button
               onClick={close}
-              className="px-3 py-1.5 rounded-md text-xs border border-border text-text-secondary hover:border-border-hover transition-all"
+              className="px-3 py-1.5 rounded-md text-xs border border-border text-text-secondary hover:border-border-hover transition-colors"
             >
               {exportState.phase === 'done' ? 'Close' : 'Cancel'}
             </button>
             {exportState.phase !== 'done' && panelIds.length > 0 && (
               <button
                 onClick={handleExport}
-                className="px-3 py-1.5 rounded-md text-xs bg-accent-blue/10 border border-accent-blue/40 text-accent-blue hover:bg-accent-blue/15 transition-all"
+                className="px-3 py-1.5 rounded-md text-xs bg-accent-blue/10 border border-accent-blue/40 text-accent-blue hover:bg-accent-blue/15 transition-colors"
               >
                 Export
               </button>

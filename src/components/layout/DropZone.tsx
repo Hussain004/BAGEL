@@ -105,6 +105,7 @@ export function DropZone() {
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-accent-violet/5 rounded-full blur-3xl animate-float" style={{ animationDelay: '1.5s' }} />
 
       <div className="relative z-10 w-full max-w-2xl animate-fade-in-up">
+        <NarrowViewportNotice />
         {/* Logo & Tagline */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-3 mb-4">
@@ -123,7 +124,7 @@ export function DropZone() {
 
         {/* Drop Zone Area */}
         <div
-          className={`dropzone ${isDragOver ? 'dropzone-active' : ''} p-12 text-center cursor-pointer transition-all`}
+          className={`dropzone ${isDragOver ? 'dropzone-active' : ''} p-12 text-center cursor-pointer transition-colors`}
           onDragEnter={handleDragEnter}
           onDragLeave={handleDragLeave}
           onDragOver={handleDragOver}
@@ -272,7 +273,7 @@ function UrlInput({
       <button
         type="submit"
         disabled={disabled || url.trim().length === 0}
-        className="w-28 px-4 py-2.5 rounded-md border border-accent-blue/30 bg-accent-blue/10 text-accent-blue text-sm font-medium hover:bg-accent-blue/20 hover:border-accent-blue/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
+        className="w-28 px-4 py-2.5 rounded-md border border-accent-blue/30 bg-accent-blue/10 text-accent-blue text-sm font-medium hover:bg-accent-blue/20 hover:border-accent-blue/50 disabled:opacity-50 disabled:cursor-not-allowed transition-[background-color,border-color,opacity] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
       >
         Open URL
       </button>
@@ -327,7 +328,7 @@ function WsConnectInput({
       <button
         type="submit"
         disabled={disabled || !url.trim().startsWith('ws')}
-        className="w-28 px-4 py-2.5 rounded-md border border-accent-emerald/30 bg-accent-emerald/10 text-accent-emerald text-sm font-medium hover:bg-accent-emerald/20 hover:border-accent-emerald/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-emerald/60 flex items-center justify-center gap-1.5"
+        className="w-28 px-4 py-2.5 rounded-md border border-accent-emerald/30 bg-accent-emerald/10 text-accent-emerald text-sm font-medium hover:bg-accent-emerald/20 hover:border-accent-emerald/50 disabled:opacity-50 disabled:cursor-not-allowed transition-[background-color,border-color,opacity] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-emerald/60 flex items-center justify-center gap-1.5"
       >
         {isConnecting ? (
           <svg className="w-3.5 h-3.5 animate-spin-slow" fill="none" viewBox="0 0 24 24">
@@ -383,7 +384,7 @@ function SampleBagButton({
       <button
         onClick={handle}
         disabled={fetching || disabled}
-        className="inline-flex items-center gap-2 px-4 py-1.5 rounded-md border border-accent-blue/30 bg-accent-blue/10 text-accent-blue text-xs font-medium hover:bg-accent-blue/20 hover:border-accent-blue/50 disabled:opacity-60 disabled:cursor-progress transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
+        className="inline-flex items-center gap-2 px-4 py-1.5 rounded-md border border-accent-blue/30 bg-accent-blue/10 text-accent-blue text-xs font-medium hover:bg-accent-blue/20 hover:border-accent-blue/50 disabled:opacity-60 disabled:cursor-progress transition-[background-color,border-color,opacity] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
       >
         {fetching ? (
           <>
@@ -411,11 +412,41 @@ function SampleBagButton({
   );
 }
 
+/**
+ * NarrowViewportNotice - shown only below the sm breakpoint. BAGEL is a
+ * desktop tool (drag-to-dock, hover actions, dense panels); rather than
+ * pretending otherwise, say so once and stay out of the way.
+ */
+function NarrowViewportNotice() {
+  const [dismissed, setDismissed] = useState(false);
+  if (dismissed) return null;
+  return (
+    <div
+      role="note"
+      className="sm:hidden mb-6 flex items-start gap-2.5 p-3 rounded-lg bg-accent-amber/10 border border-accent-amber/25 text-left"
+    >
+      <p className="flex-1 text-text-secondary text-xs leading-relaxed">
+        BAGEL is built for desktop browsers. Panels, docking, and hover
+        actions will be cramped on a small screen.
+      </p>
+      <button
+        onClick={() => setDismissed(true)}
+        aria-label="Dismiss"
+        className="text-text-tertiary hover:text-text-primary flex-shrink-0 -mt-0.5"
+      >
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
 /** Idle state content inside the drop zone */
 function IdleState({ isDragOver }: { isDragOver: boolean }) {
   return (
     <div className="flex flex-col items-center gap-4">
-      <div className={`w-20 h-20 rounded-2xl flex items-center justify-center transition-all ${isDragOver ? 'bg-accent-blue/20 scale-110' : 'bg-surface'}`}>
+      <div className={`w-20 h-20 rounded-2xl flex items-center justify-center transition-[background-color,transform] ${isDragOver ? 'bg-accent-blue/20 scale-110' : 'bg-surface'}`}>
         <svg
           className={`w-9 h-9 transition-colors ${isDragOver ? 'text-accent-blue' : 'text-text-tertiary'}`}
           fill="none"
@@ -449,7 +480,7 @@ function LoadingState({ progress }: { progress: number }) {
         </svg>
       </div>
       <div className="text-center">
-        <p className="text-text-primary text-xl font-semibold">Parsing bag file...</p>
+        <p className="text-text-primary text-xl font-semibold">Parsing bag file…</p>
         <p className="text-text-secondary/70 text-sm mt-1.5">
           Reading and analyzing topics
         </p>

@@ -103,8 +103,8 @@ export function TopicInspector() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Filter topics or types... (T)"
-            className="w-full pl-10 pr-9 py-2 rounded-lg bg-surface border border-border text-text-primary placeholder:text-text-muted text-sm focus:outline-none focus:border-accent-blue/50 focus:ring-1 focus:ring-accent-blue/20 transition-all"
+            placeholder="Filter topics or types… (T)"
+            className="w-full pl-10 pr-9 py-2 rounded-lg bg-surface border border-border text-text-primary placeholder:text-text-muted text-sm focus:outline-none focus:border-accent-blue/50 focus:ring-1 focus:ring-accent-blue/20 transition-colors"
             id="topic-search-input"
             aria-label="Filter topics"
             aria-controls="topic-list"
@@ -139,7 +139,7 @@ export function TopicInspector() {
                     onClick={() =>
                       setCollapsed((c) => ({ ...c, [entry.id]: !isCollapsed }))
                     }
-                    className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-all sticky top-0 z-10 bg-bg-secondary/95 backdrop-blur-sm border-b border-border ${
+                    className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors sticky top-0 z-10 bg-bg-secondary/95 backdrop-blur-sm border-b border-border ${
                       entry.id === focusBagId
                         ? 'text-text-primary'
                         : 'text-text-secondary hover:text-text-primary'
@@ -216,7 +216,7 @@ function SortButton({
   return (
     <button
       onClick={onClick}
-      className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+      className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
         active
           ? 'bg-accent-blue/15 text-accent-blue border border-accent-blue/20'
           : 'text-text-muted hover:text-text-secondary hover:bg-surface-hover border border-transparent'

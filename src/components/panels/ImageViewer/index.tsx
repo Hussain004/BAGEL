@@ -321,7 +321,7 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
       bagId={bagId}
       headerExtras={headerExtras}
     >
-      {showInitialLoading && <PanelLoadingState message="Loading frame..." />}
+      {showInitialLoading && <PanelLoadingState message="Loading frame…" />}
       {error && !hasContent && <PanelErrorState message={error} />}
       {!loading && !error && !hasContent && (
         <PanelEmptyState message="No image messages on this topic." />
@@ -363,7 +363,7 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
             {loading && (
               <div
                 className="absolute top-2 right-2 w-4 h-4 text-accent-blue animate-spin-slow"
-                title="Loading newer frame..."
+                title="Loading newer frame…"
               >
                 <svg fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />

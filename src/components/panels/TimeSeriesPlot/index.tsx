@@ -450,7 +450,7 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
                   <button
                     key={f}
                     onClick={() => setVisibility({ ...visibility, [f]: !visible })}
-                    className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs mono transition-all border ${
+                    className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs mono transition-colors border ${
                       visible
                         ? 'bg-surface border-border text-text-primary'
                         : 'bg-transparent border-transparent text-text-muted'
@@ -470,7 +470,7 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
                 return (
                   <span
                     key={e.id}
-                    className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs mono border transition-all ${
+                    className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs mono border transition-colors ${
                       visible
                         ? 'bg-surface border-border text-text-primary'
                         : 'bg-transparent border-transparent text-text-muted'
@@ -502,7 +502,7 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
                 <button
                   onClick={() => setExprInputVisible(true)}
                   title="Add a math expression as a derived series"
-                  className="flex items-center gap-1 px-2 py-1 rounded-md text-xs mono border border-dashed border-border text-text-muted hover:border-accent-blue/60 hover:text-accent-blue transition-all"
+                  className="flex items-center gap-1 px-2 py-1 rounded-md text-xs mono border border-dashed border-border text-text-muted hover:border-accent-blue/60 hover:text-accent-blue transition-colors"
                 >
                   <span className="text-[10px] font-semibold">+</span> f(x)
                 </button>
@@ -526,13 +526,13 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
                   />
                   <button
                     onClick={handleAddExpr}
-                    className="px-2 py-1 rounded-md text-xs mono bg-accent-blue/10 border border-accent-blue/40 text-accent-blue hover:bg-accent-blue/15 transition-all"
+                    className="px-2 py-1 rounded-md text-xs mono bg-accent-blue/10 border border-accent-blue/40 text-accent-blue hover:bg-accent-blue/15 transition-colors"
                   >
                     Add
                   </button>
                   <button
                     onClick={() => { setExprInputVisible(false); setExprDraft(''); setExprError(null); }}
-                    className="px-2 py-1 rounded-md text-xs mono border border-border text-text-muted hover:border-border-hover transition-all"
+                    className="px-2 py-1 rounded-md text-xs mono border border-border text-text-muted hover:border-border-hover transition-colors"
                   >
                     Cancel
                   </button>

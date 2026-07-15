@@ -262,7 +262,7 @@ function FrameSidebar({
           placeholder="Filter frames…"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          className="w-full px-2.5 py-1.5 rounded-md bg-surface border border-border text-text-primary placeholder:text-text-muted text-xs mono focus:outline-none focus:border-accent-blue/50 focus:ring-1 focus:ring-accent-blue/20 transition-all"
+          className="w-full px-2.5 py-1.5 rounded-md bg-surface border border-border text-text-primary placeholder:text-text-muted text-xs mono focus:outline-none focus:border-accent-blue/50 focus:ring-1 focus:ring-accent-blue/20 transition-colors"
         />
       </div>
 

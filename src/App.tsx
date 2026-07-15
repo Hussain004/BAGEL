@@ -196,7 +196,7 @@ function SummaryCard({
   };
 
   return (
-    <div className={`rounded-xl border p-4 ${colorClasses[color]} transition-all hover:scale-[1.02]`}>
+    <div className={`rounded-xl border p-4 ${colorClasses[color]} transition-transform hover:scale-[1.02]`}>
       <p className="text-text-primary text-xl font-bold mono">{value}</p>
       <p className="text-text-muted text-xs mt-1">{label}</p>
     </div>

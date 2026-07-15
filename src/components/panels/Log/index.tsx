@@ -387,7 +387,7 @@ function FilterBar({
             <button
               key={s}
               onClick={() => onToggleSeverity(s)}
-              className={`flex items-center gap-1 px-1.5 py-1 rounded-md border mono transition-all ${
+              className={`flex items-center gap-1 px-1.5 py-1 rounded-md border mono transition-[background-color,border-color,color,opacity] ${
                 hidden
                   ? 'border-border text-text-muted bg-transparent line-through opacity-60'
                   : 'border-border-hover text-text-primary bg-surface'
@@ -409,7 +409,7 @@ function FilterBar({
         value={nodeFilter}
         onChange={(e) => onNodeFilter(e.target.value)}
         placeholder={`Node filter (${uniqueNodeCount}+ nodes)`}
-        className="w-[180px] px-3 py-1.5 rounded-md bg-surface border border-border text-text-primary placeholder:text-text-muted text-xs mono focus:outline-none focus:border-accent-blue/50 focus:ring-1 focus:ring-accent-blue/20 transition-all"
+        className="w-[180px] px-3 py-1.5 rounded-md bg-surface border border-border text-text-primary placeholder:text-text-muted text-xs mono focus:outline-none focus:border-accent-blue/50 focus:ring-1 focus:ring-accent-blue/20 transition-colors"
         aria-label="Filter logs by node name"
       />
       <input
@@ -417,12 +417,12 @@ function FilterBar({
         value={search}
         onChange={(e) => onSearch(e.target.value)}
         placeholder="Search message text…"
-        className="flex-1 min-w-[140px] px-3 py-1.5 rounded-md bg-surface border border-border text-text-primary placeholder:text-text-muted text-xs mono focus:outline-none focus:border-accent-blue/50 focus:ring-1 focus:ring-accent-blue/20 transition-all"
+        className="flex-1 min-w-[140px] px-3 py-1.5 rounded-md bg-surface border border-border text-text-primary placeholder:text-text-muted text-xs mono focus:outline-none focus:border-accent-blue/50 focus:ring-1 focus:ring-accent-blue/20 transition-colors"
         aria-label="Search log messages"
       />
       <button
         onClick={onToggleAutoFollow}
-        className={`px-2 py-1 rounded-md text-[10px] mono border transition-all ${
+        className={`px-2 py-1 rounded-md text-[10px] mono border transition-colors ${
           autoFollow
             ? 'bg-accent-blue/15 border-accent-blue/40 text-accent-blue'
             : 'bg-surface border-border text-text-muted hover:text-text-primary'

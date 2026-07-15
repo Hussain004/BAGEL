@@ -1451,7 +1451,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
               {pivot && (
                 <button
                   onClick={handleResetPivot}
-                  className="px-2 py-1 rounded-md text-xs mono bg-surface/80 border border-border hover:border-accent-blue/40 hover:text-accent-blue text-text-secondary transition-all"
+                  className="px-2 py-1 rounded-md text-xs mono bg-surface/80 border border-border hover:border-accent-blue/40 hover:text-accent-blue text-text-secondary transition-colors"
                   title="Return orbit centre to the auto-fit point"
                 >
                   Reset pivot
@@ -1459,7 +1459,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
               )}
               <button
                 onClick={handleResetCamera}
-                className="px-2 py-1 rounded-md text-xs mono bg-surface/80 border border-border hover:border-accent-blue/40 hover:text-accent-blue text-text-secondary transition-all"
+                className="px-2 py-1 rounded-md text-xs mono bg-surface/80 border border-border hover:border-accent-blue/40 hover:text-accent-blue text-text-secondary transition-colors"
                 title="Reset camera"
               >
                 Fit

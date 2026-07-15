@@ -300,7 +300,7 @@ function FilterBar({
             <button
               key={level}
               onClick={() => onToggleLevel(level)}
-              className={`flex items-center gap-1 px-2 py-1 rounded-md border mono transition-all ${
+              className={`flex items-center gap-1 px-2 py-1 rounded-md border mono transition-[background-color,border-color,color,opacity] ${
                 hidden
                   ? 'border-border text-text-muted bg-transparent line-through opacity-60'
                   : 'border-border-hover text-text-primary bg-surface'
@@ -323,7 +323,7 @@ function FilterBar({
           value={search}
           onChange={(e) => onSearch(e.target.value)}
           placeholder="Filter by component name or hardware id…"
-          className="w-full px-3 py-1.5 rounded-md bg-surface border border-border text-text-primary placeholder:text-text-muted text-xs mono focus:outline-none focus:border-accent-blue/50 focus:ring-1 focus:ring-accent-blue/20 transition-all"
+          className="w-full px-3 py-1.5 rounded-md bg-surface border border-border text-text-primary placeholder:text-text-muted text-xs mono focus:outline-none focus:border-accent-blue/50 focus:ring-1 focus:ring-accent-blue/20 transition-colors"
           aria-label="Filter components"
         />
       </div>

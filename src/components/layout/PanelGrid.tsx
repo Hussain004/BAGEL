@@ -151,7 +151,7 @@ function ResizeHandle({ orientation }: { orientation: SplitOrientation }) {
         }`}
       />
       <div
-        className={`relative z-10 rounded-full bg-surface/0 group-hover:bg-surface/80 border border-transparent group-hover:border-border-hover flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 ${
+        className={`relative z-10 rounded-full bg-surface/0 group-hover:bg-surface/80 border border-transparent group-hover:border-border-hover flex items-center justify-center transition-[background-color,border-color,opacity] opacity-0 group-hover:opacity-100 ${
           isH ? 'w-4 h-10' : 'h-4 w-10'
         }`}
       >
@@ -264,7 +264,7 @@ function DropZone({
 function DropIndicator({ edge }: { edge: DropEdge }) {
   return (
     <div
-      className={`absolute ${INDICATOR_CLASSES[edge]} bg-accent-blue/25 border-2 border-accent-blue/80 rounded-md pointer-events-none transition-all`}
+      className={`absolute ${INDICATOR_CLASSES[edge]} bg-accent-blue/25 border-2 border-accent-blue/80 rounded-md pointer-events-none transition-colors`}
     />
   );
 }

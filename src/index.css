@@ -444,7 +444,10 @@ select option {
   border-radius: var(--radius-xl);
   background: var(--color-surface);
   box-shadow: var(--shadow-panel);
-  transition: all 0.3s ease;
+  transition:
+    border-color 0.3s ease,
+    background-color 0.3s ease,
+    box-shadow 0.3s ease;
 }
 
 .dropzone:hover,
@@ -464,8 +467,18 @@ select option {
   padding: 10px 16px;
   border-radius: var(--radius-md);
   border: 1px solid transparent;
-  transition: all 0.2s ease;
+  /* Explicit property list (not `all`): `all` also animates layout-affecting
+     properties and costs real time across a 500-row list. */
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s ease,
+    opacity 0.2s ease;
   cursor: default;
+  /* Let the browser skip rendering off-screen rows in huge topic lists.
+     ~52px matches the rendered row height so the scrollbar stays stable. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 52px;
 }
 
 .topic-row:hover {
