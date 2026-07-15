@@ -129,6 +129,12 @@ export function DropZone() {
           onDragOver={handleDragOver}
           onDrop={handleDrop}
           onClick={() => !isLoading && fileInputRef.current?.click()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              if (!isLoading) fileInputRef.current?.click();
+            }
+          }}
           role="button"
           tabIndex={0}
           aria-label="Drop a bag file here or click to browse"
