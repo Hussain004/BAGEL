@@ -16,14 +16,16 @@ const WIDTH_CLASS: Record<NonNullable<ModalShellProps['width']>, string> = {
   lg: 'max-w-3xl',
 };
 
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 /**
  * ModalShell — Reusable dialog chrome with a backdrop, focus management,
- * Escape-to-close, and click-outside-to-close.
+ * Escape-to-close, click-outside-to-close, and a Tab-cycle focus trap.
  *
- * Focus trap is intentionally minimal — we restore focus to the previously
- * focused element on close and route initial focus to the close button so
- * keyboard users can dismiss with Enter immediately. A full focus trap
- * (Tab cycling) is overkill for the two short modals BAGEL ships.
+ * Focus restores to the previously focused element on close, and initial
+ * focus routes to the close button so keyboard users can dismiss with Enter
+ * immediately.
  */
 export function ModalShell({
   title,
@@ -45,12 +47,30 @@ export function ModalShell({
     };
   }, []);
 
-  // Esc-to-close at the document level so it works even when focus left the dialog.
+  // Esc-to-close, and Tab/Shift+Tab wraps focus at the dialog's edges so
+  // keyboard focus can't leave into the (visually hidden, but still in the
+  // DOM) app behind the backdrop.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         onClose();
+        return;
+      }
+      if (e.key !== 'Tab' || !dialogRef.current) return;
+      const focusable = Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+      ).filter((el) => el.offsetParent !== null);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && active === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
       }
     };
     window.addEventListener('keydown', onKey);
