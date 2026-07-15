@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   useBagStore,
   bagLocalTimeFor,
@@ -134,7 +134,7 @@ export function Toolbar() {
           })}
           <button
             onClick={onAddClick}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-text-tertiary hover:text-text-primary hover:bg-surface-hover border border-dashed border-border hover:border-accent-blue/40 transition-all text-xs flex-shrink-0"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-text-tertiary hover:text-text-primary hover:bg-surface-hover border border-dashed border-border hover:border-accent-blue/40 transition-colors text-xs flex-shrink-0"
             title="Add another bag for overlay comparison"
             aria-label="Add another bag"
           >
@@ -197,7 +197,7 @@ export function Toolbar() {
               bagId: focusBagId ?? undefined,
             })
           }
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-text-secondary hover:text-text-primary hover:bg-surface-hover border border-border hover:border-accent-blue/40 transition-all"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-text-secondary hover:text-text-primary hover:bg-surface-hover border border-border hover:border-accent-blue/40 transition-colors"
           title="Open Bag Health dashboard - per-topic Hz, jitter, gaps, bandwidth"
           aria-label="Open bag health dashboard"
         >
@@ -207,7 +207,7 @@ export function Toolbar() {
         {bag && (
           <button
             onClick={() => setModal('clip-export')}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-text-secondary hover:text-text-primary hover:bg-surface-hover border border-border hover:border-accent-blue/40 transition-all"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-text-secondary hover:text-text-primary hover:bg-surface-hover border border-border hover:border-accent-blue/40 transition-colors"
             title="Export a panel as animated PNG zip or WebM video"
             aria-label="Export clip"
           >
@@ -215,6 +215,7 @@ export function Toolbar() {
             <span className="hidden xl:inline">Export</span>
           </button>
         )}
+        <CopyLinkButton />
         {focusedBagIsLive && focusBagId && (
           <RecordButton
             bagId={focusBagId}
@@ -228,7 +229,7 @@ export function Toolbar() {
         {canEditFocusedBag && (
           <button
             onClick={() => setModal('bag-edit')}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-text-secondary hover:text-text-primary hover:bg-surface-hover border border-border hover:border-accent-blue/40 transition-all"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-text-secondary hover:text-text-primary hover:bg-surface-hover border border-border hover:border-accent-blue/40 transition-colors"
             title="Trim time range and drop topics, then download as a new MCAP (v1.2: works for .mcap / .bag / .db3)"
             aria-label="Edit bag - trim and re-export"
           >
@@ -238,7 +239,7 @@ export function Toolbar() {
         )}
         <button
           onClick={() => setModal('urdf-load')}
-          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs border transition-all ${
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs border transition-colors ${
             robotModel
               ? 'border-accent-blue/40 bg-accent-blue/10 text-accent-blue hover:bg-accent-blue/15'
               : 'border-border text-text-secondary hover:text-text-primary hover:bg-surface-hover hover:border-accent-blue/40'
@@ -256,7 +257,7 @@ export function Toolbar() {
         {robotModel && (
           <button
             onClick={clearRobotModel}
-            className="w-7 h-7 rounded-md flex items-center justify-center text-text-tertiary hover:text-accent-rose hover:bg-accent-rose/10 transition-all"
+            className="w-7 h-7 rounded-md flex items-center justify-center text-text-tertiary hover:text-accent-rose hover:bg-accent-rose/10 transition-colors"
             title={`Remove robot model "${robotModel.sourceName}"`}
             aria-label="Remove robot model"
           >
@@ -267,7 +268,7 @@ export function Toolbar() {
         )}
         <button
           onClick={toggleTheme}
-          className="w-9 h-9 rounded-lg flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-surface-hover transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
+          className="w-9 h-9 rounded-lg flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-surface-hover transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
           title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
           aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
         >
@@ -293,7 +294,7 @@ export function Toolbar() {
         </button>
         <button
           onClick={() => setModal('shortcuts')}
-          className="w-9 h-9 rounded-lg flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-surface-hover transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
+          className="w-9 h-9 rounded-lg flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-surface-hover transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
           title="Keyboard shortcuts (?)"
           aria-label="Keyboard shortcuts"
         >
@@ -303,7 +304,7 @@ export function Toolbar() {
         </button>
         <button
           onClick={clearAll}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-surface-hover transition-all text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-surface-hover transition-colors text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
           title={multi ? 'Close every bag' : 'Close bag file (O for open another)'}
           aria-label="Close bag file"
           id="close-bag-button"
@@ -358,7 +359,7 @@ function BagChip({
     <div
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs border transition-all max-w-[220px] flex-shrink-0 ${
+      className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs border transition-colors max-w-[220px] flex-shrink-0 ${
         focused
           ? 'bg-surface border-border-hover text-text-primary'
           : 'bg-transparent border-border text-text-secondary hover:bg-surface-hover'
@@ -418,7 +419,7 @@ function BagChip({
           onClick={onRemove}
           title="Remove this bag"
           aria-label={`Remove ${name}`}
-          className="w-4 h-4 rounded-full flex items-center justify-center text-text-tertiary hover:text-accent-rose hover:bg-accent-rose/10 transition-all flex-shrink-0"
+          className="w-4 h-4 rounded-full flex items-center justify-center text-text-tertiary hover:text-accent-rose hover:bg-accent-rose/10 transition-colors flex-shrink-0"
         >
           <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -453,9 +454,9 @@ function LiveStatusDot({ status, message }: { status: LiveStatus; message?: stri
       case 'connected':
         return { className: 'bg-accent-emerald animate-pulse', title: message ? `Connected to ${message}` : 'Connected' };
       case 'connecting':
-        return { className: 'bg-accent-amber animate-pulse', title: 'Connecting...' };
+        return { className: 'bg-accent-amber animate-pulse', title: 'Connecting…' };
       case 'reconnecting':
-        return { className: 'bg-accent-amber animate-pulse', title: 'Reconnecting...' };
+        return { className: 'bg-accent-amber animate-pulse', title: 'Reconnecting…' };
       case 'error':
         return { className: 'bg-accent-rose', title: message ?? 'Connection error' };
       case 'disconnected':
@@ -475,7 +476,7 @@ function FollowLiveButton({ followLive, onToggle }: { followLive: boolean; onTog
   return (
     <button
       onClick={onToggle}
-      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs border transition-all ${
+      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs border transition-colors ${
         followLive
           ? 'border-accent-emerald/40 bg-accent-emerald/10 text-accent-emerald hover:bg-accent-emerald/15'
           : 'border-border text-text-secondary hover:text-text-primary hover:bg-surface-hover hover:border-accent-emerald/40'
@@ -540,7 +541,7 @@ function RecordButton({ bagId, liveConn, status }: RecordButtonProps) {
         aria-label="Saving recording"
       >
         <span className="w-2 h-2 rounded-full bg-accent-rose animate-pulse flex-shrink-0" />
-        <span className="hidden xl:inline">Saving...</span>
+        <span className="hidden xl:inline">Saving…</span>
       </button>
     );
   }
@@ -550,7 +551,7 @@ function RecordButton({ bagId, liveConn, status }: RecordButtonProps) {
     return (
       <button
         onClick={onStop}
-        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs border transition-all ${
+        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs border transition-colors ${
           nearFull
             ? 'border-accent-amber/60 bg-accent-amber/10 text-accent-amber hover:bg-accent-amber/15'
             : 'border-accent-rose/40 bg-accent-rose/10 text-accent-rose hover:bg-accent-rose/15'
@@ -576,7 +577,7 @@ function RecordButton({ bagId, liveConn, status }: RecordButtonProps) {
         <div className="relative">
           <button
             onClick={() => setShowPicker((v) => !v)}
-            className={`w-7 h-7 rounded-md flex items-center justify-center text-xs border transition-all ${
+            className={`w-7 h-7 rounded-md flex items-center justify-center text-xs border transition-colors ${
               status === 'connected'
                 ? filterCount !== null
                   ? 'border-accent-violet/50 bg-accent-violet/10 text-accent-violet hover:bg-accent-violet/15'
@@ -615,7 +616,7 @@ function RecordButton({ bagId, liveConn, status }: RecordButtonProps) {
       <button
         onClick={() => liveConn?.startRecording(topicFilter)}
         disabled={status !== 'connected'}
-        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs border transition-all ${
+        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs border transition-[background-color,border-color,color,opacity] ${
           status === 'connected'
             ? 'border-border text-text-secondary hover:text-accent-rose hover:bg-accent-rose/10 hover:border-accent-rose/40'
             : 'border-border text-text-muted cursor-not-allowed opacity-50'
@@ -717,6 +718,66 @@ function TopicFilterPicker({
   );
 }
 
+/**
+ * CopyLinkButton - copies the current URL, whose hash already encodes the
+ * open layout, playhead, and bag URL (see useUrlState). The feature existed
+ * since v0.7 but nothing in the UI ever surfaced it.
+ */
+function CopyLinkButton() {
+  const [copied, setCopied] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+  }, []);
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard can be unavailable (permissions / insecure context);
+      // the same URL is still in the address bar, so fail quietly.
+    }
+  };
+  return (
+    <button
+      onClick={onCopy}
+      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs border transition-colors ${
+        copied
+          ? 'border-accent-emerald/40 bg-accent-emerald/10 text-accent-emerald'
+          : 'border-border text-text-secondary hover:text-text-primary hover:bg-surface-hover hover:border-accent-blue/40'
+      }`}
+      title="Copy a link that restores this layout and playhead. Local bag files must be opened again by the recipient; URL-loaded bags restore automatically."
+      aria-label="Copy link to this layout"
+    >
+      <LinkIcon />
+      <span className="hidden xl:inline" aria-live="polite">
+        {copied ? 'Copied' : 'Link'}
+      </span>
+    </button>
+  );
+}
+
+function LinkIcon() {
+  return (
+    <svg
+      className="w-3.5 h-3.5"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={1.7}
+      aria-hidden="true"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244"
+      />
+    </svg>
+  );
+}
+
 function RobotIcon() {
   // Simple stylised robot head: rounded square + two dot eyes + an antenna.
   return (
@@ -785,7 +846,7 @@ function SetAnchorButton({ entry, onSetAnchor }: SetAnchorButtonProps) {
   return (
     <button
       onClick={onSetAnchor}
-      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-text-secondary hover:text-text-primary hover:bg-surface-hover border border-border hover:border-accent-blue/40 transition-all"
+      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-text-secondary hover:text-text-primary hover:bg-surface-hover border border-border hover:border-accent-blue/40 transition-colors"
       title={`Set "${entry.summary.fileName}" anchor to the current playhead — every bag's aligned t=0 will line up at this event.`}
       aria-label={`Set anchor for ${entry.summary.fileName} at current playhead`}
     >
@@ -887,7 +948,7 @@ function Stat({ label, value, icon }: { label: string; value: string; icon: stri
     <div className="flex items-center gap-2 text-sm">
       <StatIcon type={icon} />
       <div>
-        <span className="text-text-primary font-medium">{value}</span>
+        <span className="text-text-primary font-medium tabular-nums">{value}</span>
         <span className="text-text-muted ml-1.5">{label}</span>
       </div>
     </div>
