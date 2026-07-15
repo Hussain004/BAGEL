@@ -98,6 +98,19 @@ export interface ThreeDPanelSettings {
   clipYMax: number | null;
   clipZMin: number | null;
   clipZMax: number | null;
+  /**
+   * Expand/collapse state for the Display card's disclosure sections
+   * (v1.7). Only "color by / point size / grid / axes" show by default;
+   * everything else lives behind these three sections so a first-time
+   * user sees four controls, not twenty. Persisted per-panel (and
+   * portable through "save as default") like every other display
+   * setting, so a user who opens Accumulation once doesn't have to
+   * reopen it on every new panel.
+   */
+  sectionCoordFrameOpen: boolean;
+  sectionRangeClipOpen: boolean;
+  sectionAccumulationOpen: boolean;
+  sectionOverlaysOpen: boolean;
 }
 
 /**
@@ -132,6 +145,10 @@ export const DEFAULT_THREE_D_SETTINGS: ThreeDPanelSettings = {
   clipYMax: null,
   clipZMin: null,
   clipZMax: null,
+  sectionCoordFrameOpen: false,
+  sectionRangeClipOpen: false,
+  sectionAccumulationOpen: false,
+  sectionOverlaysOpen: false,
 };
 
 interface ThreeDPanelState {

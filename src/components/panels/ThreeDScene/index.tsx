@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import * as THREE from 'three';
 import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
 import { useBagLocalPlayhead } from '../../../hooks/useBagLocalPlayhead';
@@ -345,6 +345,10 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     clipYMax,
     clipZMin,
     clipZMax,
+    sectionCoordFrameOpen,
+    sectionRangeClipOpen,
+    sectionAccumulationOpen,
+    sectionOverlaysOpen,
   } = settings;
 
   const setColorMode = (v: ColorMode) => updateSettings(panelId, { colorMode: v });
@@ -390,6 +394,10 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
       | 'clipXMin' | 'clipXMax' | 'clipYMin' | 'clipYMax' | 'clipZMin' | 'clipZMax';
     updateSettings(panelId, { [key]: v });
   };
+  const setSectionCoordFrameOpen = (v: boolean) => updateSettings(panelId, { sectionCoordFrameOpen: v });
+  const setSectionRangeClipOpen = (v: boolean) => updateSettings(panelId, { sectionRangeClipOpen: v });
+  const setSectionAccumulationOpen = (v: boolean) => updateSettings(panelId, { sectionAccumulationOpen: v });
+  const setSectionOverlaysOpen = (v: boolean) => updateSettings(panelId, { sectionOverlaysOpen: v });
 
   const axisClip: AxisClip | undefined = clipBoxOn
     ? {
@@ -1524,6 +1532,14 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
               setClipBoxOn={setClipBoxOn}
               clipBounds={{ xMin: clipXMin, xMax: clipXMax, yMin: clipYMin, yMax: clipYMax, zMin: clipZMin, zMax: clipZMax }}
               onSetClipBound={onSetClipBound}
+              sectionCoordFrameOpen={sectionCoordFrameOpen}
+              setSectionCoordFrameOpen={setSectionCoordFrameOpen}
+              sectionRangeClipOpen={sectionRangeClipOpen}
+              setSectionRangeClipOpen={setSectionRangeClipOpen}
+              sectionAccumulationOpen={sectionAccumulationOpen}
+              setSectionAccumulationOpen={setSectionAccumulationOpen}
+              sectionOverlaysOpen={sectionOverlaysOpen}
+              setSectionOverlaysOpen={setSectionOverlaysOpen}
             />
           </div>
 
@@ -1717,6 +1733,15 @@ interface ControlsCardProps {
   setClipBoxOn: (v: boolean) => void;
   clipBounds: { xMin: number | null; xMax: number | null; yMin: number | null; yMax: number | null; zMin: number | null; zMax: number | null };
   onSetClipBound: (axis: 'x' | 'y' | 'z', side: 'min' | 'max', v: number | null) => void;
+  /** Disclosure-section expand state (v1.7 progressive disclosure). */
+  sectionCoordFrameOpen: boolean;
+  setSectionCoordFrameOpen: (v: boolean) => void;
+  sectionRangeClipOpen: boolean;
+  setSectionRangeClipOpen: (v: boolean) => void;
+  sectionAccumulationOpen: boolean;
+  setSectionAccumulationOpen: (v: boolean) => void;
+  sectionOverlaysOpen: boolean;
+  setSectionOverlaysOpen: (v: boolean) => void;
 }
 
 function ControlsCard({
@@ -1778,6 +1803,14 @@ function ControlsCard({
   setClipBoxOn,
   clipBounds,
   onSetClipBound,
+  sectionCoordFrameOpen,
+  setSectionCoordFrameOpen,
+  sectionRangeClipOpen,
+  setSectionRangeClipOpen,
+  sectionAccumulationOpen,
+  setSectionAccumulationOpen,
+  sectionOverlaysOpen,
+  setSectionOverlaysOpen,
 }: ControlsCardProps) {
   const [open, setOpen] = useState(false);
   // Esc closes the Display card, not the whole panel (see useEscapeToClose).
@@ -1801,7 +1834,8 @@ function ControlsCard({
         <span>Display</span>
       </button>
       {open && (
-        <div className="border-t border-border p-2.5 space-y-2 w-56">
+        <div className="border-t border-border w-56">
+        <div className="p-2.5 space-y-2 max-h-[60vh] overflow-y-auto">
           {sceneKind === 'pointcloud' && (
             <div>
               <div className="text-text-tertiary text-[10px] mb-1">color by</div>
@@ -1857,230 +1891,10 @@ function ControlsCard({
               />
             </div>
           )}
-          {sceneKind === 'pointcloud' && (
-            <div className="pt-1 border-t border-border/60">
-              <label className="flex items-center justify-between text-text-secondary cursor-pointer mb-1">
-                <span className="flex items-center gap-1.5">
-                  <input
-                    type="checkbox"
-                    checked={rangeLimitOn}
-                    onChange={(e) => setRangeLimitOn(e.target.checked)}
-                    className="accent-accent-blue"
-                  />
-                  limit range
-                </span>
-                <span className="text-text-tertiary text-[10px]">
-                  {rangeLimitOn ? `${maxRange.toFixed(0)} m` : 'off'}
-                </span>
-              </label>
-              <input
-                type="range"
-                min={1}
-                max={200}
-                step={1}
-                value={maxRange}
-                disabled={!rangeLimitOn}
-                onChange={(e) => setMaxRange(Number(e.target.value))}
-                className="w-full accent-accent-blue disabled:opacity-40"
-              />
-            </div>
-          )}
-          {sceneKind === 'pointcloud' && (
-            <div className="pt-1 border-t border-border/60">
-              <label className="flex items-center gap-1.5 text-text-secondary cursor-pointer mb-1.5">
-                <input
-                  type="checkbox"
-                  checked={clipBoxOn}
-                  onChange={(e) => setClipBoxOn(e.target.checked)}
-                  className="accent-accent-blue"
-                />
-                clip box
-              </label>
-              {clipBoxOn && (
-                <div className="space-y-1">
-                  {(['x', 'y', 'z'] as const).map((axis) => (
-                    <div key={axis} className="grid items-center gap-1" style={{ gridTemplateColumns: '0.75rem 1fr 1fr' }}>
-                      <span className="text-text-tertiary uppercase text-center">{axis}</span>
-                      <ClipBoundInput
-                        value={clipBounds[`${axis}Min`]}
-                        onChange={(v) => onSetClipBound(axis, 'min', v)}
-                        placeholder="min"
-                      />
-                      <ClipBoundInput
-                        value={clipBounds[`${axis}Max`]}
-                        onChange={(v) => onSetClipBound(axis, 'max', v)}
-                        placeholder="max"
-                      />
-                    </div>
-                  ))}
-                  <p className="text-text-muted text-[9px] leading-tight pt-0.5">
-                    empty = no clip on that side
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-          {sceneKind === 'pointcloud' && (
-            <div className="pt-1 border-t border-border/60 space-y-1.5">
-              <label className="flex items-center justify-between text-text-secondary cursor-pointer">
-                <span className="flex items-center gap-1.5">
-                  <input
-                    type="checkbox"
-                    checked={accumulating}
-                    onChange={(e) => setAccumulating(e.target.checked)}
-                    className="accent-accent-blue"
-                  />
-                  accumulate
-                </span>
-                {accumulating && (
-                  <button
-                    onClick={onClearAccumulator}
-                    className="text-text-tertiary hover:text-accent-rose text-[10px] underline decoration-dotted"
-                    title="Clear accumulated points"
-                  >
-                    clear
-                  </button>
-                )}
-              </label>
-              {/* Mode toggle — ring keeps the last N points, voxel deduplicates
-                  by grid cell for a true downsampled map. */}
-              <div className="flex gap-1">
-                {(['ring', 'voxel'] as AccumulationMode[]).map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => setAccumMode(m)}
-                    disabled={!accumulating}
-                    title={
-                      m === 'ring'
-                        ? 'FIFO ring buffer — most recent N points'
-                        : 'Voxel grid downsample — one point per cell'
-                    }
-                    className={`flex-1 px-2 py-0.5 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-                      accumMode === m
-                        ? 'bg-accent-blue/15 text-accent-blue border border-accent-blue/40'
-                        : 'border border-border text-text-secondary hover:border-accent-blue/40'
-                    }`}
-                  >
-                    {m}
-                  </button>
-                ))}
-              </div>
-              {accumMode === 'voxel' && (
-                <div>
-                  <div className="flex items-center justify-between text-text-tertiary text-[10px] mb-1">
-                    <span>voxel size</span>
-                    <span className="text-text-secondary">
-                      {voxelSize < 1 ? `${(voxelSize * 100).toFixed(0)} cm` : `${voxelSize.toFixed(2)} m`}
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0.05}
-                    max={2.0}
-                    step={0.05}
-                    value={voxelSize}
-                    disabled={!accumulating}
-                    onChange={(e) => setVoxelSize(Number(e.target.value))}
-                    className="w-full accent-accent-blue disabled:opacity-40"
-                  />
-                </div>
-              )}
-              <div>
-                <div className="flex items-center justify-between text-text-tertiary text-[10px] mb-1">
-                  <span>per-frame pts</span>
-                  <span className="text-text-secondary">
-                    {accumPerFrame >= 1000 ? `${(accumPerFrame / 1000).toFixed(0)}k` : accumPerFrame}
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min={1000}
-                  max={500_000}
-                  step={5000}
-                  value={accumPerFrame}
-                  disabled={!accumulating}
-                  onChange={(e) => setAccumPerFrame(Number(e.target.value))}
-                  className="w-full accent-accent-blue disabled:opacity-40"
-                />
-              </div>
-              <div>
-                <div className="flex items-center justify-between text-text-tertiary text-[10px] mb-1">
-                  <span>budget</span>
-                  <span className="text-text-secondary">
-                    {(accumBudget / 1_000_000).toFixed(1)}M pts
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min={250_000}
-                  max={10_000_000}
-                  step={250_000}
-                  value={accumBudget}
-                  onChange={(e) => setAccumBudget(Number(e.target.value))}
-                  className="w-full accent-accent-blue"
-                />
-              </div>
-              {accumulating && (
-                <div className="text-text-tertiary text-[10px] leading-tight">
-                  {accumStats.points.toLocaleString()} / {accumBudget.toLocaleString()} pts
-                  {accumStats.points >= accumBudget && (
-                    <span className="text-accent-amber ml-1">
-                      ({accumMode === 'voxel' ? 'oldest cells dropping' : 'oldest dropping'})
-                    </span>
-                  )}
-                </div>
-              )}
-              {accumulating && noTf && (
-                <div className="text-accent-amber/80 text-[10px] leading-tight">
-                  no /tf — frames will overlap in the sensor frame
-                </div>
-              )}
-            </div>
-          )}
-          {sceneKind === 'markerarray' && markerNamespaces.length > 0 && (
-            <div className="pt-1 border-t border-border/60">
-              <div className="flex items-center justify-between text-text-tertiary text-[10px] mb-1">
-                <span>namespaces ({markerNamespaces.length})</span>
-                {hiddenSet.size > 0 && (
-                  <button
-                    onClick={() => {
-                      // "Show all" — flip every hidden ns visible.
-                      for (const ns of hiddenSet) onToggleNamespace(ns, false);
-                    }}
-                    className="text-text-tertiary hover:text-accent-blue underline decoration-dotted"
-                    title="Show every namespace again"
-                  >
-                    show all
-                  </button>
-                )}
-              </div>
-              <div className="max-h-32 overflow-y-auto space-y-0.5 pr-1">
-                {markerNamespaces.map((ns) => {
-                  const hidden = hiddenSet.has(ns);
-                  // Empty-string namespace shown as `<default>` so the row
-                  // doesn't render as an unclickable blank.
-                  const label = ns || '<default>';
-                  return (
-                    <label
-                      key={ns}
-                      className={`flex items-center gap-1.5 cursor-pointer ${
-                        hidden ? 'text-text-tertiary' : 'text-text-secondary'
-                      }`}
-                      title={ns || 'unnamed namespace'}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={!hidden}
-                        onChange={(e) => onToggleNamespace(ns, !e.target.checked)}
-                        className="accent-accent-blue flex-shrink-0"
-                      />
-                      <span className="truncate">{label}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+          {/* Everyday four, stop here: color by / point size / grid / axes.
+              Everything below is one click away in a disclosure section -
+              collapsed by default so a first-time user sees four controls,
+              not twenty. */}
           <div className="flex items-center justify-between pt-1 border-t border-border/60">
             <label className="flex items-center gap-1.5 text-text-secondary cursor-pointer">
               <input
@@ -2101,167 +1915,463 @@ function ControlsCard({
               axes
             </label>
           </div>
-          {hasRobotModel && (
-            <div className="pt-1 border-t border-border/60">
-              <label
-                className="flex items-center gap-1.5 text-text-secondary cursor-pointer"
-                title={
-                  robotName
-                    ? `Robot model: ${robotName}${
-                        robotHasJointStates ? ' (animating from /joint_states)' : ''
-                      }`
-                    : undefined
-                }
-              >
-                <input
-                  type="checkbox"
-                  checked={!robotHidden}
-                  onChange={(e) => setRobotHidden(!e.target.checked)}
-                  className="accent-accent-blue"
-                />
-                robot model
-              </label>
-              {!robotHasJointStates && (
-                <div className="text-text-tertiary text-[10px] mt-0.5">
-                  no /joint_states - joints stay at rest
-                </div>
-              )}
-            </div>
-          )}
-          {cameraFrustumCount > 0 && (
-            <div className="pt-1 border-t border-border/60">
-              <label
-                className="flex items-center gap-1.5 text-text-secondary cursor-pointer"
-                title="Render a wireframe pyramid in each camera's optical frame, sized by its CameraInfo intrinsics"
-              >
-                <input
-                  type="checkbox"
-                  checked={cameraFrustumsOn}
-                  onChange={(e) => setCameraFrustumsOn(e.target.checked)}
-                  className="accent-accent-cyan"
-                />
-                camera frustums{' '}
-                <span className="text-text-tertiary">({cameraFrustumCount})</span>
-              </label>
-              {cameraFrustumsOn && (
-                <div className="mt-1.5 flex items-center gap-2 text-[10px]">
-                  <span className="text-text-tertiary w-12 flex-shrink-0">far</span>
-                  <input
-                    type="range"
-                    min={0.5}
-                    max={50}
-                    step={0.5}
-                    value={cameraFrustumFar}
-                    onChange={(e) => setCameraFrustumFar(Number(e.target.value))}
-                    className="flex-1 accent-accent-cyan"
-                    aria-label="Camera frustum far plane distance"
-                  />
-                  <span className="text-text-secondary mono w-10 text-right">
-                    {cameraFrustumFar.toFixed(1)}m
-                  </span>
-                </div>
-              )}
-              {cameraFrustumsOn && cameraInfoTopics.length > 1 && (
-                <div className="mt-1.5 space-y-0.5">
-                  <div className="text-text-tertiary text-[10px] mb-0.5">cameras</div>
-                  {cameraInfoTopics.map((topic) => {
-                    const hidden = hiddenFrustumTopics.includes(topic);
-                    const shortName = topic.split('/').filter(Boolean).slice(-2).join('/') || topic;
-                    return (
-                      <label
-                        key={topic}
-                        className={`flex items-center gap-1.5 cursor-pointer text-[10px] ${
-                          hidden ? 'text-text-tertiary' : 'text-text-secondary'
-                        }`}
-                        title={topic}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={!hidden}
-                          onChange={(e) => onToggleFrustumTopic(topic, !e.target.checked)}
-                          className="accent-accent-cyan flex-shrink-0"
-                        />
-                        <span className="truncate">{shortName}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-          <div className="pt-1 border-t border-border/60">
-            <div className="text-text-tertiary text-[10px] mb-1">up axis</div>
-            <select
-              value={upAxis}
-              onChange={(e) => setUpAxis(e.target.value as UpAxis)}
-              className="w-full px-2 py-1 rounded-md bg-surface border border-border text-text-primary text-xs mono focus:outline-none focus:border-accent-blue/50"
-              title="Rotates the cloud so the chosen source-frame axis points up in the rendered scene"
-            >
-              {UP_AXIS_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          {!noTf && allFrames.length > 0 && (
+
+          <DisclosureSection
+            label="Coordinate frame"
+            open={sectionCoordFrameOpen}
+            onToggle={setSectionCoordFrameOpen}
+          >
             <div>
-              <div className="text-text-tertiary text-[10px] mb-1">world frame</div>
+              <div className="text-text-tertiary text-[10px] mb-1">up axis</div>
               <select
-                value={worldFrame ?? ''}
-                onChange={(e) => setWorldFrame(e.target.value)}
+                value={upAxis}
+                onChange={(e) => setUpAxis(e.target.value as UpAxis)}
                 className="w-full px-2 py-1 rounded-md bg-surface border border-border text-text-primary text-xs mono focus:outline-none focus:border-accent-blue/50"
+                title="Rotates the cloud so the chosen source-frame axis points up in the rendered scene"
               >
-                {allFrames.map((f) => (
-                  <option key={f} value={f}>
-                    {f}
+                {UP_AXIS_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
                   </option>
                 ))}
               </select>
             </div>
-          )}
-          <div className="pt-1 border-t border-border/60 space-y-1">
-            <div className="flex items-center justify-between text-text-tertiary text-[10px]">
-              <span>defaults ({sceneKindLabel})</span>
-              {hasSavedDefault && (
-                <button
-                  onClick={onClearSavedDefault}
-                  className="text-text-tertiary hover:text-accent-rose underline decoration-dotted"
-                  title={`Forget the saved default for ${sceneKindLabel}. Future panels fall back to built-in defaults.`}
+            {!noTf && allFrames.length > 0 && (
+              <div>
+                <div className="text-text-tertiary text-[10px] mb-1">world frame</div>
+                <select
+                  value={worldFrame ?? ''}
+                  onChange={(e) => setWorldFrame(e.target.value)}
+                  className="w-full px-2 py-1 rounded-md bg-surface border border-border text-text-primary text-xs mono focus:outline-none focus:border-accent-blue/50"
                 >
-                  clear saved
-                </button>
-              )}
-            </div>
-            <div className="flex gap-1">
-              <button
-                onClick={onSaveAsDefault}
-                className="flex-1 px-2 py-0.5 rounded-md transition-colors border border-border text-text-secondary hover:border-accent-blue/40 hover:text-accent-blue"
-                title={`Persist this panel's current settings as the default for every new ${sceneKindLabel} panel (stored in your browser).`}
-              >
-                save as default
-              </button>
-              <button
-                onClick={onResetToDefault}
-                className="flex-1 px-2 py-0.5 rounded-md transition-colors border border-border text-text-secondary hover:border-accent-blue/40 hover:text-accent-blue"
-                title={
-                  hasSavedDefault
-                    ? `Apply the saved ${sceneKindLabel} default to this panel.`
-                    : `Reset this panel to the built-in ${sceneKindLabel} defaults.`
-                }
-              >
-                reset
-              </button>
-            </div>
-            {hasSavedDefault && (
-              <div className="text-text-tertiary text-[10px] leading-tight">
-                saved default in effect for new panels
+                  {allFrames.map((f) => (
+                    <option key={f} value={f}>
+                      {f}
+                    </option>
+                  ))}
+                </select>
               </div>
             )}
+          </DisclosureSection>
+
+          {sceneKind === 'pointcloud' && (
+            <DisclosureSection
+              label="Range and clipping"
+              open={sectionRangeClipOpen}
+              onToggle={setSectionRangeClipOpen}
+            >
+              <div>
+                <label className="flex items-center justify-between text-text-secondary cursor-pointer mb-1">
+                  <span className="flex items-center gap-1.5">
+                    <input
+                      type="checkbox"
+                      checked={rangeLimitOn}
+                      onChange={(e) => setRangeLimitOn(e.target.checked)}
+                      className="accent-accent-blue"
+                    />
+                    limit range
+                  </span>
+                  <span className="text-text-tertiary text-[10px]">
+                    {rangeLimitOn ? `${maxRange.toFixed(0)} m` : 'off'}
+                  </span>
+                </label>
+                <input
+                  type="range"
+                  min={1}
+                  max={200}
+                  step={1}
+                  value={maxRange}
+                  disabled={!rangeLimitOn}
+                  onChange={(e) => setMaxRange(Number(e.target.value))}
+                  className="w-full accent-accent-blue disabled:opacity-40"
+                />
+              </div>
+              <div>
+                <label className="flex items-center gap-1.5 text-text-secondary cursor-pointer mb-1.5">
+                  <input
+                    type="checkbox"
+                    checked={clipBoxOn}
+                    onChange={(e) => setClipBoxOn(e.target.checked)}
+                    className="accent-accent-blue"
+                  />
+                  clip box
+                </label>
+                {clipBoxOn && (
+                  <div className="space-y-1">
+                    {(['x', 'y', 'z'] as const).map((axis) => (
+                      <div key={axis} className="grid items-center gap-1" style={{ gridTemplateColumns: '0.75rem 1fr 1fr' }}>
+                        <span className="text-text-tertiary uppercase text-center">{axis}</span>
+                        <ClipBoundInput
+                          value={clipBounds[`${axis}Min`]}
+                          onChange={(v) => onSetClipBound(axis, 'min', v)}
+                          placeholder="min"
+                        />
+                        <ClipBoundInput
+                          value={clipBounds[`${axis}Max`]}
+                          onChange={(v) => onSetClipBound(axis, 'max', v)}
+                          placeholder="max"
+                        />
+                      </div>
+                    ))}
+                    <p className="text-text-muted text-[9px] leading-tight pt-0.5">
+                      empty = no clip on that side
+                    </p>
+                  </div>
+                )}
+              </div>
+            </DisclosureSection>
+          )}
+
+          {sceneKind === 'pointcloud' && (
+            <DisclosureSection
+              label="Accumulation"
+              open={sectionAccumulationOpen}
+              onToggle={setSectionAccumulationOpen}
+            >
+              <div className="space-y-1.5">
+                <label className="flex items-center justify-between text-text-secondary cursor-pointer">
+                  <span className="flex items-center gap-1.5">
+                    <input
+                      type="checkbox"
+                      checked={accumulating}
+                      onChange={(e) => setAccumulating(e.target.checked)}
+                      className="accent-accent-blue"
+                    />
+                    accumulate
+                  </span>
+                  {accumulating && (
+                    <button
+                      onClick={onClearAccumulator}
+                      className="text-text-tertiary hover:text-accent-rose text-[10px] underline decoration-dotted"
+                      title="Clear accumulated points"
+                    >
+                      clear
+                    </button>
+                  )}
+                </label>
+                {/* Mode toggle — ring keeps the last N points, voxel deduplicates
+                    by grid cell for a true downsampled map. */}
+                <div className="flex gap-1">
+                  {(['ring', 'voxel'] as AccumulationMode[]).map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => setAccumMode(m)}
+                      disabled={!accumulating}
+                      title={
+                        m === 'ring'
+                          ? 'FIFO ring buffer — most recent N points'
+                          : 'Voxel grid downsample — one point per cell'
+                      }
+                      className={`flex-1 px-2 py-0.5 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                        accumMode === m
+                          ? 'bg-accent-blue/15 text-accent-blue border border-accent-blue/40'
+                          : 'border border-border text-text-secondary hover:border-accent-blue/40'
+                      }`}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+                {accumMode === 'voxel' && (
+                  <div>
+                    <div className="flex items-center justify-between text-text-tertiary text-[10px] mb-1">
+                      <span>voxel size</span>
+                      <span className="text-text-secondary">
+                        {voxelSize < 1 ? `${(voxelSize * 100).toFixed(0)} cm` : `${voxelSize.toFixed(2)} m`}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0.05}
+                      max={2.0}
+                      step={0.05}
+                      value={voxelSize}
+                      disabled={!accumulating}
+                      onChange={(e) => setVoxelSize(Number(e.target.value))}
+                      className="w-full accent-accent-blue disabled:opacity-40"
+                    />
+                  </div>
+                )}
+                <div>
+                  <div className="flex items-center justify-between text-text-tertiary text-[10px] mb-1">
+                    <span>per-frame pts</span>
+                    <span className="text-text-secondary">
+                      {accumPerFrame >= 1000 ? `${(accumPerFrame / 1000).toFixed(0)}k` : accumPerFrame}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={1000}
+                    max={500_000}
+                    step={5000}
+                    value={accumPerFrame}
+                    disabled={!accumulating}
+                    onChange={(e) => setAccumPerFrame(Number(e.target.value))}
+                    className="w-full accent-accent-blue disabled:opacity-40"
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between text-text-tertiary text-[10px] mb-1">
+                    <span>budget</span>
+                    <span className="text-text-secondary">
+                      {(accumBudget / 1_000_000).toFixed(1)}M pts
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={250_000}
+                    max={10_000_000}
+                    step={250_000}
+                    value={accumBudget}
+                    onChange={(e) => setAccumBudget(Number(e.target.value))}
+                    className="w-full accent-accent-blue"
+                  />
+                </div>
+                {accumulating && (
+                  <div className="text-text-tertiary text-[10px] leading-tight">
+                    {accumStats.points.toLocaleString()} / {accumBudget.toLocaleString()} pts
+                    {accumStats.points >= accumBudget && (
+                      <span className="text-accent-amber ml-1">
+                        ({accumMode === 'voxel' ? 'oldest cells dropping' : 'oldest dropping'})
+                      </span>
+                    )}
+                  </div>
+                )}
+                {accumulating && noTf && (
+                  <div className="text-accent-amber/80 text-[10px] leading-tight">
+                    no /tf — frames will overlap in the sensor frame
+                  </div>
+                )}
+              </div>
+            </DisclosureSection>
+          )}
+
+          {(hasRobotModel || cameraFrustumCount > 0 || (sceneKind === 'markerarray' && markerNamespaces.length > 0)) && (
+            <DisclosureSection
+              label="Overlays"
+              open={sectionOverlaysOpen}
+              onToggle={setSectionOverlaysOpen}
+            >
+              {sceneKind === 'markerarray' && markerNamespaces.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between text-text-tertiary text-[10px] mb-1">
+                    <span>namespaces ({markerNamespaces.length})</span>
+                    {hiddenSet.size > 0 && (
+                      <button
+                        onClick={() => {
+                          // "Show all" — flip every hidden ns visible.
+                          for (const ns of hiddenSet) onToggleNamespace(ns, false);
+                        }}
+                        className="text-text-tertiary hover:text-accent-blue underline decoration-dotted"
+                        title="Show every namespace again"
+                      >
+                        show all
+                      </button>
+                    )}
+                  </div>
+                  <div className="max-h-32 overflow-y-auto space-y-0.5 pr-1">
+                    {markerNamespaces.map((ns) => {
+                      const hidden = hiddenSet.has(ns);
+                      // Empty-string namespace shown as `<default>` so the row
+                      // doesn't render as an unclickable blank.
+                      const label = ns || '<default>';
+                      return (
+                        <label
+                          key={ns}
+                          className={`flex items-center gap-1.5 cursor-pointer ${
+                            hidden ? 'text-text-tertiary' : 'text-text-secondary'
+                          }`}
+                          title={ns || 'unnamed namespace'}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={!hidden}
+                            onChange={(e) => onToggleNamespace(ns, !e.target.checked)}
+                            className="accent-accent-blue flex-shrink-0"
+                          />
+                          <span className="truncate">{label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {hasRobotModel && (
+                <div>
+                  <label
+                    className="flex items-center gap-1.5 text-text-secondary cursor-pointer"
+                    title={
+                      robotName
+                        ? `Robot model: ${robotName}${
+                            robotHasJointStates ? ' (animating from /joint_states)' : ''
+                          }`
+                        : undefined
+                    }
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!robotHidden}
+                      onChange={(e) => setRobotHidden(!e.target.checked)}
+                      className="accent-accent-blue"
+                    />
+                    robot model
+                  </label>
+                  {!robotHasJointStates && (
+                    <div className="text-text-tertiary text-[10px] mt-0.5">
+                      no /joint_states - joints stay at rest
+                    </div>
+                  )}
+                </div>
+              )}
+              {cameraFrustumCount > 0 && (
+                <div>
+                  <label
+                    className="flex items-center gap-1.5 text-text-secondary cursor-pointer"
+                    title="Render a wireframe pyramid in each camera's optical frame, sized by its CameraInfo intrinsics"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={cameraFrustumsOn}
+                      onChange={(e) => setCameraFrustumsOn(e.target.checked)}
+                      className="accent-accent-cyan"
+                    />
+                    camera frustums{' '}
+                    <span className="text-text-tertiary">({cameraFrustumCount})</span>
+                  </label>
+                  {cameraFrustumsOn && (
+                    <div className="mt-1.5 flex items-center gap-2 text-[10px]">
+                      <span className="text-text-tertiary w-12 flex-shrink-0">far</span>
+                      <input
+                        type="range"
+                        min={0.5}
+                        max={50}
+                        step={0.5}
+                        value={cameraFrustumFar}
+                        onChange={(e) => setCameraFrustumFar(Number(e.target.value))}
+                        className="flex-1 accent-accent-cyan"
+                        aria-label="Camera frustum far plane distance"
+                      />
+                      <span className="text-text-secondary mono w-10 text-right">
+                        {cameraFrustumFar.toFixed(1)}m
+                      </span>
+                    </div>
+                  )}
+                  {cameraFrustumsOn && cameraInfoTopics.length > 1 && (
+                    <div className="mt-1.5 space-y-0.5">
+                      <div className="text-text-tertiary text-[10px] mb-0.5">cameras</div>
+                      {cameraInfoTopics.map((topic) => {
+                        const hidden = hiddenFrustumTopics.includes(topic);
+                        const shortName = topic.split('/').filter(Boolean).slice(-2).join('/') || topic;
+                        return (
+                          <label
+                            key={topic}
+                            className={`flex items-center gap-1.5 cursor-pointer text-[10px] ${
+                              hidden ? 'text-text-tertiary' : 'text-text-secondary'
+                            }`}
+                            title={topic}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={!hidden}
+                              onChange={(e) => onToggleFrustumTopic(topic, !e.target.checked)}
+                              className="accent-accent-cyan flex-shrink-0"
+                            />
+                            <span className="truncate">{shortName}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </DisclosureSection>
+          )}
+        </div>
+        {/* Pinned footer - stays put regardless of section scroll/expand state. */}
+        <div className="p-2.5 pt-1.5 border-t border-border/60 space-y-1">
+          <div className="flex items-center justify-between text-text-tertiary text-[10px]">
+            <span>defaults ({sceneKindLabel})</span>
+            {hasSavedDefault && (
+              <button
+                onClick={onClearSavedDefault}
+                className="text-text-tertiary hover:text-accent-rose underline decoration-dotted"
+                title={`Forget the saved default for ${sceneKindLabel}. Future panels fall back to built-in defaults.`}
+              >
+                clear saved
+              </button>
+            )}
           </div>
+          <div className="flex gap-1">
+            <button
+              onClick={onSaveAsDefault}
+              className="flex-1 px-2 py-0.5 rounded-md transition-colors border border-border text-text-secondary hover:border-accent-blue/40 hover:text-accent-blue"
+              title={`Persist this panel's current settings as the default for every new ${sceneKindLabel} panel (stored in your browser).`}
+            >
+              save as default
+            </button>
+            <button
+              onClick={onResetToDefault}
+              className="flex-1 px-2 py-0.5 rounded-md transition-colors border border-border text-text-secondary hover:border-accent-blue/40 hover:text-accent-blue"
+              title={
+                hasSavedDefault
+                  ? `Apply the saved ${sceneKindLabel} default to this panel.`
+                  : `Reset this panel to the built-in ${sceneKindLabel} defaults.`
+              }
+            >
+              reset
+            </button>
+          </div>
+          {hasSavedDefault && (
+            <div className="text-text-tertiary text-[10px] leading-tight">
+              saved default in effect for new panels
+            </div>
+          )}
+        </div>
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * DisclosureSection — collapsed-by-default group inside the Display card.
+ * Native <details>/<summary> so no extra state or animation code is
+ * needed; open state lives in the panel's settings store (via `open`/
+ * `onToggle`) so it survives remounts and can travel through "save as
+ * default" like every other display setting.
+ */
+function DisclosureSection({
+  label,
+  open,
+  onToggle,
+  children,
+}: {
+  label: string;
+  open: boolean;
+  onToggle: (open: boolean) => void;
+  children: ReactNode;
+}) {
+  return (
+    <details
+      open={open}
+      onToggle={(e) => onToggle((e.currentTarget as HTMLDetailsElement).open)}
+      className="group pt-1 border-t border-border/60"
+    >
+      <summary className="flex items-center gap-1.5 text-text-tertiary hover:text-text-secondary text-[10px] uppercase tracking-wide cursor-pointer select-none py-0.5 list-none [&::-webkit-details-marker]:hidden">
+        <svg
+          className="w-2.5 h-2.5 flex-shrink-0 transition-transform group-open:rotate-90"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={3}
+          aria-hidden="true"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+        </svg>
+        {label}
+      </summary>
+      <div className="pt-1.5 space-y-2">{children}</div>
+    </details>
   );
 }
 
