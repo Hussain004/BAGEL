@@ -2,7 +2,7 @@
 
 Status of each item from [IMPROVEMENTS.md](./IMPROVEMENTS.md). Updated as work lands.
 
-**Done: 16 / 25, 2 partial** (quick wins: 11/11, medium: 3/9 done + 2 partial, larger initiatives: 2/5 done, 3 decided and in progress)
+**Done: 17 / 25, 2 partial** (quick wins: 11/11, medium: 4/9 done + 2 partial, larger initiatives: 2/5 done, 3 decided and in progress)
 
 ## Quick Wins
 
@@ -26,7 +26,7 @@ Status of each item from [IMPROVEMENTS.md](./IMPROVEMENTS.md). Updated as work l
 |---|------|--------|-------|
 | 12 | Shared PanelStates + OverlayCard (cohesion) | Partial | PanelStates half done: extracted src/components/panels/shared/PanelStates.tsx, eliminated 13 duplicate Loading/Error/Empty implementations across 7 panels. OverlayCard (the floating in-canvas control card pattern used by 3D Display, plot controls, etc.) not started |
 | 13 | 3D Display card progressive disclosure | **Done** | Only color-by/point-size/grid/axes visible by default; rest behind 3 native `<details>` sections (Coordinate frame, Range and clipping, Accumulation, Overlays) with expand-state persisted per-panel in threeDPanelStore; defaults save/reset moved to a pinned footer; manually verified in-browser (dark + light theme, expand-state survives close/reopen) |
-| 14 | Timeline data-density strip | Todo | |
+| 14 | Timeline data-density strip | **Done** | Reused existing readAllMessageStats (built for Bag Health, already works across mcap/db3/bag) - no new parser code needed. New utils/messageDensity.ts (pure, unit-tested bucketing) + hooks/useMessageDensity.ts + a canvas strip in Timeline.tsx. Verified rendering in-browser |
 | 15 | Docking discoverability + keyboard path | **Done** | 6-dot grip glyph on every header; first-drag-of-session dim on sibling panels (dragDockStore.hasDraggedOnce); panel headers focusable, Alt+Arrow moves the focused panel via new layoutStore.movePanel (wraps dockPanel using the existing traversal order). Tests cover movePanel; browser click-through blocked by the tooling issue noted in item 22 |
 | 16 | Sample bag lands on a curated cockpit layout | Todo | |
 | 17 | Live status: consolidate buttons, aria-live, buffer extent | Todo | |
