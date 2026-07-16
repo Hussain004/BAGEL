@@ -33,7 +33,7 @@ export const SHORTCUTS: ShortcutDescription[] = [
   { keys: 'L', description: 'Toggle loop playback', group: 'Playback' },
   { keys: 'M', description: 'Add timeline bookmark at playhead', group: 'Playback' },
   { keys: 'T', description: 'Focus the topic search box', group: 'Navigation' },
-  { keys: 'Esc', description: 'Close the most recently opened panel', group: 'Panels' },
+  { keys: 'Esc', description: 'Restore a maximized panel, or close the most recently opened one', group: 'Panels' },
   { keys: 'Shift + Esc', description: 'Close every open panel', group: 'Panels' },
   { keys: 'O', description: 'Open a different bag file', group: 'Navigation' },
   { keys: '?', description: 'Show this shortcuts list', group: 'Help' },
@@ -73,6 +73,10 @@ export function useKeyboardShortcuts(): void {
         }
         e.preventDefault();
         const layout = useLayoutStore.getState();
+        if (layout.maximizedId) {
+          layout.setMaximizedId(null);
+          return;
+        }
         if (e.shiftKey) {
           layout.closeAllPanels();
         } else if (layout.openOrder.length > 0) {

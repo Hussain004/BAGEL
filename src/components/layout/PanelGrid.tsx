@@ -2,6 +2,7 @@ import { Fragment, useState } from 'react';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import {
   useLayoutStore,
+  findPanel,
   type DropEdge,
   type LayoutNode,
   type PanelLeaf,
@@ -37,10 +38,18 @@ import { SplatViewer } from '../panels/SplatViewer';
  */
 export function PanelGrid() {
   const root = useLayoutStore((s) => s.root);
+  const maximizedId = useLayoutStore((s) => s.maximizedId);
   if (!root) return null;
+  // Maximized view: render just that one leaf full-grid. The split tree
+  // underneath is untouched, so restoring goes straight back to it. Falls
+  // through to the normal tree if the maximized id no longer exists (panel
+  // closed while maximized).
+  const maximizedLeaf = maximizedId ? findPanel(root, maximizedId) : null;
   return (
     <div className="flex-1 flex p-3 overflow-hidden min-w-0">
-      <div className="flex-1 flex w-full h-full min-w-0">{renderTree(root)}</div>
+      <div className="flex-1 flex w-full h-full min-w-0">
+        {maximizedLeaf ? <PanelLeafContent leaf={maximizedLeaf} /> : renderTree(root)}
+      </div>
     </div>
   );
 }

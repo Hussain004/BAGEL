@@ -99,6 +99,14 @@ interface LayoutState {
    */
   restoreLayout: (root: LayoutNode | null) => void;
   hasPanelForTopic: (topicName: string, bagId?: string) => boolean;
+  /**
+   * When set, PanelGrid renders only this panel full-grid instead of the
+   * split tree - a temporary "focus on just this one" view. The tree
+   * itself is untouched, so un-maximizing restores exactly the prior
+   * layout with no re-split needed.
+   */
+  maximizedId: string | null;
+  setMaximizedId: (id: string | null) => void;
 }
 
 /**
@@ -270,6 +278,7 @@ function appendLeafRight(root: LayoutNode, leaf: PanelLeaf): LayoutNode {
 export const useLayoutStore = create<LayoutState>((set, get) => ({
   root: null,
   openOrder: [],
+  maximizedId: null,
 
   openPanel: ({ kind, topicName, type, bagId }) => {
     const id = panelLeafId(kind, topicName, bagId);
@@ -287,10 +296,11 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     set({
       root: newRoot,
       openOrder: state.openOrder.filter((x) => x !== id),
+      maximizedId: state.maximizedId === id ? null : state.maximizedId,
     });
   },
 
-  closeAllPanels: () => set({ root: null, openOrder: [] }),
+  closeAllPanels: () => set({ root: null, openOrder: [], maximizedId: null }),
 
   closePanelsForBag: (bagId) => {
     const state = get();
@@ -303,6 +313,8 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     set({
       root: newRoot,
       openOrder: state.openOrder.filter((id) => survivingIds.has(id)),
+      maximizedId:
+        state.maximizedId && survivingIds.has(state.maximizedId) ? state.maximizedId : null,
     });
   },
 
@@ -321,7 +333,10 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
 
   restoreLayout: (root) => {
     const openOrder = getAllPanels(root).map((p) => p.id);
-    set({ root, openOrder });
+    // Maximize state isn't part of the URL hash schema (it's a transient
+    // view, not a saved layout choice), so a restored layout always starts
+    // un-maximized.
+    set({ root, openOrder, maximizedId: null });
   },
 
   hasPanelForTopic: (topicName, bagId) =>
@@ -333,4 +348,6 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
         // indicator that doesn't know about bagId).
         (bagId === undefined || p.bagId === bagId),
     ),
+
+  setMaximizedId: (id) => set({ maximizedId: id }),
 }));

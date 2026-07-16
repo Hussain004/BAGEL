@@ -70,6 +70,9 @@ export function PanelShell({
   children,
 }: PanelShellProps) {
   const closePanel = useLayoutStore((s) => s.closePanel);
+  const maximizedId = useLayoutStore((s) => s.maximizedId);
+  const setMaximizedId = useLayoutStore((s) => s.setMaximizedId);
+  const isMaximized = maximizedId === panelId;
   const startDrag = useDragDockStore((s) => s.startDrag);
   const endDrag = useDragDockStore((s) => s.endDrag);
   const isDragging = useDragDockStore((s) => s.sourceId === panelId);
@@ -129,8 +132,15 @@ export function PanelShell({
     >
       <header
         onPointerDown={handleHeaderPointerDown}
+        onDoubleClick={(e) => {
+          const target = e.target as HTMLElement;
+          if (target.closest('button, input, select, a, [role="menu"], [role="menuitem"]')) {
+            return;
+          }
+          setMaximizedId(isMaximized ? null : panelId);
+        }}
         className="flex items-center gap-2 px-3 py-2.5 border-b border-border bg-surface/60 cursor-grab active:cursor-grabbing select-none"
-        title="Drag to dock this panel"
+        title={isMaximized ? 'Double-click to restore' : 'Drag to dock, double-click to maximize'}
       >
         {/* Left section: topic metadata - shrinks when panel is narrow, clips internally */}
         <div className="flex items-center gap-2 flex-1 min-w-0 overflow-hidden">
@@ -168,6 +178,22 @@ export function PanelShell({
         <div className="flex items-center gap-1 flex-shrink-0">
           {headerExtras}
           <ExportMenu topicName={topicName} kind={kind} bagId={bagId} />
+          <button
+            onClick={() => setMaximizedId(isMaximized ? null : panelId)}
+            className="w-7 h-7 rounded-md flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-surface-hover transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
+            title={isMaximized ? 'Restore panel (Esc)' : 'Maximize panel'}
+            aria-label={isMaximized ? `Restore ${KIND_LABELS[kind]} panel for ${topicName}` : `Maximize ${KIND_LABELS[kind]} panel for ${topicName}`}
+          >
+            {isMaximized ? (
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9V4.5M15 9h4.5M15 9l5.25-5.25M15 15v4.5M15 15h4.5M15 15l5.25 5.25" />
+              </svg>
+            ) : (
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 20.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+              </svg>
+            )}
+          </button>
           <button
             onClick={() => closePanel(panelId)}
             className="w-7 h-7 rounded-md flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-surface-hover transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
