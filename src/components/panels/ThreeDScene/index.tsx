@@ -1429,6 +1429,66 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     !mapMessage &&
     !(isMarker && markerStream.messages && markerStream.messages.length > 0);
 
+  /**
+   * Keyboard camera control (accessibility Tier 1) - I/J/K/L orbit,
+   * +/- zoom, F re-fit. Deliberately not arrow keys or Space: those are
+   * already bound globally (playhead step / play-pause in
+   * useKeyboardShortcuts.ts) and would double-fire alongside a camera move.
+   * Scoped to this element's own onKeyDown (not a window listener), so
+   * there's no possibility of colliding with SplatViewer's separate
+   * hover-gated WASD fly-through in a different panel - only one panel's
+   * listener can ever be in scope for a given keypress.
+   */
+  const handleSceneKeyDown = (e: React.KeyboardEvent) => {
+    const refs = sceneRef.current;
+    if (!refs) return;
+    const ORBIT_STEP = Math.PI / 24; // 7.5 degrees per press
+    switch (e.key) {
+      case 'i':
+      case 'I':
+        e.preventDefault();
+        refs.orbitBy(0, -ORBIT_STEP);
+        return;
+      case 'k':
+      case 'K':
+        e.preventDefault();
+        refs.orbitBy(0, ORBIT_STEP);
+        return;
+      case 'j':
+      case 'J':
+        e.preventDefault();
+        refs.orbitBy(-ORBIT_STEP, 0);
+        return;
+      case 'l':
+      case 'L':
+        e.preventDefault();
+        refs.orbitBy(ORBIT_STEP, 0);
+        return;
+      case '+':
+      case '=':
+        e.preventDefault();
+        refs.zoomBy(0.85);
+        return;
+      case '-':
+      case '_':
+        e.preventDefault();
+        refs.zoomBy(1 / 0.85);
+        return;
+      case 'f':
+      case 'F':
+        e.preventDefault();
+        handleResetCamera();
+        return;
+    }
+  };
+
+  // Visually-hidden scene summary for screen readers - the canvas itself
+  // has no accessible content otherwise. Kind + frame covers every scene
+  // type; point count is meaningful for the two kinds that have one.
+  const sceneSummary = `${SCENE_KIND_LABELS[sceneKind]} scene${
+    stats.sourceFrame ? `, frame ${stats.sourceFrame}` : ''
+  }${stats.points > 0 ? `, ${stats.points.toLocaleString()} points` : ''}`;
+
   return (
     <PanelShell
       panelId={panelId}
@@ -1452,7 +1512,20 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
         ))}
       <div className="flex-1 flex flex-col min-h-0">
         <div className="flex-1 min-h-[260px] relative bg-bg-primary/60 overflow-hidden">
-          <div ref={containerRef} className="absolute inset-0" />
+          <div
+            ref={containerRef}
+            className="absolute inset-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60 focus-visible:ring-inset"
+            tabIndex={0}
+            role="img"
+            aria-label={`3D scene: ${topicName} (${SCENE_KIND_LABELS[sceneKind]}). Focus and use I/J/K/L to orbit, +/- to zoom, F to re-fit.`}
+            onKeyDown={handleSceneKeyDown}
+          />
+          {/* Visually-hidden live summary - the canvas has no accessible
+              content of its own, so this is the only way a screen reader
+              knows what's currently rendered. */}
+          <span className="sr-only" aria-live="polite">
+            {sceneSummary}
+          </span>
 
           <div className="absolute top-2 right-2 flex flex-col gap-1.5 items-end">
             <div className="flex gap-1">

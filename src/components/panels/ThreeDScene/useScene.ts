@@ -40,6 +40,15 @@ export interface SceneRefs {
    * viewpoint but pivot around a different scene point.
    */
   setOrbitTarget: (target: THREE.Vector3) => void;
+  /**
+   * Orbit the camera around `controls.target` by the given angles (radians).
+   * Keyboard-accessible equivalent of mouse-drag rotate - see the panel's
+   * onKeyDown for the actual key bindings.
+   */
+  orbitBy: (deltaAzimuthRad: number, deltaPolarRad: number) => void;
+  /** Zoom by a multiplicative factor (<1 zooms in, >1 zooms out), clamped
+   * to the same min/max distance as scroll-to-zoom. */
+  zoomBy: (factor: number) => void;
 }
 
 export function useScene(): {
@@ -161,6 +170,45 @@ export function useScene(): {
       needsRender = true;
     };
 
+    // THREE.Spherical always measures phi from the *Y* axis, regardless of
+    // camera.up - this scene is Z-up (ROS convention), so raw Spherical
+    // math here would orbit around the wrong axis. Mirrors the quaternion
+    // trick OrbitControls itself uses internally: rotate into Y-up space,
+    // do the spherical math, rotate back.
+    const orbitBy = (deltaAzimuthRad: number, deltaPolarRad: number) => {
+      const quat = new THREE.Quaternion().setFromUnitVectors(camera.up, new THREE.Vector3(0, 1, 0));
+      const quatInverse = quat.clone().invert();
+
+      const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
+      offset.applyQuaternion(quat);
+
+      const spherical = new THREE.Spherical().setFromVector3(offset);
+      spherical.theta += deltaAzimuthRad;
+      // Clamp away from the poles - exactly at phi=0/PI the azimuth becomes
+      // undefined and the view can flip.
+      spherical.phi = Math.max(0.02, Math.min(Math.PI - 0.02, spherical.phi + deltaPolarRad));
+
+      offset.setFromSpherical(spherical);
+      offset.applyQuaternion(quatInverse);
+
+      camera.position.copy(controls.target).add(offset);
+      camera.lookAt(controls.target);
+      controls.update();
+      needsRender = true;
+    };
+
+    const zoomBy = (factor: number) => {
+      const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
+      const newLength = Math.max(
+        controls.minDistance,
+        Math.min(controls.maxDistance, offset.length() * factor),
+      );
+      offset.setLength(newLength);
+      camera.position.copy(controls.target).add(offset);
+      controls.update();
+      needsRender = true;
+    };
+
     sceneRef.current = {
       renderer,
       scene,
@@ -171,6 +219,8 @@ export function useScene(): {
       renderOnce,
       resetCamera,
       setOrbitTarget,
+      orbitBy,
+      zoomBy,
     };
 
     return () => {

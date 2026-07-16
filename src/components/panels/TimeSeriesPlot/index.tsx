@@ -185,6 +185,35 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
     return out;
   }, [series, expressions]);
 
+  // Screen-reader-only numeric summary of the currently visible series - the
+  // canvas chart has no accessible content of its own, so this table is the
+  // only way a non-visual user can get min/max/last values.
+  const seriesSummary = useMemo(() => {
+    if (!series) return [];
+    const rows: { label: string; min: number | null; max: number | null; last: number | null }[] = [];
+    const summarize = (label: string, values: (number | null)[]) => {
+      let min: number | null = null;
+      let max: number | null = null;
+      let last: number | null = null;
+      for (const v of values) {
+        if (v === null || !Number.isFinite(v)) continue;
+        if (min === null || v < min) min = v;
+        if (max === null || v > max) max = v;
+        last = v;
+      }
+      rows.push({ label, min, max, last });
+    };
+    for (const f of series.fieldNames) {
+      if (visibility[f] === false) continue;
+      summarize(f, series.values[f]);
+    }
+    for (const e of expressions) {
+      if (visibility[e.id] === false) continue;
+      summarize(e.label, expressionResults[e.id] ?? []);
+    }
+    return rows;
+  }, [series, visibility, expressions, expressionResults]);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
   useEffect(
@@ -441,6 +470,29 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
               for top breathing room; horizontal spacing comes from the
               panel border. */}
           <div ref={containerRef} className="flex-1 min-h-[240px] pt-2 min-w-0" />
+          {seriesSummary.length > 0 && (
+            <table className="sr-only">
+              <caption>Numeric summary of visible series for {topicName}</caption>
+              <thead>
+                <tr>
+                  <th>Series</th>
+                  <th>Min</th>
+                  <th>Max</th>
+                  <th>Last</th>
+                </tr>
+              </thead>
+              <tbody>
+                {seriesSummary.map((row) => (
+                  <tr key={row.label}>
+                    <td>{row.label}</td>
+                    <td>{row.min ?? 'n/a'}</td>
+                    <td>{row.max ?? 'n/a'}</td>
+                    <td>{row.last ?? 'n/a'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
           <div className="px-4 pt-2 pb-1 border-t border-border space-y-1.5">
             {/* Series chips: raw fields + expression series */}
             <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto">
