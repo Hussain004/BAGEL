@@ -2,7 +2,9 @@
 
 Status of each item from [IMPROVEMENTS.md](./IMPROVEMENTS.md). Updated as work lands.
 
-**Done: 17 / 25, 2 partial** (quick wins: 11/11, medium: 4/9 done + 2 partial, larger initiatives: 2/5 done, 3 decided and in progress)
+**Done: 18 / 25, 2 partial** (quick wins: 11/11, medium: 4/9 done + 2 partial, larger initiatives: 3/5 done, 2 decided and remaining)
+
+**Note on browser verification:** items 22 (maximize) and 15 (docking) were built+tested but the dev-tooling screenshot capture was timing out at the time, so they only got build+test verification in the moment. Item 25 hit a real infinite-render-loop crash that only surfaced when actually rendered in a browser (a Zustand selector returning a fresh `[]` reference every call - see item 25's commit). Once the tooling recovered, items 22 and 15 were retroactively spot-checked by hand and both work correctly, but this is a reminder that "build passes, tests pass" is not the same guarantee as "a human clicked it" for anything involving a Zustand selector or other render-time state subscription.
 
 ## Quick Wins
 
@@ -42,4 +44,4 @@ Status of each item from [IMPROVEMENTS.md](./IMPROVEMENTS.md). Updated as work l
 | 22 | Panel maximize (then maybe tabs) | Maximize only | **Done** | Double-click header or button toggles maximizedId in layoutStore; auto-clears on close/closeAll/closePanelsForBag/restoreLayout; Esc restores before falling through to panel-close. tests/store/layoutStore.test.ts covers every branch. Browser click-through verification hit tooling issues this round (see commit); verified via build + full test suite + manual trace instead |
 | 23 | Named layout presets | Type-based slots, no reassignment prompt | Todo | |
 | 24 | 3D/canvas accessibility tier | Tier 1 (keyboard camera, live-region summary, aria-label, hidden data table) | Todo | |
-| 25 | Per-topic timeline lanes | Not asked separately - proceeding with my stated recommendation (expandable drawer, pinned topics, capped ~8 lanes), since user has consistently taken the recommended option | Todo | Depends on item 14 landing first |
+| 25 | Per-topic timeline lanes | Not asked separately - proceeding with my stated recommendation (expandable drawer, pinned topics, capped ~8 lanes), since user has consistently taken the recommended option | **Done** | New pinnedTopicsStore + pin toggle in TopicRow + expandable drawer in Timeline with per-topic density lanes, playhead line, unpin. Found and fixed a real infinite-render-loop bug during browser verification (Zustand selector returning a fresh `[]` on every call) - see commit for the full story and why it's a reminder that build+test-only verification (used for items 22/15 due to a tooling outage) isn't equivalent to an actual render check |
