@@ -104,8 +104,19 @@ function PanelLeafContent({ leaf }: { leaf: PanelLeaf }) {
   // setSize, the chart grows on every measurement and the plot
   // "keeps extending to the right" until a sibling is added (which
   // wraps both panels in width-bounded <Panel> nodes).
+  // First-drag-ever dim: while the very first drag of the session is in
+  // flight, every panel except the one being dragged fades slightly so the
+  // drop-target edges (highlighted by DropZoneOverlay) read as "places you
+  // can drop this", not just decoration. Only fires once per session -
+  // once the user has done it, they know, and repeated dimming on every
+  // subsequent drag would just be noise for someone rearranging a lot.
+  const sourceId = useDragDockStore((s) => s.sourceId);
+  const hasDraggedOnce = useDragDockStore((s) => s.hasDraggedOnce);
+  const dimForFirstDrag = sourceId !== null && sourceId !== leaf.id && !hasDraggedOnce;
   return (
-    <div className="relative flex-1 flex flex-col min-h-0 min-w-0">
+    <div
+      className={`relative flex-1 flex flex-col min-h-0 min-w-0 transition-opacity ${dimForFirstDrag ? 'opacity-50' : ''}`}
+    >
       <Visualisation leaf={leaf} />
       <DropZoneOverlay panelId={leaf.id} />
     </div>

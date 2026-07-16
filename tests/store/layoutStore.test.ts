@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useLayoutStore } from '../../src/store/layoutStore';
+import { useLayoutStore, getAllPanels } from '../../src/store/layoutStore';
 
 function freshStore() {
   useLayoutStore.setState({ root: null, openOrder: [], maximizedId: null });
@@ -66,5 +66,51 @@ describe('layoutStore maximize', () => {
     store.setMaximizedId(id);
     store.restoreLayout({ node: 'panel', id, kind: 'plot', topicName: '/a', type: 't' });
     expect(useLayoutStore.getState().maximizedId).toBeNull();
+  });
+});
+
+describe('layoutStore movePanel', () => {
+  beforeEach(freshStore);
+
+  it('moves a panel right by docking it next to its right-hand neighbor', () => {
+    const store = useLayoutStore.getState();
+    store.openPanel({ kind: 'plot', topicName: '/a', type: 't' });
+    store.openPanel({ kind: 'plot', topicName: '/b', type: 't' });
+    store.openPanel({ kind: 'plot', topicName: '/c', type: 't' });
+    const [idA] = useLayoutStore.getState().openOrder;
+    // Order after opening: a, b, c (left to right).
+    store.movePanel(idA, 'right');
+    // dockPanel doesn't touch openOrder (it's a move, not open/close), so
+    // check the actual tree order instead via a fresh traversal.
+    const leafOrder = getAllPanels(useLayoutStore.getState().root).map((p) => p.topicName);
+    expect(leafOrder[0]).not.toBe('/a');
+  });
+
+  it('is a no-op at the start of the order moving left', () => {
+    const store = useLayoutStore.getState();
+    store.openPanel({ kind: 'plot', topicName: '/a', type: 't' });
+    store.openPanel({ kind: 'plot', topicName: '/b', type: 't' });
+    const [idA] = useLayoutStore.getState().openOrder;
+    const before = useLayoutStore.getState().root;
+    store.movePanel(idA, 'left');
+    expect(useLayoutStore.getState().root).toBe(before);
+  });
+
+  it('is a no-op at the end of the order moving right', () => {
+    const store = useLayoutStore.getState();
+    store.openPanel({ kind: 'plot', topicName: '/a', type: 't' });
+    store.openPanel({ kind: 'plot', topicName: '/b', type: 't' });
+    const [, idB] = useLayoutStore.getState().openOrder;
+    const before = useLayoutStore.getState().root;
+    store.movePanel(idB, 'right');
+    expect(useLayoutStore.getState().root).toBe(before);
+  });
+
+  it('is a no-op for an unknown panel id', () => {
+    const store = useLayoutStore.getState();
+    store.openPanel({ kind: 'plot', topicName: '/a', type: 't' });
+    const before = useLayoutStore.getState().root;
+    store.movePanel('does-not-exist', 'right');
+    expect(useLayoutStore.getState().root).toBe(before);
   });
 });

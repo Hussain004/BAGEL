@@ -89,6 +89,14 @@ interface LayoutState {
   /** Move `sourceId` so that it sits on the given `edge` of `targetId`. */
   dockPanel: (sourceId: string, targetId: string, edge: DropEdge) => void;
   /**
+   * Keyboard equivalent of drag-to-dock: move `id` next to its neighbor in
+   * the given direction, where "neighbor" is the previous/next leaf in the
+   * same left-to-right traversal order `getAllPanels` and `openOrder` use.
+   * A thin wrapper over `dockPanel` - no separate tree-manipulation logic.
+   * No-op at either end of the panel order.
+   */
+  movePanel: (id: string, direction: 'left' | 'right' | 'up' | 'down') => void;
+  /**
    * Replace the entire layout tree wholesale. Used by `useUrlState` on bag
    * load to restore the saved layout in one shot — going through
    * `openPanel`/`dockPanel` would work but synthesises a less faithful
@@ -350,4 +358,17 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     ),
 
   setMaximizedId: (id) => set({ maximizedId: id }),
+
+  movePanel: (id, direction) => {
+    const state = get();
+    if (!state.root) return;
+    const order = getAllPanels(state.root).map((p) => p.id);
+    const idx = order.indexOf(id);
+    if (idx === -1) return;
+    const targetId = direction === 'left' || direction === 'up' ? order[idx - 1] : order[idx + 1];
+    if (!targetId) return;
+    const edge: DropEdge =
+      direction === 'left' ? 'left' : direction === 'right' ? 'right' : direction === 'up' ? 'top' : 'bottom';
+    get().dockPanel(id, targetId, edge);
+  },
 }));

@@ -72,6 +72,7 @@ export function PanelShell({
   const closePanel = useLayoutStore((s) => s.closePanel);
   const maximizedId = useLayoutStore((s) => s.maximizedId);
   const setMaximizedId = useLayoutStore((s) => s.setMaximizedId);
+  const movePanel = useLayoutStore((s) => s.movePanel);
   const isMaximized = maximizedId === panelId;
   const startDrag = useDragDockStore((s) => s.startDrag);
   const endDrag = useDragDockStore((s) => s.endDrag);
@@ -139,11 +140,29 @@ export function PanelShell({
           }
           setMaximizedId(isMaximized ? null : panelId);
         }}
+        onKeyDown={(e) => {
+          if (!e.altKey) return;
+          const dir =
+            e.key === 'ArrowLeft' ? 'left'
+            : e.key === 'ArrowRight' ? 'right'
+            : e.key === 'ArrowUp' ? 'up'
+            : e.key === 'ArrowDown' ? 'down'
+            : null;
+          if (!dir) return;
+          e.preventDefault();
+          movePanel(panelId, dir);
+        }}
+        tabIndex={0}
         className="flex items-center gap-2 px-3 py-2.5 border-b border-border bg-surface/60 cursor-grab active:cursor-grabbing select-none"
-        title={isMaximized ? 'Double-click to restore' : 'Drag to dock, double-click to maximize'}
+        title={
+          isMaximized
+            ? 'Double-click to restore'
+            : 'Drag to dock, double-click to maximize, Alt+Arrow to move (when focused)'
+        }
       >
         {/* Left section: topic metadata - shrinks when panel is narrow, clips internally */}
         <div className="flex items-center gap-2 flex-1 min-w-0 overflow-hidden">
+          <GripIcon />
           <span
             className="w-2 h-2 rounded-full flex-shrink-0"
             style={{ backgroundColor: accentColor ?? '#94a3b8' }}
@@ -209,6 +228,29 @@ export function PanelShell({
       </header>
       <div className="flex-1 flex flex-col min-h-0">{children}</div>
     </div>
+  );
+}
+
+/**
+ * GripIcon — always-visible (low-opacity) drag affordance. The whole header
+ * has always been a drag handle, but nothing about it *looked* draggable -
+ * this is the one visual cue, styled like a standard 6-dot grip.
+ */
+function GripIcon() {
+  return (
+    <svg
+      className="w-2.5 h-3 flex-shrink-0 text-text-muted"
+      viewBox="0 0 8 12"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <circle cx="2" cy="2" r="1.1" />
+      <circle cx="6" cy="2" r="1.1" />
+      <circle cx="2" cy="6" r="1.1" />
+      <circle cx="6" cy="6" r="1.1" />
+      <circle cx="2" cy="10" r="1.1" />
+      <circle cx="6" cy="10" r="1.1" />
+    </svg>
   );
 }
 
