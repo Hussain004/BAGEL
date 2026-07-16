@@ -3,6 +3,7 @@ import { useBagStore } from '../../store/bagStore';
 import { useLiveStore } from '../../store/liveStore';
 import { usePlayheadStore } from '../../store/playheadStore';
 import { useAnnotationStore, type Annotation } from '../../store/annotationStore';
+import { useMessageDensity } from '../../hooks/useMessageDensity';
 import { nsToSeconds, formatDuration } from '../../utils/time';
 
 /**
@@ -36,6 +37,9 @@ export function Timeline() {
     tick,
   } = usePlayheadStore();
   const { annotations, addAnnotation, removeAnnotation, updateLabel } = useAnnotationStore();
+  // useMessageDensity already skips live bags internally (no fixed
+  // [start, end] window to bucket into).
+  const { density } = useMessageDensity(focusBagId ?? undefined);
 
   const trackRef = useRef<HTMLDivElement>(null);
   const isDraggingRef = useRef(false);
@@ -247,6 +251,7 @@ export function Timeline() {
         aria-valuenow={Math.round(elapsed * 1000) / 1000}
         aria-valuetext={`${elapsed.toFixed(2)} of ${duration.toFixed(2)} seconds`}
       >
+        {density && <DensityStrip density={density} />}
         <div className="w-full h-1.5 rounded-full bg-surface overflow-hidden relative">
           <div
             className="absolute inset-y-0 left-0 progress-bar"
@@ -376,6 +381,60 @@ export function Timeline() {
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
+
+/**
+ * DensityStrip — thin heatmap above the seek track showing where in the bag
+ * messages are dense vs. sparse, so a gap or a burst is visible without
+ * scrubbing to find it. One <canvas>, not DENSITY_BUCKETS divs.
+ *
+ * Accent-blue is intentionally hardcoded rather than read from chartTheme -
+ * unlike axis/grid colours, the accent hues are identical in both themes
+ * (see the accent-colour comment in index.css), so there's nothing to
+ * subscribe to.
+ */
+function DensityStrip({ density }: { density: Float32Array }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const draw = () => {
+      const dpr = window.devicePixelRatio || 1;
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      if (w === 0 || h === 0) return;
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      const bucketW = w / density.length;
+      for (let i = 0; i < density.length; i++) {
+        const v = density[i];
+        if (v <= 0) continue;
+        // Floor so even a single message in a bucket stays visible rather
+        // than fading to nothing next to a much busier neighbor.
+        ctx.fillStyle = `rgba(59, 130, 246, ${Math.max(0.15, v)})`;
+        ctx.fillRect(i * bucketW, 0, Math.ceil(bucketW), h);
+      }
+    };
+
+    draw();
+    const ro = new ResizeObserver(draw);
+    ro.observe(canvas);
+    return () => ro.disconnect();
+  }, [density]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="absolute top-1 left-0 w-full h-[3px] pointer-events-none rounded-full"
+      aria-hidden="true"
+    />
+  );
+}
 
 interface AnnotationTickProps {
   annotation: Annotation;
