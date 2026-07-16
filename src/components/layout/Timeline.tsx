@@ -32,6 +32,9 @@ export function Timeline() {
   const liveStatus = useLiveStore((s) =>
     focusBagId && isLive ? (s.statuses.get(focusBagId) ?? 'connecting') : undefined,
   );
+  const liveStatusMessage = useLiveStore((s) =>
+    focusBagId && isLive ? s.statusMessages.get(focusBagId) : undefined,
+  );
   const followLive = useLiveStore((s) => s.followLive);
   const setFollowLive = useLiveStore((s) => s.setFollowLive);
   const {
@@ -218,6 +221,19 @@ export function Timeline() {
 
   return (
     <div className="border-t border-border bg-bg-secondary/70 backdrop-blur-md animate-fade-in flex-shrink-0">
+    {isLive && (
+      <span className="sr-only" aria-live="polite" role="status">
+        {liveStatus === 'connected'
+          ? `Connected${liveStatusMessage ? ` to ${liveStatusMessage}` : ''}`
+          : liveStatus === 'reconnecting'
+            ? (liveStatusMessage ?? 'Reconnecting…')
+            : liveStatus === 'connecting'
+              ? 'Connecting…'
+              : liveStatus === 'error'
+                ? (liveStatusMessage ?? 'Connection error')
+                : 'Disconnected'}
+      </span>
+    )}
     <div className="px-4 py-3 flex items-center gap-4 flex-wrap">
       <button
         onClick={() => setPlaying(!playing)}
@@ -334,6 +350,23 @@ export function Timeline() {
             />
           </div>
         )}
+
+        {/* Scrubbed back into history during a live session - one click back
+            to the edge, right where the eye already is instead of hunting
+            for the Follow toggle across the toolbar. */}
+        {isLive && !followLive && liveStatus === 'connected' && timeNs < endNs && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setFollowLive(true);
+            }}
+            className="absolute -top-7 right-0 flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs border border-accent-emerald/40 bg-bg-primary/90 backdrop-blur text-accent-emerald hover:bg-accent-emerald/15 transition-colors shadow-panel z-20"
+            title="Jump back to the live edge and resume following"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-accent-emerald animate-pulse flex-shrink-0" />
+            Back to live
+          </button>
+        )}
       </div>
 
       <button
@@ -376,17 +409,24 @@ export function Timeline() {
               ? 'bg-accent-emerald/15 border-accent-emerald/40 text-accent-emerald'
               : 'border-border text-text-secondary hover:border-accent-emerald/40 hover:text-accent-emerald'
           }`}
-          title={followLive ? 'Following live edge - click to pause and scrub history' : 'Follow live edge'}
+          title={
+            liveStatus !== 'connected'
+              ? (liveStatusMessage ?? 'Not connected')
+              : followLive
+                ? 'Following live edge - click to pause and scrub history'
+                : 'Follow live edge'
+          }
           aria-label={followLive ? 'Pause live follow' : 'Follow live'}
           aria-pressed={followLive}
         >
+          {/* Solid fill = connected, hollow ring = anything else (colorblind-safe, matches Toolbar's LiveStatusDot). */}
           <span
-            className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+            className={`w-1.5 h-1.5 rounded-full flex-shrink-0 border ${
               liveStatus === 'connected'
-                ? followLive ? 'bg-accent-emerald animate-pulse' : 'bg-accent-emerald'
+                ? 'border-accent-emerald bg-accent-emerald animate-pulse'
                 : liveStatus === 'reconnecting' || liveStatus === 'connecting'
-                ? 'bg-accent-amber animate-pulse'
-                : 'bg-text-muted'
+                  ? 'border-accent-amber bg-transparent animate-pulse'
+                  : 'border-text-muted bg-transparent'
             }`}
           />
           <span className="hidden sm:inline">{followLive ? 'Live' : 'Follow'}</span>

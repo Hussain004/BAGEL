@@ -79,6 +79,11 @@ export class LiveConnection {
   private scheduleReconnect(): void {
     const delay = BACKOFF_MS[Math.min(this.reconnectAttempt, BACKOFF_MS.length - 1)];
     this.reconnectAttempt++;
+    const delaySec = Math.round(delay / 1000);
+    this.setStatus(
+      'reconnecting',
+      `Retrying in ${delaySec}s (attempt ${this.reconnectAttempt})`,
+    );
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.connect();
@@ -156,7 +161,8 @@ export class LiveConnection {
         this.client = null;
         this.subIdToChannelId.clear();
         if (!this.destroyed) {
-          this.setStatus('reconnecting');
+          // scheduleReconnect sets its own 'reconnecting' status with the
+          // attempt count + delay, so the UI can show more than a dot.
           this.scheduleReconnect();
         } else {
           this.setStatus('disconnected');

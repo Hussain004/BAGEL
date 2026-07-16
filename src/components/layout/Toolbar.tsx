@@ -43,8 +43,6 @@ export function Toolbar() {
   const setModal = useUiStore((s) => s.setModal);
   const robotModel = useRobotModelStore((s) => s.loaded);
   const clearRobotModel = useRobotModelStore((s) => s.clearLoaded);
-  const followLive = useLiveStore((s) => s.followLive);
-  const setFollowLive = useLiveStore((s) => s.setFollowLive);
   const liveStatuses = useLiveStore((s) => s.statuses);
   const liveStatusMessages = useLiveStore((s) => s.statusMessages);
   const liveSimTimes = useLiveStore((s) => s.simTime);
@@ -222,9 +220,6 @@ export function Toolbar() {
             liveConn={bags.get(focusBagId)?.liveConn ?? null}
             status={liveStatuses.get(focusBagId) ?? 'disconnected'}
           />
-        )}
-        {focusedBagIsLive && (
-          <FollowLiveButton followLive={followLive} onToggle={() => setFollowLive(!followLive)} />
         )}
         {canEditFocusedBag && (
           <button
@@ -448,55 +443,35 @@ function AnchorIcon() {
   );
 }
 
+/**
+ * LiveStatusDot — solid fill = connected, hollow ring = anything else. Color
+ * alone (emerald/amber/rose/gray) fails for colorblind users trying to tell
+ * "connecting" from "error" at a glance; the shape difference doesn't.
+ */
 function LiveStatusDot({ status, message }: { status: LiveStatus; message?: string }) {
-  const { className, title } = (() => {
+  const { colorClass, pulse, title } = (() => {
     switch (status) {
       case 'connected':
-        return { className: 'bg-accent-emerald animate-pulse', title: message ? `Connected to ${message}` : 'Connected' };
+        return { colorClass: 'border-accent-emerald bg-accent-emerald', pulse: true, title: message ? `Connected to ${message}` : 'Connected' };
       case 'connecting':
-        return { className: 'bg-accent-amber animate-pulse', title: 'Connecting…' };
+        return { colorClass: 'border-accent-amber bg-transparent', pulse: true, title: 'Connecting…' };
       case 'reconnecting':
-        return { className: 'bg-accent-amber animate-pulse', title: 'Reconnecting…' };
+        return { colorClass: 'border-accent-amber bg-transparent', pulse: true, title: message ?? 'Reconnecting…' };
       case 'error':
-        return { className: 'bg-accent-rose', title: message ?? 'Connection error' };
+        return { colorClass: 'border-accent-rose bg-transparent', pulse: false, title: message ?? 'Connection error' };
       case 'disconnected':
-        return { className: 'bg-text-muted', title: 'Disconnected' };
+        return { colorClass: 'border-text-muted bg-transparent', pulse: false, title: 'Disconnected' };
     }
   })();
   return (
     <span
-      className={`w-2 h-2 rounded-full flex-shrink-0 ${className}`}
+      className={`w-2 h-2 rounded-full flex-shrink-0 border-[1.5px] ${colorClass} ${pulse ? 'animate-pulse' : ''}`}
       title={title}
       aria-label={title}
     />
   );
 }
 
-function FollowLiveButton({ followLive, onToggle }: { followLive: boolean; onToggle: () => void }) {
-  return (
-    <button
-      onClick={onToggle}
-      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs border transition-colors ${
-        followLive
-          ? 'border-accent-emerald/40 bg-accent-emerald/10 text-accent-emerald hover:bg-accent-emerald/15'
-          : 'border-border text-text-secondary hover:text-text-primary hover:bg-surface-hover hover:border-accent-emerald/40'
-      }`}
-      title={followLive ? 'Following live edge - click to pause and scrub' : 'Paused - click to follow live edge'}
-      aria-label={followLive ? 'Pause live follow' : 'Follow live edge'}
-    >
-      {followLive ? (
-        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      ) : (
-        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />
-        </svg>
-      )}
-      <span className="hidden xl:inline">{followLive ? 'Live' : 'Follow'}</span>
-    </button>
-  );
-}
 
 interface RecordButtonProps {
   bagId: string;
