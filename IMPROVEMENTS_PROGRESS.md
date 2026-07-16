@@ -2,7 +2,7 @@
 
 Status of each item from [IMPROVEMENTS.md](./IMPROVEMENTS.md). Updated as work lands.
 
-**Done: 13 / 21, 2 partial** (quick wins: 11/11 - all done, medium: 2/9 done + 2 partial, larger initiatives: 0/5 - the larger ones need a design decision first)
+**Done: 14 / 25, 2 partial** (quick wins: 11/11, medium: 2/9 done + 2 partial, larger initiatives: 1/5 done, 4 decided and in progress - all design decisions collected from the user)
 
 ## Quick Wins
 
@@ -34,12 +34,12 @@ Status of each item from [IMPROVEMENTS.md](./IMPROVEMENTS.md). Updated as work l
 | 19 | Modal focus trap | **Done** | Tab/Shift+Tab now wrap inside the dialog; no component-test harness exists in this repo (all tests are logic-only .ts), so no automated test was added for this one |
 | 20 | Micro-interactions motion spec (CSS-only) | Todo | |
 
-## Larger Initiatives (blocked on a design decision)
+## Larger Initiatives (design decisions collected 2026-07-16)
 
-| # | Item | Status | Notes |
-|---|------|--------|-------|
-| 21 | Visual identity: instrument vs glass | Awaiting decision | |
-| 22 | Panel maximize (then maybe tabs) | Awaiting decision | Maximize alone could proceed; tabs need a call |
-| 23 | Named layout presets | Awaiting decision | Topic-matching strategy undecided |
-| 24 | 3D/canvas accessibility tier | Awaiting decision | Tier 1 recommended |
-| 25 | Per-topic timeline lanes | Awaiting decision | Depends on item 14 landing first |
+| # | Item | Decision | Status | Notes |
+|---|------|----------|--------|-------|
+| 21 | Visual identity: instrument vs glass | Instrument workspace, branded landing | **Done** | PanelGrid and PanelShell now solid/opaque, no backdrop-filter, no bg-grid/gradient behind panels; DropZone untouched. Verified in-browser |
+| 22 | Panel maximize (then maybe tabs) | Maximize only | Todo | |
+| 23 | Named layout presets | Type-based slots, no reassignment prompt | Todo | |
+| 24 | 3D/canvas accessibility tier | Tier 1 (keyboard camera, live-region summary, aria-label, hidden data table) | Todo | |
+| 25 | Per-topic timeline lanes | Not asked separately - proceeding with my stated recommendation (expandable drawer, pinned topics, capped ~8 lanes), since user has consistently taken the recommended option | Todo | Depends on item 14 landing first |
