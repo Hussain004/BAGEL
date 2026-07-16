@@ -8,8 +8,13 @@
 
 /* ============================================================
    BAGEL Design System
-   Premium dark theme with glassmorphism, gradients, and
-   micro-animations for a robotics-grade data exploration tool.
+   The landing page (DropZone) is the brand: glassmorphism, gradient
+   orbs, animated grid. Once a bag is loaded, the workspace (PanelGrid,
+   PanelShell) is deliberately flatter and quieter - an instrument, not
+   a marketing page, and every panel gets a solid opaque background
+   instead of translucency to keep the data-ink ratio high during long
+   debugging sessions. `.bg-grid` / `.bg-gradient-radial` stay defined
+   below for the landing page; the workspace just doesn't use them.
    ============================================================ */
 
 /* ── Custom Theme ──

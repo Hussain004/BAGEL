@@ -128,7 +128,7 @@ function MainView() {
           {hasPanels ? (
             <PanelGrid />
           ) : (
-            <div className="flex-1 flex items-center justify-center p-8 bg-grid bg-gradient-radial">
+            <div className="flex-1 flex items-center justify-center p-8">
               <EmptyPanelState bag={bag} />
             </div>
           )}

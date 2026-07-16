@@ -39,7 +39,7 @@ export function PanelGrid() {
   const root = useLayoutStore((s) => s.root);
   if (!root) return null;
   return (
-    <div className="flex-1 flex p-3 overflow-hidden bg-grid bg-gradient-radial min-w-0">
+    <div className="flex-1 flex p-3 overflow-hidden min-w-0">
       <div className="flex-1 flex w-full h-full min-w-0">{renderTree(root)}</div>
     </div>
   );
