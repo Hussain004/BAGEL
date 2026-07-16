@@ -1,10 +1,21 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useMemo, useRef, useCallback, useState } from 'react';
 import { useBagStore } from '../../store/bagStore';
 import { useLiveStore } from '../../store/liveStore';
 import { usePlayheadStore } from '../../store/playheadStore';
 import { useAnnotationStore, type Annotation } from '../../store/annotationStore';
+import { usePinnedTopicsStore } from '../../store/pinnedTopicsStore';
 import { useMessageDensity } from '../../hooks/useMessageDensity';
+import { computeMessageDensity } from '../../utils/messageDensity';
 import { nsToSeconds, formatDuration } from '../../utils/time';
+import type { AllTopicStats, MessageStats } from '../../types/bag';
+
+// Stable reference for "no pins" so the pinnedTopics selector below never
+// returns a fresh [] literal - a Zustand selector that hands back a new
+// array/object each call makes useSyncExternalStore see a "changed"
+// snapshot on every render, which re-renders, which re-runs the selector,
+// which returns yet another new []  - an infinite render loop with no
+// external state change driving it.
+const EMPTY_TOPIC_LIST: string[] = [];
 
 /**
  * Timeline — Global playhead control at the bottom of the main view.
@@ -39,7 +50,11 @@ export function Timeline() {
   const { annotations, addAnnotation, removeAnnotation, updateLabel } = useAnnotationStore();
   // useMessageDensity already skips live bags internally (no fixed
   // [start, end] window to bucket into).
-  const { density } = useMessageDensity(focusBagId ?? undefined);
+  const { density, stats, durationNs } = useMessageDensity(focusBagId ?? undefined);
+  const pinnedTopics = usePinnedTopicsStore((s) =>
+    focusBagId ? (s.pinnedByBag[focusBagId] ?? EMPTY_TOPIC_LIST) : EMPTY_TOPIC_LIST,
+  );
+  const [lanesExpanded, setLanesExpanded] = useState(false);
 
   const trackRef = useRef<HTMLDivElement>(null);
   const isDraggingRef = useRef(false);
@@ -202,7 +217,8 @@ export function Timeline() {
   const fraction = endNs > startNs ? elapsed / duration : 0;
 
   return (
-    <div className="border-t border-border bg-bg-secondary/70 backdrop-blur-md px-4 py-3 flex items-center gap-4 flex-wrap animate-fade-in flex-shrink-0">
+    <div className="border-t border-border bg-bg-secondary/70 backdrop-blur-md animate-fade-in flex-shrink-0">
+    <div className="px-4 py-3 flex items-center gap-4 flex-wrap">
       <button
         onClick={() => setPlaying(!playing)}
         className="w-9 h-9 rounded-full flex items-center justify-center bg-accent-blue/15 hover:bg-accent-blue/25 border border-accent-blue/30 text-accent-blue transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
@@ -376,6 +392,48 @@ export function Timeline() {
           <span className="hidden sm:inline">{followLive ? 'Live' : 'Follow'}</span>
         </button>
       )}
+
+      {pinnedTopics.length > 0 && (
+        <button
+          onClick={() => setLanesExpanded((v) => !v)}
+          className={`w-8 h-8 rounded-md flex items-center justify-center border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber/60 ${
+            lanesExpanded
+              ? 'bg-accent-amber/15 border-accent-amber/40 text-accent-amber'
+              : 'border-border text-text-secondary hover:border-accent-amber/40 hover:text-accent-amber'
+          }`}
+          title={
+            lanesExpanded
+              ? 'Hide per-topic timeline lanes'
+              : `Show per-topic timeline lanes (${pinnedTopics.length} pinned)`
+          }
+          aria-label={lanesExpanded ? 'Hide per-topic timeline lanes' : 'Show per-topic timeline lanes'}
+          aria-pressed={lanesExpanded}
+          aria-expanded={lanesExpanded}
+        >
+          <svg
+            className={`w-4 h-4 transition-transform ${lanesExpanded ? 'rotate-180' : ''}`}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      )}
+    </div>
+    {lanesExpanded && pinnedTopics.length > 0 && (
+      <PinnedTopicLanes
+        topics={pinnedTopics}
+        stats={stats}
+        durationNs={durationNs}
+        startNs={startNs}
+        endNs={endNs}
+        timeNs={timeNs}
+        onSeek={(fraction) => seekFraction(fraction)}
+        onUnpin={(topic) => focusBagId && usePinnedTopicsStore.getState().togglePin(focusBagId, topic)}
+      />
+    )}
     </div>
   );
 }
@@ -392,7 +450,13 @@ export function Timeline() {
  * (see the accent-colour comment in index.css), so there's nothing to
  * subscribe to.
  */
-function DensityStrip({ density }: { density: Float32Array }) {
+function DensityStrip({
+  density,
+  className = 'absolute top-1 left-0 w-full h-[3px] pointer-events-none rounded-full',
+}: {
+  density: Float32Array;
+  className?: string;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -427,12 +491,108 @@ function DensityStrip({ density }: { density: Float32Array }) {
     return () => ro.disconnect();
   }, [density]);
 
+  return <canvas ref={canvasRef} className={className} aria-hidden="true" />;
+}
+
+/**
+ * PinnedTopicLanes — one density lane per pinned topic (v1.7), so a
+ * SLAM-debug session can tell "TF went quiet" from "camera dropped out"
+ * at a glance instead of just "something happened around here". Capped at
+ * MAX_PINNED_TOPICS by the store, so this never has to scroll internally.
+ */
+function PinnedTopicLanes({
+  topics,
+  stats,
+  durationNs,
+  startNs,
+  endNs,
+  timeNs,
+  onSeek,
+  onUnpin,
+}: {
+  topics: string[];
+  stats: AllTopicStats | null;
+  durationNs: number;
+  startNs: bigint;
+  endNs: bigint;
+  timeNs: bigint;
+  onSeek: (fraction: number) => void;
+  onUnpin: (topic: string) => void;
+}) {
+  const fraction = endNs > startNs ? Number(timeNs - startNs) / Number(endNs - startNs) : 0;
   return (
-    <canvas
-      ref={canvasRef}
-      className="absolute top-1 left-0 w-full h-[3px] pointer-events-none rounded-full"
-      aria-hidden="true"
-    />
+    <div className="border-t border-border/60 px-4 py-2 space-y-1.5">
+      {topics.map((topic) => (
+        <LaneRow
+          key={topic}
+          topic={topic}
+          topicStats={stats?.[topic] ?? null}
+          durationNs={durationNs}
+          fraction={fraction}
+          onSeek={onSeek}
+          onUnpin={() => onUnpin(topic)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function LaneRow({
+  topic,
+  topicStats,
+  durationNs,
+  fraction,
+  onSeek,
+  onUnpin,
+}: {
+  topic: string;
+  topicStats: MessageStats | null;
+  durationNs: number;
+  fraction: number;
+  onSeek: (fraction: number) => void;
+  onUnpin: () => void;
+}) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const density = useMemo(
+    () => (topicStats ? computeMessageDensity({ [topic]: topicStats }, durationNs) : null),
+    [topic, topicStats, durationNs],
+  );
+
+  const handleClick = (e: React.MouseEvent) => {
+    const el = trackRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    onSeek((e.clientX - rect.left) / rect.width);
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-32 flex-shrink-0 mono text-[10px] text-text-secondary truncate" title={topic}>
+        {topic}
+      </span>
+      <div
+        ref={trackRef}
+        onClick={handleClick}
+        className="relative flex-1 h-4 rounded bg-surface overflow-hidden cursor-pointer"
+        title="Click to seek"
+      >
+        {density && <DensityStrip density={density} className="absolute inset-0 w-full h-full" />}
+        <div
+          className="absolute top-0 bottom-0 w-px bg-white/80 pointer-events-none"
+          style={{ left: `${Math.max(0, Math.min(1, fraction)) * 100}%` }}
+        />
+      </div>
+      <button
+        onClick={onUnpin}
+        className="w-5 h-5 flex-shrink-0 rounded flex items-center justify-center text-text-tertiary hover:text-accent-rose hover:bg-accent-rose/10 transition-colors"
+        title={`Unpin ${topic}`}
+        aria-label={`Unpin ${topic}`}
+      >
+        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
   );
 }
 

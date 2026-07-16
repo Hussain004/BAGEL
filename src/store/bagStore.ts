@@ -34,6 +34,7 @@ import {
 import { LiveConnection } from '../live/liveConnection';
 import { getTopicColor } from '../utils/color';
 import { useLayoutStore } from './layoutStore';
+import { usePinnedTopicsStore } from './pinnedTopicsStore';
 import { usePlayheadStore } from './playheadStore';
 import { useCustomSchemaStore } from './customSchemaStore';
 
@@ -313,6 +314,7 @@ export const useBagStore = create<BagState>((set, get) => ({
     // against a vanished entry. The static import is one-way (layoutStore
     // doesn't depend on bagStore) so no cycle.
     useLayoutStore.getState().closePanelsForBag(id);
+    usePinnedTopicsStore.getState().clearForBag(id);
     const newBags = new Map(state.bags);
     newBags.delete(id);
     const newOrder = state.bagOrder.filter((x) => x !== id);

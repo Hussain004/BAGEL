@@ -13,7 +13,8 @@ import {
   isTrajectoryCapableType,
 } from '../../../utils/messages';
 import { useLayoutStore, type PanelKind } from '../../../store/layoutStore';
-import { useBagStore } from '../../../store/bagStore';
+import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
+import { usePinnedTopicsStore, MAX_PINNED_TOPICS } from '../../../store/pinnedTopicsStore';
 import { useUiStore } from '../../../store/uiStore';
 import { useSchemaResolution } from '../../../hooks/useSchemaResolution';
 import type { TopicInfo } from '../../../types/bag';
@@ -161,6 +162,15 @@ export function TopicRow({ topic, index, bagId }: TopicRowProps) {
       (bagId ? s.bags.get(bagId)?.summary.format : null) ?? s.bag?.format,
   );
   const openSchemaPaste = useUiStore((s) => s.openSchemaPaste);
+  const resolvedBagId = useBagStore((s) => resolveBagEntry(s, bagId)?.id);
+  const isPinned = usePinnedTopicsStore((s) =>
+    resolvedBagId ? s.isPinned(resolvedBagId, topic.name) : false,
+  );
+  const pinnedCount = usePinnedTopicsStore((s) =>
+    resolvedBagId ? (s.pinnedByBag[resolvedBagId]?.length ?? 0) : 0,
+  );
+  const togglePin = usePinnedTopicsStore((s) => s.togglePin);
+  const pinAtCap = !isPinned && pinnedCount >= MAX_PINNED_TOPICS;
 
   // Schema availability check — only `.db3` topics can be schema-missing.
   // mcap / bag short-circuit to resolved.
@@ -230,6 +240,12 @@ export function TopicRow({ topic, index, bagId }: TopicRowProps) {
               title="Panel open for this topic"
             />
           )}
+          {isPinned && (
+            <PinIcon
+              className="w-3 h-3 text-accent-amber flex-shrink-0"
+              title="Pinned to the timeline lanes drawer"
+            />
+          )}
           {schemaMissing && (
             <span
               className="badge badge-amber flex-shrink-0 cursor-pointer"
@@ -276,6 +292,28 @@ export function TopicRow({ topic, index, bagId }: TopicRowProps) {
         className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity z-10"
         onClick={(e) => e.stopPropagation()}
       >
+        {resolvedBagId && (
+          <button
+            onClick={() => togglePin(resolvedBagId, topic.name)}
+            disabled={pinAtCap}
+            title={
+              isPinned
+                ? 'Unpin from the timeline lanes drawer'
+                : pinAtCap
+                  ? `Timeline lanes drawer is full (max ${MAX_PINNED_TOPICS})`
+                  : 'Pin to the timeline lanes drawer'
+            }
+            aria-label={isPinned ? `Unpin ${topic.name}` : `Pin ${topic.name}`}
+            aria-pressed={isPinned}
+            className={`w-6 h-6 rounded-md flex items-center justify-center border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+              isPinned
+                ? 'bg-accent-amber/10 border-accent-amber/40 text-accent-amber hover:bg-accent-amber/15'
+                : 'bg-surface border-border text-text-secondary hover:border-accent-amber/40 hover:text-accent-amber'
+            }`}
+          >
+            <PinIcon className="w-3 h-3" />
+          </button>
+        )}
         {schemaMissing ? (
           <PanelButton
             label="Add schema"
@@ -330,5 +368,25 @@ function PanelButton({
     >
       {label}
     </button>
+  );
+}
+
+/** Simple map-pin / thumbtack silhouette - hand-drawn like the app's other
+ * inline SVGs (see AnchorIcon in Toolbar.tsx), not pulled from an icon lib. */
+function PinIcon({ className, title }: { className?: string; title?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      aria-hidden={title ? undefined : 'true'}
+      role={title ? 'img' : undefined}
+    >
+      {title && <title>{title}</title>}
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 21s-7-6.2-7-11a7 7 0 0114 0c0 4.8-7 11-7 11z" />
+      <circle cx="12" cy="10" r="2.5" />
+    </svg>
   );
 }
