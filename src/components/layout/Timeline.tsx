@@ -49,6 +49,7 @@ export function Timeline() {
     setSpeed,
     setLoop,
     tick,
+    discreteSeekId,
   } = usePlayheadStore();
   const { annotations, addAnnotation, removeAnnotation, updateLabel } = useAnnotationStore();
   // useMessageDensity already skips live bags internally (no fixed
@@ -60,8 +61,38 @@ export function Timeline() {
   const [lanesExpanded, setLanesExpanded] = useState(false);
 
   const trackRef = useRef<HTMLDivElement>(null);
-  const isDraggingRef = useRef(false);
   const lastFrameRef = useRef<number | null>(null);
+  // State (not a ref) so the knob's scale-while-dragging class actually
+  // re-renders. Read directly in the plain (non-memoized) pointer handlers
+  // below, so there's no stale-closure risk from switching off a ref.
+  const [isDragging, setIsDragging] = useState(false);
+  // Time-under-cursor tooltip, updated on every hover/drag pointer move.
+  const [hoverInfo, setHoverInfo] = useState<{ x: number; timeSec: number } | null>(null);
+  const updateHoverFromEvent = useCallback(
+    (clientX: number) => {
+      const el = trackRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const x = Math.max(0, Math.min(rect.width, clientX - rect.left));
+      const frac = rect.width > 0 ? x / rect.width : 0;
+      const durationSec = Number(endNs - startNs) / 1e9;
+      setHoverInfo({ x, timeSec: frac * durationSec });
+    },
+    [startNs, endNs],
+  );
+
+  // Brief width-transition window on the progress fill after a *discrete*
+  // seek (bookmark click, Home/End/arrow keys, "back to live") so the jump
+  // reads as travel. Never active during RAF playback or a drag - those
+  // update every frame already, and a transition would just add lag behind
+  // a value that's constantly moving. discreteSeekId only increments from
+  // playheadStore.seek(), never from tick()/seekFraction().
+  const [seekTransitionActive, setSeekTransitionActive] = useState(false);
+  useEffect(() => {
+    setSeekTransitionActive(true);
+    const timer = setTimeout(() => setSeekTransitionActive(false), 180);
+    return () => clearTimeout(timer);
+  }, [discreteSeekId]);
   // Tracks which annotation tick is currently hovered so double-click can
   // rename it instead of creating a new one. Ref (not state) to avoid
   // re-renders on every mouse-enter/leave.
@@ -119,17 +150,27 @@ export function Timeline() {
   );
 
   const handlePointerDown = (e: React.PointerEvent) => {
-    isDraggingRef.current = true;
+    setIsDragging(true);
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     seekFromEvent(e.clientX);
+    updateHoverFromEvent(e.clientX);
   };
   const handlePointerMove = (e: React.PointerEvent) => {
-    if (!isDraggingRef.current) return;
+    // Always tracks hover position (dragging or not) for the time tooltip;
+    // only feeds the playhead while an actual drag is in progress.
+    updateHoverFromEvent(e.clientX);
+    if (!isDragging) return;
     seekFromEvent(e.clientX);
   };
   const handlePointerUp = (e: React.PointerEvent) => {
-    isDraggingRef.current = false;
+    setIsDragging(false);
     (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+  };
+  const handlePointerLeave = () => {
+    // Keep the tooltip while actively dragging even if the cursor strays
+    // outside the strip - pointer capture keeps the drag alive either way.
+    if (isDragging) return;
+    setHoverInfo(null);
   };
 
   // Double-click on track -> rename hovered annotation, or add a new one.
@@ -269,6 +310,7 @@ export function Timeline() {
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
+        onPointerLeave={handlePointerLeave}
         onDoubleClick={handleTrackDoubleClick}
         id="timeline-track"
         role="slider"
@@ -286,14 +328,28 @@ export function Timeline() {
         {density && <DensityStrip density={density} />}
         <div className="w-full h-1.5 rounded-full bg-surface overflow-hidden relative">
           <div
-            className="absolute inset-y-0 left-0 progress-bar"
+            className={`absolute inset-y-0 left-0 progress-bar ${
+              seekTransitionActive ? 'transition-[width] duration-150 ease-out' : ''
+            }`}
             style={{ width: `${Math.max(0, Math.min(1, fraction)) * 100}%` }}
           />
           <div
-            className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-white shadow-glow-blue border border-accent-blue transition-transform group-hover:scale-110"
+            className={`absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-white shadow-glow-blue border border-accent-blue transition-transform ${
+              isDragging ? 'scale-[1.3]' : 'group-hover:scale-110'
+            }`}
             style={{ left: `calc(${Math.max(0, Math.min(1, fraction)) * 100}% - 7px)` }}
           />
         </div>
+
+        {/* Time-under-cursor tooltip, shown on hover and while dragging. */}
+        {hoverInfo && (
+          <div
+            className="absolute -top-7 pointer-events-none px-1.5 py-0.5 rounded bg-bg-primary/95 border border-border text-[10px] mono text-text-primary whitespace-nowrap shadow-panel z-30"
+            style={{ left: `${hoverInfo.x}px`, transform: 'translateX(-50%)' }}
+          >
+            {formatRelative(BigInt(Math.max(0, Math.round(hoverInfo.timeSec * 1e9))))}
+          </div>
+        )}
 
         {/* Annotation ticks */}
         {annotations.map((ann) => {

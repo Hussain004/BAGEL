@@ -268,6 +268,34 @@ select option {
   }
 }
 
+/* Panel open: tighter and smaller than the shared fade-in-scale (which
+   modals/dropdowns also use) - a dedicated keyframe so tuning one doesn't
+   move the other. */
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Panel close: mirrors panel-in. Applied while the real removal from
+   layoutStore is deferred (see PanelShell's close handler) so the panel
+   visibly settles instead of vanishing mid-frame. */
+@keyframes panel-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
 @keyframes shimmer {
   0% {
     background-position: -200% 0;
@@ -327,6 +355,20 @@ select option {
   animation: pulse-border 2s ease-in-out infinite;
 }
 
+/* One-shot version for "you just docked here" confirmation - the layout
+   change itself is the primary confirmation, this is a quiet accent. */
+.animate-pulse-border-once {
+  animation: pulse-border 250ms ease-in-out 1;
+}
+
+.animate-panel-in {
+  animation: panel-in 180ms ease-out forwards;
+}
+
+.animate-panel-out {
+  animation: panel-out 120ms ease-in forwards;
+}
+
 .animate-shimmer {
   background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.04), transparent);
   background-size: 200% 100%;
@@ -357,12 +399,16 @@ select option {
 .stagger-8 { animation-delay: 0.40s; }
 
 /* ── Progress Bar ── */
+/* No width transition here on purpose - this class is shared by the
+   Timeline seek fill (updates every RAF frame during playback/drag and
+   needs an *unanimated* width so it doesn't lag behind the real position)
+   and the DropZone load-progress fill (wants a smooth transition, applied
+   directly at that call site instead since the two need different timing). */
 .progress-bar {
   background: linear-gradient(90deg, var(--color-accent-blue), var(--color-accent-cyan), var(--color-accent-violet));
   background-size: 200% 100%;
   animation: gradient-shift 2s ease infinite;
   border-radius: 999px;
-  transition: width 0.3s ease;
 }
 
 /* ── Scrollbar ── */

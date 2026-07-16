@@ -492,7 +492,7 @@ function LoadingState({ progress }: { progress: number }) {
       </div>
       <div className="w-full max-w-xs h-1.5 bg-surface rounded-full overflow-hidden">
         <div
-          className="progress-bar h-full"
+          className="progress-bar h-full transition-[width] duration-300 ease-out"
           style={{ width: `${progress}%` }}
         />
       </div>

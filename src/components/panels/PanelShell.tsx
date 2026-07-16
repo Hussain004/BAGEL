@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useEscapeToClose } from '../../hooks/useEscapeToClose';
 import { useLayoutStore, type PanelKind } from '../../store/layoutStore';
 import { useDragDockStore } from '../../store/dragDockStore';
@@ -77,11 +77,33 @@ export function PanelShell({
   const startDrag = useDragDockStore((s) => s.startDrag);
   const endDrag = useDragDockStore((s) => s.endDrag);
   const isDragging = useDragDockStore((s) => s.sourceId === panelId);
+  const justDropped = useDragDockStore((s) => s.justDroppedId === panelId);
   const bagCount = useBagStore((s) => s.bagOrder.length);
   const entry = useBagStore((s) => resolveBagEntry(s, bagId));
   const parts = type.split('/');
   const shortType = parts[parts.length - 1] || type;
   const pkg = parts[0] || '';
+
+  /**
+   * Close is deferred behind a 120ms exit animation instead of removing the
+   * panel from layoutStore immediately - an instant unmount plus the grid
+   * reflowing in the same frame reads as a glitch, not a close. `committed`
+   * guards against the animationend handler and the timeout fallback both
+   * firing (reduced-motion collapses the animation to ~0ms, so animationend
+   * can fire before the timeout would have anyway).
+   */
+  const [isClosing, setIsClosing] = useState(false);
+  const committedRef = useRef(false);
+  const commitClose = useCallback(() => {
+    if (committedRef.current) return;
+    committedRef.current = true;
+    closePanel(panelId);
+  }, [closePanel, panelId]);
+  useEffect(() => {
+    if (!isClosing) return;
+    const timer = setTimeout(commitClose, 150);
+    return () => clearTimeout(timer);
+  }, [isClosing, commitClose]);
 
   /**
    * The whole header is a drag handle. We opt out when the pointer-down
@@ -127,8 +149,13 @@ export function PanelShell({
     // allocated parent width. See PanelLeafContent comment for the
     // full story on the single-panel resize loop.
     <div
-      className={`flex-1 flex flex-col min-h-0 min-w-0 rounded-xl border border-border bg-bg-secondary shadow-panel overflow-hidden animate-fade-in-scale ${
-        isDragging ? 'opacity-60 ring-2 ring-accent-blue/60' : ''
+      onAnimationEnd={(e) => {
+        if (e.target === e.currentTarget && isClosing) commitClose();
+      }}
+      className={`flex-1 flex flex-col min-h-0 min-w-0 rounded-xl border border-border bg-bg-secondary shadow-panel overflow-hidden ${
+        isClosing ? 'animate-panel-out' : 'animate-panel-in'
+      } ${isDragging ? 'opacity-60 ring-2 ring-accent-blue/60' : ''} ${
+        justDropped ? 'animate-pulse-border-once' : ''
       }`}
     >
       <header
@@ -214,8 +241,9 @@ export function PanelShell({
             )}
           </button>
           <button
-            onClick={() => closePanel(panelId)}
-            className="w-7 h-7 rounded-md flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-surface-hover transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
+            onClick={() => setIsClosing(true)}
+            disabled={isClosing}
+            className="w-7 h-7 rounded-md flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-surface-hover transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60 disabled:opacity-50"
             title="Close panel (Esc)"
             aria-label={`Close ${KIND_LABELS[kind]} panel for ${topicName}`}
             id={`close-panel-${panelId}`}

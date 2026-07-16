@@ -220,12 +220,17 @@ function DropZoneOverlay({ panelId }: { panelId: string }) {
   const sourceId = useDragDockStore((s) => s.sourceId);
   const dockPanel = useLayoutStore((s) => s.dockPanel);
   const endDrag = useDragDockStore((s) => s.endDrag);
+  const markDropped = useDragDockStore((s) => s.markDropped);
   const [hovered, setHovered] = useState<DropEdge | null>(null);
 
   if (sourceId === null || sourceId === panelId) return null;
 
   const drop = (edge: DropEdge) => {
     dockPanel(sourceId, panelId, edge);
+    // Confirmation pulse on the panel that just landed - distinct from a
+    // cancelled drag (released over the centre), which calls endDrag()
+    // directly from PanelShell without ever reaching here.
+    markDropped(sourceId);
     endDrag();
     setHovered(null);
   };

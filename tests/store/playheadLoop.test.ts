@@ -58,6 +58,7 @@ function resetStore() {
     playing: false,
     speed: 1,
     loop: false,
+    discreteSeekId: 0,
   });
 }
 
@@ -171,5 +172,32 @@ describe('initFromBag - preserves loop preference', () => {
     const after = usePlayheadStore.getState();
     expect(after.loop).toBe(true);
     expect(after.timeNs).toBe(100n * ONE_SEC_NS);
+  });
+});
+
+describe('discreteSeekId - distinguishes a jump from continuous motion', () => {
+  it('increments on every seek() call', () => {
+    const store = usePlayheadStore.getState();
+    expect(usePlayheadStore.getState().discreteSeekId).toBe(0);
+    store.seek(2n * ONE_SEC_NS);
+    expect(usePlayheadStore.getState().discreteSeekId).toBe(1);
+    store.seek(3n * ONE_SEC_NS);
+    expect(usePlayheadStore.getState().discreteSeekId).toBe(2);
+  });
+
+  it('is left untouched by tick() (RAF playback)', () => {
+    const store = usePlayheadStore.getState();
+    store.seek(2n * ONE_SEC_NS);
+    expect(usePlayheadStore.getState().discreteSeekId).toBe(1);
+    store.tick(0.5);
+    expect(usePlayheadStore.getState().discreteSeekId).toBe(1);
+  });
+
+  it('is left untouched by seekFraction() (pointer-drag scrubbing)', () => {
+    const store = usePlayheadStore.getState();
+    store.seek(2n * ONE_SEC_NS);
+    expect(usePlayheadStore.getState().discreteSeekId).toBe(1);
+    store.seekFraction(0.5);
+    expect(usePlayheadStore.getState().discreteSeekId).toBe(1);
   });
 });

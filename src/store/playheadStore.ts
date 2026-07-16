@@ -50,6 +50,17 @@ interface PlayheadState {
    * wants to inspect repeatedly without manually seeking.
    */
   loop: boolean;
+  /**
+   * Incremented on every `seek()` call (Home/End/arrow keys, annotation
+   * clicks, "back to live") and left untouched by `tick()` (RAF playback)
+   * and `seekFraction()` (pointer-drag scrubbing). The Timeline reads this
+   * to tell "the user just jumped somewhere" from "the head is moving
+   * continuously" - it briefly animates the progress fill's width for the
+   * former so the jump reads as travel, and never for the latter, where an
+   * animation would only add lag against a value that's already updating
+   * every frame.
+   */
+  discreteSeekId: number;
 
   /** Reset for a newly loaded bag - sets bounds and parks the head at start. */
   initFromBag: (startNs: bigint, endNs: bigint) => void;
@@ -77,6 +88,7 @@ export const usePlayheadStore = create<PlayheadState>((set, get) => ({
   playing: false,
   speed: 1,
   loop: readInitialLoop(),
+  discreteSeekId: 0,
 
   initFromBag: (startNs, endNs) => {
     // `loop` is intentionally preserved across bag swaps - it's a user
@@ -85,8 +97,8 @@ export const usePlayheadStore = create<PlayheadState>((set, get) => ({
   },
 
   seek: (timeNs) => {
-    const { startNs, endNs } = get();
-    set({ timeNs: clamp(timeNs, startNs, endNs) });
+    const { startNs, endNs, discreteSeekId } = get();
+    set({ timeNs: clamp(timeNs, startNs, endNs), discreteSeekId: discreteSeekId + 1 });
   },
 
   seekFraction: (fraction) => {
