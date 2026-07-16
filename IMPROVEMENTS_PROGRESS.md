@@ -2,7 +2,7 @@
 
 Status of each item from [IMPROVEMENTS.md](./IMPROVEMENTS.md). Updated as work lands.
 
-**Done: 15 / 25, 2 partial** (quick wins: 11/11, medium: 2/9 done + 2 partial, larger initiatives: 2/5 done, 3 decided and in progress)
+**Done: 16 / 25, 2 partial** (quick wins: 11/11, medium: 3/9 done + 2 partial, larger initiatives: 2/5 done, 3 decided and in progress)
 
 ## Quick Wins
 
@@ -27,7 +27,7 @@ Status of each item from [IMPROVEMENTS.md](./IMPROVEMENTS.md). Updated as work l
 | 12 | Shared PanelStates + OverlayCard (cohesion) | Partial | PanelStates half done: extracted src/components/panels/shared/PanelStates.tsx, eliminated 13 duplicate Loading/Error/Empty implementations across 7 panels. OverlayCard (the floating in-canvas control card pattern used by 3D Display, plot controls, etc.) not started |
 | 13 | 3D Display card progressive disclosure | **Done** | Only color-by/point-size/grid/axes visible by default; rest behind 3 native `<details>` sections (Coordinate frame, Range and clipping, Accumulation, Overlays) with expand-state persisted per-panel in threeDPanelStore; defaults save/reset moved to a pinned footer; manually verified in-browser (dark + light theme, expand-state survives close/reopen) |
 | 14 | Timeline data-density strip | Todo | |
-| 15 | Docking discoverability + keyboard path | Todo | |
+| 15 | Docking discoverability + keyboard path | **Done** | 6-dot grip glyph on every header; first-drag-of-session dim on sibling panels (dragDockStore.hasDraggedOnce); panel headers focusable, Alt+Arrow moves the focused panel via new layoutStore.movePanel (wraps dockPanel using the existing traversal order). Tests cover movePanel; browser click-through blocked by the tooling issue noted in item 22 |
 | 16 | Sample bag lands on a curated cockpit layout | Todo | |
 | 17 | Live status: consolidate buttons, aria-live, buffer extent | Todo | |
 | 18 | Error copy with next steps | Partial | Scoped down deliberately: investigated the actual error paths and found source-level messages already carry real next-step guidance where one exists (createUrlSource already explains CORS/Content-Length/Accept-Ranges failures inline; schema-missing topics route to the paste-schema modal instead of erroring). Building a downstream error->action classifier on top of that would duplicate it, not improve it. Shipped the honest remaining gap instead: a "Copy error details" button on the DropZone parse-failure box and the shared PanelErrorState, for the unscripted cases (corrupt file, worker exception) that don't have a real next step beyond filing a bug report |
