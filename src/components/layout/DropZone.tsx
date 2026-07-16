@@ -2,6 +2,8 @@ import { useState, useCallback, useRef } from 'react';
 import { useBagStore } from '../../store/bagStore';
 import { useUiStore } from '../../store/uiStore';
 import { useLiveStore } from '../../store/liveStore';
+import { useLayoutStore, panelLeafId } from '../../store/layoutStore';
+import { usePlayheadStore } from '../../store/playheadStore';
 import { CopyErrorButton } from '../panels/shared/CopyErrorButton';
 
 /**
@@ -21,7 +23,7 @@ export function DropZone() {
   const handleFile = useCallback(
     (file: File) => {
       clearError();
-      loadBag(file);
+      return loadBag(file);
     },
     [loadBag, clearError]
   );
@@ -358,7 +360,7 @@ function SampleBagButton({
   onLoad,
   disabled,
 }: {
-  onLoad: (file: File) => void;
+  onLoad: (file: File) => void | Promise<unknown>;
   disabled: boolean;
 }) {
   const [fetching, setFetching] = useState(false);
@@ -375,7 +377,8 @@ function SampleBagButton({
       const blob = await resp.blob();
       // File constructors need a name + lastModified for the parser cache key.
       const file = new File([blob], 'bagel-tour.mcap', { type: 'application/octet-stream' });
-      onLoad(file);
+      await onLoad(file);
+      applyCuratedSampleLayout();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setFetching(false);
@@ -495,6 +498,33 @@ function LoadingState({ progress }: { progress: number }) {
       </div>
     </div>
   );
+}
+
+/**
+ * applyCuratedSampleLayout — lands the sample-bag first-time visitor on a
+ * working cockpit instead of an empty grid + a "click any topic" hint.
+ * Builds `H(3d-scan, V(image, plot))` via the same openPanel/dockPanel
+ * actions drag-to-dock uses (not a hand-rolled tree), seeks a few seconds
+ * in so the first frame already has motion, and starts playback.
+ *
+ * Topic names/types are hardcoded against `scripts/build-sample-bag.mjs`'s
+ * fixed topic list - this is the bundled sample bag, not arbitrary user
+ * data, so there's nothing to look up.
+ */
+function applyCuratedSampleLayout(): void {
+  const layout = useLayoutStore.getState();
+  layout.openPanel({ kind: '3d', topicName: '/scan', type: 'sensor_msgs/msg/LaserScan' });
+  layout.openPanel({ kind: 'image', topicName: '/camera/image_raw', type: 'sensor_msgs/msg/Image' });
+  layout.openPanel({ kind: 'plot', topicName: '/imu/data', type: 'sensor_msgs/msg/Imu' });
+  const imageId = panelLeafId('image', '/camera/image_raw');
+  const plotId = panelLeafId('plot', '/imu/data');
+  layout.dockPanel(plotId, imageId, 'bottom');
+
+  const playhead = usePlayheadStore.getState();
+  playhead.seek(playhead.startNs + 3_000_000_000n);
+  playhead.setPlaying(true);
+
+  useUiStore.getState().triggerOnboardingHint();
 }
 
 /** BAGEL logo icon */

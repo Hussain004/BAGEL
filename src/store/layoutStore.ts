@@ -126,7 +126,7 @@ interface LayoutState {
  * have distinct ids. Leaves restored from old hashes lack a bagId; those
  * use the back-compat form and the panel renders from the focused bag.
  */
-function panelLeafId(kind: PanelKind, topicName: string, bagId?: string): string {
+export function panelLeafId(kind: PanelKind, topicName: string, bagId?: string): string {
   if (bagId) return `${kind}:${bagId}:${topicName}`;
   return `${kind}:${topicName}`;
 }

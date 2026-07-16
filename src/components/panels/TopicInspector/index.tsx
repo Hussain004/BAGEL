@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useBagStore, type BagEntry } from '../../../store/bagStore';
+import { useUiStore } from '../../../store/uiStore';
 import { TopicRow } from './TopicRow';
 import type { TopicInfo } from '../../../types/bag';
 
@@ -122,6 +123,8 @@ export function TopicInspector() {
         </div>
       </div>
 
+      <OnboardingHint />
+
       {/* Topic List */}
       <div
         className="flex-1 overflow-y-auto px-4 py-2 min-h-0"
@@ -224,5 +227,36 @@ function SortButton({
     >
       {label}
     </button>
+  );
+}
+
+/**
+ * OnboardingHint — one-time coach line shown after the sample bag lands on
+ * its curated layout (see applyCuratedSampleLayout in DropZone.tsx). The
+ * cockpit itself is the wow moment; this is the one sentence that says
+ * "the rest of the sidebar is yours too."
+ */
+function OnboardingHint() {
+  const show = useUiStore((s) => s.showOnboardingHint);
+  const dismiss = useUiStore((s) => s.dismissOnboardingHint);
+  if (!show) return null;
+  return (
+    <div
+      role="note"
+      className="mx-4 mb-2 flex items-start gap-2.5 p-3 rounded-lg bg-accent-blue/10 border border-accent-blue/20 animate-fade-in"
+    >
+      <p className="flex-1 text-text-secondary text-xs leading-relaxed">
+        Click any topic to open more panels. Drag a panel header to rearrange them.
+      </p>
+      <button
+        onClick={dismiss}
+        aria-label="Dismiss"
+        className="text-text-tertiary hover:text-text-primary flex-shrink-0 -mt-0.5"
+      >
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
   );
 }

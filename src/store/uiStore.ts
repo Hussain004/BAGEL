@@ -9,6 +9,17 @@
 import { create } from 'zustand';
 import type { PanelKind } from './layoutStore';
 
+const HINT_DISMISSED_KEY = 'bagel:onboarding-hint-dismissed:v1';
+function readHintDismissed(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(HINT_DISMISSED_KEY) === '1';
+  } catch {
+    // localStorage access can throw in sandboxed iframes; treat as unseen.
+    return false;
+  }
+}
+
 export type ModalKind = 'about' | 'shortcuts' | 'bag-edit' | 'urdf-load' | 'clip-export' | null;
 
 /**
@@ -35,6 +46,17 @@ interface UiState {
   schemaPaste: SchemaPasteTarget | null;
   openSchemaPaste: (target: SchemaPasteTarget) => void;
   closeSchemaPaste: () => void;
+  /**
+   * One-time "click a topic to open more panels, drag a header to
+   * rearrange" hint shown over the sidebar after the sample bag lands on
+   * its curated layout - the payoff (3D + image + plot moving in sync) is
+   * visible immediately, but nothing else tells a first-time visitor the
+   * rest of the app is theirs to rearrange. Persisted to localStorage once
+   * dismissed so it doesn't reappear on a later "Try a sample bag" click.
+   */
+  showOnboardingHint: boolean;
+  triggerOnboardingHint: () => void;
+  dismissOnboardingHint: () => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -43,4 +65,17 @@ export const useUiStore = create<UiState>((set) => ({
   schemaPaste: null,
   openSchemaPaste: (target) => set({ schemaPaste: target }),
   closeSchemaPaste: () => set({ schemaPaste: null }),
+  showOnboardingHint: false,
+  triggerOnboardingHint: () => {
+    if (readHintDismissed()) return;
+    set({ showOnboardingHint: true });
+  },
+  dismissOnboardingHint: () => {
+    try {
+      window.localStorage.setItem(HINT_DISMISSED_KEY, '1');
+    } catch {
+      // Best-effort persistence.
+    }
+    set({ showOnboardingHint: false });
+  },
 }));
