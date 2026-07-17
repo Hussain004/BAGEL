@@ -123,7 +123,13 @@ export function TFTree({ panelId, topicName, type, bagId }: TFTreeProps) {
           }
         />
       )}
-      {error && <PanelErrorState title="Failed to load TF data" message={error} />}
+      {error && (
+        <PanelErrorState
+          title="Failed to load TF data"
+          message={error}
+          schemaTarget={{ typeName: type, topicName, panelKind: 'tf', bagId }}
+        />
+      )}
       {!loading && !error && missing && (
         <PanelEmptyState message="No /tf or /tf_static topic in this bag." />
       )}

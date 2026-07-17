@@ -3,6 +3,8 @@ import * as THREE from 'three';
 import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
 import { useBagLocalPlayhead } from '../../../hooks/useBagLocalPlayhead';
 import { useEscapeToClose } from '../../../hooks/useEscapeToClose';
+import { OverlayCard } from '../shared/OverlayCard';
+import { PanelErrorState } from '../shared/PanelStates';
 import {
   DEFAULT_THREE_D_SETTINGS,
   useThreeDPanelStore,
@@ -1616,7 +1618,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
             />
           </div>
 
-          <div className="absolute top-2 left-2 text-text-muted text-[10px] mono leading-tight bg-bg-primary/60 backdrop-blur px-2 py-1 rounded-md border border-border max-w-[60%]">
+          <OverlayCard variant="subtle" className="absolute top-2 left-2 text-text-muted text-[10px] mono leading-tight px-2 py-1 max-w-[60%]">
             <div className="text-text-secondary">
               {sceneKind === 'pointcloud'
                 ? 'PointCloud2'
@@ -1648,7 +1650,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
                 shift+click sets orbit centre
               </div>
             )}
-          </div>
+          </OverlayCard>
 
           {showInitialSpinner && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-bg-primary/70">
@@ -1675,9 +1677,12 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
             </div>
           )}
           {error && !cloud && !poseMessage && !mapMessage && !(isMarker && markerCount > 0) && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-bg-primary/70 p-8 text-center">
-              <div className="text-accent-rose text-sm font-medium">Failed to load frame</div>
-              <div className="text-text-secondary text-xs max-w-md">{error}</div>
+            <div className="absolute inset-0 flex bg-bg-primary/70">
+              <PanelErrorState
+                title="Failed to load frame"
+                message={error}
+                schemaTarget={{ typeName: type, topicName, panelKind: '3d', bagId }}
+              />
             </div>
           )}
         </div>
@@ -1895,7 +1900,7 @@ function ControlsCard({
   );
 
   return (
-    <div className="bg-bg-primary/85 backdrop-blur border border-border rounded-md text-xs mono shadow-panel">
+    <OverlayCard elevated className="text-xs mono">
       <button
         onClick={() => setOpen((o) => !o)}
         className="w-full px-2.5 py-1.5 flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors"
@@ -2402,7 +2407,7 @@ function ControlsCard({
         </div>
         </div>
       )}
-    </div>
+    </OverlayCard>
   );
 }
 

@@ -40,7 +40,13 @@ export function RawMessageInspector({ panelId, topicName, type, bagId }: RawMess
       bagId={bagId}
     >
       {showInitialLoading && <PanelLoadingState message="Decoding messages…" />}
-      {error && !message && <PanelErrorState title="Failed to load messages" message={error} />}
+      {error && !message && (
+        <PanelErrorState
+          title="Failed to load messages"
+          message={error}
+          schemaTarget={{ typeName: type, topicName, panelKind: 'raw', bagId }}
+        />
+      )}
       {!loading && !error && !message && (
         <PanelEmptyState message="No messages on this topic." />
       )}
@@ -192,4 +198,3 @@ function CollapsibleNode({
     </div>
   );
 }
-
