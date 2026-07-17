@@ -450,7 +450,13 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
           }
         />
       )}
-      {error && <PanelErrorState title="Failed to load messages" message={error} />}
+      {error && (
+        <PanelErrorState
+          title="Failed to load messages"
+          message={error}
+          schemaTarget={{ typeName: type, topicName, panelKind: 'plot', bagId }}
+        />
+      )}
       {!loading && !error && (!series || messages?.length === 0) && (
         <PanelEmptyState
           message={
@@ -617,4 +623,3 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
     </PanelShell>
   );
 }
-

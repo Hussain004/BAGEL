@@ -6,6 +6,9 @@
  */
 
 import { CopyErrorButton } from './CopyErrorButton';
+import { useUiStore } from '../../../store/uiStore';
+import type { PanelKind } from '../../../store/layoutStore';
+import { classifyPanelError } from '../../../utils/actionableError';
 
 export function PanelLoadingState({ message }: { message: string }) {
   return (
@@ -22,15 +25,40 @@ export function PanelLoadingState({ message }: { message: string }) {
 export function PanelErrorState({
   message,
   title = 'Failed to load data',
+  schemaTarget,
 }: {
   message: string;
   title?: string;
+  schemaTarget?: {
+    typeName: string;
+    topicName?: string;
+    panelKind?: PanelKind;
+    bagId?: string;
+  };
 }) {
+  const error = classifyPanelError(message, title, !!schemaTarget);
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-2 p-8 text-center">
-      <div className="text-accent-rose text-sm font-medium">{title}</div>
-      <div className="text-text-secondary text-xs max-w-md">{message}</div>
-      <CopyErrorButton text={`${title}\n${message}`} />
+      <div className="text-accent-rose text-sm font-medium">{error.title}</div>
+      <div className="text-text-secondary text-xs max-w-md">{error.detail}</div>
+      <div className="flex items-center gap-3">
+        {error.action?.kind === 'paste-schema' && schemaTarget && (
+          <button
+            onClick={() =>
+              useUiStore.getState().openSchemaPaste({
+                typeName: schemaTarget.typeName,
+                topicName: schemaTarget.topicName,
+                followupPanelKind: schemaTarget.panelKind,
+                bagId: schemaTarget.bagId,
+              })
+            }
+            className="text-xs font-medium text-accent-blue hover:text-accent-cyan transition-colors"
+          >
+            {error.action.label}
+          </button>
+        )}
+        <CopyErrorButton text={`${error.title}\n${error.raw}`} />
+      </div>
     </div>
   );
 }

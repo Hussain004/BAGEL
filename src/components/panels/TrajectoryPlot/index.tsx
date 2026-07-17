@@ -3,6 +3,7 @@ import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
 import { useBagLocalPlayhead } from '../../../hooks/useBagLocalPlayhead';
 import { PanelShell } from '../PanelShell';
 import { PanelLoadingState, PanelErrorState, PanelEmptyState } from '../shared/PanelStates';
+import { OverlayCard } from '../shared/OverlayCard';
 import { getTopicColor } from '../../../utils/color';
 import { useThemeStore } from '../../../store/themeStore';
 import { chartTheme, type ChartTheme } from '../../../utils/chartTheme';
@@ -404,7 +405,13 @@ export function TrajectoryPlot({ panelId, topicName, type, bagId }: TrajectoryPl
           }
         />
       )}
-      {error && <PanelErrorState title="Failed to load trajectory" message={error} />}
+      {error && (
+        <PanelErrorState
+          title="Failed to load trajectory"
+          message={error}
+          schemaTarget={{ typeName: type, topicName, panelKind: 'trajectory', bagId }}
+        />
+      )}
       {!loading && !error && points.length === 0 && (
         <PanelEmptyState message="No usable pose data on this topic." />
       )}
@@ -450,7 +457,7 @@ export function TrajectoryPlot({ panelId, topicName, type, bagId }: TrajectoryPl
                 </label>
               )}
             </div>
-            <div className="absolute top-2 left-2 text-text-muted text-[10px] mono leading-tight bg-bg-primary/60 backdrop-blur px-2 py-1 rounded-md border border-border">
+            <OverlayCard variant="subtle" className="absolute top-2 left-2 text-text-muted text-[10px] mono leading-tight px-2 py-1">
               <div>{source}</div>
               {projected && (
                 <div className="text-accent-amber">x/y in metres from first GPS fix</div>
@@ -460,7 +467,7 @@ export function TrajectoryPlot({ panelId, topicName, type, bagId }: TrajectoryPl
                   © OpenStreetMap contributors
                 </div>
               )}
-            </div>
+            </OverlayCard>
           </div>
           <div className="px-4 py-1.5 border-t border-border flex items-center justify-between text-text-muted text-xs mono gap-3">
             <span>
@@ -736,4 +743,3 @@ function formatDistance(metres: number): string {
   if (metres >= 1) return `${metres < 10 ? metres.toFixed(1) : metres.toFixed(0)} m`;
   return `${(metres * 100).toFixed(0)} cm`;
 }
-

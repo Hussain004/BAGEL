@@ -37,6 +37,7 @@ import { useLayoutStore } from './layoutStore';
 import { usePinnedTopicsStore } from './pinnedTopicsStore';
 import { usePlayheadStore } from './playheadStore';
 import { useCustomSchemaStore } from './customSchemaStore';
+import { classifyBagError, type ActionableError } from '../utils/actionableError';
 
 export type TimeAlignment = 'wall-clock' | 'bag-start' | 'anchor';
 
@@ -67,7 +68,7 @@ interface BagState {
   focusBagId: string | null;
   alignment: TimeAlignment;
   isLoading: boolean;
-  error: string | null;
+  error: ActionableError | null;
   loadProgress: number;
 
   addBagFromFile: (file: File) => Promise<string | null>;
@@ -186,7 +187,7 @@ export const useBagStore = create<BagState>((set, get) => ({
           ? err.message
           : 'An unknown error occurred while parsing the bag file.';
       console.error('Failed to load bag file:', err);
-      set({ isLoading: false, error: message, loadProgress: 0 });
+      set({ isLoading: false, error: classifyBagError(message, 'file'), loadProgress: 0 });
       return null;
     }
   },
@@ -229,7 +230,7 @@ export const useBagStore = create<BagState>((set, get) => ({
           ? err.message
           : 'An unknown error occurred while fetching the bag from the URL.';
       console.error('Failed to load bag from URL:', err);
-      set({ isLoading: false, error: message, loadProgress: 0 });
+      set({ isLoading: false, error: classifyBagError(message, 'url'), loadProgress: 0 });
       throw err;
     }
   },

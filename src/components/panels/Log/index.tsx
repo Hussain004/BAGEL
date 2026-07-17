@@ -250,7 +250,13 @@ export function Log({ panelId, topicName, type, bagId }: LogPanelProps) {
       accentColor={getTopicColor(topicName, type)}
       bagId={bagId}
     >
-      {error && !messages && <PanelErrorState title="Failed to load logs" message={error} />}
+      {error && !messages && (
+        <PanelErrorState
+          title="Failed to load logs"
+          message={error}
+          schemaTarget={{ typeName: type, topicName, panelKind: 'log', bagId }}
+        />
+      )}
       {loading && !messages && (
         <PanelLoadingState message={`Loading logs… (${progress.toLocaleString()} entries decoded)`} />
       )}
@@ -524,4 +530,3 @@ function highlight(text: string, term: string): React.ReactNode[] {
   }
   return out;
 }
-

@@ -180,9 +180,26 @@ export function DropZone() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <div>
-                <p className="text-accent-rose font-medium text-sm">Failed to parse bag file</p>
-                <p className="text-text-secondary text-sm mt-1">{error}</p>
-                <CopyErrorButton text={error} />
+                <p className="text-accent-rose font-medium text-sm">{error.title}</p>
+                <p className="text-text-secondary text-sm mt-1">{error.detail}</p>
+                <div className="flex items-center gap-3 mt-2">
+                  {error.action && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (error.action?.kind === 'choose-file') {
+                          fileInputRef.current?.click();
+                        } else {
+                          clearError();
+                        }
+                      }}
+                      className="text-xs font-medium text-accent-blue hover:text-accent-cyan transition-colors"
+                    >
+                      {error.action.label}
+                    </button>
+                  )}
+                  <CopyErrorButton text={error.raw} />
+                </div>
               </div>
               <button
                 onClick={(e) => {

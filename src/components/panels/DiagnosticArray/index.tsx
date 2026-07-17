@@ -197,7 +197,13 @@ export function DiagnosticArray({
       accentColor={getTopicColor(topicName, type)}
       bagId={bagId}
     >
-      {error && !messages && <PanelErrorState title="Failed to load diagnostics" message={error} />}
+      {error && !messages && (
+        <PanelErrorState
+          title="Failed to load diagnostics"
+          message={error}
+          schemaTarget={{ typeName: type, topicName, panelKind: 'diagnostic', bagId }}
+        />
+      )}
       {loading && !messages && (
         <PanelLoadingState message={`Loading diagnostics… (${progress} reports decoded)`} />
       )}
@@ -596,4 +602,3 @@ function Inspector({
     </div>
   );
 }
-

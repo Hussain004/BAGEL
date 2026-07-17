@@ -8,6 +8,7 @@ import { decodeVideoFrames } from '../../../parsers/video';
 import { nsToSeconds } from '../../../utils/time';
 import { PanelShell } from '../PanelShell';
 import { PanelLoadingState, PanelErrorState, PanelEmptyState } from '../shared/PanelStates';
+import { OverlayCard } from '../shared/OverlayCard';
 import { getTopicColor } from '../../../utils/color';
 import { useCameraInfo, type CameraIntrinsics } from '../../../hooks/useCameraInfo';
 import {
@@ -323,7 +324,13 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
       headerExtras={headerExtras}
     >
       {showInitialLoading && <PanelLoadingState message="Loading frame…" />}
-      {error && !hasContent && <PanelErrorState title="Failed to load frame" message={error} />}
+      {error && !hasContent && (
+        <PanelErrorState
+          title="Failed to load frame"
+          message={error}
+          schemaTarget={{ typeName: type, topicName, panelKind: 'image', bagId }}
+        />
+      )}
       {!loading && !error && !hasContent && (
         <PanelEmptyState message="No image messages on this topic." />
       )}
@@ -486,12 +493,12 @@ interface CameraInfoBadgeProps {
 function CameraInfoBadge({ camera, calibrationLikelyUnfilled }: CameraInfoBadgeProps) {
   return (
     <div className="absolute bottom-2 left-2 flex flex-col gap-1 items-start">
-      <div className="bg-bg-primary/85 backdrop-blur border border-border rounded-md px-2 py-1 text-[10px] mono text-text-secondary">
+      <OverlayCard className="px-2 py-1 text-[10px] mono text-text-secondary">
         f = ({camera.fx.toFixed(1)}, {camera.fy.toFixed(1)}) px
         <span className="text-text-tertiary ml-2">
           {camera.width}×{camera.height}
         </span>
-      </div>
+      </OverlayCard>
       {calibrationLikelyUnfilled && (
         <div
           className="bg-amber-500/15 border border-amber-500/40 text-amber-300 rounded-md px-2 py-1 text-[10px] mono"
@@ -757,4 +764,3 @@ async function decodeRaw(msg: Record<string, unknown>): Promise<ImageBitmap> {
   const imageData = new ImageData(rgba, width, height);
   return await createImageBitmap(imageData);
 }
-
