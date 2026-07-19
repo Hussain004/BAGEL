@@ -388,6 +388,25 @@ select option {
   animation: gradient-shift 4s ease infinite;
 }
 
+/* Stagger-in: a combined fade + lift used for the landing page cascade.
+   Elements start invisible and animate in with a delay set via inline style
+   (animationDelay), then stay visible (forwards fill). */
+@keyframes stagger-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-stagger-in {
+  opacity: 0;
+  animation: stagger-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
 /* Staggered animation delays for lists */
 .stagger-1 { animation-delay: 0.05s; }
 .stagger-2 { animation-delay: 0.10s; }
@@ -490,6 +509,50 @@ select option {
    focal object at rest, not just react on hover: a faint persistent surface
    tint + ambient shadow lifts it off the flat background before the user
    ever touches it. */
+@keyframes marching-ants {
+  to { stroke-dashoffset: -24; }
+}
+
+@keyframes sweep-light {
+  0% { transform: translateX(-100%) skewX(-15deg); }
+  100% { transform: translateX(200%) skewX(-15deg); }
+}
+
+@keyframes glow-breathe {
+  0%, 100% { filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.3)); }
+  50% { filter: drop-shadow(0 0 16px rgba(6, 182, 212, 0.5)); }
+}
+
+@keyframes ring-orbit {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes badge-pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes input-glow-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+  50% { box-shadow: 0 0 12px 2px rgba(59, 130, 246, 0.08); }
+}
+
+@keyframes shimmer-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@keyframes dash-march {
+  to { stroke-dashoffset: -20; }
+}
+
 .dropzone {
   border: 2.5px dashed var(--color-border);
   border-radius: var(--radius-xl);
@@ -498,19 +561,84 @@ select option {
   transition:
     border-color 0.3s ease,
     background-color 0.3s ease,
-    box-shadow 0.3s ease;
+    box-shadow 0.3s ease,
+    transform 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.dropzone::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 40%,
+    rgba(59, 130, 246, 0.06) 45%,
+    rgba(6, 182, 212, 0.08) 50%,
+    rgba(59, 130, 246, 0.06) 55%,
+    transparent 60%
+  );
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+
+.dropzone:hover::before,
+.dropzone-active::before {
+  opacity: 1;
+  animation: sweep-light 2.5s ease-in-out infinite;
 }
 
 .dropzone:hover,
 .dropzone-active {
   border-color: var(--color-accent-blue);
   background: rgba(59, 130, 246, 0.05);
-  box-shadow: var(--shadow-glow-blue);
-  transform: translateY(-1px);
+  box-shadow: var(--shadow-glow-blue), 0 8px 32px rgba(59, 130, 246, 0.08);
+  transform: translateY(-2px);
 }
 
 .dropzone-active {
   animation: pulse-border 1.5s ease-in-out infinite;
+}
+
+/* ── Button hover glow ── */
+.btn-glow {
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-glow::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0;
+  background: radial-gradient(circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+    rgba(59, 130, 246, 0.15), transparent 70%);
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.btn-glow:hover::after {
+  opacity: 1;
+}
+
+/* ── Input focus enhancements ── */
+.input-premium {
+  transition:
+    border-color 0.3s ease,
+    box-shadow 0.3s ease,
+    background-color 0.3s ease;
+}
+
+.input-premium:focus {
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.08), 0 0 16px rgba(59, 130, 246, 0.06);
+}
+
+.input-premium-emerald:focus {
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.08), 0 0 16px rgba(16, 185, 129, 0.06);
 }
 
 /* ── Topic Row ── */
@@ -553,15 +681,36 @@ select option {
   box-shadow: var(--shadow-glow-cyan);
 }
 
+/* ── Wordmark ──
+   JetBrains Mono at medium weight with tight kerning. Solid colour, no
+   gradient - a monospace wordmark reads as deliberate and technical rather
+   than decorative. The text-shadow adds just enough depth to lift it off
+   the page without looking like a glow effect. */
+.wordmark {
+  font-family: var(--font-mono);
+  font-size: 3.25rem;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--color-accent-cyan);
+  text-shadow: 0 1px 2px rgba(6, 182, 212, 0.12);
+  line-height: 1;
+  user-select: none;
+}
+
+:root[data-theme='light'] .wordmark {
+  color: #0e7490;
+  text-shadow: none;
+}
+
 /* ── Logo Gradient Text ──
-   Two analogous hues (cyan → blue, adjacent on the wheel) instead of the
-   earlier three-stop blue→cyan→violet span, which read as muddy at
-   wordmark size - a tighter hue range reads as a single deliberate tone
-   shift rather than a rainbow. Reads off the accent CSS variables directly
-   rather than hardcoding hex, so it now follows the light-theme override
-   automatically instead of needing its own duplicate block below. */
+   Kept for the Toolbar wordmark where the small context benefits from the
+   hue shift. The landing page uses .wordmark instead. */
 .text-gradient {
-  background: linear-gradient(135deg, var(--color-accent-cyan), var(--color-accent-blue));
+  background: linear-gradient(
+    to right,
+    var(--color-accent-cyan),
+    var(--color-accent-blue) 70%
+  );
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
