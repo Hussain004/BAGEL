@@ -130,7 +130,7 @@ function LandingHeader() {
           rel="noreferrer"
           aria-label="Support BAGEL on donatr.ee"
         >
-          <i /> SUPPORT BAGEL
+          SUPPORT BAGEL
         </a>
       </nav>
     </motion.header>
