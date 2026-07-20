@@ -123,7 +123,15 @@ function LandingHeader() {
       <nav className="landing-header__actions" aria-label="Utility navigation">
         <button type="button" onClick={() => useUiStore.getState().setModal('shortcuts')}>SHORTCUTS</button>
         <button type="button" onClick={() => useUiStore.getState().setModal('about')}>ABOUT</button>
-        <span className="landing-header__secure"><i /> LOCAL SESSION</span>
+        <a
+          className="landing-header__support"
+          href="https://donatr.ee/hussain/"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Support BAGEL on donatr.ee"
+        >
+          <i /> SUPPORT BAGEL
+        </a>
       </nav>
     </motion.header>
   );

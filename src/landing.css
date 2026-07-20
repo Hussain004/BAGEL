@@ -125,26 +125,43 @@
   letter-spacing: 0.13em;
 }
 .landing-header__context i { width: 1px; height: 12px; background: rgba(145, 169, 186, 0.24); }
-.landing-header__actions { margin-left: auto; display: flex; align-items: center; gap: 24px; }
+.landing-header__actions { margin-left: auto; display: flex; align-items: center; gap: 4px; }
 .landing-header__actions button {
+  min-height: 34px;
+  padding: 0 12px;
   color: #70899b;
+  border: 1px solid transparent;
+  background: transparent;
   font: 600 0.62rem/1 var(--font-mono);
   letter-spacing: 0.12em;
-  transition: color 160ms ease;
+  transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease;
 }
-.landing-header__actions button:hover { color: var(--landing-text); }
-.landing-header__secure {
+.landing-header__actions button:hover {
+  color: var(--landing-text);
+  border-color: rgba(103, 168, 207, 0.14);
+  background: rgba(73, 191, 255, 0.045);
+}
+.landing-header__support {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 11px;
-  color: #8eb5a6;
+  min-height: 34px;
+  margin-left: 12px;
+  padding: 0 12px;
+  color: #9bc9b7;
   border: 1px solid rgba(86, 246, 178, 0.17);
   background: rgba(86, 246, 178, 0.045);
   font: 600 0.58rem/1 var(--font-mono);
   letter-spacing: 0.1em;
+  transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
 }
-.landing-header__secure i { width: 5px; height: 5px; border-radius: 50%; background: var(--landing-green); box-shadow: 0 0 9px rgba(86, 246, 178, 0.65); }
+.landing-header__support:hover {
+  color: #d8ffed;
+  border-color: rgba(86, 246, 178, 0.38);
+  background: rgba(86, 246, 178, 0.09);
+  transform: translateY(-1px);
+}
+.landing-header__support i { width: 5px; height: 5px; border-radius: 50%; background: var(--landing-green); box-shadow: 0 0 9px rgba(86, 246, 178, 0.65); }
 
 .landing-main {
   flex: 1;
@@ -385,7 +402,7 @@
   .landing-header { min-height: 62px; }
   .landing-header__context,
   .landing-header__actions button { display: none; }
-  .landing-header__secure { margin-left: auto; }
+  .landing-header__support { margin-left: auto; }
   .landing-main { padding-top: 37px; }
   .landing-copy h1 { font-size: clamp(2.65rem, 13vw, 3.5rem); }
   .landing-lede { font-size: 0.9rem; }
