@@ -3,7 +3,7 @@ import { Group, Panel, Separator } from 'react-resizable-panels';
 import { useBagStore } from './store/bagStore';
 import { useLayoutStore } from './store/layoutStore';
 import { useThemeStore, applyTheme } from './store/themeStore';
-import { DropZone } from './components/layout/DropZone';
+import { LandingPage } from './components/landing/LandingPage';
 import { Toolbar } from './components/layout/Toolbar';
 import { Timeline } from './components/layout/Timeline';
 import { PanelGrid } from './components/layout/PanelGrid';
@@ -84,7 +84,7 @@ function AppInner() {
   return (
     <>
       {!bag ? (
-        <DropZone />
+        <LandingPage />
       ) : (
         <div className="h-screen flex flex-col overflow-hidden bg-bg-primary">
           <Toolbar />
