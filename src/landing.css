@@ -144,7 +144,7 @@
 .landing-header__support {
   display: flex;
   align-items: center;
-  gap: 8px;
+
   min-height: 34px;
   margin-left: 12px;
   padding: 0 12px;
@@ -161,7 +161,6 @@
   background: rgba(86, 246, 178, 0.09);
   transform: translateY(-1px);
 }
-.landing-header__support i { width: 5px; height: 5px; border-radius: 50%; background: var(--landing-green); box-shadow: 0 0 9px rgba(86, 246, 178, 0.65); }
 
 .landing-main {
   flex: 1;
