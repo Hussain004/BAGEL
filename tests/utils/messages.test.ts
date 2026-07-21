@@ -4,6 +4,7 @@ import {
   nearestMessageIndex,
   isImageType,
   isCompressedImageType,
+  isVideoType,
   isTrajectoryCapableType,
   isTfTopic,
   isPointCloud2Type,
@@ -115,6 +116,13 @@ describe('messages/type sniffing', () => {
   it('isCompressedImageType is strict to compressed variants', () => {
     expect(isCompressedImageType('sensor_msgs/CompressedImage')).toBe(true);
     expect(isCompressedImageType('sensor_msgs/Image')).toBe(false);
+  });
+
+  it('isVideoType includes explicit H264/H265 CompressedImage topics', () => {
+    expect(isVideoType('foxglove.CompressedVideo')).toBe(true);
+    expect(isVideoType('sensor_msgs/msg/CompressedImage', '/robot1/camera/image_raw/h264')).toBe(true);
+    expect(isVideoType('sensor_msgs/msg/CompressedImage', '/robot1/camera/image_raw/compressed')).toBe(false);
+    expect(isVideoType('sensor_msgs/msg/Image', '/robot1/camera/image_raw/h264')).toBe(false);
   });
 
   it('isTrajectoryCapableType covers every supported pose type', () => {

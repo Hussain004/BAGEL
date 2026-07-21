@@ -240,6 +240,22 @@ class ParserClient {
     });
   }
 
+  readVideoChunkRange(
+    source: BagSource,
+    format: BagFormat,
+    topicName: string,
+    startNs: bigint,
+    endNs: bigint,
+  ): Promise<VideoChunksResult | null> {
+    return this.request<VideoChunksResult | null>('readVideoChunkRange', {
+      source,
+      format,
+      topicName,
+      startNs,
+      endNs,
+    });
+  }
+
   readVideoChunksAtTime(
     source: BagSource,
     format: BagFormat,

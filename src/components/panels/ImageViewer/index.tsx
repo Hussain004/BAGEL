@@ -3,8 +3,8 @@ import { useMessageAtTime } from '../../../hooks/useMessageAtTime';
 import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
 import { useBagLocalPlayhead } from '../../../hooks/useBagLocalPlayhead';
 import { isCompressedImageType, isVideoType } from '../../../utils/messages';
-import { readVideoChunksAtTime } from '../../../parsers';
-import { decodeVideoFrames } from '../../../parsers/video';
+import { readVideoChunkRange, readVideoChunksAtTime } from '../../../parsers';
+import { VideoFrameDecoder } from '../../../parsers/video';
 import { nsToSeconds } from '../../../utils/time';
 import { PanelShell } from '../PanelShell';
 import { PanelLoadingState, PanelErrorState, PanelEmptyState } from '../shared/PanelStates';
@@ -36,17 +36,14 @@ interface VideoFrameState {
   error: string | null;
 }
 
+const MAX_SEQUENTIAL_VIDEO_GAP_NS = 2_000_000_000n;
+
 /**
- * Fetch + WebCodecs-decode a single video frame at `timeNs`.
+ * Fetch + WebCodecs-decode video frames for the current playhead. Small
+ * forward moves reuse a stateful decoder; seeks fall back to a keyframe read.
  *
- * Strategy: the worker finds the last keyframe at or before `timeNs`, reads
- * every frame from it to `timeNs`, and returns them as raw bytes. The main
- * thread runs VideoDecoder to accumulate the reference frames and produce the
- * correct output frame. The decoded ImageBitmap is kept in a ref so the canvas
- * draw effect can access it without triggering re-renders.
- *
- * `enabled` must be false for non-video topics — the hook is always called
- * (React rule) but returns empty state immediately when disabled.
+ * `enabled` must be false for non-video topics. The hook is always called
+ * for React rule compliance but returns empty state immediately when disabled.
  */
 function useVideoFrame(
   topicName: string,
@@ -57,58 +54,115 @@ function useVideoFrame(
   const entry = useBagStore((s) => resolveBagEntry(s, bagId));
   const [state, setState] = useState<VideoFrameState>({ bitmap: null, loading: false, error: null });
   const bitmapRef = useRef<ImageBitmap | null>(null);
+  const decoderRef = useRef<VideoFrameDecoder | null>(null);
+  const desiredTimeRef = useRef(timeNs);
+  const runningRef = useRef(false);
+  const lastDecodedNsRef = useRef<bigint | null>(null);
+  const generationRef = useRef(0);
 
-  // Close the previous bitmap when a new one arrives or the component unmounts.
   useEffect(() => {
+    generationRef.current++;
+    runningRef.current = false;
+    desiredTimeRef.current = timeNs;
+    lastDecodedNsRef.current = null;
+    decoderRef.current?.close();
+    decoderRef.current = null;
+    bitmapRef.current = null;
+    setState({ bitmap: null, loading: false, error: null });
+
     return () => {
-      bitmapRef.current?.close();
+      generationRef.current++;
+      runningRef.current = false;
+      decoderRef.current?.close();
+      decoderRef.current = null;
       bitmapRef.current = null;
     };
-  }, []);
+  }, [topicName, bagId, enabled]);
 
   useEffect(() => {
     if (!enabled || !entry || entry.kind === 'live' || !entry.source) return;
     const { id: workerBagId, summary: bag, source } = entry;
+    const generation = generationRef.current;
+    desiredTimeRef.current = timeNs;
+    if (runningRef.current) return;
 
-    let cancelled = false;
-    setState((s) => ({ ...s, loading: true, error: null }));
+    runningRef.current = true;
+    setState((prev) => ({ ...prev, loading: !prev.bitmap, error: null }));
 
     void (async () => {
       try {
-        const result = await readVideoChunksAtTime(
-          workerBagId,
-          source,
-          bag.format,
-          topicName,
-          timeNs,
-        );
-        if (cancelled) return;
-        if (!result || result.chunks.length === 0) {
-          setState({ bitmap: null, loading: false, error: null });
-          return;
+        for (;;) {
+          if (generation !== generationRef.current) return;
+          const targetNs = desiredTimeRef.current;
+          const lastDecodedNs = lastDecodedNsRef.current;
+          const canDecodeForward =
+            lastDecodedNs !== null &&
+            targetNs >= lastDecodedNs &&
+            targetNs - lastDecodedNs <= MAX_SEQUENTIAL_VIDEO_GAP_NS;
+
+          const result = canDecodeForward
+            ? await readVideoChunkRange(
+              workerBagId,
+              source,
+              bag.format,
+              topicName,
+              lastDecodedNs + 1n,
+              targetNs,
+            )
+            : await readVideoChunksAtTime(
+              workerBagId,
+              source,
+              bag.format,
+              topicName,
+              targetNs,
+            );
+
+          if (generation !== generationRef.current) return;
+          if (!result || result.chunks.length === 0) {
+            if (!canDecodeForward) {
+              decoderRef.current?.reset();
+              lastDecodedNsRef.current = null;
+            }
+            setState((prev) => ({ ...prev, loading: !prev.bitmap, error: null }));
+          } else {
+            if (!decoderRef.current) decoderRef.current = new VideoFrameDecoder();
+            const bitmap = await decoderRef.current.decode(result.chunks, result.format);
+            if (generation !== generationRef.current) {
+              bitmap?.close();
+              return;
+            }
+            if (bitmap) {
+              bitmapRef.current = bitmap;
+              setState({ bitmap, loading: false, error: null });
+            } else {
+              setState((prev) => ({ ...prev, loading: false, error: null }));
+            }
+            lastDecodedNsRef.current = result.chunks[result.chunks.length - 1]!.timestamp;
+          }
+
+          if (desiredTimeRef.current === targetNs) break;
         }
-        const bitmap = await decodeVideoFrames(result.chunks, result.format);
-        if (cancelled) {
-          bitmap?.close();
-          return;
-        }
-        const old = bitmapRef.current;
-        bitmapRef.current = bitmap;
-        old?.close();
-        setState({ bitmap, loading: false, error: null });
       } catch (err) {
-        if (cancelled) return;
-        setState({ bitmap: null, loading: false, error: err instanceof Error ? err.message : String(err) });
+        if (generation === generationRef.current) {
+          decoderRef.current?.reset();
+          lastDecodedNsRef.current = null;
+          setState((prev) => ({
+            bitmap: prev.bitmap,
+            loading: false,
+            error: err instanceof Error ? err.message : String(err),
+          }));
+        }
+      } finally {
+        if (generation === generationRef.current) {
+          runningRef.current = false;
+        }
       }
     })();
-
-    return () => { cancelled = true; };
   }, [entry, topicName, timeNs, enabled]);
 
   if (!enabled) return { bitmap: null, loading: false, error: null };
   return state;
 }
-
 /**
  * ImageViewer - Renders the current frame for a sensor_msgs/Image or
  * sensor_msgs/CompressedImage topic at the global playhead time.
@@ -127,9 +181,10 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
   const entry = useBagStore((s) => resolveBagEntry(s, bagId));
   const bag = entry?.summary ?? null;
   const playheadNs = useBagLocalPlayhead(bagId);
-  const isVideo = isVideoType(type);
+  const isVideo = isVideoType(type, topicName);
   const compressed = !isVideo && isCompressedImageType(type);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const drawnVideoBitmapRef = useRef<ImageBitmap | null>(null);
   useEffect(() => registerCapture(panelId, () => canvasRef.current), [panelId]);
 
   // Standard single-message path (JPEG, raw pixels, Foxglove images).
@@ -173,6 +228,11 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
   // Reset zoom/pan when the topic or bag changes.
   useEffect(() => {
     setView({ zoom: 1, panX: 0, panY: 0 });
+    return () => {
+      const previous = drawnVideoBitmapRef.current;
+      drawnVideoBitmapRef.current = null;
+      previous?.close();
+    };
   }, [topicName, bagId]);
 
   // Non-passive wheel listener so we can call preventDefault() to block page scroll.
@@ -250,7 +310,14 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
     // Video path: bitmap is already decoded by useVideoFrame.
     if (isVideo) {
       if (!videoBitmap || !canvasRef.current) return;
-      drawBitmap(videoBitmap, 'h264/h265');
+      try {
+        drawBitmap(videoBitmap, 'h264/h265');
+        const previous = drawnVideoBitmapRef.current;
+        drawnVideoBitmapRef.current = videoBitmap;
+        if (previous && previous !== videoBitmap) previous.close();
+      } catch (err) {
+        setRenderError(err instanceof Error ? err.message : String(err));
+      }
       return;
     }
 

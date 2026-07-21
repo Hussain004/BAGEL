@@ -17,7 +17,7 @@ import { decompress as fzstdDecompress } from 'fzstd';
 import type { AllTopicStats, BagSummary, RawMessage, TopicInfo } from '../types/bag';
 import { deserializeWithSchema } from './cdr';
 import { translateFoxgloveMessage } from './foxgloveSchemas';
-import { isVideoKeyframe, type VideoChunk, type VideoChunksResult } from './video';
+import { coalesceAnnexBVideoChunks, hasH264AccessUnitDelimiter, hasH264IdrSlice, hasH264SequenceParameterSet, isH264VideoFormat, isVideoFormat, isVideoKeyframe, type VideoChunk, type VideoChunksResult } from './video';
 import {
   HttpReadable,
   sourceDisplayName,
@@ -908,31 +908,190 @@ export async function readMessageAtTimeMcap(
 
 const TEXT_DEC = new TextDecoder();
 
+function isCompressedImageSchema(schemaName: string): boolean {
+  return schemaName.endsWith('/CompressedImage') || schemaName === 'foxglove.CompressedImage';
+}
+
+function bytesFromField(value: unknown): Uint8Array {
+  if (value instanceof Uint8Array) return value;
+  if (Array.isArray(value)) return Uint8Array.from(value as number[]);
+  return new Uint8Array(0);
+}
+
+function decodeVideoMessage(
+  topicInfo: { schemaName: string; schemaText: string | null; messageEncoding: string },
+  raw: Uint8Array,
+  fallbackFormat: string,
+): { data: Uint8Array; format: string } {
+  if (topicInfo.messageEncoding === 'json') {
+    const parsed = JSON.parse(TEXT_DEC.decode(raw)) as Record<string, unknown>;
+    const xlated = translateFoxgloveMessage(topicInfo.schemaName, parsed);
+    return {
+      data: bytesFromField(xlated['data']),
+      format: typeof xlated['format'] === 'string' && xlated['format']
+        ? xlated['format']
+        : fallbackFormat,
+    };
+  }
+
+  if (isCompressedImageSchema(topicInfo.schemaName) && topicInfo.schemaText) {
+    const decoded = deserializeWithSchema(topicInfo.schemaText, raw);
+    return {
+      data: bytesFromField(decoded['data']),
+      format: typeof decoded['format'] === 'string' && decoded['format']
+        ? decoded['format']
+        : fallbackFormat,
+    };
+  }
+
+  return { data: new Uint8Array(raw), format: fallbackFormat };
+}
+
 /**
  * Extract raw H264/H265 bytes and keyframe status from a raw MCAP message
- * payload for a video topic, handling both JSON and CDR encodings.
+ * payload for a video topic, handling JSON, ROS CompressedImage CDR, and raw
+ * CDR payloads.
  */
 function extractVideoChunk(
-  topicInfo: { schemaName: string; messageEncoding: string },
+  topicInfo: { schemaName: string; schemaText: string | null; messageEncoding: string },
   logTime: bigint,
   raw: Uint8Array,
   format: string,
 ): VideoChunk {
-  let data: Uint8Array;
-  if (topicInfo.messageEncoding === 'json') {
-    try {
-      const parsed = JSON.parse(TEXT_DEC.decode(raw)) as Record<string, unknown>;
-      const xlated = translateFoxgloveMessage(topicInfo.schemaName, parsed);
-      const d = xlated['data'];
-      data = d instanceof Uint8Array ? d : new Uint8Array(0);
-    } catch {
-      data = new Uint8Array(0);
-    }
-  } else {
-    // CDR: assume the message carries raw NAL bytes directly
-    data = new Uint8Array(raw);
+  let decoded: { data: Uint8Array; format: string };
+  try {
+    decoded = decodeVideoMessage(topicInfo, raw, format);
+  } catch {
+    decoded = { data: new Uint8Array(0), format };
   }
-  return { data, timestamp: logTime, isKeyframe: isVideoKeyframe(data, format) };
+  return {
+    data: decoded.data,
+    timestamp: logTime,
+    isKeyframe: isVideoKeyframe(decoded.data, decoded.format),
+  };
+}
+
+async function readRosCompressedH264ChunksMcap(
+  meta: CachedMcap,
+  topicName: string,
+  topicInfo: { schemaName: string; schemaText: string | null; messageEncoding: string },
+  timeNs: bigint,
+): Promise<VideoChunksResult | null> {
+  let format = 'h264';
+
+  const decodeRawChunk = (logTime: bigint, raw: Uint8Array): VideoChunk => {
+    const chunk = extractVideoChunk(topicInfo, logTime, raw, format);
+    const decoded = decodeVideoMessage(topicInfo, raw, format);
+    format = decoded.format || format;
+    return chunk;
+  };
+
+  const readForwardFrom = async (startNs: bigint): Promise<VideoChunk[]> => {
+    const chunks: VideoChunk[] = [];
+    const hasDecodableKey = (): boolean => (
+      coalesceAnnexBVideoChunks(chunks, format).some((unit) => unit.isKeyframe)
+    );
+    const shouldStopAfter = (chunk: VideoChunk): boolean => (
+      chunk.timestamp > timeNs && hasH264AccessUnitDelimiter(chunk.data) && hasDecodableKey()
+    );
+
+    if (meta.reader) {
+      for await (const msg of meta.reader.readMessages({
+        topics: [topicName],
+        startTime: startNs,
+      })) {
+        const raw = msg.data instanceof Uint8Array ? msg.data : new Uint8Array(msg.data);
+        let chunk: VideoChunk;
+        try {
+          chunk = decodeRawChunk(msg.logTime, raw);
+        } catch {
+          continue;
+        }
+        chunks.push(chunk);
+        if (shouldStopAfter(chunk)) break;
+      }
+    } else if (meta.buffer) {
+      const reader = new McapStreamReader({ decompressHandlers: meta.decompressHandlers });
+      reader.append(meta.buffer);
+      const channelIdsForTopic = new Set<number>();
+      for (const [id, ch] of meta.channelById) {
+        if (ch.topic === topicName) channelIdsForTopic.add(id);
+      }
+      for (let record; (record = reader.nextRecord()); ) {
+        if (record.type !== 'Message' || !channelIdsForTopic.has(record.channelId)) continue;
+        if (record.logTime < startNs) continue;
+        const raw = record.data instanceof Uint8Array ? record.data : new Uint8Array(record.data);
+        let chunk: VideoChunk;
+        try {
+          chunk = decodeRawChunk(record.logTime, raw);
+        } catch {
+          continue;
+        }
+        chunks.push(chunk);
+        if (shouldStopAfter(chunk)) break;
+      }
+      chunks.sort((a, b) => (a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0));
+    }
+    return chunks;
+  };
+
+  const tryCandidate = async (candidateNs: bigint): Promise<VideoChunksResult | null> => {
+    const chunks = await readForwardFrom(candidateNs);
+    const decodeChunks = coalesceAnnexBVideoChunks(chunks, format);
+    const keyIndex = decodeChunks.findIndex((unit) => (
+      unit.isKeyframe && hasH264SequenceParameterSet(unit.data)
+    ));
+    if (keyIndex < 0) return null;
+    return { chunks: decodeChunks.slice(keyIndex), format };
+  };
+
+  if (meta.reader) {
+    for await (const msg of meta.reader.readMessages({
+      topics: [topicName],
+      endTime: timeNs,
+      reverse: true,
+    })) {
+      const raw = msg.data instanceof Uint8Array ? msg.data : new Uint8Array(msg.data);
+      let decoded: { data: Uint8Array; format: string };
+      try {
+        decoded = decodeVideoMessage(topicInfo, raw, format);
+      } catch {
+        continue;
+      }
+      format = decoded.format || format;
+      if (!isH264VideoFormat(format) || !hasH264SequenceParameterSet(decoded.data)) continue;
+      const result = await tryCandidate(msg.logTime);
+      if (result) return result;
+    }
+  } else if (meta.buffer) {
+    const reader = new McapStreamReader({ decompressHandlers: meta.decompressHandlers });
+    reader.append(meta.buffer);
+    const channelIdsForTopic = new Set<number>();
+    for (const [id, ch] of meta.channelById) {
+      if (ch.topic === topicName) channelIdsForTopic.add(id);
+    }
+    const candidates: bigint[] = [];
+    for (let record; (record = reader.nextRecord()); ) {
+      if (record.type !== 'Message' || !channelIdsForTopic.has(record.channelId)) continue;
+      if (record.logTime > timeNs) break;
+      const raw = record.data instanceof Uint8Array ? record.data : new Uint8Array(record.data);
+      try {
+        const decoded = decodeVideoMessage(topicInfo, raw, format);
+        format = decoded.format || format;
+        if (isH264VideoFormat(format) && hasH264SequenceParameterSet(decoded.data)) {
+          candidates.push(record.logTime);
+        }
+      } catch {
+        continue;
+      }
+    }
+    for (let i = candidates.length - 1; i >= 0; i--) {
+      const result = await tryCandidate(candidates[i]!);
+      if (result) return result;
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -953,29 +1112,41 @@ async function getOrBuildVideoIndex(
   if (!topicInfo) return null;
 
   const isJson = topicInfo.messageEncoding === 'json';
+  const isRosCompressedImage = isCompressedImageSchema(topicInfo.schemaName);
   let format = 'h264';
   const keyframeTimes: bigint[] = [];
 
   const inspect = (logTime: bigint, raw: Uint8Array): void => {
-    let data: Uint8Array;
+    let decoded: { data: Uint8Array; format: string };
     if (isJson) {
       try {
         // Fast path: only decode the first 24 base64 chars (~18 raw bytes) -
         // enough to read the start code and first NAL header byte.
         const obj = JSON.parse(TEXT_DEC.decode(raw)) as Record<string, unknown>;
         if (typeof obj['format'] === 'string' && obj['format']) format = obj['format'] as string;
+        if (!isVideoFormat(format)) return;
         const b64 = obj['data'] as string;
         if (typeof b64 !== 'string' || b64.length === 0) return;
         const sample = atob(b64.substring(0, Math.min(24, b64.length)));
-        data = new Uint8Array(sample.length);
+        const data = new Uint8Array(sample.length);
         for (let k = 0; k < sample.length; k++) data[k] = sample.charCodeAt(k);
+        decoded = { data, format };
       } catch {
         return;
       }
     } else {
-      data = raw;
+      try {
+        decoded = decodeVideoMessage(topicInfo, raw, format);
+      } catch {
+        return;
+      }
+      format = decoded.format;
+      if (!isVideoFormat(format)) return;
     }
-    if (isVideoKeyframe(data, format)) keyframeTimes.push(logTime);
+    const isKeyframe = isRosCompressedImage && isH264VideoFormat(format)
+      ? hasH264SequenceParameterSet(decoded.data)
+      : isVideoKeyframe(decoded.data, format);
+    if (isKeyframe) keyframeTimes.push(logTime);
   };
 
   if (meta.reader) {
@@ -1002,6 +1173,73 @@ async function getOrBuildVideoIndex(
   return index;
 }
 
+async function readVideoChunkRangeMcapImpl(
+  meta: CachedMcap,
+  topicName: string,
+  topicInfo: { schemaName: string; schemaText: string | null; messageEncoding: string },
+  startNs: bigint,
+  endNs: bigint,
+): Promise<VideoChunksResult | null> {
+  let format = 'h264';
+  const chunks: VideoChunk[] = [];
+
+  const readRaw = (logTime: bigint, raw: Uint8Array): void => {
+    let decoded: { data: Uint8Array; format: string };
+    try {
+      decoded = decodeVideoMessage(topicInfo, raw, format);
+    } catch {
+      return;
+    }
+    format = decoded.format || format;
+    if (!isVideoFormat(format)) return;
+    chunks.push({
+      data: decoded.data,
+      timestamp: logTime,
+      isKeyframe: isH264VideoFormat(format) ? hasH264IdrSlice(decoded.data) : isVideoKeyframe(decoded.data, format),
+    });
+  };
+
+  const hasCompleteFrameAfterEnd = (): boolean => (
+    coalesceAnnexBVideoChunks(chunks, format).some((chunk) => chunk.timestamp >= startNs)
+  );
+
+  const shouldStopAfter = (logTime: bigint, raw: Uint8Array): boolean => {
+    if (logTime < endNs) return false;
+    if (!isH264VideoFormat(format)) return true;
+    return hasH264AccessUnitDelimiter(raw) && hasCompleteFrameAfterEnd();
+  };
+
+  if (meta.reader) {
+    for await (const msg of meta.reader.readMessages({
+      topics: [topicName],
+      startTime: startNs,
+    })) {
+      const raw = msg.data instanceof Uint8Array ? msg.data : new Uint8Array(msg.data);
+      readRaw(msg.logTime, raw);
+      if (shouldStopAfter(msg.logTime, raw)) break;
+    }
+  } else if (meta.buffer) {
+    const reader = new McapStreamReader({ decompressHandlers: meta.decompressHandlers });
+    reader.append(meta.buffer);
+    const channelIdsForTopic = new Set<number>();
+    for (const [id, ch] of meta.channelById) {
+      if (ch.topic === topicName) channelIdsForTopic.add(id);
+    }
+    for (let record; (record = reader.nextRecord()); ) {
+      if (record.type !== 'Message' || !channelIdsForTopic.has(record.channelId)) continue;
+      if (record.logTime < startNs) continue;
+      const raw = record.data instanceof Uint8Array ? record.data : new Uint8Array(record.data);
+      readRaw(record.logTime, raw);
+      if (shouldStopAfter(record.logTime, raw)) break;
+    }
+    chunks.sort((a, b) => (a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0));
+  }
+
+  const decodeChunks = coalesceAnnexBVideoChunks(chunks, format)
+    .filter((chunk) => chunk.timestamp >= startNs && chunk.timestamp <= endNs);
+  return decodeChunks.length > 0 ? { chunks: decodeChunks, format } : null;
+}
+
 /**
  * Read video chunks from the last keyframe at or before `timeNs` through
  * `timeNs`, ready for the main-thread VideoDecoder to decode.
@@ -1009,6 +1247,18 @@ async function getOrBuildVideoIndex(
  * Building the keyframe index on first call may take a few seconds for long
  * recordings, but subsequent seeks are O(GOP size) - typically 1-60 frames.
  */
+export async function readVideoChunkRangeMcap(
+  source: BagSource,
+  topicName: string,
+  startNs: bigint,
+  endNs: bigint,
+): Promise<VideoChunksResult | null> {
+  const meta = await loadMcap(source);
+  const topicInfo = meta.topicMeta.get(topicName);
+  if (!topicInfo) return null;
+  return readVideoChunkRangeMcapImpl(meta, topicName, topicInfo, startNs, endNs);
+}
+
 export async function readVideoChunksMcap(
   source: BagSource,
   topicName: string,
@@ -1017,6 +1267,10 @@ export async function readVideoChunksMcap(
   const meta = await loadMcap(source);
   const topicInfo = meta.topicMeta.get(topicName);
   if (!topicInfo) return null;
+
+  if (isCompressedImageSchema(topicInfo.schemaName)) {
+    return readRosCompressedH264ChunksMcap(meta, topicName, topicInfo, timeNs);
+  }
 
   const index = await getOrBuildVideoIndex(meta, topicName);
   if (!index) return null;
@@ -1038,15 +1292,22 @@ export async function readVideoChunksMcap(
   if (keyframeNs === null) return null;
 
   const chunks: VideoChunk[] = [];
+  const readThroughNextAud = isCompressedImageSchema(topicInfo.schemaName) && isH264VideoFormat(format);
+
+  const shouldStopAfter = (chunk: VideoChunk): boolean => {
+    if (!readThroughNextAud) return chunk.timestamp >= timeNs;
+    return chunk.timestamp > timeNs && hasH264AccessUnitDelimiter(chunk.data);
+  };
 
   if (meta.reader) {
     for await (const msg of meta.reader.readMessages({
       topics: [topicName],
       startTime: keyframeNs,
-      endTime: timeNs,
     })) {
       const raw = msg.data instanceof Uint8Array ? msg.data : new Uint8Array(msg.data);
-      chunks.push(extractVideoChunk(topicInfo, msg.logTime, raw, format));
+      const chunk = extractVideoChunk(topicInfo, msg.logTime, raw, format);
+      chunks.push(chunk);
+      if (shouldStopAfter(chunk)) break;
     }
   } else if (meta.buffer) {
     const reader = new McapStreamReader({ decompressHandlers: meta.decompressHandlers });
@@ -1057,13 +1318,16 @@ export async function readVideoChunksMcap(
     }
     for (let record; (record = reader.nextRecord()); ) {
       if (record.type !== 'Message' || !channelIdsForTopic.has(record.channelId)) continue;
-      if (record.logTime < keyframeNs || record.logTime > timeNs) continue;
+      if (record.logTime < keyframeNs) continue;
       const raw = record.data instanceof Uint8Array ? record.data : new Uint8Array(record.data);
-      chunks.push(extractVideoChunk(topicInfo, record.logTime, raw, format));
+      const chunk = extractVideoChunk(topicInfo, record.logTime, raw, format);
+      chunks.push(chunk);
+      if (shouldStopAfter(chunk)) break;
     }
     // stream reader gives messages in file order, so sort by timestamp
     chunks.sort((a, b) => (a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0));
   }
 
-  return chunks.length > 0 ? { chunks, format } : null;
+  const decodeChunks = coalesceAnnexBVideoChunks(chunks, format);
+  return decodeChunks.length > 0 ? { chunks: decodeChunks, format } : null;
 }

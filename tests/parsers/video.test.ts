@@ -1,8 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import {
+  coalesceAnnexBVideoChunks,
+  hasH264AccessUnitDelimiter,
+  hasH264IdrSlice,
+  hasH264SequenceParameterSet,
   isH264Keyframe,
   isH265Keyframe,
+  isVideoFormat,
   isVideoKeyframe,
+  isVideoTopicName,
 } from '../../src/parsers/video';
 
 // Build an H264 Annex B NAL unit with a given type byte.
@@ -111,5 +117,78 @@ describe('isVideoKeyframe', () => {
     // IDR_W_RADL (type 19): byte0 = 19 << 1 = 38 = 0x26
     const buf = new Uint8Array([0x00, 0x00, 0x00, 0x01, 0x26, 0x01]);
     expect(isVideoKeyframe(buf, 'h265')).toBe(true);
+  });
+});
+
+
+describe('video format detection', () => {
+  it('recognizes H264 and H265 format aliases', () => {
+    expect(isVideoFormat('h264')).toBe(true);
+    expect(isVideoFormat('H.264')).toBe(true);
+    expect(isVideoFormat('avc1.64001f')).toBe(true);
+    expect(isVideoFormat('bgr8; h264 compressed bgr8')).toBe(true);
+    expect(isVideoFormat('h265')).toBe(true);
+    expect(isVideoFormat('hevc')).toBe(true);
+    expect(isVideoFormat('jpeg')).toBe(false);
+  });
+
+  it('recognizes explicit H264/H265 compressed-image topic names', () => {
+    expect(isVideoTopicName('/robot1/camera/image_raw/h264')).toBe(true);
+    expect(isVideoTopicName('/camera/front_h265')).toBe(true);
+    expect(isVideoTopicName('/camera/image_raw/compressed')).toBe(false);
+  });
+});
+
+
+describe('coalesceAnnexBVideoChunks', () => {
+  it('groups H264 bytestream fragments into access units at AUD boundaries', () => {
+    const sps = h264Nalu(0x67, 3);
+    const pps = h264Nalu(0x68, 2);
+    const aud1 = h264Nalu(0x09, 1);
+    const idr = h264Nalu(0x65, 6);
+    const aud2 = h264Nalu(0x09, 1);
+    const pFrame = h264Nalu(0x41, 5);
+    const stream = concat(sps, pps, aud1, idr, aud2, pFrame);
+
+    const chunks = coalesceAnnexBVideoChunks([
+      { data: stream.slice(0, 11), timestamp: 10n, isKeyframe: false },
+      { data: stream.slice(11, 25), timestamp: 11n, isKeyframe: true },
+      { data: stream.slice(25), timestamp: 12n, isKeyframe: false },
+    ], 'h264');
+
+    expect(chunks).toHaveLength(2);
+    expect(chunks[0].isKeyframe).toBe(true);
+    expect(chunks[0].timestamp).toBe(10n);
+    expect(chunks[1].isKeyframe).toBe(false);
+  });
+
+  it('detects H264 Access Unit Delimiter NALs', () => {
+    expect(hasH264AccessUnitDelimiter(h264Nalu(0x09, 1))).toBe(true);
+    expect(hasH264AccessUnitDelimiter(h264Nalu(0x65, 2))).toBe(false);
+  });
+
+  it('detects H264 SPS parameter sets', () => {
+    expect(hasH264SequenceParameterSet(h264Nalu(0x67, 3))).toBe(true);
+    expect(hasH264SequenceParameterSet(h264Nalu(0x65, 2))).toBe(false);
+  });
+
+  it('detects H264 IDR slices separately from SPS', () => {
+    expect(hasH264IdrSlice(h264Nalu(0x65, 2))).toBe(true);
+    expect(hasH264IdrSlice(h264Nalu(0x67, 3))).toBe(false);
+  });
+
+  it('returns no chunks while an AUD-delimited access unit is incomplete', () => {
+    const chunks = [
+      { data: concat(h264Nalu(0x67, 3), h264Nalu(0x68, 2), h264Nalu(0x09, 1)), timestamp: 1n, isKeyframe: true },
+    ];
+    expect(coalesceAnnexBVideoChunks(chunks, 'h264')).toEqual([]);
+  });
+
+  it('leaves non-AUD streams unchanged', () => {
+    const chunks = [
+      { data: h264Nalu(0x65, 2), timestamp: 1n, isKeyframe: true },
+      { data: h264Nalu(0x41, 2), timestamp: 2n, isKeyframe: false },
+    ];
+    expect(coalesceAnnexBVideoChunks(chunks, 'h264')).toBe(chunks);
   });
 });

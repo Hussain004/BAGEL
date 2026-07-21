@@ -15,6 +15,7 @@ import {
   getTopicTypeMcap,
   disposeMcapCache,
   readAllMessageStatsMcap,
+  readVideoChunkRangeMcap,
   readVideoChunksMcap,
 } from './mcap';
 import type { VideoChunksResult } from './video';
@@ -294,6 +295,17 @@ export async function readLaserScanAtTime(
  * `timeNs`, ready for the main-thread VideoDecoder. Only MCAP is supported
  * since Foxglove CompressedVideo only appears in MCAP files.
  */
+export async function readVideoChunkRange(
+  source: BagSource,
+  format: BagFormat,
+  topicName: string,
+  startNs: bigint,
+  endNs: bigint,
+): Promise<VideoChunksResult | null> {
+  if (format !== 'mcap') return null;
+  return readVideoChunkRangeMcap(source, topicName, startNs, endNs);
+}
+
 export async function readVideoChunksAtTime(
   source: BagSource,
   format: BagFormat,
