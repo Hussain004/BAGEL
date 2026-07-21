@@ -120,6 +120,17 @@ export async function readLaserScanAtTime(
   return getParserClient(bagId).readLaserScanAtTime(source, format, topicName, timeNs);
 }
 
+export async function readVideoChunkRange(
+  bagId: string,
+  source: BagSource,
+  format: BagFormat,
+  topicName: string,
+  startNs: bigint,
+  endNs: bigint,
+): Promise<VideoChunksResult | null> {
+  return getParserClient(bagId).readVideoChunkRange(source, format, topicName, startNs, endNs);
+}
+
 export async function readVideoChunksAtTime(
   bagId: string,
   source: BagSource,

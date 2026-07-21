@@ -21,6 +21,7 @@ import {
   readMessageAtTime,
   readPointCloudAtTime,
   readLaserScanAtTime,
+  readVideoChunkRange,
   readVideoChunksAtTime,
   getTopicType,
   disposeParserCaches,
@@ -52,6 +53,7 @@ type Method =
   | 'readMessageAtTime'
   | 'readPointCloudAtTime'
   | 'readLaserScanAtTime'
+  | 'readVideoChunkRange'
   | 'readVideoChunksAtTime'
   | 'getTopicType'
   | 'disposeParserCaches'
@@ -102,6 +104,14 @@ interface ReadLaserScanAtTimeParams {
   topicName: string;
   timeNs: bigint;
 }
+interface ReadVideoChunkRangeParams {
+  source: BagSource;
+  format: BagFormat;
+  topicName: string;
+  startNs: bigint;
+  endNs: bigint;
+}
+
 interface ReadVideoChunksAtTimeParams {
   source: BagSource;
   format: BagFormat;
@@ -305,6 +315,16 @@ ctx.addEventListener('message', async (e: MessageEvent<WorkerRequest>) => {
           ? [result.positions.buffer, result.colors.buffer]
           : undefined;
         respond(result, transfer as Transferable[] | undefined);
+        return;
+      }
+      case 'readVideoChunkRange': {
+        const { source, format, topicName, startNs, endNs } =
+          req.params as ReadVideoChunkRangeParams;
+        const result = await readVideoChunkRange(source, format, topicName, startNs, endNs);
+        const transfer = result
+          ? result.chunks.map((chunk) => chunk.data.buffer as ArrayBuffer)
+          : undefined;
+        respond(result, transfer);
         return;
       }
       case 'readVideoChunksAtTime': {

@@ -8,6 +8,7 @@
  */
 
 import type { DecodedMessage } from '../hooks/useTopicMessages';
+import { isVideoTopicName } from '../parsers/video';
 
 /** Numeric leaf fields, in stable key order (dot-separated paths). */
 export function flattenNumeric(
@@ -83,9 +84,10 @@ export function isCompressedImageType(type: string): boolean {
   return type.includes('CompressedImage') || type === 'foxglove.CompressedImage';
 }
 
-/** True if a type carries H264/H265 compressed video (Foxglove CompressedVideo). */
-export function isVideoType(type: string): boolean {
-  return type === 'foxglove.CompressedVideo';
+/** True if a type carries H264/H265 compressed video. */
+export function isVideoType(type: string, topicName = ''): boolean {
+  if (type === 'foxglove.CompressedVideo') return true;
+  return isCompressedImageType(type) && isVideoTopicName(topicName);
 }
 
 /**
