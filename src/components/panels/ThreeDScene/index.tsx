@@ -6,7 +6,6 @@ import { useEscapeToClose } from '../../../hooks/useEscapeToClose';
 import { OverlayCard } from '../shared/OverlayCard';
 import { PanelErrorState } from '../shared/PanelStates';
 import {
-  DEFAULT_THREE_D_SETTINGS,
   useThreeDPanelStore,
   type UpAxis,
 } from '../../../store/threeDPanelStore';
@@ -25,9 +24,7 @@ import { buildRobotSubtree, type RobotSubtree } from './robotModel';
 import { PanelShell } from '../PanelShell';
 import { getTopicColor } from '../../../utils/color';
 import { nsToSeconds } from '../../../utils/time';
-import {
-  isCameraInfoType,
-} from '../../../utils/messages';
+import { isCameraInfoType } from '../../../utils/messages';
 import {
   parseCameraInfo,
   type CameraIntrinsics,
@@ -56,6 +53,11 @@ import {
 } from './sceneObjects';
 import { composeTFChain, pickWorldFrame } from './tfTransform';
 import { useDecodedCloud } from './useDecodedPointCloud';
+import { SpatialOverlay } from './spatialOverlay';
+import {
+  getSpatialOverlayCandidates,
+  type SpatialOverlayTopic,
+} from './spatialOverlayTopics';
 import { CloudAccumulator, type AccumulationMode } from './accumulator';
 import { extractMarkers } from './markerObjects';
 import { MarkerSet } from './markerSet';
@@ -301,16 +303,14 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
   // Seed the per-panel store entry from the resolved kind defaults the first
   // time this panel is rendered. Without this seeding the user's saved
   // default would only "stick" once they touched any setting (because the
-  // current `update` baseline is the hard-coded fallback). Running it once
-  // via a ref keeps the seed write idempotent across React 18 double-mount.
-  const seededRef = useRef(false);
-  if (!seededRef.current) {
-    seededRef.current = true;
-    const has = useThreeDPanelStore.getState().byId[panelId] !== undefined;
-    if (!has && hasUserDefault) {
+  // current `update` baseline is the hard-coded fallback). The effect checks the store before writing, so it remains idempotent across
+  // React 18 double-mount.
+  useEffect(() => {
+    const hasSettings = useThreeDPanelStore.getState().byId[panelId] !== undefined;
+    if (!hasSettings && hasUserDefault) {
       setAllSettings(panelId, effectiveDefaults);
     }
-  }
+  }, [effectiveDefaults, hasUserDefault, panelId, setAllSettings]);
 
   // ─── Robot model (v1.3.0) ──────────────────────────────────────────────
   // Each panel grows its own `RobotSubtree` instance because Three.js scene
@@ -340,6 +340,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     cameraFrustumsOn,
     cameraFrustumFar,
     hiddenFrustumTopics,
+    spatialOverlayTopics,
     clipBoxOn,
     clipXMin,
     clipXMax,
@@ -352,6 +353,28 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     sectionAccumulationOpen,
     sectionOverlaysOpen,
   } = settings;
+
+  const spatialOverlayCandidates = useMemo(
+    () => getSpatialOverlayCandidates(bag?.topics ?? [], topicName),
+    [bag, topicName],
+  );
+  const selectedSpatialOverlays = useMemo(
+    () =>
+      spatialOverlayCandidates.filter((candidate) =>
+        spatialOverlayTopics.includes(candidate.name),
+      ),
+    [spatialOverlayCandidates, spatialOverlayTopics],
+  );
+  const hasPointCloudLayer =
+    sceneKind === 'pointcloud' ||
+    selectedSpatialOverlays.some((candidate) => detectKind(candidate.type) === 'pointcloud');
+  const hasPointLayer =
+    hasPointCloudLayer ||
+    sceneKind === 'laserscan' ||
+    selectedSpatialOverlays.some((candidate) => detectKind(candidate.type) === 'laserscan');
+  const hasMapLayer =
+    sceneKind === 'occupancygrid' ||
+    selectedSpatialOverlays.some((candidate) => detectKind(candidate.type) === 'occupancygrid');
 
   const setColorMode = (v: ColorMode) => updateSettings(panelId, { colorMode: v });
   const setPointSize = (v: number) => updateSettings(panelId, { pointSize: v });
@@ -384,6 +407,12 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     if (hidden) cur.add(t);
     else cur.delete(t);
     updateSettings(panelId, { hiddenFrustumTopics: Array.from(cur).sort() });
+  };
+  const toggleSpatialOverlay = (topic: string, visible: boolean) => {
+    const current = new Set(spatialOverlayTopics);
+    if (visible) current.add(topic);
+    else current.delete(topic);
+    updateSettings(panelId, { spatialOverlayTopics: Array.from(current).sort() });
   };
 
   const setClipBoxOn = (v: boolean) => updateSettings(panelId, { clipBoxOn: v });
@@ -491,7 +520,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
       : poseState.error;
 
   const { graph, missing: noTf } = useTFGraph(bagId);
-  const { containerRef, sceneRef } = useScene();
+  const { containerRef, sceneRef, ready: sceneReady } = useScene();
 
   // Register this panel's WebGL canvas for clip export.
   useEffect(
@@ -1512,6 +1541,25 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
             onUpdate={handleCameraInfoUpdate}
           />
         ))}
+      {sceneReady &&
+        selectedSpatialOverlays.map((overlay) => (
+          <SpatialOverlay
+            key={overlay.name}
+            topic={overlay}
+            bagId={bagId}
+            playheadNs={playheadNs}
+            sceneRef={sceneRef}
+            graph={graph}
+            worldFrame={worldFrame}
+            upFixMatrix={upFixMatrix}
+            colorMode={colorMode}
+            pointSize={pointSize}
+            maxRange={rangeLimitOn && maxRange > 0 ? maxRange : undefined}
+            heightAxis={heightAxis}
+            axisClip={axisClip}
+            mapAlpha={mapAlpha}
+          />
+        ))}
       <div className="flex-1 flex flex-col min-h-0">
         <div className="flex-1 min-h-[260px] relative bg-bg-primary/60 overflow-hidden">
           <div
@@ -1585,6 +1633,12 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
               onToggleNamespace={toggleNamespaceHidden}
               mapAlpha={mapAlpha}
               setMapAlpha={setMapAlpha}
+              spatialOverlayCandidates={spatialOverlayCandidates}
+              spatialOverlayTopics={spatialOverlayTopics}
+              onToggleSpatialOverlay={toggleSpatialOverlay}
+              hasPointCloudLayer={hasPointCloudLayer}
+              hasPointLayer={hasPointLayer}
+              hasMapLayer={hasMapLayer}
               hasRobotModel={!!robotModel}
               robotName={robotModel?.sourceName ?? null}
               robotHidden={robotHidden}
@@ -1777,6 +1831,12 @@ interface ControlsCardProps {
   /** Global alpha multiplier for OccupancyGrid panels (0…1). */
   mapAlpha: number;
   setMapAlpha: (a: number) => void;
+  spatialOverlayCandidates: SpatialOverlayTopic[];
+  spatialOverlayTopics: string[];
+  onToggleSpatialOverlay: (topic: string, visible: boolean) => void;
+  hasPointCloudLayer: boolean;
+  hasPointLayer: boolean;
+  hasMapLayer: boolean;
   /** A URDF has been loaded app-wide. */
   hasRobotModel: boolean;
   /** Source filename (for the title attribute). */
@@ -1859,6 +1919,12 @@ function ControlsCard({
   onToggleNamespace,
   mapAlpha,
   setMapAlpha,
+  spatialOverlayCandidates,
+  spatialOverlayTopics,
+  onToggleSpatialOverlay,
+  hasPointCloudLayer,
+  hasPointLayer,
+  hasMapLayer,
   hasRobotModel,
   robotName,
   robotHidden,
@@ -1910,11 +1976,16 @@ function ControlsCard({
           <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
         </svg>
         <span>Display</span>
+        {spatialOverlayTopics.length > 0 && (
+          <span className="text-accent-cyan text-[10px]">
+            {spatialOverlayTopics.length + 1} layers
+          </span>
+        )}
       </button>
       {open && (
         <div className="border-t border-border w-56">
         <div className="p-2.5 space-y-2 max-h-[60vh] overflow-y-auto">
-          {sceneKind === 'pointcloud' && (
+          {hasPointCloudLayer && (
             <div>
               <div className="text-text-tertiary text-[10px] mb-1">color by</div>
               <div className="flex gap-1 flex-wrap">
@@ -1934,7 +2005,7 @@ function ControlsCard({
               </div>
             </div>
           )}
-          {sceneKind !== 'occupancygrid' && (
+          {hasPointLayer && (
             <div>
               <div className="flex items-center justify-between text-text-tertiary text-[10px] mb-1">
                 <span>point size</span>
@@ -1951,7 +2022,7 @@ function ControlsCard({
               />
             </div>
           )}
-          {sceneKind === 'occupancygrid' && (
+          {hasMapLayer && (
             <div>
               <div className="flex items-center justify-between text-text-tertiary text-[10px] mb-1">
                 <span>map alpha</span>
@@ -2032,7 +2103,7 @@ function ControlsCard({
             )}
           </DisclosureSection>
 
-          {sceneKind === 'pointcloud' && (
+          {hasPointCloudLayer && (
             <DisclosureSection
               label="Range and clipping"
               open={sectionRangeClipOpen}
@@ -2224,12 +2295,49 @@ function ControlsCard({
             </DisclosureSection>
           )}
 
-          {(hasRobotModel || cameraFrustumCount > 0 || (sceneKind === 'markerarray' && markerNamespaces.length > 0)) && (
+          {(spatialOverlayCandidates.length > 0 || hasRobotModel || cameraFrustumCount > 0 || (sceneKind === 'markerarray' && markerNamespaces.length > 0)) && (
             <DisclosureSection
               label="Overlays"
               open={sectionOverlaysOpen}
               onToggle={setSectionOverlaysOpen}
             >
+              {spatialOverlayCandidates.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between text-text-tertiary text-[10px] mb-1">
+                    <span>scene topics</span>
+                    <span>{spatialOverlayTopics.length + 1} layers</span>
+                  </div>
+                  <div className="max-h-36 overflow-y-auto space-y-0.5 pr-1">
+                    {spatialOverlayCandidates.map((candidate) => {
+                      const checked = spatialOverlayTopics.includes(candidate.name);
+                      const shortType = candidate.type.split('/').pop() ?? candidate.type;
+                      return (
+                        <label
+                          key={candidate.name}
+                          className={checked ? 'flex items-center gap-1.5 cursor-pointer text-text-secondary' : 'flex items-center gap-1.5 cursor-pointer text-text-tertiary'}
+                          title={candidate.name + ' (' + candidate.type + ')'}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) =>
+                              onToggleSpatialOverlay(candidate.name, e.target.checked)
+                            }
+                            className="accent-accent-cyan flex-shrink-0"
+                          />
+                          <span className="truncate flex-1">{candidate.name}</span>
+                          <span className="text-[9px] text-text-tertiary flex-shrink-0">
+                            {shortType}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <div className="text-text-tertiary text-[10px] leading-tight mt-1">
+                    Layers use TF to align with the selected world frame.
+                  </div>
+                </div>
+              )}
               {sceneKind === 'markerarray' && markerNamespaces.length > 0 && (
                 <div>
                   <div className="flex items-center justify-between text-text-tertiary text-[10px] mb-1">
