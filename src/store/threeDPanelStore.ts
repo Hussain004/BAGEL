@@ -84,6 +84,13 @@ export interface ThreeDPanelSettings {
    */
   hiddenFrustumTopics: string[];
   /**
+   * Additional spatial topics rendered in this panel's scene. Topic names
+   * are resolved against the panel's bag so the stored value stays compact.
+   * These selections are panel-specific and are not saved as cross-bag
+   * display defaults.
+   */
+  spatialOverlayTopics: string[];
+  /**
    * Axis-aligned clip box for PointCloud2 panels (v1.6.1). When on, points
    * outside any of the specified bounds are dropped before coloring. Each
    * bound is null when inactive (no clip on that side). Unlike the radial
@@ -138,6 +145,7 @@ export const DEFAULT_THREE_D_SETTINGS: ThreeDPanelSettings = {
   cameraFrustumsOn: false,
   cameraFrustumFar: 5,
   hiddenFrustumTopics: [],
+  spatialOverlayTopics: [],
   clipBoxOn: false,
   clipXMin: null,
   clipXMax: null,

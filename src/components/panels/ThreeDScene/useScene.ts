@@ -13,7 +13,7 @@
  * and apply a single transform to relocate everything into the chosen world
  * frame, without having to walk every leaf object.
  */
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { useThemeStore } from '../../../store/themeStore';
@@ -54,9 +54,11 @@ export interface SceneRefs {
 export function useScene(): {
   containerRef: React.RefObject<HTMLDivElement | null>;
   sceneRef: React.RefObject<SceneRefs | null>;
+  ready: boolean;
 } {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const sceneRef = useRef<SceneRefs | null>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -222,6 +224,7 @@ export function useScene(): {
       orbitBy,
       zoomBy,
     };
+    setReady(true);
 
     return () => {
       cancelAnimationFrame(rafId);
@@ -247,5 +250,5 @@ export function useScene(): {
     };
   }, []);
 
-  return { containerRef, sceneRef };
+  return { containerRef, sceneRef, ready };
 }

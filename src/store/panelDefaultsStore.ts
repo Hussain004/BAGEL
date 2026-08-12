@@ -59,6 +59,7 @@ const NON_PORTABLE_FIELDS: ReadonlySet<keyof ThreeDPanelSettings> = new Set([
   'pivot',
   'hiddenMarkerNamespaces',
   'hiddenFrustumTopics',
+  'spatialOverlayTopics',
 ]);
 
 export type PanelDefaults = Partial<ThreeDPanelSettings>;
