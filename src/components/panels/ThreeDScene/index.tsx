@@ -8,6 +8,7 @@ import { PanelErrorState } from '../shared/PanelStates';
 import {
   useThreeDPanelStore,
   type ProjectionMode,
+  type SpatialOverlayStyle,
   type UpAxis,
 } from '../../../store/threeDPanelStore';
 import {
@@ -47,6 +48,7 @@ import {
   createWorldAxes,
   disposeObject,
   extractPose,
+  setCloudStyle,
   updateCloud,
   updatePoseAxes,
   type CloudObject,
@@ -324,6 +326,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
   const {
     colorMode,
     pointSize,
+    laserScanColor,
     showGrid,
     showWorldAxes,
     projectionMode,
@@ -343,6 +346,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     cameraFrustumFar,
     hiddenFrustumTopics,
     spatialOverlayTopics,
+    spatialOverlayStyles,
     clipBoxOn,
     clipXMin,
     clipXMax,
@@ -380,6 +384,8 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
 
   const setColorMode = (v: ColorMode) => updateSettings(panelId, { colorMode: v });
   const setPointSize = (v: number) => updateSettings(panelId, { pointSize: v });
+  const setLaserScanColor = (v: string | null) =>
+    updateSettings(panelId, { laserScanColor: v });
   const setShowGrid = (v: boolean) => updateSettings(panelId, { showGrid: v });
   const setShowWorldAxes = (v: boolean) => updateSettings(panelId, { showWorldAxes: v });
   const setProjectionMode = (v: ProjectionMode) =>
@@ -417,6 +423,17 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     if (visible) current.add(topic);
     else current.delete(topic);
     updateSettings(panelId, { spatialOverlayTopics: Array.from(current).sort() });
+  };
+  const setSpatialOverlayStyle = (
+    topic: string,
+    patch: Partial<SpatialOverlayStyle>,
+  ) => {
+    updateSettings(panelId, {
+      spatialOverlayStyles: {
+        ...spatialOverlayStyles,
+        [topic]: { ...spatialOverlayStyles[topic], ...patch },
+      },
+    });
   };
 
   const setClipBoxOn = (v: boolean) => updateSettings(panelId, { clipBoxOn: v });
@@ -524,7 +541,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
       : poseState.error;
 
   const { graph, missing: noTf } = useTFGraph(bagId, topicName);
-  const { containerRef, sceneRef, ready: sceneReady } = useScene();
+  const { containerRef, sceneRef, ready: sceneReady, zoomLevel } = useScene();
 
   useEffect(() => {
     if (!sceneReady) return;
@@ -698,10 +715,16 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     const owned = objectsRef.current;
     const refs = sceneRef.current;
     if (!refs || !owned) return;
-    if (owned.cloud) owned.cloud.material.size = sceneKind === 'laserscan' ? pointSize + 1 : pointSize;
+    if (owned.cloud) {
+      setCloudStyle(
+        owned.cloud,
+        sceneKind === 'laserscan' ? pointSize + 1 : pointSize,
+        sceneKind === 'laserscan' ? laserScanColor : null,
+      );
+    }
     if (owned.accumulator) owned.accumulator.setPointSize(pointSize);
     refs.renderOnce();
-  }, [pointSize, sceneKind, sceneRef]);
+  }, [laserScanColor, pointSize, sceneKind, sceneRef]);
 
   // Accumulator visibility toggle.
   useEffect(() => {
@@ -1563,6 +1586,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
             upFixMatrix={upFixMatrix}
             colorMode={colorMode}
             pointSize={pointSize}
+            style={spatialOverlayStyles[overlay.name]}
             maxRange={rangeLimitOn && maxRange > 0 ? maxRange : undefined}
             heightAxis={heightAxis}
             axisClip={axisClip}
@@ -1633,12 +1657,32 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
                 Fit
               </button>
             </div>
+            <label className="flex items-center gap-2 rounded-md border border-border bg-surface/80 px-2 py-1 text-[10px] mono text-text-tertiary">
+              <span>zoom</span>
+              <input
+                type="range"
+                aria-label="Map zoom"
+                min={-3.3219}
+                max={3.3219}
+                step={0.05}
+                value={Math.log2(zoomLevel)}
+                onChange={(event) =>
+                  sceneRef.current?.setZoomLevel(2 ** Number(event.target.value))
+                }
+                className="w-28 accent-accent-blue"
+              />
+              <span className="w-10 text-right text-text-secondary">
+                {Math.round(zoomLevel * 100)}%
+              </span>
+            </label>
             <ControlsCard
               sceneKind={sceneKind}
               colorMode={colorMode}
               setColorMode={setColorMode}
               pointSize={pointSize}
               setPointSize={setPointSize}
+              laserScanColor={laserScanColor}
+              setLaserScanColor={setLaserScanColor}
               showGrid={showGrid}
               setShowGrid={setShowGrid}
               showWorldAxes={showWorldAxes}
@@ -1673,6 +1717,8 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
               spatialOverlayCandidates={spatialOverlayCandidates}
               spatialOverlayTopics={spatialOverlayTopics}
               onToggleSpatialOverlay={toggleSpatialOverlay}
+              spatialOverlayStyles={spatialOverlayStyles}
+              onSetSpatialOverlayStyle={setSpatialOverlayStyle}
               hasPointCloudLayer={hasPointCloudLayer}
               hasPointLayer={hasPointLayer}
               hasMapLayer={hasMapLayer}
@@ -1834,6 +1880,8 @@ interface ControlsCardProps {
   setColorMode: (m: ColorMode) => void;
   pointSize: number;
   setPointSize: (s: number) => void;
+  laserScanColor: string | null;
+  setLaserScanColor: (color: string | null) => void;
   showGrid: boolean;
   setShowGrid: (v: boolean) => void;
   showWorldAxes: boolean;
@@ -1871,6 +1919,8 @@ interface ControlsCardProps {
   spatialOverlayCandidates: SpatialOverlayTopic[];
   spatialOverlayTopics: string[];
   onToggleSpatialOverlay: (topic: string, visible: boolean) => void;
+  spatialOverlayStyles: Record<string, SpatialOverlayStyle>;
+  onSetSpatialOverlayStyle: (topic: string, patch: Partial<SpatialOverlayStyle>) => void;
   hasPointCloudLayer: boolean;
   hasPointLayer: boolean;
   hasMapLayer: boolean;
@@ -1925,6 +1975,8 @@ function ControlsCard({
   setColorMode,
   pointSize,
   setPointSize,
+  laserScanColor,
+  setLaserScanColor,
   showGrid,
   setShowGrid,
   showWorldAxes,
@@ -1959,6 +2011,8 @@ function ControlsCard({
   spatialOverlayCandidates,
   spatialOverlayTopics,
   onToggleSpatialOverlay,
+  spatialOverlayStyles,
+  onSetSpatialOverlayStyle,
   hasPointCloudLayer,
   hasPointLayer,
   hasMapLayer,
@@ -2039,6 +2093,33 @@ function ControlsCard({
                     {m}
                   </button>
                 ))}
+              </div>
+            </div>
+          )}
+          {sceneKind === 'laserscan' && (
+            <div>
+              <div className="text-text-tertiary text-[10px] mb-1">scan color</div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  aria-label="LaserScan color"
+                  value={laserScanColor ?? '#22d3ee'}
+                  onChange={(event) => setLaserScanColor(event.target.value)}
+                  className="w-8 h-6 rounded border border-border bg-transparent cursor-pointer"
+                />
+                <button
+                  type="button"
+                  aria-pressed={laserScanColor === null}
+                  onClick={() => setLaserScanColor(null)}
+                  className={
+                    laserScanColor === null
+                      ? 'px-2 py-0.5 rounded border border-accent-blue/40 text-accent-blue'
+                      : 'px-2 py-0.5 rounded border border-border text-text-secondary hover:border-accent-blue/40'
+                  }
+                  title="Use the decoded range gradient"
+                >
+                  range
+                </button>
               </div>
             </div>
           )}
@@ -2344,29 +2425,87 @@ function ControlsCard({
                     <span>scene topics</span>
                     <span>{spatialOverlayTopics.length + 1} layers</span>
                   </div>
-                  <div className="max-h-36 overflow-y-auto space-y-0.5 pr-1">
+                  <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
                     {spatialOverlayCandidates.map((candidate) => {
                       const checked = spatialOverlayTopics.includes(candidate.name);
                       const shortType = candidate.type.split('/').pop() ?? candidate.type;
+                      const candidateKind = detectKind(candidate.type);
+                      const supportsPointStyle =
+                        candidateKind === 'pointcloud' || candidateKind === 'laserscan';
+                      const style = spatialOverlayStyles[candidate.name] ?? {};
+                      const layerPointSize = style.pointSize ?? pointSize;
                       return (
-                        <label
-                          key={candidate.name}
-                          className={checked ? 'flex items-center gap-1.5 cursor-pointer text-text-secondary' : 'flex items-center gap-1.5 cursor-pointer text-text-tertiary'}
-                          title={candidate.name + ' (' + candidate.type + ')'}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={(e) =>
-                              onToggleSpatialOverlay(candidate.name, e.target.checked)
-                            }
-                            className="accent-accent-cyan flex-shrink-0"
-                          />
-                          <span className="truncate flex-1">{candidate.name}</span>
-                          <span className="text-[9px] text-text-tertiary flex-shrink-0">
-                            {shortType}
-                          </span>
-                        </label>
+                        <div key={candidate.name}>
+                          <label
+                            className={checked ? 'flex items-center gap-1.5 cursor-pointer text-text-secondary' : 'flex items-center gap-1.5 cursor-pointer text-text-tertiary'}
+                            title={candidate.name + ' (' + candidate.type + ')'}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(event) =>
+                                onToggleSpatialOverlay(candidate.name, event.target.checked)
+                              }
+                              className="accent-accent-cyan flex-shrink-0"
+                            />
+                            <span className="truncate flex-1">{candidate.name}</span>
+                            <span className="text-[9px] text-text-tertiary flex-shrink-0">
+                              {shortType}
+                            </span>
+                          </label>
+                          {checked && supportsPointStyle && (
+                            <div className="ml-5 mt-1 space-y-1 rounded border border-border/70 p-1.5">
+                              <label className="flex items-center gap-1.5 text-[9px] text-text-tertiary">
+                                <span>size</span>
+                                <input
+                                  type="range"
+                                  aria-label={candidate.name + ' point size'}
+                                  min={1}
+                                  max={8}
+                                  step={0.5}
+                                  value={layerPointSize}
+                                  onChange={(event) =>
+                                    onSetSpatialOverlayStyle(candidate.name, {
+                                      pointSize: Number(event.target.value),
+                                    })
+                                  }
+                                  className="min-w-0 flex-1 accent-accent-cyan"
+                                />
+                                <span className="w-8 text-right text-text-secondary">
+                                  {layerPointSize.toFixed(1)}
+                                </span>
+                              </label>
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="color"
+                                  aria-label={candidate.name + ' color'}
+                                  value={style.color ?? '#22d3ee'}
+                                  onChange={(event) =>
+                                    onSetSpatialOverlayStyle(candidate.name, {
+                                      color: event.target.value,
+                                    })
+                                  }
+                                  className="h-5 w-7 cursor-pointer rounded border border-border bg-transparent"
+                                />
+                                <button
+                                  type="button"
+                                  aria-label={'Use automatic colors for ' + candidate.name}
+                                  aria-pressed={style.color == null}
+                                  onClick={() =>
+                                    onSetSpatialOverlayStyle(candidate.name, { color: null })
+                                  }
+                                  className={
+                                    style.color == null
+                                      ? 'rounded border border-accent-cyan/40 px-1.5 text-accent-cyan'
+                                      : 'rounded border border-border px-1.5 text-text-tertiary hover:border-accent-cyan/40'
+                                  }
+                                >
+                                  auto
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       );
                     })}
                   </div>
