@@ -7,6 +7,7 @@ import { OverlayCard } from '../shared/OverlayCard';
 import { PanelErrorState } from '../shared/PanelStates';
 import {
   useThreeDPanelStore,
+  type ProjectionMode,
   type UpAxis,
 } from '../../../store/threeDPanelStore';
 import {
@@ -325,6 +326,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     pointSize,
     showGrid,
     showWorldAxes,
+    projectionMode,
     worldFrame,
     rangeLimitOn,
     maxRange,
@@ -380,6 +382,8 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
   const setPointSize = (v: number) => updateSettings(panelId, { pointSize: v });
   const setShowGrid = (v: boolean) => updateSettings(panelId, { showGrid: v });
   const setShowWorldAxes = (v: boolean) => updateSettings(panelId, { showWorldAxes: v });
+  const setProjectionMode = (v: ProjectionMode) =>
+    updateSettings(panelId, { projectionMode: v });
   const setWorldFrame = (v: string) => updateSettings(panelId, { worldFrame: v });
   const setRangeLimitOn = (v: boolean) => updateSettings(panelId, { rangeLimitOn: v });
   const setMaxRange = (v: number) => updateSettings(panelId, { maxRange: v });
@@ -519,8 +523,13 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
       ? cloudState.error
       : poseState.error;
 
-  const { graph, missing: noTf } = useTFGraph(bagId);
+  const { graph, missing: noTf } = useTFGraph(bagId, topicName);
   const { containerRef, sceneRef, ready: sceneReady } = useScene();
+
+  useEffect(() => {
+    if (!sceneReady) return;
+    sceneRef.current?.setProjectionMode(projectionMode);
+  }, [projectionMode, sceneReady, sceneRef]);
 
   // Register this panel's WebGL canvas for clip export.
   useEffect(
@@ -1588,6 +1597,34 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
                   Reset pivot
                 </button>
               )}
+              <div
+                className="flex rounded-md overflow-hidden border border-border bg-surface/80"
+                role="group"
+                aria-label="Scene projection"
+              >
+                {(['orthographic', 'perspective'] as const).map((mode) => {
+                  const active = projectionMode === mode;
+                  const label = mode === 'orthographic' ? '2D' : '3D';
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => setProjectionMode(mode)}
+                      className={
+                        active
+                          ? 'px-2 py-1 text-xs mono bg-accent-blue/20 text-accent-blue'
+                          : 'px-2 py-1 text-xs mono text-text-secondary hover:text-accent-blue'
+                      }
+                      title={mode === 'orthographic'
+                        ? 'Top-down orthographic map view'
+                        : 'Perspective 3D orbit view'}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
               <button
                 onClick={handleResetCamera}
                 className="px-2 py-1 rounded-md text-xs mono bg-surface/80 border border-border hover:border-accent-blue/40 hover:text-accent-blue text-text-secondary transition-colors"

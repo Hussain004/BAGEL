@@ -11,7 +11,13 @@
  * the reader on every panel read.
  */
 
-import { McapIndexedReader, McapStreamReader, type DecompressHandlers, type IReadable } from '@mcap/core';
+import {
+  McapIndexedReader,
+  McapRecordBuilder,
+  McapStreamReader,
+  type DecompressHandlers,
+  type IReadable,
+} from '@mcap/core';
 import { BlobReadable } from '@mcap/browser';
 import { decompress as fzstdDecompress } from 'fzstd';
 import type { AllTopicStats, BagSummary, RawMessage, TopicInfo } from '../types/bag';
@@ -22,7 +28,6 @@ import {
   HttpReadable,
   sourceDisplayName,
   sourceKey,
-  sourceReadAll,
   sourceSize,
   type BagSource,
 } from './source';
@@ -188,6 +193,7 @@ interface CachedMcap {
   size: number;
   reader: McapIndexedReader | null;
   buffer: Uint8Array | null;
+  unindexed: UnindexedMcap | null;
   channelById: Map<number, { topic: string; schemaId: number; messageEncoding: string }>;
   schemaById: Map<number, { name: string; encoding: string; data: Uint8Array }>;
   topicMeta: Map<string, { schemaName: string; schemaText: string | null; messageEncoding: string }>;
@@ -199,6 +205,37 @@ interface CachedMcap {
   messageCache: Map<string, Map<bigint, Record<string, unknown> | null>>;
   /** Per-video-topic keyframe timestamp index. Built lazily on first seek. */
   videoIndex: Map<string, { format: string; keyframeTimes: bigint[] }>;
+}
+
+interface UnindexedMessageRef {
+  kind: 'message';
+  recordOffset: number;
+  recordLength: number;
+  dataOffset: number;
+  dataLength: number;
+  channelId: number;
+  logTime: bigint;
+}
+
+interface UnindexedChunkRef {
+  kind: 'chunk';
+  recordOffset: number;
+  recordLength: number;
+  startTime: bigint;
+  endTime: bigint;
+  channelIds: Set<number>;
+}
+
+type UnindexedRecordRef = UnindexedMessageRef | UnindexedChunkRef;
+
+interface UnindexedMcap {
+  refsByChannel: Map<number, UnindexedRecordRef[]>;
+  messageCounts: Map<number, number>;
+  startTime: bigint;
+  endTime: bigint;
+  totalMessageCount: number;
+  preamble: Uint8Array;
+  trailingBytes: number;
 }
 
 let cached: CachedMcap | null = null;
@@ -215,15 +252,401 @@ export function disposeMcapCache(): void {
   cached = null;
 }
 
+const UNINDEXED_SCAN_WINDOW_BYTES = 8 * 1024 * 1024;
+const MCAP_RECORD_HEADER_BYTES = 9;
+const MCAP_MESSAGE_FIXED_BYTES = 22;
+const MCAP_MAGIC_BYTES = new Uint8Array([0x89, 0x4d, 0x43, 0x41, 0x50, 0x30, 0x0d, 0x0a]);
+
+class ReadAheadWindow {
+  private start = 0;
+  private data: Uint8Array = new Uint8Array(0);
+  private readonly readable: IReadable;
+  private readonly fileSize: number;
+
+  constructor(readable: IReadable, fileSize: number) {
+    this.readable = readable;
+    this.fileSize = fileSize;
+  }
+
+  async read(offset: number, length: number): Promise<Uint8Array> {
+    if (
+      offset >= this.start &&
+      offset + length <= this.start + this.data.byteLength
+    ) {
+      const local = offset - this.start;
+      return this.data.subarray(local, local + length);
+    }
+
+    const available = this.fileSize - offset;
+    const fetchLength = Math.min(
+      available,
+      Math.max(length, UNINDEXED_SCAN_WINDOW_BYTES),
+    );
+    this.start = offset;
+    this.data = await this.readable.read(BigInt(offset), BigInt(fetchLength));
+    if (this.data.byteLength < length) {
+      throw new Error(
+        `MCAP range read returned ${this.data.byteLength} bytes, expected ${length}`,
+      );
+    }
+    return this.data.subarray(0, length);
+  }
+}
+
+function pushUnindexedRef(
+  refsByChannel: Map<number, UnindexedRecordRef[]>,
+  channelId: number,
+  ref: UnindexedRecordRef,
+): void {
+  const refs = refsByChannel.get(channelId);
+  if (refs) refs.push(ref);
+  else refsByChannel.set(channelId, [ref]);
+}
+
+function updateUnindexedTime(
+  current: { startTime: bigint; endTime: bigint; total: number },
+  logTime: bigint,
+): void {
+  if (current.total === 0 || logTime < current.startTime) current.startTime = logTime;
+  if (current.total === 0 || logTime > current.endTime) current.endTime = logTime;
+  current.total++;
+}
+
 /**
- * Files larger than this skip the stream-reader fallback. The stream reader
- * needs the whole file as a Uint8Array, which fails for multi-GB bags
- * (browsers cap ArrayBuffer allocations around ~2 GB and `file.arrayBuffer()`
- * rejects with "requested file could not be read" once memory is exhausted).
- * The indexed reader does range reads via BlobReadable instead, so any file
- * with a summary section still works regardless of size.
+ * Build a compact side index for an MCAP whose footer or summary is missing.
+ *
+ * Message payloads are never retained. Unchunked messages record only their
+ * byte range and timestamp, while chunked records retain one range per chunk.
+ * This keeps multi-gigabyte interrupted recordings usable without allocating
+ * an ArrayBuffer the size of the file.
  */
-const STREAM_FALLBACK_MAX_BYTES = 512 * 1024 * 1024;
+async function scanUnindexedMcap(
+  readable: IReadable,
+  size: number,
+  decompressHandlers: DecompressHandlers,
+  channelById: CachedMcap['channelById'],
+  schemaById: CachedMcap['schemaById'],
+): Promise<UnindexedMcap> {
+  const window = new ReadAheadWindow(readable, size);
+  const magic = await window.read(0, MCAP_MAGIC_BYTES.byteLength);
+  if (!MCAP_MAGIC_BYTES.every((value, index) => magic[index] === value)) {
+    throw new Error('The file does not begin with valid MCAP magic.');
+  }
+
+  const streamReader = new McapStreamReader({
+    includeChunks: true,
+    decompressHandlers,
+  });
+  streamReader.append(magic);
+  while (streamReader.nextRecord()) {
+    // Consume the prefix before appending the first record.
+  }
+
+  let header: { profile: string; library: string } | null = null;
+  const channelRecords = new Map<
+    number,
+    {
+      id: number;
+      schemaId: number;
+      topic: string;
+      messageEncoding: string;
+      metadata: Map<string, string>;
+    }
+  >();
+  const refsByChannel = new Map<number, UnindexedRecordRef[]>();
+  const messageCounts = new Map<number, number>();
+  const time = { startTime: 0n, endTime: 0n, total: 0 };
+
+  let offset = MCAP_MAGIC_BYTES.byteLength;
+  while (offset + MCAP_RECORD_HEADER_BYTES <= size) {
+    const fixedLength = Math.min(
+      MCAP_RECORD_HEADER_BYTES + MCAP_MESSAGE_FIXED_BYTES,
+      size - offset,
+    );
+    const fixed = await window.read(offset, fixedLength);
+    const opcode = fixed[0]!;
+    const bodyLength = readU64LENum(fixed, 1);
+    const recordLength = MCAP_RECORD_HEADER_BYTES + bodyLength;
+    if (!Number.isSafeInteger(recordLength) || bodyLength < 0) {
+      throw new Error(`MCAP record at byte ${offset} has an invalid length.`);
+    }
+    if (offset + recordLength > size) break;
+
+    if (opcode === 0x05) {
+      if (bodyLength < MCAP_MESSAGE_FIXED_BYTES || fixed.byteLength < 31) {
+        throw new Error(`MCAP message at byte ${offset} is too short.`);
+      }
+      const channelId = readU16LE(fixed, 9);
+      const logTime = readU64LEBig(fixed, 15);
+      const ref: UnindexedMessageRef = {
+        kind: 'message',
+        recordOffset: offset,
+        recordLength,
+        dataOffset: offset + MCAP_RECORD_HEADER_BYTES + MCAP_MESSAGE_FIXED_BYTES,
+        dataLength: bodyLength - MCAP_MESSAGE_FIXED_BYTES,
+        channelId,
+        logTime,
+      };
+      pushUnindexedRef(refsByChannel, channelId, ref);
+      messageCounts.set(channelId, (messageCounts.get(channelId) ?? 0) + 1);
+      updateUnindexedTime(time, logTime);
+      offset += recordLength;
+      continue;
+    }
+
+    const bytes = await window.read(offset, recordLength);
+    streamReader.append(bytes);
+    let chunkRef: UnindexedChunkRef | null = null;
+    for (let record; (record = streamReader.nextRecord()); ) {
+      if (record.type === 'Header') {
+        header = { profile: record.profile, library: record.library };
+      } else if (record.type === 'Schema') {
+        schemaById.set(record.id, {
+          name: record.name,
+          encoding: record.encoding,
+          data: record.data.slice(),
+        });
+      } else if (record.type === 'Channel') {
+        channelById.set(record.id, {
+          topic: record.topic,
+          schemaId: record.schemaId,
+          messageEncoding: record.messageEncoding,
+        });
+        channelRecords.set(record.id, {
+          id: record.id,
+          schemaId: record.schemaId,
+          topic: record.topic,
+          messageEncoding: record.messageEncoding,
+          metadata: new Map(record.metadata),
+        });
+      } else if (record.type === 'Chunk') {
+        chunkRef = {
+          kind: 'chunk',
+          recordOffset: offset,
+          recordLength,
+          startTime: record.messageStartTime,
+          endTime: record.messageEndTime,
+          channelIds: new Set(),
+        };
+      } else if (record.type === 'Message') {
+        if (!chunkRef) continue;
+        chunkRef.channelIds.add(record.channelId);
+        messageCounts.set(
+          record.channelId,
+          (messageCounts.get(record.channelId) ?? 0) + 1,
+        );
+        updateUnindexedTime(time, record.logTime);
+      }
+    }
+    if (chunkRef) {
+      for (const channelId of chunkRef.channelIds) {
+        pushUnindexedRef(refsByChannel, channelId, chunkRef);
+      }
+    }
+    offset += recordLength;
+  }
+
+  const builder = new McapRecordBuilder();
+  builder.writeMagic();
+  builder.writeHeader(header ?? { profile: '', library: 'BAGEL range reader' });
+  for (const [id, schema] of schemaById) {
+    builder.writeSchema({ id, ...schema });
+  }
+  for (const channel of channelRecords.values()) {
+    builder.writeChannel(channel);
+  }
+
+  return {
+    refsByChannel,
+    messageCounts,
+    startTime: time.startTime,
+    endTime: time.endTime,
+    totalMessageCount: time.total,
+    preamble: builder.buffer.slice(0, builder.length),
+    trailingBytes: size - offset,
+  };
+}
+
+function channelIdsForTopic(meta: CachedMcap, topicName: string): Set<number> {
+  const ids = new Set<number>();
+  for (const [id, channel] of meta.channelById) {
+    if (channel.topic === topicName) ids.add(id);
+  }
+  return ids;
+}
+
+async function readUnindexedRef(
+  source: BagSource,
+  meta: CachedMcap,
+  ref: UnindexedRecordRef,
+  channelIds: Set<number>,
+): Promise<RawMessage[]> {
+  const readable = readableFor(source);
+  if (ref.kind === 'message') {
+    if (!channelIds.has(ref.channelId)) return [];
+    const data = await readable.read(BigInt(ref.dataOffset), BigInt(ref.dataLength));
+    return [{ topicName: '', timestamp: ref.logTime, data }];
+  }
+
+  const bytes = await readable.read(BigInt(ref.recordOffset), BigInt(ref.recordLength));
+  const reader = new McapStreamReader({
+    decompressHandlers: meta.decompressHandlers,
+  });
+  reader.append(meta.unindexed!.preamble);
+  while (reader.nextRecord()) {
+    // Drain the synthetic header, schemas, and channels.
+  }
+  reader.append(bytes);
+  const out: RawMessage[] = [];
+  for (let record; (record = reader.nextRecord()); ) {
+    if (record.type !== 'Message' || !channelIds.has(record.channelId)) continue;
+    out.push({
+      topicName: '',
+      timestamp: record.logTime,
+      data: record.data instanceof Uint8Array ? record.data.slice() : new Uint8Array(record.data),
+    });
+  }
+  return out;
+}
+
+async function readRawMessagesUnindexed(
+  source: BagSource,
+  meta: CachedMcap,
+  topicName: string,
+  limit?: number,
+  startNs?: bigint,
+  endNs?: bigint,
+): Promise<RawMessage[]> {
+  const channelIds = channelIdsForTopic(meta, topicName);
+  const refs = new Map<number, UnindexedRecordRef>();
+  for (const channelId of channelIds) {
+    for (const ref of meta.unindexed?.refsByChannel.get(channelId) ?? []) {
+      if (ref.kind === 'message') {
+        if (startNs !== undefined && ref.logTime < startNs) continue;
+        if (endNs !== undefined && ref.logTime > endNs) continue;
+      } else {
+        if (startNs !== undefined && ref.endTime < startNs) continue;
+        if (endNs !== undefined && ref.startTime > endNs) continue;
+      }
+      refs.set(ref.recordOffset, ref);
+    }
+  }
+  const ordered = Array.from(refs.values()).sort((a, b) => a.recordOffset - b.recordOffset);
+  const readable = readableFor(source);
+  const out: RawMessage[] = [];
+  const maxBatchBytes = 1024 * 1024;
+  const maxGapBytes = 64 * 1024;
+
+  for (let index = 0; index < ordered.length;) {
+    const ref = ordered[index]!;
+    if (ref.kind === 'chunk') {
+      const messages = await readUnindexedRef(source, meta, ref, channelIds);
+      for (const message of messages) {
+        if (startNs !== undefined && message.timestamp < startNs) continue;
+        if (endNs !== undefined && message.timestamp > endNs) continue;
+        message.topicName = topicName;
+        out.push(message);
+        if (limit && out.length >= limit) return out;
+      }
+      index++;
+      continue;
+    }
+
+    const batchRefs: UnindexedMessageRef[] = [ref];
+    const batchStart = ref.dataOffset;
+    let batchEnd = ref.dataOffset + ref.dataLength;
+    let nextIndex = index + 1;
+    while (nextIndex < ordered.length) {
+      const next = ordered[nextIndex]!;
+      if (next.kind !== 'message') break;
+      const nextEnd = next.dataOffset + next.dataLength;
+      if (next.dataOffset - batchEnd > maxGapBytes) break;
+      if (nextEnd - batchStart > maxBatchBytes) break;
+      batchRefs.push(next);
+      batchEnd = nextEnd;
+      nextIndex++;
+      if (limit && out.length + batchRefs.length >= limit) break;
+    }
+
+    const batch = await readable.read(
+      BigInt(batchStart),
+      BigInt(batchEnd - batchStart),
+    );
+    for (const messageRef of batchRefs) {
+      const localStart = messageRef.dataOffset - batchStart;
+      out.push({
+        topicName,
+        timestamp: messageRef.logTime,
+        data: batch.slice(localStart, localStart + messageRef.dataLength),
+      });
+      if (limit && out.length >= limit) return out;
+    }
+    index = nextIndex;
+  }
+  return out;
+}
+
+async function readClosestRawMessageUnindexed(
+  source: BagSource,
+  meta: CachedMcap,
+  topicName: string,
+  timeNs: bigint,
+): Promise<RawMessage | null> {
+  const channelIds = channelIdsForTopic(meta, topicName);
+  const refs = new Map<number, UnindexedRecordRef>();
+  for (const channelId of channelIds) {
+    for (const ref of meta.unindexed?.refsByChannel.get(channelId) ?? []) {
+      refs.set(ref.recordOffset, ref);
+    }
+  }
+
+  let bestDirect: UnindexedMessageRef | null = null;
+  let bestDirectDistance: bigint | null = null;
+  let bestChunk: UnindexedChunkRef | null = null;
+  let bestChunkDistance: bigint | null = null;
+  for (const ref of refs.values()) {
+    if (ref.kind === 'message') {
+      const distance =
+        ref.logTime > timeNs ? ref.logTime - timeNs : timeNs - ref.logTime;
+      if (bestDirectDistance === null || distance < bestDirectDistance) {
+        bestDirect = ref;
+        bestDirectDistance = distance;
+      }
+      continue;
+    }
+    const distance =
+      timeNs < ref.startTime
+        ? ref.startTime - timeNs
+        : timeNs > ref.endTime
+          ? timeNs - ref.endTime
+          : 0n;
+    if (bestChunkDistance === null || distance < bestChunkDistance) {
+      bestChunk = ref;
+      bestChunkDistance = distance;
+    }
+  }
+
+  const candidates: RawMessage[] = [];
+  if (bestDirect) {
+    candidates.push(...await readUnindexedRef(source, meta, bestDirect, channelIds));
+  }
+  if (bestChunk) {
+    candidates.push(...await readUnindexedRef(source, meta, bestChunk, channelIds));
+  }
+  let best: RawMessage | null = null;
+  let bestDistance: bigint | null = null;
+  for (const candidate of candidates) {
+    const distance =
+      candidate.timestamp > timeNs
+        ? candidate.timestamp - timeNs
+        : timeNs - candidate.timestamp;
+    if (bestDistance === null || distance < bestDistance) {
+      best = { ...candidate, topicName };
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
 
 async function loadMcap(source: BagSource): Promise<CachedMcap> {
   const key = sourceKey(source);
@@ -247,7 +670,8 @@ async function loadMcap(source: BagSource): Promise<CachedMcap> {
   const readable = readableFor(source);
 
   let reader: McapIndexedReader | null = null;
-  let buffer: Uint8Array | null = null;
+  const buffer: Uint8Array | null = null;
+  let unindexed: UnindexedMcap | null = null;
   const channelById = new Map<number, { topic: string; schemaId: number; messageEncoding: string }>();
   const schemaById = new Map<number, { name: string; encoding: string; data: Uint8Array }>();
   const topicMeta = new Map<string, { schemaName: string; schemaText: string | null; messageEncoding: string }>();
@@ -280,59 +704,34 @@ async function loadMcap(source: BagSource): Promise<CachedMcap> {
   }
 
   if (!reader) {
-    if (size > STREAM_FALLBACK_MAX_BYTES) {
-      const sizeMb = (size / (1024 * 1024)).toFixed(0);
-      const detail =
-        indexedError instanceof Error ? indexedError.message : String(indexedError);
-      throw new Error(
-        `"${displayName}" (${sizeMb} MB) does not have an MCAP summary/index section, ` +
-          'so we would need to load the whole file into memory to scan it linearly. ' +
-          'That is not supported for files over 512 MB in the browser. Re-record the ' +
-          'bag with an index (the default for recent ros2_bag_mcap recorders) or run ' +
-          '`mcap recover` over the file, then try again. (' + detail + ')',
-      );
-    }
-
     try {
-      buffer = await sourceReadAll(source);
-    } catch (streamErr) {
+      unindexed = await scanUnindexedMcap(
+        readable,
+        size,
+        decompressHandlers,
+        channelById,
+        schemaById,
+      );
+    } catch (scanError) {
       const indexedDetail =
         indexedError instanceof Error ? indexedError.message : String(indexedError);
-      const streamDetail =
-        streamErr instanceof Error ? streamErr.message : String(streamErr);
+      const scanDetail =
+        scanError instanceof Error ? scanError.message : String(scanError);
       throw new Error(
         `Failed to load "${displayName}": the MCAP index could not be read ` +
-          `(${indexedDetail}), and the full-file fallback also failed (${streamDetail}). ` +
-          `If this file was loaded from a URL, try clearing your browser cache ` +
-          `(Ctrl+Shift+R / Cmd+Shift+R) and reloading.`,
-        { cause: streamErr },
+          `(${indexedDetail}), and the range-based recovery scan also failed ` +
+          `(${scanDetail}). The recording may be truncated inside a record.`,
+        { cause: scanError },
       );
     }
-    const streamReader = new McapStreamReader({ decompressHandlers });
-    streamReader.append(buffer);
-    for (let record; (record = streamReader.nextRecord()); ) {
-      if (record.type === 'Schema') {
-        schemaById.set(record.id, {
-          name: record.name,
-          encoding: record.encoding,
-          data: record.data,
-        });
-      } else if (record.type === 'Channel') {
-        channelById.set(record.id, {
-          topic: record.topic,
-          schemaId: record.schemaId,
-          messageEncoding: record.messageEncoding,
-        });
-      }
-    }
-    for (const [, ch] of channelById) {
-      const schema = schemaById.get(ch.schemaId);
-      topicMeta.set(ch.topic, {
-        schemaName: schema?.name ?? 'unknown',
-        schemaText: schema ? decodeSchemaText(schema.data) : null,
-        messageEncoding: ch.messageEncoding,
-      });
-    }
+  }
+  for (const [, ch] of channelById) {
+    const schema = schemaById.get(ch.schemaId);
+    topicMeta.set(ch.topic, {
+      schemaName: schema?.name ?? 'unknown',
+      schemaText: schema ? decodeSchemaText(schema.data) : null,
+      messageEncoding: ch.messageEncoding,
+    });
   }
 
   cached = {
@@ -341,6 +740,7 @@ async function loadMcap(source: BagSource): Promise<CachedMcap> {
     size,
     reader,
     buffer,
+    unindexed,
     channelById,
     schemaById,
     topicMeta,
@@ -360,6 +760,9 @@ export async function parseMcap(source: BagSource): Promise<BagSummary> {
   }
   if (meta.buffer) {
     return extractSummaryFromStream(meta);
+  }
+  if (meta.unindexed) {
+    return extractSummaryFromUnindexed(meta);
   }
 
   throw new Error(
@@ -411,6 +814,38 @@ function extractSummaryFromIndexed(meta: CachedMcap): BagSummary {
     endTime,
     duration,
     totalMessageCount,
+    topics: topics.sort((a, b) => a.name.localeCompare(b.name)),
+  };
+}
+
+function extractSummaryFromUnindexed(meta: CachedMcap): BagSummary {
+  const index = meta.unindexed!;
+  const duration = Number(index.endTime - index.startTime) / 1e9;
+  const topics: TopicInfo[] = [];
+
+  for (const [channelId, channel] of meta.channelById) {
+    const schema = meta.schemaById.get(channel.schemaId);
+    const messageCount = index.messageCounts.get(channelId) ?? 0;
+    topics.push({
+      name: channel.topic,
+      type: schema?.name ?? 'unknown',
+      messageCount,
+      serializationFormat: 'cdr',
+      frequency:
+        duration > 0
+          ? Math.round((messageCount / duration) * 10) / 10
+          : undefined,
+    });
+  }
+
+  return {
+    format: 'mcap',
+    fileName: meta.displayName,
+    fileSize: meta.size,
+    startTime: index.startTime,
+    endTime: index.endTime,
+    duration,
+    totalMessageCount: index.totalMessageCount,
     topics: topics.sort((a, b) => a.name.localeCompare(b.name)),
   };
 }
@@ -497,6 +932,9 @@ export async function readRawMessagesMcap(
         if (limit && out.length >= limit) break;
       }
     }
+  }
+  if (meta.unindexed) {
+    return readRawMessagesUnindexed(source, meta, topicName, limit);
   }
   return out;
 }
@@ -590,6 +1028,14 @@ export async function readDeserializedMessagesMcap(
     }
     flushTail();
   }
+  if (meta.unindexed) {
+    const raws = await readRawMessagesUnindexed(source, meta, topicName, limit);
+    for (const raw of raws) {
+      out.push({ timestamp: raw.timestamp, value: decodeOne(raw.data) });
+      await tick();
+    }
+    flushTail();
+  }
   return out;
 }
 
@@ -644,6 +1090,32 @@ export async function readAllMessageStatsMcap(source: BagSource): Promise<AllTop
       let s = rawSizes.get(topic);
       if (!s) { s = []; rawSizes.set(topic, s); }
       if (s.length < MCAP_MAX_SAMPLES_PER_TOPIC) s.push(record.data.byteLength);
+    }
+  }
+  if (meta.unindexed) {
+    for (const [channelId, channel] of meta.channelById) {
+      const refs = meta.unindexed.refsByChannel.get(channelId) ?? [];
+      const hasChunks = refs.some((ref) => ref.kind === 'chunk');
+      if (hasChunks) {
+        const raws = await readRawMessagesUnindexed(
+          source,
+          meta,
+          channel.topic,
+          MCAP_MAX_SAMPLES_PER_TOPIC,
+        );
+        rawTimes.set(channel.topic, raws.map((raw) => raw.timestamp));
+        rawSizes.set(channel.topic, raws.map((raw) => raw.data.byteLength));
+        continue;
+      }
+      let times = rawTimes.get(channel.topic);
+      if (!times) { times = []; rawTimes.set(channel.topic, times); }
+      let sizes = rawSizes.get(channel.topic);
+      if (!sizes) { sizes = []; rawSizes.set(channel.topic, sizes); }
+      for (const ref of refs) {
+        if (ref.kind !== 'message') continue;
+        if (times.length < MCAP_MAX_SAMPLES_PER_TOPIC) times.push(ref.logTime);
+        if (sizes.length < MCAP_MAX_SAMPLES_PER_TOPIC) sizes.push(ref.dataLength);
+      }
     }
   }
 
@@ -901,6 +1373,13 @@ export async function readMessageAtTimeMcap(
       return { timestamp: bestTs, value };
     }
   }
+  if (meta.unindexed) {
+    const raw = await readClosestRawMessageUnindexed(source, meta, topicName, timeNs);
+    if (raw) {
+      const value = rememberDecoded(meta, topicName, raw.timestamp, raw.data, decode);
+      return { timestamp: raw.timestamp, value };
+    }
+  }
   return null;
 }
 
@@ -973,6 +1452,7 @@ function extractVideoChunk(
 
 async function readRosCompressedH264ChunksMcap(
   meta: CachedMcap,
+  source: BagSource,
   topicName: string,
   topicInfo: { schemaName: string; schemaText: string | null; messageEncoding: string },
   timeNs: bigint,
@@ -1031,6 +1511,25 @@ async function readRosCompressedH264ChunksMcap(
         if (shouldStopAfter(chunk)) break;
       }
       chunks.sort((a, b) => (a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0));
+    } else if (meta.unindexed) {
+      const raws = await readRawMessagesUnindexed(
+        source,
+        meta,
+        topicName,
+        undefined,
+        startNs,
+        timeNs + 5_000_000_000n,
+      );
+      for (const raw of raws) {
+        let chunk: VideoChunk;
+        try {
+          chunk = decodeRawChunk(raw.timestamp, raw.data);
+        } catch {
+          continue;
+        }
+        chunks.push(chunk);
+        if (shouldStopAfter(chunk)) break;
+      }
     }
     return chunks;
   };
@@ -1088,6 +1587,27 @@ async function readRosCompressedH264ChunksMcap(
     for (let i = candidates.length - 1; i >= 0; i--) {
       const result = await tryCandidate(candidates[i]!);
       if (result) return result;
+    }
+  } else if (meta.unindexed) {
+    const raws = await readRawMessagesUnindexed(
+      source,
+      meta,
+      topicName,
+      undefined,
+      undefined,
+      timeNs,
+    );
+    for (let i = raws.length - 1; i >= 0; i--) {
+      const raw = raws[i]!;
+      try {
+        const decoded = decodeVideoMessage(topicInfo, raw.data, format);
+        format = decoded.format || format;
+        if (!isH264VideoFormat(format) || !hasH264SequenceParameterSet(decoded.data)) continue;
+        const result = await tryCandidate(raw.timestamp);
+        if (result) return result;
+      } catch {
+        continue;
+      }
     }
   }
 
@@ -1269,7 +1789,7 @@ export async function readVideoChunksMcap(
   if (!topicInfo) return null;
 
   if (isCompressedImageSchema(topicInfo.schemaName)) {
-    return readRosCompressedH264ChunksMcap(meta, topicName, topicInfo, timeNs);
+    return readRosCompressedH264ChunksMcap(meta, source, topicName, topicInfo, timeNs);
   }
 
   const index = await getOrBuildVideoIndex(meta, topicName);
