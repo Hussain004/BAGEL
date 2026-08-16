@@ -22,6 +22,9 @@ import { chartTheme } from '../../../utils/chartTheme';
 
 type SceneCamera = THREE.PerspectiveCamera | THREE.OrthographicCamera;
 
+const MIN_ZOOM_LEVEL = 0.1;
+const MAX_ZOOM_LEVEL = 10;
+
 export interface SceneRefs {
   renderer: THREE.WebGLRenderer;
   scene: THREE.Scene;
@@ -52,6 +55,10 @@ export interface SceneRefs {
   /** Zoom by a multiplicative factor (<1 zooms in, >1 zooms out), clamped
    * to the same min/max distance as scroll-to-zoom. */
   zoomBy: (factor: number) => void;
+  /** Set the absolute zoom relative to the last Fit operation. */
+  setZoomLevel: (level: number) => void;
+  /** Current zoom relative to the last Fit operation. */
+  zoomLevel: number;
   /** Switch between a 3D perspective orbit and top-down orthographic 2D. */
   setProjectionMode: (mode: ProjectionMode) => void;
   projectionMode: ProjectionMode;
@@ -61,10 +68,12 @@ export function useScene(): {
   containerRef: React.RefObject<HTMLDivElement | null>;
   sceneRef: React.RefObject<SceneRefs | null>;
   ready: boolean;
+  zoomLevel: number;
 } {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const sceneRef = useRef<SceneRefs | null>(null);
   const [ready, setReady] = useState(false);
+  const [zoomLevel, setZoomLevelState] = useState(1);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -135,6 +144,34 @@ export function useScene(): {
 
     let controls = createControls(camera, projectionMode);
     controls.target.set(0, 0, 0);
+    let perspectiveFitDistance = perspectiveCamera.position.distanceTo(controls.target);
+    let zoomLevelValue = 1;
+
+    const clampZoomLevel = (level: number) =>
+      Math.max(MIN_ZOOM_LEVEL, Math.min(MAX_ZOOM_LEVEL, level));
+
+    const publishZoomLevel = (level: number) => {
+      const next = clampZoomLevel(level);
+      if (Math.abs(next - zoomLevelValue) < 0.001) return;
+      zoomLevelValue = next;
+      setZoomLevelState(next);
+      if (sceneRef.current) sceneRef.current.zoomLevel = next;
+    };
+
+    const updatePerspectiveZoomLimits = () => {
+      controls.minDistance = perspectiveFitDistance / MAX_ZOOM_LEVEL;
+      controls.maxDistance = perspectiveFitDistance / MIN_ZOOM_LEVEL;
+    };
+
+    const syncZoomLevel = () => {
+      const next = camera instanceof THREE.OrthographicCamera
+        ? camera.zoom
+        : perspectiveFitDistance /
+          Math.max(camera.position.distanceTo(controls.target), 0.0001);
+      publishZoomLevel(next);
+    };
+    updatePerspectiveZoomLimits();
+    controls.addEventListener('change', syncZoomLevel);
 
     // A subtle directional + ambient light so any meshes we ever add aren't black.
     const ambient = new THREE.AmbientLight(0xffffff, 0.6);
@@ -206,15 +243,23 @@ export function useScene(): {
       } else {
         camera.up.set(0, 0, 1);
         camera.position.set(t.x + r, t.y - r, t.z + r * 0.7);
+        perspectiveFitDistance = camera.position.distanceTo(t);
+        updatePerspectiveZoomLimits();
       }
       camera.lookAt(t);
       camera.updateProjectionMatrix();
       controls.update();
+      publishZoomLevel(1);
       needsRender = true;
     };
 
     const setOrbitTarget = (target: THREE.Vector3) => {
       controls.target.copy(target);
+      if (camera instanceof THREE.PerspectiveCamera) {
+        perspectiveFitDistance =
+          camera.position.distanceTo(target) * zoomLevelValue;
+        updatePerspectiveZoomLimits();
+      }
       controls.update();
       needsRender = true;
     };
@@ -247,30 +292,31 @@ export function useScene(): {
       needsRender = true;
     };
 
-    const zoomBy = (factor: number) => {
+    const setZoomLevel = (level: number) => {
+      const next = clampZoomLevel(level);
       if (camera instanceof THREE.OrthographicCamera) {
-        camera.zoom = Math.max(
-          controls.minZoom,
-          Math.min(controls.maxZoom, camera.zoom / factor),
-        );
+        camera.zoom = next;
         camera.updateProjectionMatrix();
       } else {
         const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
-        const newLength = Math.max(
-          controls.minDistance,
-          Math.min(controls.maxDistance, offset.length() * factor),
-        );
-        offset.setLength(newLength);
+        if (offset.lengthSq() === 0) offset.set(1, -1, 0.7);
+        offset.setLength(perspectiveFitDistance / next);
         camera.position.copy(controls.target).add(offset);
       }
       controls.update();
+      publishZoomLevel(next);
       needsRender = true;
+    };
+
+    const zoomBy = (factor: number) => {
+      setZoomLevel(zoomLevelValue / factor);
     };
 
     const setProjectionMode = (mode: ProjectionMode) => {
       if (mode === projectionMode) return;
       const target = controls.target.clone();
       const distance = Math.max(camera.position.distanceTo(target), 1);
+      controls.removeEventListener('change', syncZoomLevel);
       controls.dispose();
       projectionMode = mode;
 
@@ -298,11 +344,18 @@ export function useScene(): {
 
       controls = createControls(camera, projectionMode);
       controls.target.copy(target);
+      if (camera instanceof THREE.PerspectiveCamera) {
+        perspectiveFitDistance = camera.position.distanceTo(target);
+        updatePerspectiveZoomLimits();
+      }
+      controls.addEventListener('change', syncZoomLevel);
       controls.update();
+      publishZoomLevel(1);
       if (sceneRef.current) {
         sceneRef.current.camera = camera;
         sceneRef.current.controls = controls;
         sceneRef.current.projectionMode = projectionMode;
+        sceneRef.current.zoomLevel = zoomLevelValue;
       }
       needsRender = true;
     };
@@ -319,6 +372,8 @@ export function useScene(): {
       setOrbitTarget,
       orbitBy,
       zoomBy,
+      setZoomLevel,
+      zoomLevel: zoomLevelValue,
       setProjectionMode,
       projectionMode,
     };
@@ -328,6 +383,7 @@ export function useScene(): {
       cancelAnimationFrame(rafId);
       ro.disconnect();
       unsubTheme();
+      controls.removeEventListener('change', syncZoomLevel);
       controls.dispose();
       // Dispose every geometry / material we ever attached.
       scene.traverse((obj) => {
@@ -348,5 +404,5 @@ export function useScene(): {
     };
   }, []);
 
-  return { containerRef, sceneRef, ready };
+  return { containerRef, sceneRef, ready, zoomLevel };
 }

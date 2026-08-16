@@ -1,6 +1,7 @@
 import { useEffect, useRef, type MutableRefObject, type RefObject } from 'react';
 import * as THREE from 'three';
 import { useMessageAtTime } from '../../../hooks/useMessageAtTime';
+import type { SpatialOverlayStyle } from '../../../store/threeDPanelStore';
 import type { AxisClip, ColorMode, HeightAxis } from '../../../utils/pointcloud';
 import {
   decodeOccupancyGrid,
@@ -12,6 +13,7 @@ import {
   createPointCloud,
   createPoseAxes,
   disposeObject,
+  setCloudStyle,
   extractPose,
   updateCloud,
   updatePoseAxes,
@@ -45,6 +47,7 @@ interface SpatialOverlayProps {
   heightAxis: HeightAxis;
   axisClip?: AxisClip;
   mapAlpha: number;
+  style?: SpatialOverlayStyle;
 }
 
 /**
@@ -72,6 +75,7 @@ function CloudOverlay({
   upFixMatrix,
   colorMode,
   pointSize,
+  style,
   maxRange,
   heightAxis,
   axisClip,
@@ -115,9 +119,14 @@ function CloudOverlay({
     const scene = sceneRef.current;
     const owned = ownedRef.current;
     if (!scene || !owned) return;
-    owned.cloud.material.size = kind === 'laserscan' ? pointSize + 1 : pointSize;
+    const layerPointSize = style?.pointSize ?? pointSize;
+    setCloudStyle(
+      owned.cloud,
+      kind === 'laserscan' ? layerPointSize + 1 : layerPointSize,
+      style?.color,
+    );
     scene.renderOnce();
-  }, [kind, pointSize, sceneRef]);
+  }, [kind, pointSize, sceneRef, style]);
 
   useEffect(() => {
     const scene = sceneRef.current;
