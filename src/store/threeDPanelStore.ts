@@ -26,12 +26,15 @@ import type { ColorMode } from '../utils/pointcloud';
 import type { AccumulationMode } from '../components/panels/ThreeDScene/accumulator';
 
 export type UpAxis = 'z+' | 'z-' | 'y+' | 'y-' | 'x+' | 'x-';
+export type ProjectionMode = 'perspective' | 'orthographic';
 
 export interface ThreeDPanelSettings {
   colorMode: ColorMode;
   pointSize: number;
   showGrid: boolean;
   showWorldAxes: boolean;
+  /** Perspective 3D orbit or a top-down orthographic 2D map view. */
+  projectionMode: ProjectionMode;
   /** `null` means "auto-pick once the TF graph + first message arrive". */
   worldFrame: string | null;
   rangeLimitOn: boolean;
@@ -130,6 +133,7 @@ export const DEFAULT_THREE_D_SETTINGS: ThreeDPanelSettings = {
   pointSize: 2.5,
   showGrid: true,
   showWorldAxes: true,
+  projectionMode: 'perspective',
   worldFrame: null,
   rangeLimitOn: false,
   maxRange: 30,

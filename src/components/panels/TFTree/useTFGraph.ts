@@ -120,15 +120,37 @@ interface TopicMatch {
   type: string;
 }
 
-function findTfTopic(
+export function findTfTopic(
   topicList: { name: string; type: string }[],
   candidates: string[],
+  preferredTopicName?: string,
 ): TopicMatch | null {
-  for (const name of candidates) {
-    const match = topicList.find((t) => t.name === name && isTfMessageType(t.type));
-    if (match) return match;
-  }
-  return null;
+  const matches = topicList.filter(
+    (topic) =>
+      isTfMessageType(topic.type) &&
+      candidates.some(
+        (candidate) =>
+          topic.name === candidate || topic.name.endsWith(candidate),
+      ),
+  );
+  if (matches.length === 0) return null;
+
+  const namespaceScore = (name: string): number => {
+    if (!preferredTopicName) {
+      return candidates.includes(name) ? Number.MAX_SAFE_INTEGER : 0;
+    }
+    const topicParts = name.split('/');
+    const preferredParts = preferredTopicName.split('/');
+    let score = 0;
+    const count = Math.min(topicParts.length, preferredParts.length);
+    while (score < count && topicParts[score] === preferredParts[score]) score++;
+    return score;
+  };
+  matches.sort((a, b) => {
+    const score = namespaceScore(b.name) - namespaceScore(a.name);
+    return score || a.name.localeCompare(b.name);
+  });
+  return matches[0] ?? null;
 }
 
 /**
@@ -188,7 +210,10 @@ function ingestMessages(
   }
 }
 
-export function useTFGraph(bagId?: string): UseTFGraphResult {
+export function useTFGraph(
+  bagId?: string,
+  preferredTopicName?: string,
+): UseTFGraphResult {
   const entry = useBagStore((s) => {
     if (bagId) {
       const explicit = s.bags.get(bagId);
@@ -204,11 +229,20 @@ export function useTFGraph(bagId?: string): UseTFGraphResult {
         staticTopic: null as TopicMatch | null,
       };
     }
+    const dynamic = findTfTopic(
+      entry.summary.topics,
+      DYNAMIC_TOPIC_NAMES,
+      preferredTopicName,
+    );
     return {
-      dynamic: findTfTopic(entry.summary.topics, DYNAMIC_TOPIC_NAMES),
-      staticTopic: findTfTopic(entry.summary.topics, STATIC_TOPIC_NAMES),
+      dynamic,
+      staticTopic: findTfTopic(
+        entry.summary.topics,
+        STATIC_TOPIC_NAMES,
+        dynamic?.name ?? preferredTopicName,
+      ),
     };
-  }, [entry]);
+  }, [entry, preferredTopicName]);
 
   const missing = !tfTopics.dynamic && !tfTopics.staticTopic;
 

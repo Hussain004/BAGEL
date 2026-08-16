@@ -20,6 +20,25 @@ function fileSource(file: File): BagSource {
   return { kind: 'file', file };
 }
 
+function withoutMcapSummary(bytes: Uint8Array, trailing = new Uint8Array(0)): Uint8Array {
+  let offset = 8;
+  while (offset + 9 <= bytes.byteLength) {
+    const view = new DataView(bytes.buffer, bytes.byteOffset + offset, 9);
+    const opcode = view.getUint8(0);
+    const bodyLength = Number(view.getBigUint64(1, true));
+    const recordLength = 9 + bodyLength;
+    if (offset + recordLength > bytes.byteLength) break;
+    offset += recordLength;
+    if (opcode === 0x0f) {
+      const result = new Uint8Array(offset + trailing.byteLength);
+      result.set(bytes.subarray(0, offset));
+      result.set(trailing, offset);
+      return result;
+    }
+  }
+  throw new Error('Synthetic MCAP did not contain a DataEnd record.');
+}
+
 beforeEach(() => disposeMcapCache());
 
 describe('mcap/parseMcap — synthetic bags', () => {
@@ -72,6 +91,74 @@ describe('mcap/parseMcap — synthetic bags', () => {
     // duration = (100 * 0.1) - 0.1 = 9.9 s → 100 / 9.9 ≈ 10.1 Hz, rounded to 1 dp.
     expect(summary.topics[0].frequency).toBeGreaterThan(9);
     expect(summary.topics[0].frequency).toBeLessThan(12);
+  });
+});
+
+describe('mcap/parseMcap - interrupted bags without a summary', () => {
+  it('range-indexes an unfinalized bag and supports repeated topic reads', async () => {
+    const interrupted = withoutMcapSummary(await multiTopicBag());
+    const source = fileSource(bytesToFile(interrupted, 'interrupted.mcap'));
+    const summary = await parseMcap(source);
+
+    expect(summary.totalMessageCount).toBeGreaterThan(0);
+    expect(summary.topics.map((topic) => topic.name)).toEqual(['/chatter', '/odom']);
+
+    const chatter = await readDeserializedMessagesMcap(source, '/chatter');
+    const odom = await readDeserializedMessagesMcap(source, '/odom');
+    expect(chatter.length).toBeGreaterThan(0);
+    expect(odom.length).toBeGreaterThan(0);
+
+    const atTime = await readMessageAtTimeMcap(
+      source,
+      '/chatter',
+      summary.startTime + (summary.endTime - summary.startTime) / 2n,
+    );
+    expect(atTime?.value).not.toBeNull();
+
+    const chatterAgain = await readDeserializedMessagesMcap(source, '/chatter');
+    expect(chatterAgain).toEqual(chatter);
+  });
+
+  it('range-indexes complete unchunked records from an unfinalized bag', async () => {
+    const bytes = await writeSyntheticMcap(
+      [
+        {
+          topic: '/events',
+          type: 'std_msgs/msg/String',
+          messages: [
+            { logTime: 10n, value: { data: 'first' } },
+            { logTime: 20n, value: { data: 'second' } },
+            { logTime: 30n, value: { data: 'third' } },
+          ],
+        },
+      ],
+      { useChunks: false, useChunkIndex: false, useMessageIndex: false },
+    );
+    const source = fileSource(bytesToFile(withoutMcapSummary(bytes), 'unchunked.mcap'));
+
+    const summary = await parseMcap(source);
+    expect(summary.totalMessageCount).toBe(3);
+    const messages = await readDeserializedMessagesMcap(source, '/events');
+    expect(messages.map((message) => message.value)).toEqual([
+      { data: 'first' },
+      { data: 'second' },
+      { data: 'third' },
+    ]);
+  });
+
+  it('keeps all complete records when the final record is partial', async () => {
+    const partialMessageHeader = new Uint8Array(12);
+    partialMessageHeader[0] = 0x05;
+    new DataView(partialMessageHeader.buffer).setBigUint64(1, 100n, true);
+    const interrupted = withoutMcapSummary(
+      await chatterBag(),
+      partialMessageHeader,
+    );
+    const source = fileSource(bytesToFile(interrupted, 'partial-tail.mcap'));
+    const summary = await parseMcap(source);
+
+    expect(summary.totalMessageCount).toBe(3);
+    expect(await readDeserializedMessagesMcap(source, '/chatter')).toHaveLength(3);
   });
 });
 

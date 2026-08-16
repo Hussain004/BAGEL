@@ -17,12 +17,15 @@ import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { useThemeStore } from '../../../store/themeStore';
+import type { ProjectionMode } from '../../../store/threeDPanelStore';
 import { chartTheme } from '../../../utils/chartTheme';
+
+type SceneCamera = THREE.PerspectiveCamera | THREE.OrthographicCamera;
 
 export interface SceneRefs {
   renderer: THREE.WebGLRenderer;
   scene: THREE.Scene;
-  camera: THREE.PerspectiveCamera;
+  camera: SceneCamera;
   controls: OrbitControls;
   /** Group for user data (point cloud, scan, pose). Cleared on update. */
   userGroup: THREE.Group;
@@ -49,6 +52,9 @@ export interface SceneRefs {
   /** Zoom by a multiplicative factor (<1 zooms in, >1 zooms out), clamped
    * to the same min/max distance as scroll-to-zoom. */
   zoomBy: (factor: number) => void;
+  /** Switch between a 3D perspective orbit and top-down orthographic 2D. */
+  setProjectionMode: (mode: ProjectionMode) => void;
+  projectionMode: ProjectionMode;
 }
 
 export function useScene(): {
@@ -82,24 +88,52 @@ export function useScene(): {
 
     const scene = new THREE.Scene();
 
-    const camera = new THREE.PerspectiveCamera(
-      55,
-      Math.max(container.clientWidth / Math.max(container.clientHeight, 1), 0.1),
-      0.05,
-      5000,
+    const initialAspect = Math.max(
+      container.clientWidth / Math.max(container.clientHeight, 1),
+      0.1,
     );
-    // ROS convention: Z is up. Three.js default is Y up; OrbitControls picks
-    // up `camera.up` so this also keeps orbiting feeling natural.
-    camera.up.set(0, 0, 1);
-    camera.position.set(8, -8, 5);
-    camera.lookAt(0, 0, 0);
+    const perspectiveCamera = new THREE.PerspectiveCamera(55, initialAspect, 0.05, 5000);
+    perspectiveCamera.up.set(0, 0, 1);
+    perspectiveCamera.position.set(8, -8, 5);
+    perspectiveCamera.lookAt(0, 0, 0);
 
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.08;
-    controls.screenSpacePanning = false;
-    controls.minDistance = 0.5;
-    controls.maxDistance = 1500;
+    const orthographicCamera = new THREE.OrthographicCamera(-10, 10, 10, -10, -5000, 5000);
+    orthographicCamera.up.set(0, 1, 0);
+    orthographicCamera.position.set(0, 0, 10);
+    orthographicCamera.lookAt(0, 0, 0);
+
+    let camera: SceneCamera = perspectiveCamera;
+    let projectionMode: ProjectionMode = 'perspective';
+    let orthographicViewHeight = 20;
+
+    const updateOrthographicFrustum = () => {
+      const aspect = Math.max(
+        container.clientWidth / Math.max(container.clientHeight, 1),
+        0.1,
+      );
+      const halfHeight = orthographicViewHeight / 2;
+      orthographicCamera.left = -halfHeight * aspect;
+      orthographicCamera.right = halfHeight * aspect;
+      orthographicCamera.top = halfHeight;
+      orthographicCamera.bottom = -halfHeight;
+      orthographicCamera.updateProjectionMatrix();
+    };
+    updateOrthographicFrustum();
+
+    const createControls = (activeCamera: SceneCamera, mode: ProjectionMode) => {
+      const next = new OrbitControls(activeCamera, renderer.domElement);
+      next.enableDamping = true;
+      next.dampingFactor = 0.08;
+      next.screenSpacePanning = mode === 'orthographic';
+      next.enableRotate = mode === 'perspective';
+      next.minDistance = 0.5;
+      next.maxDistance = 1500;
+      next.minZoom = 0.02;
+      next.maxZoom = 200;
+      return next;
+    };
+
+    let controls = createControls(camera, projectionMode);
     controls.target.set(0, 0, 0);
 
     // A subtle directional + ambient light so any meshes we ever add aren't black.
@@ -139,8 +173,12 @@ export function useScene(): {
       const h = container.clientHeight;
       if (w === 0 || h === 0) return;
       renderer.setSize(w, h, false);
-      camera.aspect = Math.max(w / Math.max(h, 1), 0.1);
-      camera.updateProjectionMatrix();
+      if (camera instanceof THREE.PerspectiveCamera) {
+        camera.aspect = Math.max(w / Math.max(h, 1), 0.1);
+        camera.updateProjectionMatrix();
+      } else {
+        updateOrthographicFrustum();
+      }
       needsRender = true;
     });
     ro.observe(container);
@@ -159,9 +197,18 @@ export function useScene(): {
       const t = target ?? new THREE.Vector3(0, 0, 0);
       const r = Math.max(radius ?? 10, 1);
       controls.target.copy(t);
-      // Isometric-ish position: offset along +X, -Y, +Z by the radius.
-      camera.position.set(t.x + r * 1.0, t.y - r * 1.0, t.z + r * 0.7);
+      if (camera instanceof THREE.OrthographicCamera) {
+        orthographicViewHeight = r * 2;
+        updateOrthographicFrustum();
+        camera.zoom = 1;
+        camera.up.set(0, 1, 0);
+        camera.position.set(t.x, t.y, t.z + Math.max(r * 2, 10));
+      } else {
+        camera.up.set(0, 0, 1);
+        camera.position.set(t.x + r, t.y - r, t.z + r * 0.7);
+      }
       camera.lookAt(t);
+      camera.updateProjectionMatrix();
       controls.update();
       needsRender = true;
     };
@@ -178,6 +225,7 @@ export function useScene(): {
     // trick OrbitControls itself uses internally: rotate into Y-up space,
     // do the spherical math, rotate back.
     const orbitBy = (deltaAzimuthRad: number, deltaPolarRad: number) => {
+      if (projectionMode === 'orthographic') return;
       const quat = new THREE.Quaternion().setFromUnitVectors(camera.up, new THREE.Vector3(0, 1, 0));
       const quatInverse = quat.clone().invert();
 
@@ -200,14 +248,62 @@ export function useScene(): {
     };
 
     const zoomBy = (factor: number) => {
-      const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
-      const newLength = Math.max(
-        controls.minDistance,
-        Math.min(controls.maxDistance, offset.length() * factor),
-      );
-      offset.setLength(newLength);
-      camera.position.copy(controls.target).add(offset);
+      if (camera instanceof THREE.OrthographicCamera) {
+        camera.zoom = Math.max(
+          controls.minZoom,
+          Math.min(controls.maxZoom, camera.zoom / factor),
+        );
+        camera.updateProjectionMatrix();
+      } else {
+        const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
+        const newLength = Math.max(
+          controls.minDistance,
+          Math.min(controls.maxDistance, offset.length() * factor),
+        );
+        offset.setLength(newLength);
+        camera.position.copy(controls.target).add(offset);
+      }
       controls.update();
+      needsRender = true;
+    };
+
+    const setProjectionMode = (mode: ProjectionMode) => {
+      if (mode === projectionMode) return;
+      const target = controls.target.clone();
+      const distance = Math.max(camera.position.distanceTo(target), 1);
+      controls.dispose();
+      projectionMode = mode;
+
+      if (mode === 'orthographic') {
+        const perspectiveHeight =
+          2 * distance * Math.tan(THREE.MathUtils.degToRad(perspectiveCamera.fov / 2));
+        orthographicViewHeight = Math.max(perspectiveHeight, 1);
+        updateOrthographicFrustum();
+        orthographicCamera.zoom = 1;
+        orthographicCamera.up.set(0, 1, 0);
+        orthographicCamera.position.set(target.x, target.y, target.z + distance);
+        orthographicCamera.lookAt(target);
+        camera = orthographicCamera;
+      } else {
+        const radius = Math.max(orthographicViewHeight / (2 * orthographicCamera.zoom), 1);
+        perspectiveCamera.up.set(0, 0, 1);
+        perspectiveCamera.position.set(
+          target.x + radius,
+          target.y - radius,
+          target.z + radius * 0.7,
+        );
+        perspectiveCamera.lookAt(target);
+        camera = perspectiveCamera;
+      }
+
+      controls = createControls(camera, projectionMode);
+      controls.target.copy(target);
+      controls.update();
+      if (sceneRef.current) {
+        sceneRef.current.camera = camera;
+        sceneRef.current.controls = controls;
+        sceneRef.current.projectionMode = projectionMode;
+      }
       needsRender = true;
     };
 
@@ -223,6 +319,8 @@ export function useScene(): {
       setOrbitTarget,
       orbitBy,
       zoomBy,
+      setProjectionMode,
+      projectionMode,
     };
     setReady(true);
 
