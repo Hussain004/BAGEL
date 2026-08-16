@@ -57,6 +57,18 @@ export function createLaserScan(pointSize: number): CloudObject {
   return makePointsObject(pointSize);
 }
 
+/** Apply point size and an optional uniform color without rebuilding geometry. */
+export function setCloudStyle(
+  obj: CloudObject,
+  pointSize: number,
+  color?: string | null,
+): void {
+  obj.material.size = pointSize;
+  obj.material.vertexColors = !color;
+  obj.material.color.set(color ?? 0xffffff);
+  obj.material.needsUpdate = true;
+}
+
 /**
  * Swap the BufferAttribute backing arrays in-place. We always set new
  * BufferAttributes (instead of writing into the existing array) because the

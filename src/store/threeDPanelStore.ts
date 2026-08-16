@@ -28,9 +28,17 @@ import type { AccumulationMode } from '../components/panels/ThreeDScene/accumula
 export type UpAxis = 'z+' | 'z-' | 'y+' | 'y-' | 'x+' | 'x-';
 export type ProjectionMode = 'perspective' | 'orthographic';
 
+export interface SpatialOverlayStyle {
+  /** Point size override. Missing values inherit the panel default. */
+  pointSize?: number;
+  /** Uniform CSS color. Null or missing keeps the message's decoded colors. */
+  color?: string | null;
+}
+
 export interface ThreeDPanelSettings {
   colorMode: ColorMode;
   pointSize: number;
+  laserScanColor: string | null;
   showGrid: boolean;
   showWorldAxes: boolean;
   /** Perspective 3D orbit or a top-down orthographic 2D map view. */
@@ -93,6 +101,8 @@ export interface ThreeDPanelSettings {
    * display defaults.
    */
   spatialOverlayTopics: string[];
+  /** Topic-specific visual overrides for selected spatial point layers. */
+  spatialOverlayStyles: Record<string, SpatialOverlayStyle>;
   /**
    * Axis-aligned clip box for PointCloud2 panels (v1.6.1). When on, points
    * outside any of the specified bounds are dropped before coloring. Each
@@ -131,6 +141,7 @@ export interface ThreeDPanelSettings {
 export const DEFAULT_THREE_D_SETTINGS: ThreeDPanelSettings = {
   colorMode: 'height',
   pointSize: 2.5,
+  laserScanColor: null,
   showGrid: true,
   showWorldAxes: true,
   projectionMode: 'perspective',
@@ -150,6 +161,7 @@ export const DEFAULT_THREE_D_SETTINGS: ThreeDPanelSettings = {
   cameraFrustumFar: 5,
   hiddenFrustumTopics: [],
   spatialOverlayTopics: [],
+  spatialOverlayStyles: {},
   clipBoxOn: false,
   clipXMin: null,
   clipXMax: null,

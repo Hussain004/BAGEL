@@ -46,10 +46,10 @@ export function createMapPlane(): MapPlaneObject {
     opacity: 1.0,
   });
   const mesh = new THREE.Mesh(geometry, material);
-  // Shift so the plane's bottom-left corner sits at the group origin —
-  // matches the ROS convention where `info.origin` is the bottom-left of the
-  // map, not its centre.
-  mesh.position.set(0.5, 0.5, 0);
+  // updateMapPlane places the mesh at half its metric width and height.
+  // Object positions are not affected by their own scale in Three.js, so a
+  // fixed (0.5, 0.5) offset would incorrectly centre every map near (0, 0).
+  mesh.position.set(0, 0, 0);
   // Map sits just above the ground grid so it doesn't z-fight with it.
   // 1 mm offset is too small for any LiDAR / SLAM scale to notice.
   mesh.renderOrder = -1; // draw before opaque clouds so transparency reads correctly
@@ -106,9 +106,10 @@ export function updateMapPlane(obj: MapPlaneObject, decoded: OccupancyGridDecode
     obj.lastContentKey = contentKey;
   }
 
-  // Scale the unit plane to the actual map size. The mesh's local position
-  // (0.5, 0.5, 0) means after scale the corner lands at the group origin.
+  // Scale the unit plane and move its centre by half the metric dimensions,
+  // leaving the bottom-left corner exactly at the OccupancyGrid origin.
   obj.mesh.scale.set(widthM, heightM, 1);
+  obj.mesh.position.set(widthM / 2, heightM / 2, 0);
 
   // Apply origin pose to the parent group. info.origin places the bottom-
   // left of the map at that pose, expressed in the map's reference frame.
