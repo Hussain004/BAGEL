@@ -174,7 +174,7 @@ export function TrajectoryPlot({ panelId, topicName, type, bagId }: TrajectoryPl
     });
     ro.observe(container);
     return () => ro.disconnect();
-  }, [recomputeFit]);
+  }, [recomputeFit, setView]);
 
   // Hover-to-locate: figure out the nearest point under the cursor in world
   // coords so we can surface its (x, y) in the footer.
@@ -208,7 +208,7 @@ export function TrajectoryPlot({ panelId, topicName, type, bagId }: TrajectoryPl
       };
       setView(next);
     },
-    [view],
+    [view, setView],
   );
 
   // Click + drag to pan.

@@ -123,7 +123,7 @@ function lzfDecompress(compressed: Uint8Array, outputLen: number): Uint8Array {
   let oPos = 0;
 
   while (iPos < compressed.length) {
-    let ctrl = compressed[iPos++];
+    const ctrl = compressed[iPos++];
 
     if (ctrl < 32) {
       // Literal run: copy the next (ctrl + 1) bytes verbatim.

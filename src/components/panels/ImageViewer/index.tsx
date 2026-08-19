@@ -71,12 +71,24 @@ function useVideoFrame(
     setState({ bitmap: null, loading: false, error: null });
 
     return () => {
+      // generationRef is a shared invalidation token, not a per-effect
+      // snapshot - every in-flight async decode loop checks the CURRENT
+      // value, so incrementing it here (rather than a value captured at
+      // effect-setup time) is exactly the point: it invalidates any
+      // outstanding work regardless of which generation started it.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       generationRef.current++;
       runningRef.current = false;
       decoderRef.current?.close();
       decoderRef.current = null;
       bitmapRef.current = null;
     };
+    // timeNs deliberately excluded: this effect only resets/tears down the
+    // decoder on topic/bag/enabled change. Re-running it on every playhead
+    // tick would reset the decoder every frame instead of decoding
+    // sequentially forward; the async loop below reads the latest timeNs
+    // via desiredTimeRef instead.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topicName, bagId, enabled]);
 
   useEffect(() => {
@@ -221,12 +233,15 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
   // inside the async IIFE without making camera.info a dep (which would
   // re-trigger the expensive decode on every CameraInfo tick).
   const cameraInfoRef = useRef<CameraIntrinsics | null>(null);
-  cameraInfoRef.current = camera.info;
+  useEffect(() => {
+    cameraInfoRef.current = camera.info;
+  });
 
   const hasContent = isVideo ? !!videoBitmap : !!message;
 
   // Reset zoom/pan when the topic or bag changes.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setView({ zoom: 1, panX: 0, panY: 0 });
     return () => {
       const previous = drawnVideoBitmapRef.current;
@@ -350,7 +365,6 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
     return () => { cancelled = true; };
     // settings.rectify is intentionally included so toggling rectify
     // re-decodes the current frame immediately.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [message, videoBitmap, isVideo, compressed, settings.rectify]);
 
   const accent = getTopicColor(topicName, type);

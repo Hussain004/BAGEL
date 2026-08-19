@@ -91,6 +91,7 @@ function BagEditForm({ entry, onClose }: FormProps) {
 
   useEffect(() => {
     if (summary.format !== 'db3') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setUnresolvedTopics(new Set());
       setResolutionLoading(false);
       return;
@@ -118,7 +119,7 @@ function BagEditForm({ entry, onClose }: FormProps) {
     return () => {
       cancelled = true;
     };
-  }, [entry.id, entry.source, summary.format]);
+  }, [entry.id, source, summary.format]);
 
   // Topic selection. Default: every topic with messages AND with a resolvable
   // schema (for .db3) is included. Empty-count topics are still listed (some
@@ -138,6 +139,7 @@ function BagEditForm({ entry, onClose }: FormProps) {
   // Reset the selection when the unresolved-set finishes loading so the
   // .db3 pre-flight result actually narrows the default.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelected(initialSelected);
   }, [initialSelected]);
   const [topicFilterQ, setTopicFilterQ] = useState('');
@@ -162,6 +164,7 @@ function BagEditForm({ entry, onClose }: FormProps) {
     if (debounceTimerRef.current !== null) {
       window.clearTimeout(debounceTimerRef.current);
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setEstimateMsgs(null);
     debounceTimerRef.current = window.setTimeout(() => {
       const topics = selected.size === summary.topics.length ? null : Array.from(selected);
@@ -190,7 +193,7 @@ function BagEditForm({ entry, onClose }: FormProps) {
     };
   }, [
     entry.id,
-    entry.source,
+    source,
     summary.format,
     summary.startTime,
     summary.topics.length,
@@ -597,8 +600,15 @@ function RangeBar({ full, start, end, onChange }: RangeBarProps) {
     return fraction * full;
   };
 
-  const onPointerDown = (handle: 'start' | 'end') => (e: React.PointerEvent) => {
-    draggingRef.current = handle;
+  // Two flat handlers (rather than a `(handle) => (e) => ...` curry called
+  // inline in JSX) so the ref write only ever happens inside an event
+  // handler, never as a side effect of a function invoked during render.
+  const onPointerDownStart = (e: React.PointerEvent) => {
+    draggingRef.current = 'start';
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onPointerDownEnd = (e: React.PointerEvent) => {
+    draggingRef.current = 'end';
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
   const onPointerMove = (e: React.PointerEvent) => {
@@ -631,14 +641,14 @@ function RangeBar({ full, start, end, onChange }: RangeBarProps) {
       <button
         type="button"
         aria-label="Trim start"
-        onPointerDown={onPointerDown('start')}
+        onPointerDown={onPointerDownStart}
         className="absolute top-1/2 -translate-y-1/2 w-4 h-4 -ml-2 rounded-full bg-bg-primary border-2 border-accent-blue shadow-glow-blue hover:scale-110 transition-transform"
         style={{ left: `${startPct}%` }}
       />
       <button
         type="button"
         aria-label="Trim end"
-        onPointerDown={onPointerDown('end')}
+        onPointerDown={onPointerDownEnd}
         className="absolute top-1/2 -translate-y-1/2 w-4 h-4 -ml-2 rounded-full bg-bg-primary border-2 border-accent-blue shadow-glow-blue hover:scale-110 transition-transform"
         style={{ left: `${endPct}%` }}
       />

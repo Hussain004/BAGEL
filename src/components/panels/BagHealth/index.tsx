@@ -48,6 +48,7 @@ export function BagHealth({ panelId, topicName, type, bagId }: Props) {
 
   // Reset viewBagId if the selected bag disappears.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (viewBagId && !bags.has(viewBagId)) setViewBagId(null);
   }, [bags, viewBagId]);
 
@@ -55,6 +56,7 @@ export function BagHealth({ panelId, topicName, type, bagId }: Props) {
 
   useEffect(() => {
     if (!entry || entry.kind === 'live' || !entry.source) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setError(null);
     setStats(null);

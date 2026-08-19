@@ -155,7 +155,14 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
   const setVisibility = (next: Record<string, boolean>) =>
     updateSettings(panelId, { visibility: next });
   // Guard against old stored state that predates the expressions field.
-  const expressions: ExpressionDef[] = settings.expressions ?? [];
+  // useMemo (rather than `settings.expressions ?? []` inline) so the
+  // fallback is a stable array reference across renders - otherwise every
+  // effect/memo below that depends on `expressions` would see a "new" array
+  // and recompute on every render whenever expressions is unset.
+  const expressions: ExpressionDef[] = useMemo(
+    () => settings.expressions ?? [],
+    [settings.expressions],
+  );
 
   // Expression input form state (local — doesn't need to survive remounts).
   const [exprInputVisible, setExprInputVisible] = useState(false);
@@ -221,15 +228,17 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
     [panelId],
   );
   const seriesRef = useRef(series);
-  seriesRef.current = series;
   const savedXRangeRef = useRef(settings.xRange);
-  savedXRangeRef.current = settings.xRange;
   // Refs used inside the mount effect to access latest expressions without
   // re-running the full teardown/recreate cycle on every settings change.
   const expressionsRef = useRef(expressions);
-  expressionsRef.current = expressions;
   const expressionResultsRef = useRef(expressionResults);
-  expressionResultsRef.current = expressionResults;
+  useEffect(() => {
+    seriesRef.current = series;
+    savedXRangeRef.current = settings.xRange;
+    expressionsRef.current = expressions;
+    expressionResultsRef.current = expressionResults;
+  });
 
   // Mount key: re-build uPlot when the field set changes OR when the
   // expression list changes (add/remove triggers a series count change) OR
