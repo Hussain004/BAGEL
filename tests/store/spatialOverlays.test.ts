@@ -27,10 +27,25 @@ describe('spatial topic overlays', () => {
       topic('/empty_pose', 'geometry_msgs/msg/PoseStamped', 0),
     ];
 
-    expect(getSpatialOverlayCandidates(topics, '/map')).toEqual([
-      { name: '/points', type: 'sensor_msgs/msg/PointCloud2' },
-      { name: '/scan', type: 'sensor_msgs/msg/LaserScan' },
-      { name: '/odom', type: 'nav_msgs/msg/Odometry' },
+    expect(getSpatialOverlayCandidates([{ bagId: 'b1', topics }], 'b1', '/map')).toEqual([
+      { bagId: 'b1', name: '/points', type: 'sensor_msgs/msg/PointCloud2' },
+      { bagId: 'b1', name: '/scan', type: 'sensor_msgs/msg/LaserScan' },
+      { bagId: 'b1', name: '/odom', type: 'nav_msgs/msg/Odometry' },
+    ]);
+  });
+
+  it('draws candidates from every loaded bag, excluding only the primary bag+topic pair', () => {
+    // Two bags both publish a topic named "/map" (e.g. two robots sharing
+    // the same topic name). The primary panel is on bag "a"'s "/map" - that
+    // exact (bagId, name) pair should be excluded, but bag "b"'s "/map" is a
+    // valid cross-bag overlay candidate despite sharing the same name.
+    const bags = [
+      { bagId: 'a', topics: [topic('/map', 'nav_msgs/msg/OccupancyGrid')] },
+      { bagId: 'b', topics: [topic('/map', 'nav_msgs/msg/OccupancyGrid')] },
+    ];
+
+    expect(getSpatialOverlayCandidates(bags, 'a', '/map')).toEqual([
+      { bagId: 'b', name: '/map', type: 'nav_msgs/msg/OccupancyGrid' },
     ]);
   });
 
