@@ -66,6 +66,9 @@ export function useMessageAtTime(
     if (!entry || !topicName || entry.kind !== 'live' || !entry.liveConn) return;
     const raw = entry.liveConn.ringBuffer.getMessageAtTime(topicName, timeNs);
     const msg = raw ? { timestamp: raw.timeNs, value: raw.value } : null;
+    // Reflecting an external, non-reactive ring buffer into React state -
+    // there's no subscription to hook a useSyncExternalStore up to here.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setState({ message: msg, loading: false, error: null });
   }, [entry, topicName, timeNs, liveRevision]);
 

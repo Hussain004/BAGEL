@@ -331,7 +331,9 @@ export async function decodeVideoFrames(
         }),
       );
     } catch {
-      decodeError = new Error('Video decoder rejected the encoded frame sequence.');
+      // Stop feeding chunks; whatever frames already decoded are still
+      // returned below (frames.length === 0 is the only failure signal
+      // this function's return value carries).
       break;
     }
   }

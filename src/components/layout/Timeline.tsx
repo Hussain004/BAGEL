@@ -89,6 +89,7 @@ export function Timeline() {
   // playheadStore.seek(), never from tick()/seekFraction().
   const [seekTransitionActive, setSeekTransitionActive] = useState(false);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSeekTransitionActive(true);
     const timer = setTimeout(() => setSeekTransitionActive(false), 180);
     return () => clearTimeout(timer);
@@ -103,6 +104,9 @@ export function Timeline() {
   const [editingLabel, setEditingLabel] = useState('');
   // Pixel offset from track left for positioning the input (clamped on render).
   const [editingX, setEditingX] = useState(0);
+  // Track width at the moment editing started, snapshotted alongside editingX
+  // so the render-time clamp doesn't need to read trackRef.current directly.
+  const [editingTrackWidth, setEditingTrackWidth] = useState(300);
   // True when the edit is for a freshly-created annotation (cancel = delete it).
   // False when renaming an existing one (cancel = restore, don't delete).
   const [editingIsNew, setEditingIsNew] = useState(false);
@@ -192,6 +196,7 @@ export function Timeline() {
           const f = range > 0n ? Number(ann.timeNs - ph.startNs) / Number(range) : 0;
           setEditingLabel(ann.label);
           setEditingX(f * rect.width);
+          setEditingTrackWidth(rect.width);
           setEditingIsNew(false);
           setEditingId(ann.id);
           return;
@@ -208,6 +213,7 @@ export function Timeline() {
       const id = addAnnotation(clamped, `Mark ${count}`);
       setEditingLabel(`Mark ${count}`);
       setEditingX(e.clientX - rect.left);
+      setEditingTrackWidth(rect.width);
       setEditingIsNew(true);
       setEditingId(id);
     },
@@ -366,8 +372,10 @@ export function Timeline() {
               onSeek={() => usePlayheadStore.getState().seek(ann.timeNs)}
               onRemove={() => removeAnnotation(ann.id)}
               onRename={() => {
+                const width = trackRef.current?.clientWidth ?? 300;
                 setEditingLabel(ann.label);
-                setEditingX(f * (trackRef.current?.clientWidth ?? 300));
+                setEditingX(f * width);
+                setEditingTrackWidth(width);
                 setEditingIsNew(false);
                 setEditingId(ann.id);
               }}
@@ -381,7 +389,7 @@ export function Timeline() {
           <div
             className="absolute z-30 pointer-events-none"
             style={{
-              left: `${Math.max(40, Math.min(editingX, (trackRef.current?.clientWidth ?? 300) - 40))}px`,
+              left: `${Math.max(40, Math.min(editingX, editingTrackWidth - 40))}px`,
               bottom: '100%',
               marginBottom: '4px',
               transform: 'translateX(-50%)',

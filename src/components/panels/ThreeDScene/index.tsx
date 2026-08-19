@@ -54,7 +54,7 @@ import {
   type CloudObject,
   type PoseAxesObject,
 } from './sceneObjects';
-import { composeTFChain, pickWorldFrame } from './tfTransform';
+import { applyTransform, pickWorldFrame } from './tfTransform';
 import { useDecodedCloud } from './useDecodedPointCloud';
 import { SpatialOverlay } from './spatialOverlay';
 import {
@@ -390,7 +390,13 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
   const setShowWorldAxes = (v: boolean) => updateSettings(panelId, { showWorldAxes: v });
   const setProjectionMode = (v: ProjectionMode) =>
     updateSettings(panelId, { projectionMode: v });
-  const setWorldFrame = (v: string) => updateSettings(panelId, { worldFrame: v });
+  // useCallback (unlike the sibling setters above) because these two are
+  // read from useEffect dependency arrays further down, which need a
+  // stable identity to avoid re-running on every render.
+  const setWorldFrame = useCallback(
+    (v: string) => updateSettings(panelId, { worldFrame: v }),
+    [panelId, updateSettings],
+  );
   const setRangeLimitOn = (v: boolean) => updateSettings(panelId, { rangeLimitOn: v });
   const setMaxRange = (v: number) => updateSettings(panelId, { maxRange: v });
   const setAccumulating = (v: boolean) => updateSettings(panelId, { accumulating: v });
@@ -399,8 +405,11 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
   const setAccumPerFrame = (v: number) => updateSettings(panelId, { accumPerFrame: v });
   const setVoxelSize = (v: number) => updateSettings(panelId, { voxelSize: v });
   const setUpAxis = (v: UpAxis) => updateSettings(panelId, { upAxis: v });
-  const setPivot = (v: { x: number; y: number; z: number } | null) =>
-    updateSettings(panelId, { pivot: v });
+  const setPivot = useCallback(
+    (v: { x: number; y: number; z: number } | null) =>
+      updateSettings(panelId, { pivot: v }),
+    [panelId, updateSettings],
+  );
   const toggleNamespaceHidden = (ns: string, hidden: boolean) => {
     const cur = new Set(hiddenMarkerNamespaces);
     if (hidden) cur.add(ns);
@@ -565,7 +574,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     if (!srcFrame) return;
     const pick = pickWorldFrame(graph, srcFrame);
     if (pick) setWorldFrame(pick);
-  }, [graph, cloud, poseMessage, mapMessage, worldFrame, isMarker, markerStream.messages]);
+  }, [graph, cloud, poseMessage, mapMessage, worldFrame, isMarker, markerStream.messages, setWorldFrame]);
 
   // Build scene objects exactly once per panel mount. Stats are tracked in a
   // ref so per-frame updates don't trigger React renders.
@@ -798,7 +807,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     }
     setPivot(null);
     refs.renderOnce();
-  }, [worldFrame, topicName, upAxis, sceneRef]);
+  }, [worldFrame, topicName, upAxis, sceneRef, setPivot]);
 
   const handleClearAccumulator = () => {
     const owned = objectsRef.current;
@@ -871,7 +880,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     };
     // sceneRef stays stable for the panel's lifetime; the handler closes over
     // the live objectsRef so we don't need to re-bind when the cloud updates.
-  }, [sceneRef]);
+  }, [sceneRef, setPivot]);
 
   // Keep the pivot marker in sync with the chosen pivot.
   useEffect(() => {
@@ -990,7 +999,6 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
 
     updateMapPlane(owned.mapPlane, decoded);
     if (owned.mapPlane.bounds) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStats({
         points: decoded.width * decoded.height,
         bounds: owned.mapPlane.bounds,
@@ -1080,7 +1088,6 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     lastPlayheadRef.current = 0n;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setMarkerNamespaces([]);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMarkerCount(0);
   }, [isMarker, topicName]);
 
@@ -2833,39 +2840,3 @@ function CameraInfoFeed({
   return null;
 }
 
-function applyTransform(
-  userGroup: THREE.Group,
-  graph: TFGraph | null,
-  sourceFrame: string | null,
-  worldFrame: string | null,
-  timeNs: bigint,
-  cache: React.MutableRefObject<{ key: string; matrix: THREE.Matrix4 } | null>,
-  postMul?: THREE.Matrix4,
-): void {
-  userGroup.matrixAutoUpdate = false;
-  if (!graph || !sourceFrame || !worldFrame || sourceFrame === worldFrame) {
-    if (postMul) userGroup.matrix.copy(postMul);
-    else userGroup.matrix.identity();
-    cache.current = null;
-    return;
-  }
-  // Quantize timeNs to ~100 ms so consecutive playhead ticks within the same
-  // /tf sample window reuse the same transform without re-walking the chain.
-  const bucket = timeNs / 100_000_000n;
-  const key = `${sourceFrame}>${worldFrame}@${bucket.toString()}`;
-  if (cache.current && cache.current.key === key) {
-    if (postMul) userGroup.matrix.multiplyMatrices(postMul, cache.current.matrix);
-    else userGroup.matrix.copy(cache.current.matrix);
-    return;
-  }
-  const m = composeTFChain(graph, sourceFrame, worldFrame, timeNs);
-  if (m) {
-    cache.current = { key, matrix: m };
-    if (postMul) userGroup.matrix.multiplyMatrices(postMul, m);
-    else userGroup.matrix.copy(m);
-  } else {
-    if (postMul) userGroup.matrix.copy(postMul);
-    else userGroup.matrix.identity();
-    cache.current = null;
-  }
-}

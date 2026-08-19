@@ -36,7 +36,7 @@ function makeClient(onEvent: (e: FoxgloveEvent) => void) {
     static CLOSED = 3;
     readyState = mockWs.readyState;
     binaryType = '';
-    constructor(_url: string, _proto: string) {
+    constructor() {
       // Copy event plumbing from mockWs
     }
     addEventListener(type: string, cb: (e: unknown) => void) {
