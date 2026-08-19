@@ -59,6 +59,7 @@ import { useDecodedCloud } from './useDecodedPointCloud';
 import { SpatialOverlay } from './spatialOverlay';
 import {
   getSpatialOverlayCandidates,
+  overlayKey,
   type SpatialOverlayTopic,
 } from './spatialOverlayTopics';
 import { CloudAccumulator, type AccumulationMode } from './accumulator';
@@ -272,7 +273,31 @@ function computeMarkerBounds(
  * changes so the scene update doesn't redo unnecessary work.
  */
 export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProps) {
-  const bag = useBagStore((s) => resolveBagEntry(s, bagId))?.summary ?? null;
+  const bagEntry = useBagStore((s) => resolveBagEntry(s, bagId));
+  const bag = bagEntry?.summary ?? null;
+  const resolvedBagId = bagEntry?.id ?? null;
+  // Every loaded bag's topics, for the cross-bag spatial-overlay picker
+  // (multi-robot bags overlaid on one map), not just this panel's own bag.
+  const allBags = useBagStore((s) => s.bags);
+  const bagOrder = useBagStore((s) => s.bagOrder);
+  const overlayBags = useMemo(
+    () =>
+      bagOrder.map((id) => ({
+        bagId: id,
+        topics: allBags.get(id)?.summary.topics ?? [],
+      })),
+    [bagOrder, allBags],
+  );
+  // Color + label per bag, so the overlay picker can show which robot/bag a
+  // cross-bag candidate comes from (only meaningful once >1 bag is loaded).
+  const overlayBagMeta = useMemo(() => {
+    const map = new Map<string, { color: string; label: string }>();
+    for (const id of bagOrder) {
+      const entry = allBags.get(id);
+      if (entry) map.set(id, { color: entry.color, label: entry.summary.fileName });
+    }
+    return map;
+  }, [bagOrder, allBags]);
   const playheadNs = useBagLocalPlayhead(bagId);
   const sceneKind = useMemo(() => detectKind(type), [type]);
 
@@ -361,13 +386,13 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
   } = settings;
 
   const spatialOverlayCandidates = useMemo(
-    () => getSpatialOverlayCandidates(bag?.topics ?? [], topicName),
-    [bag, topicName],
+    () => getSpatialOverlayCandidates(overlayBags, resolvedBagId ?? '', topicName),
+    [overlayBags, resolvedBagId, topicName],
   );
   const selectedSpatialOverlays = useMemo(
     () =>
       spatialOverlayCandidates.filter((candidate) =>
-        spatialOverlayTopics.includes(candidate.name),
+        spatialOverlayTopics.includes(overlayKey(candidate.bagId, candidate.name)),
       ),
     [spatialOverlayCandidates, spatialOverlayTopics],
   );
@@ -427,20 +452,23 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     else cur.delete(t);
     updateSettings(panelId, { hiddenFrustumTopics: Array.from(cur).sort() });
   };
-  const toggleSpatialOverlay = (topic: string, visible: boolean) => {
+  const toggleSpatialOverlay = (candidateBagId: string, topic: string, visible: boolean) => {
+    const key = overlayKey(candidateBagId, topic);
     const current = new Set(spatialOverlayTopics);
-    if (visible) current.add(topic);
-    else current.delete(topic);
+    if (visible) current.add(key);
+    else current.delete(key);
     updateSettings(panelId, { spatialOverlayTopics: Array.from(current).sort() });
   };
   const setSpatialOverlayStyle = (
+    candidateBagId: string,
     topic: string,
     patch: Partial<SpatialOverlayStyle>,
   ) => {
+    const key = overlayKey(candidateBagId, topic);
     updateSettings(panelId, {
       spatialOverlayStyles: {
         ...spatialOverlayStyles,
-        [topic]: { ...spatialOverlayStyles[topic], ...patch },
+        [key]: { ...spatialOverlayStyles[key], ...patch },
       },
     });
   };
@@ -1583,17 +1611,14 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
       {sceneReady &&
         selectedSpatialOverlays.map((overlay) => (
           <SpatialOverlay
-            key={overlay.name}
+            key={overlayKey(overlay.bagId, overlay.name)}
             topic={overlay}
-            bagId={bagId}
-            playheadNs={playheadNs}
             sceneRef={sceneRef}
-            graph={graph}
             worldFrame={worldFrame}
             upFixMatrix={upFixMatrix}
             colorMode={colorMode}
             pointSize={pointSize}
-            style={spatialOverlayStyles[overlay.name]}
+            style={spatialOverlayStyles[overlayKey(overlay.bagId, overlay.name)]}
             maxRange={rangeLimitOn && maxRange > 0 ? maxRange : undefined}
             heightAxis={heightAxis}
             axisClip={axisClip}
@@ -1726,6 +1751,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
               onToggleSpatialOverlay={toggleSpatialOverlay}
               spatialOverlayStyles={spatialOverlayStyles}
               onSetSpatialOverlayStyle={setSpatialOverlayStyle}
+              overlayBagMeta={overlayBagMeta}
               hasPointCloudLayer={hasPointCloudLayer}
               hasPointLayer={hasPointLayer}
               hasMapLayer={hasMapLayer}
@@ -1925,9 +1951,15 @@ interface ControlsCardProps {
   setMapAlpha: (a: number) => void;
   spatialOverlayCandidates: SpatialOverlayTopic[];
   spatialOverlayTopics: string[];
-  onToggleSpatialOverlay: (topic: string, visible: boolean) => void;
+  onToggleSpatialOverlay: (bagId: string, topic: string, visible: boolean) => void;
   spatialOverlayStyles: Record<string, SpatialOverlayStyle>;
-  onSetSpatialOverlayStyle: (topic: string, patch: Partial<SpatialOverlayStyle>) => void;
+  onSetSpatialOverlayStyle: (
+    bagId: string,
+    topic: string,
+    patch: Partial<SpatialOverlayStyle>,
+  ) => void;
+  /** Color + display label per loaded bag, for tagging cross-bag overlay candidates. */
+  overlayBagMeta: Map<string, { color: string; label: string }>;
   hasPointCloudLayer: boolean;
   hasPointLayer: boolean;
   hasMapLayer: boolean;
@@ -2020,6 +2052,7 @@ function ControlsCard({
   onToggleSpatialOverlay,
   spatialOverlayStyles,
   onSetSpatialOverlayStyle,
+  overlayBagMeta,
   hasPointCloudLayer,
   hasPointLayer,
   hasMapLayer,
@@ -2434,27 +2467,41 @@ function ControlsCard({
                   </div>
                   <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
                     {spatialOverlayCandidates.map((candidate) => {
-                      const checked = spatialOverlayTopics.includes(candidate.name);
+                      const key = overlayKey(candidate.bagId, candidate.name);
+                      const checked = spatialOverlayTopics.includes(key);
                       const shortType = candidate.type.split('/').pop() ?? candidate.type;
                       const candidateKind = detectKind(candidate.type);
                       const supportsPointStyle =
                         candidateKind === 'pointcloud' || candidateKind === 'laserscan';
-                      const style = spatialOverlayStyles[candidate.name] ?? {};
+                      const style = spatialOverlayStyles[key] ?? {};
                       const layerPointSize = style.pointSize ?? pointSize;
+                      // Only shown once >1 bag is loaded, since a single-bag
+                      // panel has nothing to disambiguate.
+                      const bagMeta =
+                        overlayBagMeta.size > 1 ? overlayBagMeta.get(candidate.bagId) : undefined;
+                      const title = bagMeta
+                        ? `${bagMeta.label}: ${candidate.name} (${candidate.type})`
+                        : `${candidate.name} (${candidate.type})`;
                       return (
-                        <div key={candidate.name}>
+                        <div key={key}>
                           <label
                             className={checked ? 'flex items-center gap-1.5 cursor-pointer text-text-secondary' : 'flex items-center gap-1.5 cursor-pointer text-text-tertiary'}
-                            title={candidate.name + ' (' + candidate.type + ')'}
+                            title={title}
                           >
                             <input
                               type="checkbox"
                               checked={checked}
                               onChange={(event) =>
-                                onToggleSpatialOverlay(candidate.name, event.target.checked)
+                                onToggleSpatialOverlay(candidate.bagId, candidate.name, event.target.checked)
                               }
                               className="accent-accent-cyan flex-shrink-0"
                             />
+                            {bagMeta && (
+                              <span
+                                className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                                style={{ backgroundColor: bagMeta.color }}
+                              />
+                            )}
                             <span className="truncate flex-1">{candidate.name}</span>
                             <span className="text-[9px] text-text-tertiary flex-shrink-0">
                               {shortType}
@@ -2472,7 +2519,7 @@ function ControlsCard({
                                   step={0.5}
                                   value={layerPointSize}
                                   onChange={(event) =>
-                                    onSetSpatialOverlayStyle(candidate.name, {
+                                    onSetSpatialOverlayStyle(candidate.bagId, candidate.name, {
                                       pointSize: Number(event.target.value),
                                     })
                                   }
@@ -2488,7 +2535,7 @@ function ControlsCard({
                                   aria-label={candidate.name + ' color'}
                                   value={style.color ?? '#22d3ee'}
                                   onChange={(event) =>
-                                    onSetSpatialOverlayStyle(candidate.name, {
+                                    onSetSpatialOverlayStyle(candidate.bagId, candidate.name, {
                                       color: event.target.value,
                                     })
                                   }
@@ -2499,7 +2546,7 @@ function ControlsCard({
                                   aria-label={'Use automatic colors for ' + candidate.name}
                                   aria-pressed={style.color == null}
                                   onClick={() =>
-                                    onSetSpatialOverlayStyle(candidate.name, { color: null })
+                                    onSetSpatialOverlayStyle(candidate.bagId, candidate.name, { color: null })
                                   }
                                   className={
                                     style.color == null

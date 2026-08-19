@@ -1,5 +1,6 @@
 import { useEffect, useRef, type RefObject } from 'react';
 import * as THREE from 'three';
+import { useBagLocalPlayhead } from '../../../hooks/useBagLocalPlayhead';
 import { useMessageAtTime } from '../../../hooks/useMessageAtTime';
 import type { SpatialOverlayStyle } from '../../../store/threeDPanelStore';
 import type { AxisClip, ColorMode, HeightAxis } from '../../../utils/pointcloud';
@@ -7,7 +8,7 @@ import {
   decodeOccupancyGrid,
   type OccupancyGridMessage,
 } from '../../../utils/occupancyGrid';
-import type { TFGraph } from '../TFTree/useTFGraph';
+import { useTFGraph, type TFGraph } from '../TFTree/useTFGraph';
 import {
   createLaserScan,
   createPointCloud,
@@ -35,7 +36,6 @@ import type { SpatialOverlayTopic } from './spatialOverlayTopics';
 
 interface SpatialOverlayProps {
   topic: SpatialOverlayTopic;
-  bagId?: string;
   playheadNs: bigint;
   sceneRef: RefObject<SceneRefs | null>;
   graph: TFGraph | null;
@@ -51,23 +51,37 @@ interface SpatialOverlayProps {
 }
 
 /**
+ * Public props: `graph` and `playheadNs` are resolved internally against the
+ * topic's own bag, not supplied by the caller.
+ */
+type SpatialOverlayOwnProps = Omit<SpatialOverlayProps, 'graph' | 'playheadNs'>;
+
+/**
  * Renders a selected map, cloud, scan, or pose topic in an existing 3D
  * panel. Each layer owns an independent group so TF can place all topics in
  * the panel's selected world frame.
+ *
+ * The overlay's topic can belong to a *different* bag than the panel it's
+ * drawn in (multi-bag overlay, e.g. three robots' costmaps on one map), so
+ * TF and playhead resolution both use the topic's own bag, not the panel's:
+ * each robot's graph independently reaches the shared `worldFrame` (typically
+ * "map"), and its playhead offset differs from the panel's under bag-start
+ * or anchor alignment.
  */
-export function SpatialOverlay(props: SpatialOverlayProps) {
+export function SpatialOverlay(props: SpatialOverlayOwnProps) {
+  const { graph } = useTFGraph(props.topic.bagId, props.topic.name);
+  const playheadNs = useBagLocalPlayhead(props.topic.bagId);
   const kind = detectKind(props.topic.type);
   if (kind === 'pointcloud' || kind === 'laserscan') {
-    return <CloudOverlay {...props} kind={kind} />;
+    return <CloudOverlay {...props} graph={graph} playheadNs={playheadNs} kind={kind} />;
   }
-  if (kind === 'occupancygrid') return <MapOverlay {...props} />;
+  if (kind === 'occupancygrid') return <MapOverlay {...props} graph={graph} playheadNs={playheadNs} />;
   if (kind === 'markerarray') return null;
-  return <PoseOverlay {...props} />;
+  return <PoseOverlay {...props} graph={graph} playheadNs={playheadNs} />;
 }
 
 function CloudOverlay({
   topic,
-  bagId,
   playheadNs,
   sceneRef,
   graph,
@@ -89,7 +103,7 @@ function CloudOverlay({
     maxRange: kind === 'pointcloud' ? maxRange : undefined,
     heightAxis: kind === 'pointcloud' ? heightAxis : undefined,
     axisClip: kind === 'pointcloud' ? axisClip : undefined,
-    bagId,
+    bagId: topic.bagId,
   });
   const ownedRef = useRef<{ group: THREE.Group; cloud: CloudObject } | null>(null);
   const transformCache = useRef<{ key: string; matrix: THREE.Matrix4 } | null>(null);
@@ -151,7 +165,6 @@ function CloudOverlay({
 
 function MapOverlay({
   topic,
-  bagId,
   playheadNs,
   sceneRef,
   graph,
@@ -159,7 +172,7 @@ function MapOverlay({
   upFixMatrix,
   mapAlpha,
 }: SpatialOverlayProps) {
-  const state = useMessageAtTime(topic.name, playheadNs, bagId);
+  const state = useMessageAtTime(topic.name, playheadNs, topic.bagId);
   const ownedRef = useRef<{ group: THREE.Group; map: MapPlaneObject } | null>(null);
   const transformCache = useRef<{ key: string; matrix: THREE.Matrix4 } | null>(null);
 
@@ -216,14 +229,13 @@ function MapOverlay({
 
 function PoseOverlay({
   topic,
-  bagId,
   playheadNs,
   sceneRef,
   graph,
   worldFrame,
   upFixMatrix,
 }: SpatialOverlayProps) {
-  const state = useMessageAtTime(topic.name, playheadNs, bagId);
+  const state = useMessageAtTime(topic.name, playheadNs, topic.bagId);
   const ownedRef = useRef<{ group: THREE.Group; pose: PoseAxesObject } | null>(null);
   const transformCache = useRef<{ key: string; matrix: THREE.Matrix4 } | null>(null);
 
