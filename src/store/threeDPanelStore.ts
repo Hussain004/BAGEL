@@ -95,13 +95,16 @@ export interface ThreeDPanelSettings {
    */
   hiddenFrustumTopics: string[];
   /**
-   * Additional spatial topics rendered in this panel's scene. Topic names
-   * are resolved against the panel's bag so the stored value stays compact.
-   * These selections are panel-specific and are not saved as cross-bag
-   * display defaults.
+   * Additional spatial topics rendered in this panel's scene. Candidates can
+   * come from any loaded bag, not just this panel's own, so a topic can be
+   * overlaid from a different robot's bag onto one map. Each entry is
+   * `overlayKey(bagId, topicName)` from spatialOverlayTopics.ts rather than a
+   * bare topic name, so selections from different bags with the same topic
+   * name don't collide. These selections are panel-specific and are not
+   * saved as cross-bag display defaults.
    */
   spatialOverlayTopics: string[];
-  /** Topic-specific visual overrides for selected spatial point layers. */
+  /** Topic-specific visual overrides for selected spatial point layers, keyed the same way. */
   spatialOverlayStyles: Record<string, SpatialOverlayStyle>;
   /**
    * Axis-aligned clip box for PointCloud2 panels (v1.6.1). When on, points
