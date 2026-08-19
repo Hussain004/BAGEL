@@ -12,6 +12,7 @@
  * apply to a Group.
  */
 import * as THREE from 'three';
+import type { MutableRefObject } from 'react';
 import type { TFGraph } from '../TFTree/useTFGraph';
 import { lookupTransform } from '../TFTree/useTFGraph';
 
@@ -92,6 +93,49 @@ export function composeTFChain(
     targetMatrix = step.multiply(targetMatrix);
     targetCurrent = parent;
   }
+}
+
+/**
+ * Place `group` in `worldFrame` by composing the TF chain from
+ * `sourceFrame`, post-multiplied by `upFix`. Falls back to `upFix` alone
+ * when the frames match, either is unknown, or no path connects them.
+ *
+ * Quantizes `timeNs` to ~100ms so consecutive playhead ticks within the
+ * same /tf sample window reuse the cached matrix instead of re-walking the
+ * chain. Shared by every 3D-scene layer (primary panel content and spatial
+ * overlays) so caching/quantization behavior only needs fixing in one place.
+ */
+export function applyTransform(
+  group: THREE.Group,
+  graph: TFGraph | null,
+  sourceFrame: string | null,
+  worldFrame: string | null,
+  timeNs: bigint,
+  cache: MutableRefObject<{ key: string; matrix: THREE.Matrix4 } | null>,
+  upFix: THREE.Matrix4,
+): void {
+  group.matrixAutoUpdate = false;
+  if (!graph || !sourceFrame || !worldFrame || sourceFrame === worldFrame) {
+    group.matrix.copy(upFix);
+    cache.current = null;
+    return;
+  }
+
+  const bucket = timeNs / 100_000_000n;
+  const key = `${sourceFrame}>${worldFrame}@${bucket.toString()}`;
+  if (cache.current?.key === key) {
+    group.matrix.multiplyMatrices(upFix, cache.current.matrix);
+    return;
+  }
+
+  const matrix = composeTFChain(graph, sourceFrame, worldFrame, timeNs);
+  if (!matrix) {
+    group.matrix.copy(upFix);
+    cache.current = null;
+    return;
+  }
+  cache.current = { key, matrix };
+  group.matrix.multiplyMatrices(upFix, matrix);
 }
 
 /**

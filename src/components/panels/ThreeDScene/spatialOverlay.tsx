@@ -1,4 +1,4 @@
-import { useEffect, useRef, type MutableRefObject, type RefObject } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 import * as THREE from 'three';
 import { useMessageAtTime } from '../../../hooks/useMessageAtTime';
 import type { SpatialOverlayStyle } from '../../../store/threeDPanelStore';
@@ -29,7 +29,7 @@ import {
 } from './mapPlane';
 import { detectKind } from './sceneKind';
 import { useDecodedCloud } from './useDecodedPointCloud';
-import { composeTFChain } from './tfTransform';
+import { applyTransform } from './tfTransform';
 import type { SceneRefs } from './useScene';
 import type { SpatialOverlayTopic } from './spatialOverlayTopics';
 
@@ -133,7 +133,7 @@ function CloudOverlay({
     const owned = ownedRef.current;
     const cloud = state.cloud;
     if (!scene || !owned || !cloud) return;
-    applyLayerTransform(
+    applyTransform(
       owned.group,
       graph,
       cloud.frameId ?? null,
@@ -198,7 +198,7 @@ function MapOverlay({
     if (!scene || !owned || !message?.value) return;
     const decoded = decodeOccupancyGrid(message.value as OccupancyGridMessage);
     if (!decoded) return;
-    applyLayerTransform(
+    applyTransform(
       owned.group,
       graph,
       pickFrameId(message.value),
@@ -253,7 +253,7 @@ function PoseOverlay({
     if (!scene || !owned || !message?.value) return;
     const pose = extractPose(message.value, topic.type);
     if (!pose) return;
-    applyLayerTransform(
+    applyTransform(
       owned.group,
       graph,
       pickFrameId(message.value),
@@ -274,37 +274,4 @@ function pickFrameId(value: Record<string, unknown>): string | null {
   return typeof header?.frame_id === 'string' && header.frame_id.length > 0
     ? header.frame_id
     : null;
-}
-
-function applyLayerTransform(
-  group: THREE.Group,
-  graph: TFGraph | null,
-  sourceFrame: string | null,
-  worldFrame: string | null,
-  timeNs: bigint,
-  cache: MutableRefObject<{ key: string; matrix: THREE.Matrix4 } | null>,
-  upFix: THREE.Matrix4,
-): void {
-  group.matrixAutoUpdate = false;
-  if (!graph || !sourceFrame || !worldFrame || sourceFrame === worldFrame) {
-    group.matrix.copy(upFix);
-    cache.current = null;
-    return;
-  }
-
-  const bucket = timeNs / 100_000_000n;
-  const key = `${sourceFrame}>${worldFrame}@${bucket.toString()}`;
-  if (cache.current?.key === key) {
-    group.matrix.multiplyMatrices(upFix, cache.current.matrix);
-    return;
-  }
-
-  const matrix = composeTFChain(graph, sourceFrame, worldFrame, timeNs);
-  if (!matrix) {
-    group.matrix.copy(upFix);
-    cache.current = null;
-    return;
-  }
-  cache.current = { key, matrix };
-  group.matrix.multiplyMatrices(upFix, matrix);
 }

@@ -4,6 +4,27 @@ Detailed version-by-version release notes, including the design rationale behind
 
 ---
 
+## v1.7.1: Spatial Topic Overlays
+
+Composing more than one spatial topic into a single 3D scene. Before this, a `PointCloud2`/`LaserScan`/`OccupancyGrid`/pose topic each opened its own ThreeDScene panel; comparing a LiDAR sweep against a SLAM map, or a robot's pose against both, meant switching between panels rather than seeing them together, TF-aligned, at the same playhead.
+
+**Overlay topic picker** (`src/components/panels/ThreeDScene/spatialOverlayTopics.ts`). `getSpatialOverlayCandidates()` filters a bag's topics down to ones the lightweight overlay renderer can actually place: 3D-capable type, at least one message, and not the panel's own primary topic. Marker streams (`MarkerArray`/`Marker`) are excluded and stay primary-panel-only, since they carry historical per-marker lifecycle state (add/modify/delete) that the overlay renderer, which only ever reads the message nearest the playhead, doesn't track.
+
+**Rendering** (`src/components/panels/ThreeDScene/spatialOverlay.tsx`). Each selected topic becomes an independent `CloudOverlay`, `MapOverlay`, or `PoseOverlay` (dispatched by `detectKind`), owning its own `THREE.Group` parented directly under the scene rather than the panel's primary `userGroup`. That keeps an overlay's TF placement independent of whatever frame the primary topic happens to render in. Selections are stored per-panel in `threeDPanelStore.ts`'s `spatialOverlayTopics` (and are listed in `panelDefaultsStore.ts`'s `NON_PORTABLE_FIELDS`, so they never leak into a saved cross-bag Display preset - overlay topics are bag-specific by nature).
+
+### v1.7.1.1: Interrupted-MCAP Recovery and Namespaced TF
+
+- **Interrupted/unfinalized MCAP recordings.** Previously, an MCAP with no summary/footer index (a recording that was cut short, e.g. by a crash or `Ctrl-C`) loaded fully into memory as a fallback, and was rejected outright above 512 MB with a "not supported for files over 512 MB" error. `scanUnindexedMcap` now builds a compact side index with bounded range reads instead: unchunked messages record only their byte range and timestamp, chunked records keep one range per chunk, and message payloads are never retained. A multi-gigabyte interrupted recording is now just as usable as a properly finalized one.
+- **Namespaced TF topics.** Multi-robot or namespaced bags (`/robot1/tf`, `/robot2/tf`) now resolve to the right `/tf` stream via `findTfTopic` instead of only matching the bare global topic, and transforms compose correctly through a common ancestor when two overlay topics live in different TF subtrees (e.g. one sensor under `/robot1` and a shared `/map`).
+- **Top-down orthographic 2D mode.** `ProjectionMode` (`'perspective' | 'orthographic'`) on `ThreeDPanelSettings` switches the panel between the usual perspective orbit and a top-down orthographic camera, useful for reading overlaid maps/LiDAR/pose like a 2D floor plan. A zoom slider in the panel header stays in sync with the same `zoomLevel` state scroll-wheel/pinch zoom already drives (`useScene.ts`).
+
+### v1.7.1.2: Map Alignment and Per-Overlay Styling
+
+- **Occupancy-grid origin fix.** `MapPlaneObject`'s mesh previously combined a fixed `(0.5, 0.5, 0)` local-position offset with per-update scaling to align the map's bottom-left corner (ROS's `OccupancyGrid.info.origin` convention) to the group origin - since Three.js scales don't affect an object's own position, that fixed offset only produced the correct corner alignment at exactly one map size and drifted for any other, most visibly once a map was placed alongside other overlays. Fixed by recomputing the mesh's position from the map's actual metric width/height on every update (`widthM / 2, heightM / 2`) instead of assuming a constant offset.
+- **Per-overlay style overrides.** `SpatialOverlayStyle` (`{ pointSize?, color? }`) on `threeDPanelStore.ts`'s new `spatialOverlayStyles: Record<string, SpatialOverlayStyle>` lets each overlay point-cloud/laser-scan layer get its own point size and a flat color override, so overlapping layers (e.g. a live LiDAR sweep on top of an accumulated map) stay visually distinguishable instead of blending into the same colormap. A sibling `laserScanColor` setting does the same for a panel's own primary LaserScan layer.
+
+---
+
 ## v1.7: Gaussian Splat Viewer
 
 A fourth standalone visualization format alongside v1.6.0's PCD/PLY viewer: 3D Gaussian Splats, the representation behind most modern neural scene captures (photogrammetry-style room/object scans trained via 3D Gaussian Splatting, as distinct from a plain colored point cloud). Splats need a fundamentally different render path - depth-sorted, alpha-blended, screen-space billboards, not fixed-size dots - so this shipped as its own panel rather than a mode of ThreeDScene.

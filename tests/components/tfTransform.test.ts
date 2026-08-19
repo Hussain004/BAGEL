@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { composeTFChain } from '../../src/components/panels/ThreeDScene/tfTransform';
+import * as THREE from 'three';
+import {
+  applyTransform,
+  composeTFChain,
+} from '../../src/components/panels/ThreeDScene/tfTransform';
 import {
   findTfTopic,
   type TFEdge,
@@ -79,6 +83,82 @@ describe('composeTFChain', () => {
       edge('b', 'a', { x: 0, y: 0, z: 0 }),
     ]);
     expect(composeTFChain(cyclic, 'a', 'missing', 1n)).toBeNull();
+  });
+});
+
+describe('applyTransform', () => {
+  // Shared by the primary ThreeDScene panel and every spatial-overlay layer
+  // (mapOverlay/cloudOverlay/poseOverlay) - see tfTransform.ts's applyTransform.
+  const upFix = new THREE.Matrix4().makeTranslation(0, 0, 100);
+
+  function newGroup(): THREE.Group {
+    const group = new THREE.Group();
+    group.matrixAutoUpdate = true;
+    return group;
+  }
+
+  it('falls back to upFix alone when there is no graph, frame, or the frames match', () => {
+    const cache = { current: null as { key: string; matrix: THREE.Matrix4 } | null };
+    const tf = graph([edge('map', 'lidar', { x: 1, y: 0, z: 0 })]);
+
+    for (const [g, source, world] of [
+      [null, 'lidar', 'map'],
+      [tf, null, 'map'],
+      [tf, 'lidar', null],
+      [tf, 'map', 'map'],
+    ] as const) {
+      const group = newGroup();
+      applyTransform(group, g, source, world, 1n, cache, upFix);
+      expect(group.matrixAutoUpdate).toBe(false);
+      expect(group.matrix.elements).toEqual(upFix.elements);
+      expect(cache.current).toBeNull();
+    }
+  });
+
+  it('falls back to upFix alone when no path connects the frames', () => {
+    const cache = { current: null as { key: string; matrix: THREE.Matrix4 } | null };
+    const tf = graph([
+      edge('one', 'source', { x: 1, y: 0, z: 0 }),
+      edge('two', 'target', { x: 1, y: 0, z: 0 }),
+    ]);
+    const group = newGroup();
+    applyTransform(group, tf, 'source', 'target', 1n, cache, upFix);
+    expect(group.matrix.elements).toEqual(upFix.elements);
+    expect(cache.current).toBeNull();
+  });
+
+  it('post-multiplies the composed TF chain by upFix and populates the cache', () => {
+    const cache = { current: null as { key: string; matrix: THREE.Matrix4 } | null };
+    const tf = graph([edge('map', 'lidar', { x: 5, y: 0, z: 0 })]);
+    const group = newGroup();
+    applyTransform(group, tf, 'lidar', 'map', 1n, cache, upFix);
+
+    const expected = new THREE.Matrix4().multiplyMatrices(
+      upFix,
+      composeTFChain(tf, 'lidar', 'map', 1n)!,
+    );
+    expect(group.matrix.elements).toEqual(expected.elements);
+    expect(cache.current?.key).toBe('lidar>map@0');
+  });
+
+  it('reuses the cached matrix for timestamps in the same ~100ms bucket', () => {
+    const cache = { current: null as { key: string; matrix: THREE.Matrix4 } | null };
+    const tf = graph([edge('map', 'lidar', { x: 5, y: 0, z: 0 })]);
+    const first = newGroup();
+    applyTransform(first, tf, 'lidar', 'map', 1n, cache, upFix);
+
+    // Mutate the graph in place - a cache hit must NOT re-walk the chain,
+    // so this change should be invisible to a call in the same time bucket.
+    tf.edges.set('map>lidar', edge('map', 'lidar', { x: 999, y: 0, z: 0 }));
+
+    const second = newGroup();
+    applyTransform(second, tf, 'lidar', 'map', 50_000_000n, cache, upFix);
+    expect(second.matrix.elements).toEqual(first.matrix.elements);
+
+    // A new 100ms bucket recomputes and picks up the mutated edge.
+    const third = newGroup();
+    applyTransform(third, tf, 'lidar', 'map', 150_000_000n, cache, upFix);
+    expect(third.matrix.elements).not.toEqual(first.matrix.elements);
   });
 });
 
