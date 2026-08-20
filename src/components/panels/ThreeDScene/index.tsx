@@ -7,6 +7,7 @@ import { OverlayCard } from '../shared/OverlayCard';
 import { PanelErrorState } from '../shared/PanelStates';
 import {
   useThreeDPanelStore,
+  type MapColorSchemeChoice,
   type ProjectionMode,
   type SpatialOverlayStyle,
   type UpAxis,
@@ -70,13 +71,17 @@ import {
   disposeMapPlane,
   setMapPlaneOpacity,
   updateMapPlane,
+  MAP_PLANE_RENDER_ORDER,
   type MapPlaneObject,
 } from './mapPlane';
 import {
+  classifyMapPlaneTier,
   decodeOccupancyGrid,
+  resolveOccupancyGridScheme,
   type OccupancyGridMessage,
 } from '../../../utils/occupancyGrid';
 import { registerCapture } from '../../../utils/captureRegistry';
+import { RobotMarker } from './robotMarker';
 
 interface ThreeDSceneProps {
   panelId: string;
@@ -367,6 +372,8 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     pivot,
     hiddenMarkerNamespaces,
     mapAlpha,
+    mapColorScheme,
+    showRobotMarkers,
     cameraFrustumsOn,
     cameraFrustumFar,
     hiddenFrustumTopics,
@@ -442,6 +449,9 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     updateSettings(panelId, { hiddenMarkerNamespaces: Array.from(cur).sort() });
   };
   const setMapAlpha = (v: number) => updateSettings(panelId, { mapAlpha: v });
+  const setMapColorScheme = (v: MapColorSchemeChoice) =>
+    updateSettings(panelId, { mapColorScheme: v });
+  const setShowRobotMarkers = (v: boolean) => updateSettings(panelId, { showRobotMarkers: v });
   const setCameraFrustumsOn = (v: boolean) =>
     updateSettings(panelId, { cameraFrustumsOn: v });
   const setCameraFrustumFar = (v: number) =>
@@ -659,7 +669,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
       owned.markerSet = new MarkerSet();
       refs.userGroup.add(owned.markerSet.root);
     } else if (sceneKind === 'occupancygrid') {
-      owned.mapPlane = createMapPlane();
+      owned.mapPlane = createMapPlane(MAP_PLANE_RENDER_ORDER[classifyMapPlaneTier(topicName)]);
       setMapPlaneOpacity(owned.mapPlane, mapAlpha);
       refs.userGroup.add(owned.mapPlane.object);
     } else {
@@ -1011,7 +1021,8 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     const owned = objectsRef.current;
     if (!refs || !owned?.mapPlane || !mapMessage?.value) return;
 
-    const decoded = decodeOccupancyGrid(mapMessage.value as OccupancyGridMessage);
+    const scheme = resolveOccupancyGridScheme(mapColorScheme, topicName);
+    const decoded = decodeOccupancyGrid(mapMessage.value as OccupancyGridMessage, scheme);
     if (!decoded) return;
 
     const sourceFrame = pickFrameId(mapMessage.value) ?? null;
@@ -1035,7 +1046,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
       });
     }
     refs.renderOnce();
-  }, [mapMessage, graph, worldFrame, sceneRef, upFixMatrix]);
+  }, [mapMessage, graph, worldFrame, sceneRef, upFixMatrix, mapColorScheme, topicName]);
 
   // Map alpha slider → material opacity. Cheap; no texture rebuild.
   useEffect(() => {
@@ -1625,6 +1636,19 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
             mapAlpha={mapAlpha}
           />
         ))}
+      {sceneReady &&
+        showRobotMarkers &&
+        overlayBagMeta.size > 1 &&
+        bagOrder.map((id) => (
+          <RobotMarker
+            key={id}
+            bagId={id}
+            color={overlayBagMeta.get(id)?.color ?? '#22d3ee'}
+            sceneRef={sceneRef}
+            worldFrame={worldFrame}
+            upFixMatrix={upFixMatrix}
+          />
+        ))}
       <div className="flex-1 flex flex-col min-h-0">
         <div className="flex-1 min-h-[260px] relative bg-bg-primary/60 overflow-hidden">
           <div
@@ -1746,6 +1770,11 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
               onToggleNamespace={toggleNamespaceHidden}
               mapAlpha={mapAlpha}
               setMapAlpha={setMapAlpha}
+              mapColorScheme={mapColorScheme}
+              setMapColorScheme={setMapColorScheme}
+              showRobotMarkers={showRobotMarkers}
+              setShowRobotMarkers={setShowRobotMarkers}
+              multiBag={overlayBagMeta.size > 1}
               spatialOverlayCandidates={spatialOverlayCandidates}
               spatialOverlayTopics={spatialOverlayTopics}
               onToggleSpatialOverlay={toggleSpatialOverlay}
@@ -1949,6 +1978,13 @@ interface ControlsCardProps {
   /** Global alpha multiplier for OccupancyGrid panels (0…1). */
   mapAlpha: number;
   setMapAlpha: (a: number) => void;
+  /** OccupancyGrid color scheme for this panel's own primary topic. */
+  mapColorScheme: MapColorSchemeChoice;
+  setMapColorScheme: (v: MapColorSchemeChoice) => void;
+  /** Per-bag colored robot markers - only offered once more than one bag is loaded. */
+  showRobotMarkers: boolean;
+  setShowRobotMarkers: (v: boolean) => void;
+  multiBag: boolean;
   spatialOverlayCandidates: SpatialOverlayTopic[];
   spatialOverlayTopics: string[];
   onToggleSpatialOverlay: (bagId: string, topic: string, visible: boolean) => void;
@@ -2047,6 +2083,11 @@ function ControlsCard({
   onToggleNamespace,
   mapAlpha,
   setMapAlpha,
+  mapColorScheme,
+  setMapColorScheme,
+  showRobotMarkers,
+  setShowRobotMarkers,
+  multiBag,
   spatialOverlayCandidates,
   spatialOverlayTopics,
   onToggleSpatialOverlay,
@@ -2196,6 +2237,33 @@ function ControlsCard({
                 className="w-full accent-accent-blue"
                 title="Global fade on top of the per-cell unknown/free/occupied ramp"
               />
+            </div>
+          )}
+          {sceneKind === 'occupancygrid' && (
+            <div>
+              <div className="text-text-tertiary text-[10px] mb-1">map style</div>
+              <div className="flex gap-1">
+                {(['auto', 'map', 'costmap'] as MapColorSchemeChoice[]).map((v) => (
+                  <button
+                    key={v}
+                    onClick={() => setMapColorScheme(v)}
+                    className={`px-2 py-0.5 rounded-md transition-colors ${
+                      mapColorScheme === v
+                        ? 'bg-accent-blue/15 text-accent-blue border border-accent-blue/40'
+                        : 'border border-border text-text-secondary hover:border-accent-blue/40'
+                    }`}
+                    title={
+                      v === 'auto'
+                        ? 'Costmap palette for topics named "costmap", grayscale otherwise'
+                        : v === 'costmap'
+                          ? "Nav2/rviz costmap palette - obstacles in cyan/magenta, cost gradient in blue-magenta"
+                          : 'Grayscale, for SLAM/static maps'
+                    }
+                  >
+                    {v}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
           {/* Everyday four, stop here: color by / point size / grid / axes.
@@ -2453,12 +2521,26 @@ function ControlsCard({
             </DisclosureSection>
           )}
 
-          {(spatialOverlayCandidates.length > 0 || hasRobotModel || cameraFrustumCount > 0 || (sceneKind === 'markerarray' && markerNamespaces.length > 0)) && (
+          {(spatialOverlayCandidates.length > 0 || hasRobotModel || cameraFrustumCount > 0 || multiBag || (sceneKind === 'markerarray' && markerNamespaces.length > 0)) && (
             <DisclosureSection
               label="Overlays"
               open={sectionOverlaysOpen}
               onToggle={setSectionOverlaysOpen}
             >
+              {multiBag && (
+                <label className="flex items-center gap-1.5 text-text-secondary cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showRobotMarkers}
+                    onChange={(e) => setShowRobotMarkers(e.target.checked)}
+                    className="accent-accent-blue"
+                  />
+                  robot markers
+                  <span className="text-text-tertiary text-[10px]">
+                    (colored puck per loaded bag)
+                  </span>
+                </label>
+              )}
               {spatialOverlayCandidates.length > 0 && (
                 <div>
                   <div className="flex items-center justify-between text-text-tertiary text-[10px] mb-1">
@@ -2556,6 +2638,31 @@ function ControlsCard({
                                 >
                                   auto
                                 </button>
+                              </div>
+                            </div>
+                          )}
+                          {checked && candidateKind === 'occupancygrid' && (
+                            <div className="ml-5 mt-1 space-y-1 rounded border border-border/70 p-1.5">
+                              <div className="text-[9px] text-text-tertiary">map style</div>
+                              <div className="flex gap-1">
+                                {(['auto', 'map', 'costmap'] as MapColorSchemeChoice[]).map((v) => (
+                                  <button
+                                    key={v}
+                                    type="button"
+                                    onClick={() =>
+                                      onSetSpatialOverlayStyle(candidate.bagId, candidate.name, {
+                                        mapColorScheme: v,
+                                      })
+                                    }
+                                    className={`px-1.5 py-0.5 rounded text-[9px] transition-colors ${
+                                      (style.mapColorScheme ?? 'auto') === v
+                                        ? 'bg-accent-cyan/15 text-accent-cyan border border-accent-cyan/40'
+                                        : 'border border-border text-text-tertiary hover:border-accent-cyan/40'
+                                    }`}
+                                  >
+                                    {v}
+                                  </button>
+                                ))}
                               </div>
                             </div>
                           )}

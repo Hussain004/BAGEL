@@ -28,11 +28,19 @@ import type { AccumulationMode } from '../components/panels/ThreeDScene/accumula
 export type UpAxis = 'z+' | 'z-' | 'y+' | 'y-' | 'x+' | 'x-';
 export type ProjectionMode = 'perspective' | 'orthographic';
 
+export type MapColorSchemeChoice = 'auto' | 'map' | 'costmap';
+
 export interface SpatialOverlayStyle {
   /** Point size override. Missing values inherit the panel default. */
   pointSize?: number;
   /** Uniform CSS color. Null or missing keeps the message's decoded colors. */
   color?: string | null;
+  /**
+   * OccupancyGrid color scheme for this overlay layer. 'auto' infers
+   * 'costmap' for topic names containing "costmap" and 'map' otherwise.
+   * Only meaningful when the overlay's topic is an OccupancyGrid.
+   */
+  mapColorScheme?: MapColorSchemeChoice;
 }
 
 export interface ThreeDPanelSettings {
@@ -71,6 +79,20 @@ export interface ThreeDPanelSettings {
    * gradient. Only meaningful for occupancygrid panels.
    */
   mapAlpha: number;
+  /**
+   * OccupancyGrid color scheme for this panel's own primary topic (when it
+   * is an OccupancyGrid). See `SpatialOverlayStyle.mapColorScheme` for the
+   * per-overlay equivalent.
+   */
+  mapColorScheme: MapColorSchemeChoice;
+  /**
+   * Show a small colored marker (puck + heading wedge) at each loaded bag's
+   * robot base frame, tinted with that bag's color. Only rendered when more
+   * than one bag is loaded - a single-bag panel has nothing to distinguish,
+   * and the existing "Load robot model" URDF feature already covers that
+   * case for users who want a detailed model.
+   */
+  showRobotMarkers: boolean;
   /**
    * Show wireframe camera frustums for every `sensor_msgs/CameraInfo`
    * topic in the bag (v1.3.2). Off by default - bags without a calibrated
@@ -160,6 +182,8 @@ export const DEFAULT_THREE_D_SETTINGS: ThreeDPanelSettings = {
   pivot: null,
   hiddenMarkerNamespaces: [],
   mapAlpha: 0.85,
+  mapColorScheme: 'auto',
+  showRobotMarkers: true,
   cameraFrustumsOn: false,
   cameraFrustumFar: 5,
   hiddenFrustumTopics: [],
