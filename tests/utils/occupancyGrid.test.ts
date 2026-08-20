@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   decodeOccupancyGrid,
   isOccupancyGridType,
+  resolveOccupancyGridScheme,
   type OccupancyGridMessage,
 } from '../../src/utils/occupancyGrid';
 
@@ -123,6 +124,40 @@ describe('occupancyGrid/decodeOccupancyGrid', () => {
       data: [0],
     });
     expect(decoded!.origin.orientation).toEqual({ x: 0, y: 0, z: 0, w: 1 });
+  });
+});
+
+describe('occupancyGrid/decodeOccupancyGrid costmap scheme', () => {
+  it("matches rviz's costmap palette at the special threshold values", () => {
+    // 0=free(transparent), 50=mid-cost gradient, 99=inscribed inflated
+    // (cyan), 100=lethal (magenta), -1=unknown (teal-grey). Values taken
+    // from rviz_default_plugins' palette_builder.cpp makeCostmapPalette().
+    const decoded = decodeOccupancyGrid(buildGrid(5, 1, [0, 50, 99, 100, -1]), 'costmap');
+    expect(decoded).not.toBeNull();
+    const px = (i: number) => Array.from(decoded!.rgba.slice(i * 4, i * 4 + 4));
+    expect(px(0)).toEqual([0, 0, 0, 0]);
+    expect(px(1)).toEqual([128, 0, 127, 255]);
+    expect(px(2)).toEqual([0, 255, 255, 255]);
+    expect(px(3)).toEqual([255, 0, 255, 255]);
+    expect(px(4)).toEqual([0x70, 0x89, 0x86, 255]);
+  });
+
+  it('defaults to the grayscale map scheme when no scheme is given', () => {
+    const decoded = decodeOccupancyGrid(buildGrid(1, 1, [100]));
+    expect(Array.from(decoded!.rgba)).toEqual([10, 10, 10, 242]);
+  });
+});
+
+describe('occupancyGrid/resolveOccupancyGridScheme', () => {
+  it('infers costmap for any topic name containing "costmap"', () => {
+    expect(resolveOccupancyGridScheme('auto', '/robot1/local_costmap/costmap')).toBe('costmap');
+    expect(resolveOccupancyGridScheme('auto', '/global_costmap/costmap')).toBe('costmap');
+    expect(resolveOccupancyGridScheme('auto', '/map')).toBe('map');
+  });
+
+  it('an explicit choice overrides the topic-name inference', () => {
+    expect(resolveOccupancyGridScheme('map', '/robot1/local_costmap/costmap')).toBe('map');
+    expect(resolveOccupancyGridScheme('costmap', '/map')).toBe('costmap');
   });
 });
 

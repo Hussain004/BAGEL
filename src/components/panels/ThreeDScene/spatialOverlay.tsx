@@ -5,7 +5,9 @@ import { useMessageAtTime } from '../../../hooks/useMessageAtTime';
 import type { SpatialOverlayStyle } from '../../../store/threeDPanelStore';
 import type { AxisClip, ColorMode, HeightAxis } from '../../../utils/pointcloud';
 import {
+  classifyMapPlaneTier,
   decodeOccupancyGrid,
+  resolveOccupancyGridScheme,
   type OccupancyGridMessage,
 } from '../../../utils/occupancyGrid';
 import { useTFGraph, type TFGraph } from '../TFTree/useTFGraph';
@@ -26,6 +28,7 @@ import {
   disposeMapPlane,
   setMapPlaneOpacity,
   updateMapPlane,
+  MAP_PLANE_RENDER_ORDER,
   type MapPlaneObject,
 } from './mapPlane';
 import { detectKind } from './sceneKind';
@@ -171,17 +174,19 @@ function MapOverlay({
   worldFrame,
   upFixMatrix,
   mapAlpha,
+  style,
 }: SpatialOverlayProps) {
   const state = useMessageAtTime(topic.name, playheadNs, topic.bagId);
   const ownedRef = useRef<{ group: THREE.Group; map: MapPlaneObject } | null>(null);
   const transformCache = useRef<{ key: string; matrix: THREE.Matrix4 } | null>(null);
+  const scheme = resolveOccupancyGridScheme(style?.mapColorScheme ?? 'auto', topic.name);
 
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
     const group = new THREE.Group();
     group.name = `overlay:${topic.name}`;
-    const map = createMapPlane();
+    const map = createMapPlane(MAP_PLANE_RENDER_ORDER[classifyMapPlaneTier(topic.name)]);
     setMapPlaneOpacity(map, 1);
     group.add(map.object);
     scene.scene.add(group);
@@ -209,7 +214,7 @@ function MapOverlay({
     const owned = ownedRef.current;
     const message = state.message;
     if (!scene || !owned || !message?.value) return;
-    const decoded = decodeOccupancyGrid(message.value as OccupancyGridMessage);
+    const decoded = decodeOccupancyGrid(message.value as OccupancyGridMessage, scheme);
     if (!decoded) return;
     applyTransform(
       owned.group,
@@ -222,7 +227,7 @@ function MapOverlay({
     );
     updateMapPlane(owned.map, decoded);
     scene.renderOnce();
-  }, [graph, sceneRef, state.message, upFixMatrix, worldFrame]);
+  }, [graph, sceneRef, state.message, upFixMatrix, worldFrame, scheme]);
 
   return null;
 }

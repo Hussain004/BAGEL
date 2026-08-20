@@ -13,7 +13,7 @@
  */
 
 import * as THREE from 'three';
-import type { OccupancyGridDecoded } from '../../../utils/occupancyGrid';
+import type { MapPlaneTier, OccupancyGridDecoded } from '../../../utils/occupancyGrid';
 
 export interface MapPlaneObject {
   object: THREE.Group;
@@ -32,7 +32,23 @@ export interface MapPlaneObject {
   } | null;
 }
 
-export function createMapPlane(): MapPlaneObject {
+/**
+ * Draw-order tier for stacking multiple coplanar map planes (a base map plus
+ * one or more costmap overlays, possibly from several bags at once). All
+ * live at ~the same world Z, so without an explicit tier Three.js's
+ * transparent-object sort falls back to camera distance - which is exactly
+ * equal for coplanar geometry, making the top-to-bottom draw order flicker
+ * between frames as objects mount/unmount. `renderOrder` is the primary sort
+ * key for transparent objects, so an explicit tier makes the stacking
+ * (base map < global costmap < local costmap) deterministic.
+ */
+export const MAP_PLANE_RENDER_ORDER: Record<MapPlaneTier, number> = {
+  map: -1,
+  globalCostmap: 0,
+  localCostmap: 1,
+};
+
+export function createMapPlane(renderOrder: number = MAP_PLANE_RENDER_ORDER.map): MapPlaneObject {
   // PlaneGeometry is unit-sized centred on origin; the mesh offset below
   // shifts so the bottom-left lands at (0,0,0) within the parent group.
   const geometry = new THREE.PlaneGeometry(1, 1);
@@ -52,7 +68,7 @@ export function createMapPlane(): MapPlaneObject {
   mesh.position.set(0, 0, 0);
   // Map sits just above the ground grid so it doesn't z-fight with it.
   // 1 mm offset is too small for any LiDAR / SLAM scale to notice.
-  mesh.renderOrder = -1; // draw before opaque clouds so transparency reads correctly
+  mesh.renderOrder = renderOrder; // draw before opaque clouds so transparency reads correctly
 
   const group = new THREE.Group();
   group.add(mesh);
