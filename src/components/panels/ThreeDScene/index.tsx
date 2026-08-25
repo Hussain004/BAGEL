@@ -8,6 +8,7 @@ import { PanelErrorState } from '../shared/PanelStates';
 import {
   useThreeDPanelStore,
   type MapColorSchemeChoice,
+  type PoseDisplayStyle,
   type ProjectionMode,
   type SpatialOverlayStyle,
   type UpAxis,
@@ -50,6 +51,7 @@ import {
   disposeObject,
   extractPose,
   setCloudStyle,
+  setPoseAxesStyle,
   updateCloud,
   updatePoseAxes,
   type CloudObject,
@@ -374,6 +376,9 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     mapAlpha,
     mapColorScheme,
     showRobotMarkers,
+    poseDisplayStyle,
+    poseFlattenOrientation,
+    showPoseAxesTripod,
     cameraFrustumsOn,
     cameraFrustumFar,
     hiddenFrustumTopics,
@@ -413,6 +418,9 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
   const hasMapLayer =
     sceneKind === 'occupancygrid' ||
     selectedSpatialOverlays.some((candidate) => detectKind(candidate.type) === 'occupancygrid');
+  const hasPoseLayer =
+    sceneKind === 'pose' ||
+    selectedSpatialOverlays.some((candidate) => detectKind(candidate.type) === 'pose');
 
   const setColorMode = (v: ColorMode) => updateSettings(panelId, { colorMode: v });
   const setPointSize = (v: number) => updateSettings(panelId, { pointSize: v });
@@ -452,6 +460,12 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
   const setMapColorScheme = (v: MapColorSchemeChoice) =>
     updateSettings(panelId, { mapColorScheme: v });
   const setShowRobotMarkers = (v: boolean) => updateSettings(panelId, { showRobotMarkers: v });
+  const setPoseDisplayStyle = (v: PoseDisplayStyle) =>
+    updateSettings(panelId, { poseDisplayStyle: v });
+  const setPoseFlattenOrientation = (v: boolean) =>
+    updateSettings(panelId, { poseFlattenOrientation: v });
+  const setShowPoseAxesTripod = (v: boolean) =>
+    updateSettings(panelId, { showPoseAxesTripod: v });
   const setCameraFrustumsOn = (v: boolean) =>
     updateSettings(panelId, { cameraFrustumsOn: v });
   const setCameraFrustumFar = (v: number) =>
@@ -660,7 +674,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
       owned.accumulator.object.visible = false;
       refs.worldGroup.add(owned.accumulator.object);
     } else if (sceneKind === 'laserscan') {
-      owned.cloud = createLaserScan(pointSize + 1);
+      owned.cloud = createLaserScan(pointSize);
       refs.userGroup.add(owned.cloud.object);
     } else if (sceneKind === 'markerarray') {
       // Markers handle their own per-frame TF inside the MarkerSet's frame
@@ -673,7 +687,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
       setMapPlaneOpacity(owned.mapPlane, mapAlpha);
       refs.userGroup.add(owned.mapPlane.object);
     } else {
-      owned.poseAxes = createPoseAxes(1.0);
+      owned.poseAxes = createPoseAxes(1.0, bagEntry?.color ?? '#ffffff');
       refs.userGroup.add(owned.poseAxes.object);
     }
 
@@ -763,15 +777,20 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     const refs = sceneRef.current;
     if (!refs || !owned) return;
     if (owned.cloud) {
-      setCloudStyle(
-        owned.cloud,
-        sceneKind === 'laserscan' ? pointSize + 1 : pointSize,
-        sceneKind === 'laserscan' ? laserScanColor : null,
-      );
+      setCloudStyle(owned.cloud, pointSize, sceneKind === 'laserscan' ? laserScanColor : null);
     }
     if (owned.accumulator) owned.accumulator.setPointSize(pointSize);
     refs.renderOnce();
   }, [laserScanColor, pointSize, sceneKind, sceneRef]);
+
+  // Pose display style (arrow/robot) + orientation-tripod visibility.
+  useEffect(() => {
+    const owned = objectsRef.current;
+    const refs = sceneRef.current;
+    if (!refs || !owned?.poseAxes) return;
+    setPoseAxesStyle(owned.poseAxes, poseDisplayStyle, showPoseAxesTripod);
+    refs.renderOnce();
+  }, [poseDisplayStyle, showPoseAxesTripod, sceneRef]);
 
   // Accumulator visibility toggle.
   useEffect(() => {
@@ -1075,7 +1094,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
 
     const pose = extractPose(poseMessage.value, type);
     if (pose) {
-      updatePoseAxes(owned.poseAxes, pose);
+      updatePoseAxes(owned.poseAxes, pose, poseFlattenOrientation);
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setStats({
         points: 1,
@@ -1088,7 +1107,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
       });
     }
     refs.renderOnce();
-  }, [poseMessage, graph, worldFrame, type, sceneRef, upFixMatrix]);
+  }, [poseMessage, graph, worldFrame, type, sceneRef, upFixMatrix, poseFlattenOrientation]);
 
   // ── Marker ingest + refresh ────────────────────────────────────────────
   //
@@ -1634,6 +1653,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
             heightAxis={heightAxis}
             axisClip={axisClip}
             mapAlpha={mapAlpha}
+            showPoseAxesTripod={showPoseAxesTripod}
           />
         ))}
       {sceneReady &&
@@ -1650,7 +1670,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
           />
         ))}
       <div className="flex-1 flex flex-col min-h-0">
-        <div className="flex-1 min-h-[260px] relative bg-bg-primary/60 overflow-hidden">
+        <div className="flex-1 min-h-[260px] relative bg-bg-primary/60 overflow-hidden group">
           <div
             ref={containerRef}
             className="absolute inset-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60 focus-visible:ring-inset"
@@ -1666,7 +1686,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
             {sceneSummary}
           </span>
 
-          <div className="absolute top-2 right-2 flex flex-col gap-1.5 items-end">
+          <div className="absolute top-2 right-2 flex flex-col gap-1.5 items-end opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
             <div className="flex gap-1">
               {pivot && (
                 <button
@@ -1775,6 +1795,13 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
               showRobotMarkers={showRobotMarkers}
               setShowRobotMarkers={setShowRobotMarkers}
               multiBag={overlayBagMeta.size > 1}
+              hasPoseLayer={hasPoseLayer}
+              poseDisplayStyle={poseDisplayStyle}
+              setPoseDisplayStyle={setPoseDisplayStyle}
+              poseFlattenOrientation={poseFlattenOrientation}
+              setPoseFlattenOrientation={setPoseFlattenOrientation}
+              showPoseAxesTripod={showPoseAxesTripod}
+              setShowPoseAxesTripod={setShowPoseAxesTripod}
               spatialOverlayCandidates={spatialOverlayCandidates}
               spatialOverlayTopics={spatialOverlayTopics}
               onToggleSpatialOverlay={toggleSpatialOverlay}
@@ -1985,6 +2012,14 @@ interface ControlsCardProps {
   showRobotMarkers: boolean;
   setShowRobotMarkers: (v: boolean) => void;
   multiBag: boolean;
+  /** True when the panel's own topic, or a selected overlay, is a pose-typed topic. */
+  hasPoseLayer: boolean;
+  poseDisplayStyle: PoseDisplayStyle;
+  setPoseDisplayStyle: (v: PoseDisplayStyle) => void;
+  poseFlattenOrientation: boolean;
+  setPoseFlattenOrientation: (v: boolean) => void;
+  showPoseAxesTripod: boolean;
+  setShowPoseAxesTripod: (v: boolean) => void;
   spatialOverlayCandidates: SpatialOverlayTopic[];
   spatialOverlayTopics: string[];
   onToggleSpatialOverlay: (bagId: string, topic: string, visible: boolean) => void;
@@ -2088,6 +2123,13 @@ function ControlsCard({
   showRobotMarkers,
   setShowRobotMarkers,
   multiBag,
+  hasPoseLayer,
+  poseDisplayStyle,
+  setPoseDisplayStyle,
+  poseFlattenOrientation,
+  setPoseFlattenOrientation,
+  showPoseAxesTripod,
+  setShowPoseAxesTripod,
   spatialOverlayCandidates,
   spatialOverlayTopics,
   onToggleSpatialOverlay,
@@ -2212,9 +2254,9 @@ function ControlsCard({
               </div>
               <input
                 type="range"
-                min={1}
+                min={0.2}
                 max={8}
-                step={0.5}
+                step={0.1}
                 value={pointSize}
                 onChange={(e) => setPointSize(Number(e.target.value))}
                 className="w-full accent-accent-blue"
@@ -2263,6 +2305,53 @@ function ControlsCard({
                     {v}
                   </button>
                 ))}
+              </div>
+            </div>
+          )}
+          {hasPoseLayer && (
+            <div>
+              <div className="text-text-tertiary text-[10px] mb-1">pose style</div>
+              <div className="flex gap-1">
+                {(['arrow', 'robot'] as PoseDisplayStyle[]).map((v) => (
+                  <button
+                    key={v}
+                    onClick={() => setPoseDisplayStyle(v)}
+                    className={`px-2 py-0.5 rounded-md transition-colors ${
+                      poseDisplayStyle === v
+                        ? 'bg-accent-blue/15 text-accent-blue border border-accent-blue/40'
+                        : 'border border-border text-text-secondary hover:border-accent-blue/40'
+                    }`}
+                    title={
+                      v === 'arrow'
+                        ? 'Thick heading arrow, tinted with the bag color'
+                        : 'Small colored robot puck instead of an arrow'
+                    }
+                  >
+                    {v}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-3 mt-1">
+                <label className="flex items-center gap-1.5 text-text-secondary cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={poseFlattenOrientation}
+                    onChange={(e) => setPoseFlattenOrientation(e.target.checked)}
+                    className="accent-accent-blue"
+                  />
+                  <span title="Ignore roll/pitch so IMU noise doesn't tilt the marker in a top-down view">
+                    flatten
+                  </span>
+                </label>
+                <label className="flex items-center gap-1.5 text-text-secondary cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showPoseAxesTripod}
+                    onChange={(e) => setShowPoseAxesTripod(e.target.checked)}
+                    className="accent-accent-blue"
+                  />
+                  orientation axes
+                </label>
               </div>
             </div>
           )}
@@ -2596,9 +2685,9 @@ function ControlsCard({
                                 <input
                                   type="range"
                                   aria-label={candidate.name + ' point size'}
-                                  min={1}
+                                  min={0.2}
                                   max={8}
-                                  step={0.5}
+                                  step={0.1}
                                   value={layerPointSize}
                                   onChange={(event) =>
                                     onSetSpatialOverlayStyle(candidate.bagId, candidate.name, {
@@ -2664,6 +2753,44 @@ function ControlsCard({
                                   </button>
                                 ))}
                               </div>
+                            </div>
+                          )}
+                          {checked && candidateKind === 'pose' && (
+                            <div className="ml-5 mt-1 space-y-1 rounded border border-border/70 p-1.5">
+                              <div className="text-[9px] text-text-tertiary">pose style</div>
+                              <div className="flex gap-1">
+                                {(['arrow', 'robot'] as PoseDisplayStyle[]).map((v) => (
+                                  <button
+                                    key={v}
+                                    type="button"
+                                    onClick={() =>
+                                      onSetSpatialOverlayStyle(candidate.bagId, candidate.name, {
+                                        poseDisplayStyle: v,
+                                      })
+                                    }
+                                    className={`px-1.5 py-0.5 rounded text-[9px] transition-colors ${
+                                      (style.poseDisplayStyle ?? 'arrow') === v
+                                        ? 'bg-accent-cyan/15 text-accent-cyan border border-accent-cyan/40'
+                                        : 'border border-border text-text-tertiary hover:border-accent-cyan/40'
+                                    }`}
+                                  >
+                                    {v}
+                                  </button>
+                                ))}
+                              </div>
+                              <label className="flex items-center gap-1.5 text-[9px] text-text-tertiary cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={style.poseFlattenOrientation ?? false}
+                                  onChange={(event) =>
+                                    onSetSpatialOverlayStyle(candidate.bagId, candidate.name, {
+                                      poseFlattenOrientation: event.target.checked,
+                                    })
+                                  }
+                                  className="accent-accent-cyan"
+                                />
+                                flatten (ignore roll/pitch)
+                              </label>
                             </div>
                           )}
                         </div>

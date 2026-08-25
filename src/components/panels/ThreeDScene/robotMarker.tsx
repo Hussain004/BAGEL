@@ -11,38 +11,10 @@
 import { useEffect, useMemo, useRef, type RefObject } from 'react';
 import * as THREE from 'three';
 import { useBagLocalPlayhead } from '../../../hooks/useBagLocalPlayhead';
-import { disposeObject } from './sceneObjects';
+import { createRobotBody, disposeObject } from './sceneObjects';
 import { applyTransform } from './tfTransform';
 import { useTFGraph, type TFGraph } from '../TFTree/useTFGraph';
 import type { SceneRefs } from './useScene';
-
-const BODY_RADIUS = 0.14;
-const BODY_HEIGHT = 0.05;
-
-/** Small puck with a flat heading wedge on top, both in the marker's own frame (ROS X-forward, Z-up). */
-function createRobotMarker(colorHex: string): THREE.Group {
-  const color = new THREE.Color(colorHex);
-
-  const bodyGeometry = new THREE.CylinderGeometry(BODY_RADIUS, BODY_RADIUS, BODY_HEIGHT, 24);
-  bodyGeometry.rotateX(Math.PI / 2); // cylinder axis Y -> Z, so it sits flat on the ground plane
-  const body = new THREE.Mesh(bodyGeometry, new THREE.MeshBasicMaterial({ color }));
-  body.position.z = BODY_HEIGHT / 2;
-
-  const noseShape = new THREE.Shape();
-  noseShape.moveTo(0, BODY_RADIUS * 0.55);
-  noseShape.lineTo(BODY_RADIUS * 1.35, 0);
-  noseShape.lineTo(0, -BODY_RADIUS * 0.55);
-  noseShape.closePath();
-  const nose = new THREE.Mesh(
-    new THREE.ShapeGeometry(noseShape),
-    new THREE.MeshBasicMaterial({ color: 0xffffff }),
-  );
-  nose.position.z = BODY_HEIGHT + 0.001; // just above the puck top face
-
-  const group = new THREE.Group();
-  group.add(body, nose);
-  return group;
-}
 
 /** Prefers a `*_base_link` frame; falls back to `*_base_footprint`. Returns null when neither exists. */
 function pickRobotBaseFrame(graph: TFGraph): string | null {
@@ -73,7 +45,7 @@ export function RobotMarker({ bagId, color, sceneRef, worldFrame, upFixMatrix }:
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
-    const marker = createRobotMarker(color);
+    const marker = createRobotBody(color);
     marker.name = `robot-marker:${bagId}`;
     scene.scene.add(marker);
     ownedRef.current = marker;

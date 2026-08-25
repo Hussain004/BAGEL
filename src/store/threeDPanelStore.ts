@@ -30,6 +30,13 @@ export type ProjectionMode = 'perspective' | 'orthographic';
 
 export type MapColorSchemeChoice = 'auto' | 'map' | 'costmap';
 
+/**
+ * How a pose-bearing topic (Odometry, PoseStamped, ...) is drawn: a thick
+ * heading arrow, or a small colored robot puck (reusing the same body as
+ * the TF-driven `RobotMarker`).
+ */
+export type PoseDisplayStyle = 'arrow' | 'robot';
+
 export interface SpatialOverlayStyle {
   /** Point size override. Missing values inherit the panel default. */
   pointSize?: number;
@@ -41,6 +48,10 @@ export interface SpatialOverlayStyle {
    * Only meaningful when the overlay's topic is an OccupancyGrid.
    */
   mapColorScheme?: MapColorSchemeChoice;
+  /** Pose display style for this overlay layer. Only meaningful for pose-typed topics. */
+  poseDisplayStyle?: PoseDisplayStyle;
+  /** Ignore roll/pitch and only render yaw, so IMU noise doesn't tilt the marker. */
+  poseFlattenOrientation?: boolean;
 }
 
 export interface ThreeDPanelSettings {
@@ -93,6 +104,24 @@ export interface ThreeDPanelSettings {
    * case for users who want a detailed model.
    */
   showRobotMarkers: boolean;
+  /**
+   * How this panel's own pose-typed primary topic (and any pose-typed
+   * overlay layer that doesn't override it) is drawn.
+   */
+  poseDisplayStyle: PoseDisplayStyle;
+  /**
+   * Ignore roll/pitch on pose displays in this panel, keeping only yaw.
+   * Off by default - it's a deliberate simplification for ground robots
+   * viewed top-down, and would throw away real tilt data for a bag where
+   * that tilt matters (a climbing or flying robot).
+   */
+  poseFlattenOrientation: boolean;
+  /**
+   * Show the small XYZ tripod next to pose displays. Off by default - at
+   * typical panel zoom the tripod reads as clutter next to the heading
+   * arrow/robot puck, which already conveys orientation.
+   */
+  showPoseAxesTripod: boolean;
   /**
    * Show wireframe camera frustums for every `sensor_msgs/CameraInfo`
    * topic in the bag (v1.3.2). Off by default - bags without a calibrated
@@ -184,6 +213,9 @@ export const DEFAULT_THREE_D_SETTINGS: ThreeDPanelSettings = {
   mapAlpha: 0.85,
   mapColorScheme: 'auto',
   showRobotMarkers: true,
+  poseDisplayStyle: 'arrow',
+  poseFlattenOrientation: false,
+  showPoseAxesTripod: false,
   cameraFrustumsOn: false,
   cameraFrustumFar: 5,
   hiddenFrustumTopics: [],
