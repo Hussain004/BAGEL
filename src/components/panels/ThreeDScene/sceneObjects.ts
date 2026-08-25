@@ -13,6 +13,7 @@
  */
 
 import * as THREE from 'three';
+import type { PoseDisplayStyle } from '../../../store/threeDPanelStore';
 
 export interface PointBuffersInput {
   positions: Float32Array;
@@ -88,29 +89,105 @@ export function updateCloud(obj: CloudObject, input: PointBuffersInput): void {
   obj.bounds = input.bounds;
 }
 
+// ---------- Robot body (shared by the TF-driven RobotMarker and the
+// pose-message-driven "robot" pose style) ----------
+
+const ROBOT_BODY_RADIUS = 0.14;
+const ROBOT_BODY_HEIGHT = 0.05;
+
+/** Small puck with a flat heading wedge on top, in the object's own frame (ROS X-forward, Z-up). */
+export function createRobotBody(
+  colorHex: THREE.ColorRepresentation,
+  radius = ROBOT_BODY_RADIUS,
+  height = ROBOT_BODY_HEIGHT,
+): THREE.Group {
+  const color = new THREE.Color(colorHex);
+
+  const bodyGeometry = new THREE.CylinderGeometry(radius, radius, height, 24);
+  bodyGeometry.rotateX(Math.PI / 2); // cylinder axis Y -> Z, so it sits flat on the ground plane
+  const body = new THREE.Mesh(bodyGeometry, new THREE.MeshBasicMaterial({ color }));
+  body.position.z = height / 2;
+
+  const noseShape = new THREE.Shape();
+  noseShape.moveTo(0, radius * 0.55);
+  noseShape.lineTo(radius * 1.35, 0);
+  noseShape.lineTo(0, -radius * 0.55);
+  noseShape.closePath();
+  const nose = new THREE.Mesh(
+    new THREE.ShapeGeometry(noseShape),
+    new THREE.MeshBasicMaterial({ color: 0xffffff }),
+  );
+  nose.position.z = height + 0.001; // just above the puck top face
+
+  const group = new THREE.Group();
+  group.add(body, nose);
+  return group;
+}
+
 // ---------- Pose axes ----------
+
+/**
+ * Solid mesh arrow (cylinder shaft + cone head) instead of `THREE.ArrowHelper`
+ * - the helper's shaft is a `THREE.Line`, whose width WebGL clamps to ~1px on
+ * most platforms regardless of `linewidth`, so it can't be made thicker.
+ */
+function createThickArrow(size: number, colorHex: THREE.ColorRepresentation): THREE.Group {
+  const headLength = size * 0.35;
+  const shaftLength = size - headLength;
+  const shaftRadius = size * 0.06;
+  const headRadius = size * 0.16;
+  const material = new THREE.MeshBasicMaterial({ color: colorHex });
+
+  const shaftGeometry = new THREE.CylinderGeometry(shaftRadius, shaftRadius, shaftLength, 12);
+  shaftGeometry.rotateZ(-Math.PI / 2); // cylinder axis Y -> X (ROS forward)
+  shaftGeometry.translate(shaftLength / 2, 0, 0);
+  const shaft = new THREE.Mesh(shaftGeometry, material);
+
+  const headGeometry = new THREE.ConeGeometry(headRadius, headLength, 12);
+  headGeometry.rotateZ(-Math.PI / 2);
+  headGeometry.translate(shaftLength + headLength / 2, 0, 0);
+  const head = new THREE.Mesh(headGeometry, material);
+
+  const group = new THREE.Group();
+  group.add(shaft, head);
+  return group;
+}
 
 export interface PoseAxesObject {
   object: THREE.Group;
   axes: THREE.AxesHelper;
-  arrow: THREE.ArrowHelper;
+  arrow: THREE.Group;
+  robot: THREE.Group;
 }
 
-export function createPoseAxes(size: number): PoseAxesObject {
+export function createPoseAxes(
+  size: number,
+  colorHex: THREE.ColorRepresentation = 0xffffff,
+): PoseAxesObject {
   const group = new THREE.Group();
   const axes = new THREE.AxesHelper(size);
+  axes.visible = false;
   group.add(axes);
 
-  const arrow = new THREE.ArrowHelper(
-    new THREE.Vector3(1, 0, 0),
-    new THREE.Vector3(0, 0, 0),
-    size * 1.1,
-    0xffffff,
-    size * 0.25,
-    size * 0.12,
-  );
+  const arrow = createThickArrow(size * 1.1, colorHex);
   group.add(arrow);
-  return { object: group, axes, arrow };
+
+  const robot = createRobotBody(colorHex);
+  robot.visible = false;
+  group.add(robot);
+
+  return { object: group, axes, arrow, robot };
+}
+
+/** Switch between the arrow/robot representations and the XYZ tripod, without rebuilding geometry. */
+export function setPoseAxesStyle(
+  obj: PoseAxesObject,
+  style: PoseDisplayStyle,
+  showAxesTripod: boolean,
+): void {
+  obj.arrow.visible = style === 'arrow';
+  obj.robot.visible = style === 'robot';
+  obj.axes.visible = showAxesTripod;
 }
 
 export interface PoseSample {
@@ -159,15 +236,21 @@ export function extractPose(value: Record<string, unknown> | null, type: string)
   return out;
 }
 
-export function updatePoseAxes(obj: PoseAxesObject, pose: PoseSample): void {
+/** Project a quaternion onto a yaw-only rotation about Z, discarding roll/pitch. */
+function yawOnlyQuaternion(q: { x: number; y: number; z: number; w: number }) {
+  const yaw = Math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z));
+  return { x: 0, y: 0, z: Math.sin(yaw / 2), w: Math.cos(yaw / 2) };
+}
+
+export function updatePoseAxes(
+  obj: PoseAxesObject,
+  pose: PoseSample,
+  flattenOrientation = false,
+): void {
   obj.object.position.set(pose.position.x, pose.position.y, pose.position.z);
   if (pose.orientation) {
-    obj.object.quaternion.set(
-      pose.orientation.x,
-      pose.orientation.y,
-      pose.orientation.z,
-      pose.orientation.w,
-    );
+    const q = flattenOrientation ? yawOnlyQuaternion(pose.orientation) : pose.orientation;
+    obj.object.quaternion.set(q.x, q.y, q.z, q.w);
   } else {
     obj.object.quaternion.identity();
   }

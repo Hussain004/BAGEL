@@ -1,5 +1,5 @@
-import { useEffect, useRef, Component, type ReactNode } from 'react';
-import { Group, Panel, Separator } from 'react-resizable-panels';
+import { useEffect, useRef, useState, Component, type ReactNode } from 'react';
+import { Group, Panel, Separator, type PanelImperativeHandle } from 'react-resizable-panels';
 import { useBagStore } from './store/bagStore';
 import { useLayoutStore } from './store/layoutStore';
 import { useThemeStore, applyTheme } from './store/themeStore';
@@ -108,12 +108,28 @@ export default function App() {
 function MainView() {
   const bag = useBagStore((s) => s.bag);
   const hasPanels = useLayoutStore((s) => s.root !== null);
+  const sidebarRef = useRef<PanelImperativeHandle>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   if (!bag) return null;
+
+  const toggleSidebar = () => {
+    if (sidebarRef.current?.isCollapsed()) {
+      sidebarRef.current.expand();
+      setSidebarCollapsed(false);
+    } else {
+      sidebarRef.current?.collapse();
+      setSidebarCollapsed(true);
+    }
+  };
 
   return (
     <div className="flex-1 min-h-0 overflow-hidden">
       <Group orientation="horizontal" className="h-full w-full flex">
         <Panel
+          panelRef={sidebarRef}
+          collapsible
+          collapsedSize="0%"
+          onResize={() => setSidebarCollapsed(sidebarRef.current?.isCollapsed() ?? false)}
           defaultSize="28%"
           minSize="18%"
           maxSize="50%"
@@ -123,6 +139,24 @@ function MainView() {
         </Panel>
         <Separator className="group relative w-1.5 cursor-col-resize flex-shrink-0">
           <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-border group-hover:bg-accent-blue/60 transition-colors" />
+          <button
+            type="button"
+            onClick={toggleSidebar}
+            onPointerDown={(e) => e.stopPropagation()}
+            aria-label={sidebarCollapsed ? 'Show topics panel' : 'Hide topics panel'}
+            title={sidebarCollapsed ? 'Show topics panel' : 'Hide topics panel'}
+            className="absolute top-1/2 -translate-y-1/2 -left-2.5 z-10 w-5 h-9 rounded-md border border-border bg-surface flex items-center justify-center text-text-tertiary hover:text-accent-blue hover:border-accent-blue/40 transition-colors"
+          >
+            <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+              <path
+                d={sidebarCollapsed ? 'M2 1l4 3-4 3' : 'M6 1L2 4l4 3'}
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
         </Separator>
         <Panel className="flex flex-col min-h-0 min-w-0">
           {hasPanels ? (

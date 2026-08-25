@@ -1,5 +1,6 @@
 import { useEffect, useRef, type RefObject } from 'react';
 import * as THREE from 'three';
+import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
 import { useBagLocalPlayhead } from '../../../hooks/useBagLocalPlayhead';
 import { useMessageAtTime } from '../../../hooks/useMessageAtTime';
 import type { SpatialOverlayStyle } from '../../../store/threeDPanelStore';
@@ -17,6 +18,7 @@ import {
   createPoseAxes,
   disposeObject,
   setCloudStyle,
+  setPoseAxesStyle,
   extractPose,
   updateCloud,
   updatePoseAxes,
@@ -51,6 +53,8 @@ interface SpatialOverlayProps {
   axisClip?: AxisClip;
   mapAlpha: number;
   style?: SpatialOverlayStyle;
+  /** Show the small XYZ tripod next to pose displays (panel-wide setting). */
+  showPoseAxesTripod: boolean;
 }
 
 /**
@@ -137,11 +141,7 @@ function CloudOverlay({
     const owned = ownedRef.current;
     if (!scene || !owned) return;
     const layerPointSize = style?.pointSize ?? pointSize;
-    setCloudStyle(
-      owned.cloud,
-      kind === 'laserscan' ? layerPointSize + 1 : layerPointSize,
-      style?.color,
-    );
+    setCloudStyle(owned.cloud, layerPointSize, style?.color);
     scene.renderOnce();
   }, [kind, pointSize, sceneRef, style]);
 
@@ -239,17 +239,22 @@ function PoseOverlay({
   graph,
   worldFrame,
   upFixMatrix,
+  style,
+  showPoseAxesTripod,
 }: SpatialOverlayProps) {
   const state = useMessageAtTime(topic.name, playheadNs, topic.bagId);
+  const color = useBagStore((s) => resolveBagEntry(s, topic.bagId)?.color ?? '#ffffff');
   const ownedRef = useRef<{ group: THREE.Group; pose: PoseAxesObject } | null>(null);
   const transformCache = useRef<{ key: string; matrix: THREE.Matrix4 } | null>(null);
+  const poseDisplayStyle = style?.poseDisplayStyle ?? 'arrow';
+  const flattenOrientation = style?.poseFlattenOrientation ?? false;
 
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
     const group = new THREE.Group();
     group.name = `overlay:${topic.name}`;
-    const pose = createPoseAxes(1);
+    const pose = createPoseAxes(1, color);
     group.add(pose.object);
     scene.scene.add(group);
     ownedRef.current = { group, pose };
@@ -261,7 +266,17 @@ function PoseOverlay({
       ownedRef.current = null;
       scene.renderOnce();
     };
+    // color is stable for the life of a loaded bag - not worth rebuilding for.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sceneRef, topic.name]);
+
+  useEffect(() => {
+    const owned = ownedRef.current;
+    const scene = sceneRef.current;
+    if (!scene || !owned) return;
+    setPoseAxesStyle(owned.pose, poseDisplayStyle, showPoseAxesTripod);
+    scene.renderOnce();
+  }, [poseDisplayStyle, showPoseAxesTripod, sceneRef]);
 
   useEffect(() => {
     const scene = sceneRef.current;
@@ -279,9 +294,9 @@ function PoseOverlay({
       transformCache,
       upFixMatrix,
     );
-    updatePoseAxes(owned.pose, pose);
+    updatePoseAxes(owned.pose, pose, flattenOrientation);
     scene.renderOnce();
-  }, [graph, sceneRef, state.message, topic.type, upFixMatrix, worldFrame]);
+  }, [graph, sceneRef, state.message, topic.type, upFixMatrix, worldFrame, flattenOrientation]);
 
   return null;
 }

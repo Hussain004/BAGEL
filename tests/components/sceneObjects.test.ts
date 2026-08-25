@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   createLaserScan,
+  createPoseAxes,
   disposeObject,
   setCloudStyle,
+  setPoseAxesStyle,
+  updatePoseAxes,
 } from '../../src/components/panels/ThreeDScene/sceneObjects';
 
 describe('setCloudStyle', () => {
@@ -29,5 +32,39 @@ describe('setCloudStyle', () => {
     expect(scan.material.color.getHexString()).toBe('ffffff');
 
     disposeObject(scan.object);
+  });
+});
+
+describe('pose axes', () => {
+  it('shows the arrow by default and switches to the robot puck', () => {
+    const pose = createPoseAxes(1, '#22d3ee');
+    expect(pose.arrow.visible).toBe(true);
+    expect(pose.robot.visible).toBe(false);
+    expect(pose.axes.visible).toBe(false);
+
+    setPoseAxesStyle(pose, 'robot', true);
+    expect(pose.arrow.visible).toBe(false);
+    expect(pose.robot.visible).toBe(true);
+    expect(pose.axes.visible).toBe(true);
+
+    disposeObject(pose.object);
+  });
+
+  it('flattens roll/pitch to yaw-only when requested', () => {
+    const pose = createPoseAxes(1);
+    // 90 degree roll about X, no yaw.
+    updatePoseAxes(
+      pose,
+      { position: { x: 1, y: 2, z: 3 }, orientation: { x: Math.SQRT1_2, y: 0, z: 0, w: Math.SQRT1_2 } },
+      true,
+    );
+
+    expect(pose.object.quaternion.x).toBeCloseTo(0);
+    expect(pose.object.quaternion.y).toBeCloseTo(0);
+    expect(pose.object.quaternion.z).toBeCloseTo(0);
+    expect(pose.object.quaternion.w).toBeCloseTo(1);
+    expect(pose.object.position.x).toBe(1);
+
+    disposeObject(pose.object);
   });
 });
