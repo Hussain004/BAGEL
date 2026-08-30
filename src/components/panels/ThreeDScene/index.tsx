@@ -51,6 +51,7 @@ import {
   disposeObject,
   extractPose,
   setCloudStyle,
+  setPoseAxesColor,
   setPoseAxesStyle,
   updateCloud,
   updatePoseAxes,
@@ -379,6 +380,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     poseDisplayStyle,
     poseFlattenOrientation,
     showPoseAxesTripod,
+    poseColor,
     cameraFrustumsOn,
     cameraFrustumFar,
     hiddenFrustumTopics,
@@ -466,6 +468,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     updateSettings(panelId, { poseFlattenOrientation: v });
   const setShowPoseAxesTripod = (v: boolean) =>
     updateSettings(panelId, { showPoseAxesTripod: v });
+  const setPoseColor = (v: string | null) => updateSettings(panelId, { poseColor: v });
   const setCameraFrustumsOn = (v: boolean) =>
     updateSettings(panelId, { cameraFrustumsOn: v });
   const setCameraFrustumFar = (v: number) =>
@@ -783,14 +786,15 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     refs.renderOnce();
   }, [laserScanColor, pointSize, sceneKind, sceneRef]);
 
-  // Pose display style (arrow/robot) + orientation-tripod visibility.
+  // Pose display style (arrow/robot) + orientation-tripod visibility + color.
   useEffect(() => {
     const owned = objectsRef.current;
     const refs = sceneRef.current;
     if (!refs || !owned?.poseAxes) return;
     setPoseAxesStyle(owned.poseAxes, poseDisplayStyle, showPoseAxesTripod);
+    setPoseAxesColor(owned.poseAxes, poseColor ?? bagEntry?.color ?? '#ffffff');
     refs.renderOnce();
-  }, [poseDisplayStyle, showPoseAxesTripod, sceneRef]);
+  }, [poseDisplayStyle, showPoseAxesTripod, poseColor, bagEntry?.color, sceneRef]);
 
   // Accumulator visibility toggle.
   useEffect(() => {
@@ -1802,6 +1806,9 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
               setPoseFlattenOrientation={setPoseFlattenOrientation}
               showPoseAxesTripod={showPoseAxesTripod}
               setShowPoseAxesTripod={setShowPoseAxesTripod}
+              poseColor={poseColor}
+              setPoseColor={setPoseColor}
+              bagColor={bagEntry?.color ?? '#ffffff'}
               spatialOverlayCandidates={spatialOverlayCandidates}
               spatialOverlayTopics={spatialOverlayTopics}
               onToggleSpatialOverlay={toggleSpatialOverlay}
@@ -2020,6 +2027,11 @@ interface ControlsCardProps {
   setPoseFlattenOrientation: (v: boolean) => void;
   showPoseAxesTripod: boolean;
   setShowPoseAxesTripod: (v: boolean) => void;
+  /** Color override for this panel's own pose topic. `null` uses `bagColor`. */
+  poseColor: string | null;
+  setPoseColor: (v: string | null) => void;
+  /** This panel's bag color, used as the pose color picker's "auto" value. */
+  bagColor: string;
   spatialOverlayCandidates: SpatialOverlayTopic[];
   spatialOverlayTopics: string[];
   onToggleSpatialOverlay: (bagId: string, topic: string, visible: boolean) => void;
@@ -2130,6 +2142,9 @@ function ControlsCard({
   setPoseFlattenOrientation,
   showPoseAxesTripod,
   setShowPoseAxesTripod,
+  poseColor,
+  setPoseColor,
+  bagColor,
   spatialOverlayCandidates,
   spatialOverlayTopics,
   onToggleSpatialOverlay,
@@ -2352,6 +2367,28 @@ function ControlsCard({
                   />
                   orientation axes
                 </label>
+              </div>
+              <div className="flex items-center gap-2 mt-1">
+                <input
+                  type="color"
+                  aria-label="Pose color"
+                  value={poseColor ?? bagColor}
+                  onChange={(event) => setPoseColor(event.target.value)}
+                  className="w-8 h-6 rounded border border-border bg-transparent cursor-pointer"
+                />
+                <button
+                  type="button"
+                  aria-pressed={poseColor === null}
+                  onClick={() => setPoseColor(null)}
+                  className={
+                    poseColor === null
+                      ? 'px-2 py-0.5 rounded border border-accent-blue/40 text-accent-blue'
+                      : 'px-2 py-0.5 rounded border border-border text-text-secondary hover:border-accent-blue/40'
+                  }
+                  title="Use this bag's color"
+                >
+                  auto
+                </button>
               </div>
             </div>
           )}
@@ -2791,6 +2828,34 @@ function ControlsCard({
                                 />
                                 flatten (ignore roll/pitch)
                               </label>
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="color"
+                                  aria-label={candidate.name + ' color'}
+                                  value={style.color ?? overlayBagMeta.get(candidate.bagId)?.color ?? '#22d3ee'}
+                                  onChange={(event) =>
+                                    onSetSpatialOverlayStyle(candidate.bagId, candidate.name, {
+                                      color: event.target.value,
+                                    })
+                                  }
+                                  className="h-5 w-7 cursor-pointer rounded border border-border bg-transparent"
+                                />
+                                <button
+                                  type="button"
+                                  aria-label={'Use the bag color for ' + candidate.name}
+                                  aria-pressed={style.color == null}
+                                  onClick={() =>
+                                    onSetSpatialOverlayStyle(candidate.bagId, candidate.name, { color: null })
+                                  }
+                                  className={
+                                    style.color == null
+                                      ? 'rounded border border-accent-cyan/40 px-1.5 text-accent-cyan'
+                                      : 'rounded border border-border px-1.5 text-text-tertiary hover:border-accent-cyan/40'
+                                  }
+                                >
+                                  auto
+                                </button>
+                              </div>
                             </div>
                           )}
                         </div>

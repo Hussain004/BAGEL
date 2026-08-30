@@ -106,6 +106,7 @@ export function createRobotBody(
   const bodyGeometry = new THREE.CylinderGeometry(radius, radius, height, 24);
   bodyGeometry.rotateX(Math.PI / 2); // cylinder axis Y -> Z, so it sits flat on the ground plane
   const body = new THREE.Mesh(bodyGeometry, new THREE.MeshBasicMaterial({ color }));
+  body.name = 'body';
   body.position.z = height / 2;
 
   const noseShape = new THREE.Shape();
@@ -177,6 +178,16 @@ export function createPoseAxes(
   group.add(robot);
 
   return { object: group, axes, arrow, robot };
+}
+
+/** Recolor the arrow and robot puck (the puck's white heading nose stays white), without rebuilding geometry. */
+export function setPoseAxesColor(obj: PoseAxesObject, colorHex: THREE.ColorRepresentation): void {
+  const color = new THREE.Color(colorHex);
+  obj.arrow.traverse((child) => {
+    if (child instanceof THREE.Mesh) (child.material as THREE.MeshBasicMaterial).color.copy(color);
+  });
+  const body = obj.robot.getObjectByName('body');
+  if (body instanceof THREE.Mesh) (body.material as THREE.MeshBasicMaterial).color.copy(color);
 }
 
 /** Switch between the arrow/robot representations and the XYZ tripod, without rebuilding geometry. */

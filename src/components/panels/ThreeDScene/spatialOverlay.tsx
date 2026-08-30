@@ -18,6 +18,7 @@ import {
   createPoseAxes,
   disposeObject,
   setCloudStyle,
+  setPoseAxesColor,
   setPoseAxesStyle,
   extractPose,
   updateCloud,
@@ -243,7 +244,8 @@ function PoseOverlay({
   showPoseAxesTripod,
 }: SpatialOverlayProps) {
   const state = useMessageAtTime(topic.name, playheadNs, topic.bagId);
-  const color = useBagStore((s) => resolveBagEntry(s, topic.bagId)?.color ?? '#ffffff');
+  const bagColor = useBagStore((s) => resolveBagEntry(s, topic.bagId)?.color ?? '#ffffff');
+  const color = style?.color ?? bagColor;
   const ownedRef = useRef<{ group: THREE.Group; pose: PoseAxesObject } | null>(null);
   const transformCache = useRef<{ key: string; matrix: THREE.Matrix4 } | null>(null);
   const poseDisplayStyle = style?.poseDisplayStyle ?? 'arrow';
@@ -266,7 +268,7 @@ function PoseOverlay({
       ownedRef.current = null;
       scene.renderOnce();
     };
-    // color is stable for the life of a loaded bag - not worth rebuilding for.
+    // initial color only - the style effect below keeps it in sync afterward.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sceneRef, topic.name]);
 
@@ -275,8 +277,9 @@ function PoseOverlay({
     const scene = sceneRef.current;
     if (!scene || !owned) return;
     setPoseAxesStyle(owned.pose, poseDisplayStyle, showPoseAxesTripod);
+    setPoseAxesColor(owned.pose, color);
     scene.renderOnce();
-  }, [poseDisplayStyle, showPoseAxesTripod, sceneRef]);
+  }, [poseDisplayStyle, showPoseAxesTripod, color, sceneRef]);
 
   useEffect(() => {
     const scene = sceneRef.current;

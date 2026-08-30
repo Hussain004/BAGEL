@@ -40,7 +40,11 @@ export type PoseDisplayStyle = 'arrow' | 'robot';
 export interface SpatialOverlayStyle {
   /** Point size override. Missing values inherit the panel default. */
   pointSize?: number;
-  /** Uniform CSS color. Null or missing keeps the message's decoded colors. */
+  /**
+   * Uniform CSS color. For cloud/scan layers, null or missing keeps the
+   * message's decoded colors; for pose layers, null or missing falls back
+   * to the topic's bag color.
+   */
   color?: string | null;
   /**
    * OccupancyGrid color scheme for this overlay layer. 'auto' infers
@@ -122,6 +126,12 @@ export interface ThreeDPanelSettings {
    * arrow/robot puck, which already conveys orientation.
    */
   showPoseAxesTripod: boolean;
+  /**
+   * Color override for this panel's own pose-typed primary topic. `null`
+   * (the default) uses the topic's bag color, matching the TF-driven robot
+   * markers and toolbar bag chips.
+   */
+  poseColor: string | null;
   /**
    * Show wireframe camera frustums for every `sensor_msgs/CameraInfo`
    * topic in the bag (v1.3.2). Off by default - bags without a calibrated
@@ -216,6 +226,7 @@ export const DEFAULT_THREE_D_SETTINGS: ThreeDPanelSettings = {
   poseDisplayStyle: 'arrow',
   poseFlattenOrientation: false,
   showPoseAxesTripod: false,
+  poseColor: null,
   cameraFrustumsOn: false,
   cameraFrustumFar: 5,
   hiddenFrustumTopics: [],
