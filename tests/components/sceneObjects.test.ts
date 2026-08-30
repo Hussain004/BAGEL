@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import * as THREE from 'three';
 import {
   createLaserScan,
   createPoseAxes,
   disposeObject,
   setCloudStyle,
+  setPoseAxesColor,
   setPoseAxesStyle,
   updatePoseAxes,
 } from '../../src/components/panels/ThreeDScene/sceneObjects';
@@ -64,6 +66,24 @@ describe('pose axes', () => {
     expect(pose.object.quaternion.z).toBeCloseTo(0);
     expect(pose.object.quaternion.w).toBeCloseTo(1);
     expect(pose.object.position.x).toBe(1);
+
+    disposeObject(pose.object);
+  });
+
+  it('recolors the arrow and robot body but leaves the heading nose white', () => {
+    const pose = createPoseAxes(1, '#22d3ee');
+
+    setPoseAxesColor(pose, '#ff3366');
+
+    pose.arrow.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        expect((child.material as THREE.MeshBasicMaterial).color.getHexString()).toBe('ff3366');
+      }
+    });
+    const body = pose.robot.getObjectByName('body') as THREE.Mesh;
+    const nose = pose.robot.children.find((c) => c !== body) as THREE.Mesh;
+    expect((body.material as THREE.MeshBasicMaterial).color.getHexString()).toBe('ff3366');
+    expect((nose.material as THREE.MeshBasicMaterial).color.getHexString()).toBe('ffffff');
 
     disposeObject(pose.object);
   });
