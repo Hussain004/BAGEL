@@ -2243,6 +2243,11 @@ function ControlsCard({
                   aria-label="LaserScan color"
                   value={laserScanColor ?? '#22d3ee'}
                   onChange={(event) => setLaserScanColor(event.target.value)}
+                  // Chrome anchors the native color picker below the input without
+                  // checking whether it fits - inside this scrolling dropdown that
+                  // means it can render off the bottom of the screen. Centering the
+                  // input first gives it room on both sides.
+                  onFocus={(e) => e.currentTarget.scrollIntoView({ block: 'center' })}
                   className="w-8 h-6 rounded border border-border bg-transparent cursor-pointer"
                 />
                 <button
@@ -2374,6 +2379,7 @@ function ControlsCard({
                   aria-label="Pose color"
                   value={poseColor ?? bagColor}
                   onChange={(event) => setPoseColor(event.target.value)}
+                  onFocus={(e) => e.currentTarget.scrollIntoView({ block: 'center' })}
                   className="w-8 h-6 rounded border border-border bg-transparent cursor-pointer"
                 />
                 <button
@@ -2742,6 +2748,7 @@ function ControlsCard({
                                   type="color"
                                   aria-label={candidate.name + ' color'}
                                   value={style.color ?? '#22d3ee'}
+                                  onFocus={(e) => e.currentTarget.scrollIntoView({ block: 'center' })}
                                   onChange={(event) =>
                                     onSetSpatialOverlayStyle(candidate.bagId, candidate.name, {
                                       color: event.target.value,
@@ -2833,6 +2840,7 @@ function ControlsCard({
                                   type="color"
                                   aria-label={candidate.name + ' color'}
                                   value={style.color ?? overlayBagMeta.get(candidate.bagId)?.color ?? '#22d3ee'}
+                                  onFocus={(e) => e.currentTarget.scrollIntoView({ block: 'center' })}
                                   onChange={(event) =>
                                     onSetSpatialOverlayStyle(candidate.bagId, candidate.name, {
                                       color: event.target.value,
