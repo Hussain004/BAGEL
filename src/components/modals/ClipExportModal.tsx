@@ -7,7 +7,8 @@ import {
   waitForPanelRender,
   canvasToBlob,
   encodePngZip,
-  encodeWebM,
+  encodeVideo,
+  bestVideoFormat,
   downloadBytes,
 } from '../../utils/clipEncoder';
 
@@ -53,7 +54,8 @@ export function ClipExportModal() {
   const [startSec, setStartSec] = useState(0);
   const [endSec, setEndSec] = useState(durationSec);
   const [fps, setFps] = useState<FpsOption>(12);
-  const [format, setFormat] = useState<'png-zip' | 'webm'>('png-zip');
+  const [format, setFormat] = useState<'png-zip' | 'video'>('png-zip');
+  const [videoFormat] = useState(() => bestVideoFormat());
   const [exportState, setExportState] = useState<ExportState>({ phase: 'idle', frame: 0, total: 0 });
   const cancelRef = useRef(false);
 
@@ -108,8 +110,8 @@ export function ClipExportModal() {
         const zip = await encodePngZip(frames);
         downloadBytes(zip, `${stem}_clip.zip`);
       } else {
-        const webm = await encodeWebM(frames, fps, width, height);
-        downloadBytes(webm, `${stem}_clip.webm`);
+        const video = await encodeVideo(frames, fps, width, height, videoFormat);
+        downloadBytes(video, `${stem}_clip.${videoFormat.extension}`);
       }
       setExportState({ phase: 'done', frame: frames.length, total: frames.length });
     } catch (e) {
@@ -125,7 +127,7 @@ export function ClipExportModal() {
   return (
     <ModalShell
       title="Export Clip"
-      subtitle="Render a panel frame-by-frame and download as PNG zip or WebM video"
+      subtitle="Render a panel frame-by-frame and download as a PNG zip or video"
       onClose={isRunning ? () => {} : close}
       width="sm"
     >
@@ -217,7 +219,13 @@ export function ClipExportModal() {
                 {(
                   [
                     ['png-zip', 'PNG frames (.zip)', 'Lossless, frame-accurate, large'],
-                    ['webm', 'Video (.webm)', 'Compressed video, Chrome/Firefox'],
+                    [
+                      'video',
+                      `Video (.${videoFormat.extension})`,
+                      videoFormat.extension === 'mp4'
+                        ? 'Compressed video, plays almost anywhere'
+                        : 'Compressed video, Chrome/Firefox',
+                    ],
                   ] as const
                 ).map(([v, label, hint]) => (
                   <label key={v} className="flex items-start gap-2 cursor-pointer">
