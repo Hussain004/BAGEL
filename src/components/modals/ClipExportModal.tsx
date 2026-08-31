@@ -41,7 +41,7 @@ interface ExportState {
   errorMsg?: string;
 }
 
-const FPS_OPTIONS = [6, 12, 24, 30] as const;
+const FPS_OPTIONS = [6, 8, 12, 24, 30] as const;
 type FpsOption = (typeof FPS_OPTIONS)[number];
 
 export function ClipExportModal() {
