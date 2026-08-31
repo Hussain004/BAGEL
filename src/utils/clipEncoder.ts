@@ -4,9 +4,12 @@
  * Two output formats:
  *  - PNG zip:  each frame is a PNG blob zipped with fflate (level 0 -
  *              PNGs are already compressed, no need to recompress).
- *  - WebM:     frames are played through a MediaRecorder attached to an
- *              OffscreenCanvas via captureStream(0) + requestFrame(), so
- *              the video plays at exactly the requested fps.
+ *  - Video:    frames are played through a MediaRecorder attached to a
+ *              canvas via captureStream(0) + requestFrame(), so the video
+ *              plays at exactly the requested fps. MP4 (H.264) is used when
+ *              the browser's MediaRecorder supports it - it plays in far
+ *              more places (phones, PowerPoint, video editors) than WebM -
+ *              falling back to WebM on browsers that can't record MP4.
  */
 
 import { zipSync } from 'fflate';
@@ -49,19 +52,44 @@ export async function encodePngZip(frames: Blob[]): Promise<Uint8Array> {
   return zipSync(files, { level: 0 });
 }
 
+export interface VideoFormat {
+  mimeType: string;
+  extension: 'mp4' | 'webm';
+}
+
+const VIDEO_FORMAT_CANDIDATES: VideoFormat[] = [
+  { mimeType: 'video/mp4;codecs=avc1.42E01E', extension: 'mp4' },
+  { mimeType: 'video/mp4', extension: 'mp4' },
+  { mimeType: 'video/webm;codecs=vp9', extension: 'webm' },
+  { mimeType: 'video/webm', extension: 'webm' },
+];
+
 /**
- * Encode a sequence of PNG blobs into a WebM video.
+ * Best video container/codec this browser's MediaRecorder can produce.
+ * Prefers MP4 (plays nearly everywhere) and falls back to WebM on browsers
+ * that can only record that (older Firefox).
+ */
+export function bestVideoFormat(): VideoFormat {
+  return (
+    VIDEO_FORMAT_CANDIDATES.find((c) => MediaRecorder.isTypeSupported(c.mimeType)) ??
+    VIDEO_FORMAT_CANDIDATES[VIDEO_FORMAT_CANDIDATES.length - 1]
+  );
+}
+
+/**
+ * Encode a sequence of PNG blobs into a video using the given format.
  *
  * Phase: offline, runs after all frames are captured. Each blob is drawn
- * onto an OffscreenCanvas and pushed to a MediaRecorder via requestFrame().
- * A `frameMs` sleep between pushes keeps the recorder's timestamps correct
+ * onto a canvas and pushed to a MediaRecorder via requestFrame(). A
+ * `frameMs` sleep between pushes keeps the recorder's timestamps correct
  * so the video plays at exactly `fps`.
  */
-export async function encodeWebM(
+export async function encodeVideo(
   frames: Blob[],
   fps: number,
   width: number,
   height: number,
+  format: VideoFormat,
 ): Promise<Blob> {
   const canvas = document.createElement('canvas');
   canvas.width = width;
@@ -71,11 +99,7 @@ export async function encodeWebM(
   const stream = canvas.captureStream(0);
   const track = stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack;
 
-  const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
-    ? 'video/webm;codecs=vp9'
-    : 'video/webm';
-
-  const recorder = new MediaRecorder(stream, { mimeType });
+  const recorder = new MediaRecorder(stream, { mimeType: format.mimeType });
   const chunks: Blob[] = [];
   recorder.ondataavailable = (e) => {
     if (e.data.size > 0) chunks.push(e.data);
@@ -84,7 +108,7 @@ export async function encodeWebM(
   const frameMs = 1000 / fps;
 
   return new Promise<Blob>((resolve) => {
-    recorder.onstop = () => resolve(new Blob(chunks, { type: 'video/webm' }));
+    recorder.onstop = () => resolve(new Blob(chunks, { type: format.mimeType }));
     recorder.start();
 
     (async () => {
