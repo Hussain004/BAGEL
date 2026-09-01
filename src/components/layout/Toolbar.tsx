@@ -103,7 +103,7 @@ export function Toolbar() {
 
         <div className="w-px h-6 bg-border flex-shrink-0" />
 
-        <div className="flex items-center gap-1.5 min-w-0 overflow-x-auto">
+        <div className="flex items-center gap-1.5 flex-wrap">
           {bagOrder.map((id) => {
             const entry = bags.get(id);
             if (!entry) return null;
