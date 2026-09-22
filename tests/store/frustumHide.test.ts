@@ -25,20 +25,41 @@ describe('hiddenFrustumTopics', () => {
     const { update } = useThreeDPanelStore.getState();
     const panelId = '3d:/velodyne';
 
-    // Hide a topic.
-    const hidden = new Set(['']);
-    hidden.add('/camera_front/camera_info');
-    update(panelId, { hiddenFrustumTopics: Array.from(hidden).sort() });
-    expect(
-      useThreeDPanelStore.getState().byId[panelId]?.hiddenFrustumTopics,
-    ).toContain('/camera_front/camera_info');
+    // Replicates `toggleFrustumTopicHidden` from
+    // src/components/panels/ThreeDScene/index.tsx: read the FRESH store
+    // entry (not a render-captured array), mutate a Set from it, and write
+    // the sorted array back - so rapid successive toggles each build on the
+    // previous write instead of a stale snapshot.
+    const toggleFrustumTopicHidden = (topic: string, hidden: boolean) => {
+      const freshSettings = () =>
+        useThreeDPanelStore.getState().byId[panelId] ?? DEFAULT_THREE_D_SETTINGS;
+      const cur = new Set(freshSettings().hiddenFrustumTopics);
+      if (hidden) cur.add(topic);
+      else cur.delete(topic);
+      update(panelId, { hiddenFrustumTopics: Array.from(cur).sort() });
+    };
 
-    // Show it again.
-    hidden.delete('/camera_front/camera_info');
-    update(panelId, { hiddenFrustumTopics: Array.from(hidden).sort() });
+    // Hide a topic (panel entry does not exist yet: update() upserts it).
+    toggleFrustumTopicHidden('/camera_front/camera_info', true);
     expect(
       useThreeDPanelStore.getState().byId[panelId]?.hiddenFrustumTopics,
-    ).not.toContain('/camera_front/camera_info');
+    ).toEqual(['/camera_front/camera_info']);
+
+    // A second toggle builds on the first write, not a stale snapshot.
+    toggleFrustumTopicHidden('/camera_back/camera_info', true);
+    expect(
+      useThreeDPanelStore.getState().byId[panelId]?.hiddenFrustumTopics,
+    ).toEqual(['/camera_back/camera_info', '/camera_front/camera_info'].sort());
+
+    // Show the first topic again: only it leaves the set.
+    toggleFrustumTopicHidden('/camera_front/camera_info', false);
+    expect(
+      useThreeDPanelStore.getState().byId[panelId]?.hiddenFrustumTopics,
+    ).toEqual(['/camera_back/camera_info']);
+
+    // Show the second topic: the set is empty again.
+    toggleFrustumTopicHidden('/camera_back/camera_info', false);
+    expect(useThreeDPanelStore.getState().byId[panelId]?.hiddenFrustumTopics).toEqual([]);
   });
 
   it('portableSubset strips hiddenFrustumTopics (bag-specific)', () => {

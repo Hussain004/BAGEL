@@ -78,12 +78,13 @@ describe('layoutStore movePanel', () => {
     store.openPanel({ kind: 'plot', topicName: '/b', type: 't' });
     store.openPanel({ kind: 'plot', topicName: '/c', type: 't' });
     const [idA] = useLayoutStore.getState().openOrder;
-    // Order after opening: a, b, c (left to right).
+    // Order after opening: a, b, c (left to right). Moving /a right docks
+    // it next to /b's right edge, yielding exactly b, a, c.
     store.movePanel(idA, 'right');
     // dockPanel doesn't touch openOrder (it's a move, not open/close), so
     // check the actual tree order instead via a fresh traversal.
     const leafOrder = getAllPanels(useLayoutStore.getState().root).map((p) => p.topicName);
-    expect(leafOrder[0]).not.toBe('/a');
+    expect(leafOrder).toEqual(['/b', '/a', '/c']);
   });
 
   it('is a no-op at the start of the order moving left', () => {

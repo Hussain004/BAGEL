@@ -161,6 +161,32 @@ export interface SynthOptions {
    * self-reported size instead of MCAP's chunk-record `decompressedSize`.
    */
   compressOmitContentSize?: boolean;
+  /**
+   * Only meaningful with `compress: true`. Deliberately lies about the
+   * `decompressedSize` every zstd Chunk record declares (the MCAP chunk
+   * record's `uncompressedSize` field), patching the written bytes after
+   * the fact. Producers with an off-by-something size calculation ship
+   * exactly this kind of file; the reader must not trust the hint.
+   * Use a too-small or too-large bigint, or `0n` to model an absent
+   * declaration (the field is mandatory in MCAP, so "absent" serializes
+   * as zero).
+   *
+   * The patch also clears each chunk's `uncompressedCrc`. A CRC computed
+   * over the real data would fail on a size-too-large chunk for a reason
+   * unrelated to size accuracy: fzstd returns a buffer of the DECLARED
+   * length (correct prefix, zero tail), so crc32 over it can never match.
+   * Zeroing it keeps these tests focused on the size hint alone; real
+   * recorders commonly write crc 0 ("not present") anyway.
+   */
+  decompressedSizeOverride?: bigint;
+  /**
+   * Only meaningful with `compress: true`. The compression label written
+   * into each Chunk record (default 'zstd'). The bytes are still
+   * zstd-compressed; this only changes the declaration, so a test can
+   * exercise the reader's unsupported-compression error path (e.g. 'lz4')
+   * without hand-patching record bytes.
+   */
+  chunkCompression?: string;
 }
 
 /**
@@ -186,7 +212,7 @@ export async function writeSyntheticMcap(
     ...(options.compress
       ? {
           compressChunk: (chunkData: Uint8Array) => ({
-            compression: 'zstd',
+            compression: options.chunkCompression ?? 'zstd',
             compressedData: zstdCompressSync(
               chunkData,
               options.compressOmitContentSize
@@ -256,7 +282,44 @@ export async function writeSyntheticMcap(
     });
   }
   await writer.end();
-  return writable.getBytes();
+  const bytes = writable.getBytes();
+  if (options.compress && options.decompressedSizeOverride !== undefined) {
+    return patchChunkDeclaredSizes(bytes, options.decompressedSizeOverride);
+  }
+  return bytes;
+}
+
+const MCAP_MAGIC_LENGTH = 8;
+const MCAP_RECORD_HEADER_LENGTH = 9;
+const MCAP_CHUNK_OPCODE = 0x06;
+
+/**
+ * Walk the record stream of a synthetic MCAP and rewrite the `uncompressedSize`
+ * each Chunk record declares (plus clear its `uncompressedCrc`, see
+ * `SynthOptions.decompressedSizeOverride`). Records are walked exactly the way
+ * `withoutMcapSummary` in `tests/parsers/mcap.test.ts` walks them:
+ * `op(1) + bodyLen(8 LE) + body`. The chunk body starts with
+ * `messageStartTime(8) + messageEndTime(8) + uncompressedSize(8)`, so the
+ * declared size lives at recordOffset + 9 + 16 and the CRC at + 9 + 24.
+ */
+function patchChunkDeclaredSizes(bytes: Uint8Array, declared: bigint): Uint8Array {
+  const out = bytes.slice();
+  const view = new DataView(out.buffer, out.byteOffset, out.byteOffset + out.byteLength);
+  let offset = MCAP_MAGIC_LENGTH;
+  while (offset + MCAP_RECORD_HEADER_LENGTH <= out.byteLength) {
+    const opcode = out[offset];
+    const bodyLength = Number(view.getBigUint64(offset + 1, true));
+    if (!Number.isSafeInteger(bodyLength) || bodyLength < 0) break;
+    const recordLength = MCAP_RECORD_HEADER_LENGTH + bodyLength;
+    if (offset + recordLength > out.byteLength) break;
+    // Chunk body minimum: start(8) + end(8) + size(8) + crc(4).
+    if (opcode === MCAP_CHUNK_OPCODE && bodyLength >= 28) {
+      view.setBigUint64(offset + 25, declared, true);
+      view.setUint32(offset + 33, 0, true);
+    }
+    offset += recordLength;
+  }
+  return out;
 }
 
 /**
@@ -478,12 +541,25 @@ function buildConnectionRecord(
   );
 }
 
+export interface SynthRos1BagOptions {
+  /**
+   * Split the published messages across this many time-ordered chunks
+   * (default 1), each with its own per-connection index records and
+   * chunk_info entry. Exercises `bag.ts`'s multi-chunk index summation
+   * (`chunkInfos` accumulation), which a single-chunk fixture can never
+   * reach. Values above the message count degrade to one chunk per
+   * message; 0 and negatives behave like 1.
+   */
+  chunkCount?: number;
+}
+
 /**
  * Write a minimal valid ROS1 v2.0 bag with the given topics + pre-encoded
- * messages. Single uncompressed chunk; round-trips through `Bag.open()`.
+ * messages. Uncompressed chunk(s); round-trips through `Bag.open()`.
  */
 export async function writeSyntheticRos1Bag(
   topics: SynthRos1Topic[],
+  options: SynthRos1BagOptions = {},
 ): Promise<Uint8Array> {
   // Assign connection ids in input order and compute md5sums up front.
   const connections = topics.map((t, i) => {
@@ -498,9 +574,9 @@ export async function writeSyntheticRos1Bag(
     };
   });
 
-  // Build the chunk body: inline connection records followed by all message
-  // records sorted by time. Track the byte offset of each message record
-  // within the chunk data so we can emit per-connection index_data records.
+  // Collect every published message, sorted by time. Track the byte offset
+  // of each message record within its chunk data so we can emit
+  // per-connection index_data records per chunk.
   type Event = { conn: number; time: { sec: number; nsec: number }; data: Uint8Array };
   const events: Event[] = [];
   for (const c of connections) {
@@ -512,129 +588,179 @@ export async function writeSyntheticRos1Bag(
     a.time.sec !== b.time.sec ? a.time.sec - b.time.sec : a.time.nsec - b.time.nsec,
   );
 
-  const chunkParts: Uint8Array[] = [];
-  let chunkLen = 0;
-  for (const c of connections) {
-    const rec = buildConnectionRecord(
-      c.conn,
-      c.topic,
-      c.type,
-      c.md5sum,
-      c.messageDefinition,
-    );
-    chunkParts.push(rec);
-    chunkLen += rec.length;
-  }
-
-  const perConnIndex = new Map<
-    number,
-    Array<{ time: { sec: number; nsec: number }; offset: number }>
-  >();
-  for (const c of connections) perConnIndex.set(c.conn, []);
-
-  for (const ev of events) {
-    const offset = chunkLen;
-    const rec = encodeRos1Record(
-      [
-        ['op', u8(2)],
-        ['conn', u32le(ev.conn)],
-        ['time', timeLe(ev.time)],
-      ],
-      ev.data,
-    );
-    chunkParts.push(rec);
-    chunkLen += rec.length;
-    perConnIndex.get(ev.conn)!.push({ time: ev.time, offset });
-  }
-
-  const chunkData = concat(chunkParts);
-
-  // Chunk record (opcode 5).
-  const chunkRecord = encodeRos1Record(
-    [
-      ['op', u8(5)],
-      ['compression', 'none'],
-      ['size', u32le(chunkData.length)],
-    ],
-    chunkData,
-  );
-
-  // Per-connection index_data records that follow the chunk.
-  const indexRecords: Uint8Array[] = [];
-  for (const c of connections) {
-    const entries = perConnIndex.get(c.conn) ?? [];
-    if (entries.length === 0) continue;
-    const dataBuf = new Uint8Array(entries.length * 12);
-    const view = new DataView(dataBuf.buffer);
-    for (let i = 0; i < entries.length; i++) {
-      view.setUint32(i * 12, entries[i].time.sec, true);
-      view.setUint32(i * 12 + 4, entries[i].time.nsec, true);
-      view.setUint32(i * 12 + 8, entries[i].offset, true);
+  // Partition the sorted events into contiguous time-ordered groups; one
+  // group becomes one chunk + index block.
+  const wantedChunks = Math.max(1, Math.floor(options.chunkCount ?? 1));
+  const groups: Event[][] = [];
+  if (events.length === 0) {
+    groups.push([]);
+  } else {
+    const chunkCount = Math.min(wantedChunks, events.length);
+    const base = Math.floor(events.length / chunkCount);
+    const remainder = events.length % chunkCount;
+    let pos = 0;
+    for (let i = 0; i < chunkCount; i++) {
+      const size = base + (i < remainder ? 1 : 0);
+      groups.push(events.slice(pos, pos + size));
+      pos += size;
     }
-    indexRecords.push(
-      encodeRos1Record(
-        [
-          ['op', u8(4)],
-          ['ver', u32le(1)],
-          ['conn', u32le(c.conn)],
-          ['count', u32le(entries.length)],
-        ],
-        dataBuf,
-      ),
-    );
   }
 
-  // Bag header has fixed-size fields, so we can encode a placeholder to learn
-  // its byte length, then re-encode with the real index_pos once we know it.
+  // Bag header has fixed-size fields, so we encode a placeholder first to
+  // learn its byte length, then re-encode with the real index_pos.
   const bagHeaderPlaceholder = encodeRos1Record(
     [
       ['op', u8(3)],
       ['index_pos', bigU64le(0n)],
       ['conn_count', u32le(connections.length)],
-      ['chunk_count', u32le(1)],
+      ['chunk_count', u32le(groups.length)],
     ],
     new Uint8Array(0),
   );
-
   const magic = new TextEncoder().encode(ROS1_BAG_MAGIC);
-  const chunkPos = magic.length + bagHeaderPlaceholder.length;
-  const chunkEnd = chunkPos + chunkRecord.length;
-  let indexPos = chunkEnd;
-  for (const r of indexRecords) indexPos += r.length;
 
-  // Connection records get re-emitted in the index section.
+  interface ChunkBlock {
+    /** Chunk record immediately followed by its index_data records. */
+    bytes: Uint8Array;
+    /** File offset of the chunk record (the chunk_info `chunk_pos`). */
+    pos: number;
+    startTime: { sec: number; nsec: number };
+    endTime: { sec: number; nsec: number };
+    /** Per-connection message counts for this chunk. */
+    counts: Array<{ conn: number; count: number }>;
+  }
+
+  let offset = magic.length + bagHeaderPlaceholder.length;
+  const blocks: ChunkBlock[] = [];
+
+  for (const group of groups) {
+    // Chunk body: connection records (idempotent for every chunk; the
+    // reader takes connections from the index section at open() time)
+    // followed by this group's message records sorted by time.
+    const chunkParts: Uint8Array[] = [];
+    let chunkLen = 0;
+    for (const c of connections) {
+      const rec = buildConnectionRecord(
+        c.conn,
+        c.topic,
+        c.type,
+        c.md5sum,
+        c.messageDefinition,
+      );
+      chunkParts.push(rec);
+      chunkLen += rec.length;
+    }
+
+    const perConnIndex = new Map<
+      number,
+      Array<{ time: { sec: number; nsec: number }; offset: number }>
+    >();
+    for (const c of connections) perConnIndex.set(c.conn, []);
+
+    for (const ev of group) {
+      const indexOffset = chunkLen;
+      const rec = encodeRos1Record(
+        [
+          ['op', u8(2)],
+          ['conn', u32le(ev.conn)],
+          ['time', timeLe(ev.time)],
+        ],
+        ev.data,
+      );
+      chunkParts.push(rec);
+      chunkLen += rec.length;
+      perConnIndex.get(ev.conn)!.push({ time: ev.time, offset: indexOffset });
+    }
+
+    const chunkData = concat(chunkParts);
+
+    // Chunk record (opcode 5).
+    const chunkRecord = encodeRos1Record(
+      [
+        ['op', u8(5)],
+        ['compression', 'none'],
+        ['size', u32le(chunkData.length)],
+      ],
+      chunkData,
+    );
+
+    // Per-connection index_data records that follow the chunk. The count
+    // must match both the chunk_info entry list below and the number of
+    // records actually emitted here; `BagReader.readChunk` reads exactly
+    // `chunkInfo.count` of them.
+    const indexRecords: Uint8Array[] = [];
+    const counts: Array<{ conn: number; count: number }> = [];
+    for (const c of connections) {
+      const entries = perConnIndex.get(c.conn) ?? [];
+      if (entries.length === 0) continue;
+      const dataBuf = new Uint8Array(entries.length * 12);
+      const view = new DataView(dataBuf.buffer);
+      for (let i = 0; i < entries.length; i++) {
+        view.setUint32(i * 12, entries[i].time.sec, true);
+        view.setUint32(i * 12 + 4, entries[i].time.nsec, true);
+        view.setUint32(i * 12 + 8, entries[i].offset, true);
+      }
+      indexRecords.push(
+        encodeRos1Record(
+          [
+            ['op', u8(4)],
+            ['ver', u32le(1)],
+            ['conn', u32le(c.conn)],
+            ['count', u32le(entries.length)],
+          ],
+          dataBuf,
+        ),
+      );
+      counts.push({ conn: c.conn, count: entries.length });
+    }
+
+    blocks.push({
+      bytes: concat([chunkRecord, ...indexRecords]),
+      pos: offset,
+      startTime: group[0]?.time ?? { sec: 0, nsec: 0 },
+      endTime: group.at(-1)?.time ?? { sec: 0, nsec: 0 },
+      counts,
+    });
+    offset += blocks[blocks.length - 1].bytes.length;
+  }
+
+  const indexPos = offset;
+
+  // Connection records get re-emitted in the index section (this is what
+  // `Bag.open()` actually reads; the in-chunk copies are belt-and-braces).
   const indexConnectionRecords = connections.map((c) =>
     buildConnectionRecord(c.conn, c.topic, c.type, c.md5sum, c.messageDefinition),
   );
 
-  // chunk_info data is a packed list of (conn_id, message_count) per connection
-  // present in the chunk.
-  const chunkInfoData = new Uint8Array(connections.length * 8);
-  const chunkInfoView = new DataView(chunkInfoData.buffer);
-  for (let i = 0; i < connections.length; i++) {
-    chunkInfoView.setUint32(i * 8, connections[i].conn, true);
-    chunkInfoView.setUint32(i * 8 + 4, connections[i].messages.length, true);
-  }
-  const startTime = events[0]?.time ?? { sec: 0, nsec: 0 };
-  const endTime = events.at(-1)?.time ?? { sec: 0, nsec: 0 };
-  const chunkInfoRecord = encodeRos1Record(
-    [
-      ['op', u8(6)],
-      ['ver', u32le(1)],
-      ['chunk_pos', bigU64le(BigInt(chunkPos))],
-      ['start_time', timeLe(startTime)],
-      ['end_time', timeLe(endTime)],
-      ['count', u32le(connections.length)],
-    ],
-    chunkInfoData,
-  );
+  // One chunk_info (opcode 6) per chunk: its file position, the time range
+  // of the messages it contains, and a packed (conn_id, message_count)
+  // list for every connection present in that chunk.
+  const chunkInfoRecords = blocks.map((block) => {
+    const dataBuf = new Uint8Array(block.counts.length * 8);
+    const view = new DataView(dataBuf.buffer);
+    for (let i = 0; i < block.counts.length; i++) {
+      view.setUint32(i * 8, block.counts[i].conn, true);
+      view.setUint32(i * 8 + 4, block.counts[i].count, true);
+    }
+    return encodeRos1Record(
+      [
+        ['op', u8(6)],
+        ['ver', u32le(1)],
+        ['chunk_pos', bigU64le(BigInt(block.pos))],
+        ['start_time', timeLe(block.startTime)],
+        ['end_time', timeLe(block.endTime)],
+        ['count', u32le(block.counts.length)],
+      ],
+      dataBuf,
+    );
+  });
 
   const finalHeader = encodeRos1Record(
     [
       ['op', u8(3)],
       ['index_pos', bigU64le(BigInt(indexPos))],
       ['conn_count', u32le(connections.length)],
-      ['chunk_count', u32le(1)],
+      ['chunk_count', u32le(groups.length)],
     ],
     new Uint8Array(0),
   );
@@ -647,10 +773,9 @@ export async function writeSyntheticRos1Bag(
   return concat([
     magic,
     finalHeader,
-    chunkRecord,
-    ...indexRecords,
+    ...blocks.map((b) => b.bytes),
     ...indexConnectionRecords,
-    chunkInfoRecord,
+    ...chunkInfoRecords,
   ]);
 }
 
