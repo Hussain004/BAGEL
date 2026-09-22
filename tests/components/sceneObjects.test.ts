@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import {
+  computeFit,
   createLaserScan,
   createPoseAxes,
   disposeObject,
+  FIT_FALLBACK_RADIUS,
+  pickFrameId,
   setCloudStyle,
   setPoseAxesColor,
   setPoseAxesStyle,
@@ -86,5 +89,52 @@ describe('pose axes', () => {
     expect((nose.material as THREE.MeshBasicMaterial).color.getHexString()).toBe('ffffff');
 
     disposeObject(pose.object);
+  });
+});
+
+describe('pickFrameId', () => {
+  it('returns null for missing, headerless, or empty frame ids', () => {
+    expect(pickFrameId(undefined)).toBeNull();
+    expect(pickFrameId(null)).toBeNull();
+    expect(pickFrameId({})).toBeNull();
+    expect(pickFrameId({ header: {} })).toBeNull();
+    expect(pickFrameId({ header: { frame_id: '' } })).toBeNull();
+    expect(pickFrameId({ header: { frame_id: 42 } })).toBeNull();
+  });
+
+  it('returns the frame id when present', () => {
+    expect(pickFrameId({ header: { frame_id: 'map' } })).toBe('map');
+  });
+});
+
+describe('computeFit', () => {
+  it('falls back to the origin with the fallback radius when bounds are null', () => {
+    const matrix = new THREE.Matrix4().makeTranslation(100, 200, 300);
+    const { target, radius } = computeFit(null, matrix);
+    // The group transform is meaningless for an empty scene, so the matrix
+    // must be ignored here.
+    expect(target.toArray()).toEqual([0, 0, 0]);
+    expect(radius).toBe(FIT_FALLBACK_RADIUS);
+  });
+
+  it('centres on the bounds and scales the radius to the box diagonal', () => {
+    const bounds = { min: { x: 0, y: 0, z: 0 }, max: { x: 4, y: 6, z: 8 } };
+    const { target, radius } = computeFit(bounds);
+    expect(target.toArray()).toEqual([2, 3, 4]);
+    // Diagonal = sqrt(16+36+64) = sqrt(116), times 0.7.
+    expect(radius).toBeCloseTo(Math.hypot(4, 6, 8) * 0.7, 6);
+  });
+
+  it('never fits tighter than 3 m for a flat or degenerate box', () => {
+    const flat = { min: { x: 5, y: 5, z: 0 }, max: { x: 5, y: 5, z: 0 } };
+    const { radius } = computeFit(flat);
+    expect(radius).toBe(3);
+  });
+
+  it('pushes the target through the user-group matrix when one is given', () => {
+    const bounds = { min: { x: -1, y: -1, z: -1 }, max: { x: 1, y: 1, z: 1 } };
+    const matrix = new THREE.Matrix4().makeTranslation(10, 20, 30);
+    const { target } = computeFit(bounds, matrix);
+    expect(target.toArray()).toEqual([10, 20, 30]);
   });
 });

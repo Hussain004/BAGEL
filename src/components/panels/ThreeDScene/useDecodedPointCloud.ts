@@ -37,12 +37,32 @@ export interface DecodedCloudState {
   error: string | null;
 }
 
-export type CloudKind = 'pointcloud' | 'laserscan';
+/**
+ * Settle a decode result into `prev`. Returns `prev` *unchanged* (same
+ * object reference) when it already reads `{loading: false, error: null}`,
+ * so React's state bailout skips the re-render entirely. This is what keeps
+ * a duplicate result key (same frame, same colour settings) from feeding a
+ * fresh state object back into the effect that produced it.
+ */
+export function settleCloudState(prev: DecodedCloudState): DecodedCloudState {
+  if (!prev.loading && prev.error === null) return prev;
+  return { ...prev, loading: false, error: null };
+}
+
+type CloudKind = 'pointcloud' | 'laserscan';
 
 interface Options {
   kind: CloudKind;
   topicName: string;
   timeNs: bigint;
+  /**
+   * Gate the worker RPC, mirroring `useTopicMessages`' `enabled` flag. The
+   * 3D panel mounts this hook unconditionally (rules of hooks) but only
+   * cloud-shaped panels want a decode; pose / map / marker panels pass
+   * `false` so they don't burn a worker round-trip per playhead tick on a
+   * result nobody reads.
+   */
+  enabled?: boolean;
   colorMode?: ColorMode;
   /** Hard cap on points decoded per frame (PointCloud2 only). */
   maxPoints?: number;
@@ -64,6 +84,7 @@ export function useDecodedCloud({
   kind,
   topicName,
   timeNs,
+  enabled = true,
   colorMode = 'height',
   maxPoints,
   maxRange,
@@ -110,9 +131,23 @@ export function useDecodedCloud({
     pendingRef.current = null;
     inflightRef.current = false;
     lastResultKeyRef.current = null;
-    if (!entry) {
+    if (!enabled) {
+      // Caller doesn't want this stream (pose / map / marker panel). Idle
+      // state, matching `useTopicMessages`' disabled path.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setState({ cloud: null, loading: false, error: null });
+    } else if (!entry) {
+      setState({ cloud: null, loading: false, error: null });
+    } else if (entry.kind === 'live') {
+      // Live bags have no worker decode path for cloud payloads yet (the
+      // decode effect below bails on `entry.kind === 'live'`), so without
+      // this the initial spinner would never clear. Surface a real error
+      // instead of an infinite "Loading frame..." state.
+      setState({
+        cloud: null,
+        loading: false,
+        error: 'Live point clouds are not supported yet',
+      });
     }
     return () => {
       // Intentional: bumping the session ref on unmount is what invalidates
@@ -122,10 +157,10 @@ export function useDecodedCloud({
       // eslint-disable-next-line react-hooks/exhaustive-deps
       sessionRef.current++;
     };
-  }, [entry, topicName, kind]);
+  }, [entry, topicName, kind, enabled]);
 
   useEffect(() => {
-    if (!entry || entry.kind === 'live' || !entry.source) return;
+    if (!enabled || !entry || entry.kind === 'live' || !entry.source) return;
     const mySession = sessionRef.current;
     const { id: workerBagId, summary: bag, source } = entry;
 
@@ -169,8 +204,11 @@ export function useDecodedCloud({
             const key = `${target.colorMode}|${target.maxRange ?? 0}|${target.heightAxis ?? '+z'}|${clipKey}|${cloud.timestamp.toString()}`;
             if (lastResultKeyRef.current === key) {
               // Same frame + same color settings; don't notify React (avoids
-              // a redundant scene rebuild on the same data).
-              setState((s) => ({ ...s, loading: false, error: null }));
+              // a redundant scene rebuild on the same data). `settleCloudState`
+              // hands back `prev` unchanged when already settled, so no new
+              // state object lands in this effect's deps by way of a
+              // re-render.
+              setState((s) => settleCloudState(s));
             } else {
               lastResultKeyRef.current = key;
               setState({ cloud, loading: false, error: null });
@@ -196,11 +234,16 @@ export function useDecodedCloud({
     fireRef.current = fire;
     // Only flip the spinner when nothing is in flight, so during playback the
     // existing frame stays painted until the next one arrives (no flicker).
+    // Bail without a new object when the spinner is already up and no error
+    // is pending - an avoidable new state object here would re-render the
+    // panel for nothing.
     if (!inflightRef.current) {
-      setState((s) => ({ ...s, loading: true, error: null }));
+      setState((s) =>
+        s.loading && s.error === null ? s : { ...s, loading: true, error: null },
+      );
     }
     fire();
-  }, [entry, topicName, timeNs, colorMode, maxPoints, maxRange, heightAxis, axisClip, kind]);
+  }, [entry, topicName, timeNs, enabled, colorMode, maxPoints, maxRange, heightAxis, axisClip, kind]);
 
   return state;
 }

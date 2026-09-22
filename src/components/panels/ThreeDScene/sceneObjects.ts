@@ -301,3 +301,58 @@ export function disposeObject(obj: THREE.Object3D): void {
     else if (m) m.dispose();
   });
 }
+
+// ---------- shared message / camera-fit helpers ----------
+
+/**
+ * Pull `header.frame_id` out of a decoded message (pose, OccupancyGrid,
+ * CameraInfo, ...). Returns null when the message has no header or the id
+ * is missing/empty - the shape every TF lookup in the panel expects.
+ */
+export function pickFrameId(
+  value: Record<string, unknown> | null | undefined,
+): string | null {
+  if (!value) return null;
+  const header = value.header as { frame_id?: unknown } | undefined;
+  const fid = header?.frame_id;
+  return typeof fid === 'string' && fid.length > 0 ? fid : null;
+}
+
+/** Axis-aligned box used for camera fitting (source-frame or stats bounds). */
+export interface SceneBounds {
+  min: { x: number; y: number; z: number };
+  max: { x: number; y: number; z: number };
+}
+
+/** Fallback orbit radius when no bounds are known yet (origin-centred fit). */
+export const FIT_FALLBACK_RADIUS = 10;
+/** Never fit tighter than this, so a flat/degenerate cloud doesn't clip the near plane. */
+const FIT_MIN_RADIUS = 3;
+
+/**
+ * Shared camera-fit math for the first-frame autofit, "Fit", and "Reset
+ * pivot": orbit target = bounds centre pushed through the user group's
+ * matrix, radius = 0.7 x the box diagonal (min 3 m). `bounds === null`
+ * falls back to the world origin with `FIT_FALLBACK_RADIUS`, without a
+ * matrix push (the group transform is meaningless for an empty scene).
+ */
+export function computeFit(
+  bounds: SceneBounds | null,
+  userGroupMatrix?: THREE.Matrix4,
+): { target: THREE.Vector3; radius: number } {
+  if (!bounds) {
+    return { target: new THREE.Vector3(0, 0, 0), radius: FIT_FALLBACK_RADIUS };
+  }
+  const { min, max } = bounds;
+  const target = new THREE.Vector3(
+    (min.x + max.x) / 2,
+    (min.y + max.y) / 2,
+    (min.z + max.z) / 2,
+  );
+  if (userGroupMatrix) target.applyMatrix4(userGroupMatrix);
+  const radius = Math.max(
+    Math.hypot(max.x - min.x, max.y - min.y, max.z - min.z) * 0.7,
+    FIT_MIN_RADIUS,
+  );
+  return { target, radius };
+}

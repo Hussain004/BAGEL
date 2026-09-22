@@ -17,6 +17,7 @@ import {
   createPointCloud,
   createPoseAxes,
   disposeObject,
+  pickFrameId,
   setCloudStyle,
   setPoseAxesColor,
   setPoseAxesStyle,
@@ -121,9 +122,13 @@ function CloudOverlay({
     if (!scene) return;
     const group = new THREE.Group();
     group.name = `overlay:${topic.name}`;
+    // Start at the effective size instead of a per-kind magic number so the
+    // first paint matches the style effect below (which runs right after
+    // this one and would otherwise visibly snap 1px -> panel default).
+    const initialPointSize = style?.pointSize ?? pointSize;
     const cloud = kind === 'pointcloud'
-      ? createPointCloud(1)
-      : createLaserScan(2);
+      ? createPointCloud(initialPointSize)
+      : createLaserScan(initialPointSize);
     group.add(cloud.object);
     scene.scene.add(group);
     ownedRef.current = { group, cloud };
@@ -135,6 +140,9 @@ function CloudOverlay({
       ownedRef.current = null;
       scene.renderOnce();
     };
+    // Mount-only: the size inputs are read for the initial paint; subsequent
+    // size changes are applied by the style effect below without a rebuild.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind, sceneRef, topic.name]);
 
   useEffect(() => {
@@ -226,7 +234,7 @@ function MapOverlay({
       transformCache,
       upFixMatrix,
     );
-    updateMapPlane(owned.map, decoded);
+    updateMapPlane(owned.map, decoded, scheme);
     scene.renderOnce();
   }, [graph, sceneRef, state.message, upFixMatrix, worldFrame, scheme]);
 
@@ -304,9 +312,3 @@ function PoseOverlay({
   return null;
 }
 
-function pickFrameId(value: Record<string, unknown>): string | null {
-  const header = value.header as { frame_id?: unknown } | undefined;
-  return typeof header?.frame_id === 'string' && header.frame_id.length > 0
-    ? header.frame_id
-    : null;
-}

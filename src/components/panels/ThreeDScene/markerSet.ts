@@ -73,6 +73,16 @@ export class MarkerSet {
    * imperceptible.
    */
   private lastRefreshKey: string | null = null;
+  /**
+   * TF graph identity the matrices were last composed against. The string
+   * key above can't see it: markers ingested while `graph === null` get
+   * identity matrices, and when the graph later arrives the world frame,
+   * time bucket, and frame-group size may all be unchanged - without this
+   * the refresh would skip and leave those markers mis-framed until the
+   * next scrub. `useTFGraph` memoizes the graph object, so identity is a
+   * stable "the TF data changed" signal.
+   */
+  private lastGraph: TFGraph | null = null;
 
   constructor() {
     this.root = new THREE.Group();
@@ -175,9 +185,15 @@ export class MarkerSet {
     }
 
     // Skip the TF walk when nothing has changed (and no markers were just
-    // removed, since a removal could empty a frame group).
-    if (toRemove.length === 0 && this.lastRefreshKey === key) return;
+    // removed, since a removal could empty a frame group). The graph
+    // identity is part of the skip decision for the same reason: a graph
+    // arriving mid-pause must recompose even though worldFrame, bucket,
+    // and frameGroups.size all look unchanged.
+    if (toRemove.length === 0 && this.lastRefreshKey === key && this.lastGraph === graph) {
+      return;
+    }
     this.lastRefreshKey = key;
+    this.lastGraph = graph;
 
     for (const [frameId, group] of this.frameGroups) {
       let matrix: THREE.Matrix4 | null = null;
@@ -230,6 +246,7 @@ export class MarkerSet {
     }
     this.frameGroups.clear();
     this.lastRefreshKey = null;
+    this.lastGraph = null;
   }
 
   dispose(): void {

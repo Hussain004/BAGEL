@@ -130,8 +130,6 @@ export interface RenderedMarker {
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
-const TMP_QUAT = new THREE.Quaternion();
-
 function applyPose(obj: THREE.Object3D, pose: MarkerData['pose']): void {
   obj.position.set(pose.position.x, pose.position.y, pose.position.z);
   // Default to identity rather than letting NaNs through if the marker
@@ -307,16 +305,14 @@ function createArrowMarker(): RenderedMarker {
         if (length > 0) dir.normalize();
         else dir.set(1, 0, 0);
         const headDiameter = m.scale.y || m.scale.x || 0.1;
-        const shaftDiameter = m.scale.x || 0.05;
         const headLen = Math.min(length * 0.25, headDiameter * 2);
         group.position.set(a.x, a.y, a.z);
         group.quaternion.identity();
         arrow.setDirection(dir);
         arrow.setLength(Math.max(length, 0.001), headLen, headDiameter);
         // ArrowHelper renders the shaft as a Line with its own line width
-        // (uniformly 1 px in most browsers). For visibility we widen the
-        // cone proportional to the shaft diameter as the closest analog.
-        void shaftDiameter;
+        // (uniformly 1 px in most browsers) and offers no way to thicken it,
+        // so only the head diameter is adjustable here.
       } else {
         applyPose(group, m.pose);
         const length = m.scale.x || 0.1;
@@ -782,6 +778,10 @@ function createMeshResourceMarker(): RenderedMarker {
         loadMesh(uri)
           .then((mesh) => {
             if (gen !== loadGeneration) return;
+            // Shares geometry/material with the mesh-loader LRU cache;
+            // flagged so `useScene`'s unmount traversal doesn't dispose the
+            // cached source out from under future panels.
+            mesh.userData.externallyOwned = true;
             mesh.scale.set(
               scaleSnapshot.x || 1,
               scaleSnapshot.y || 1,
@@ -954,8 +954,11 @@ export function createMarkerObject(type: number): RenderedMarker {
  * Turn a deserialized message object into the canonical `MarkerData` shape
  * the renderer expects. Tolerant: missing optional fields default to
  * spec-defined sensible values rather than throwing.
+ *
+ * Module-internal: `extractMarkers` is the public entry point (the single
+ * Marker detection there is part of this function's contract).
  */
-export function normaliseMarker(
+function normaliseMarker(
   raw: Record<string, unknown>,
   fallbackStampNs: bigint,
 ): MarkerData {
@@ -1089,13 +1092,4 @@ function durationNs(d: {
     return d.sec * 1_000_000_000n + ns;
   }
   return 0n;
-}
-
-// Silence the lint about unused TMP_QUAT by re-exporting it. (The constant is
-// kept so future inline-pose helpers don't have to re-introduce it.)
-void TMP_QUAT;
-
-/** Touch-friendly dispose for an externally-owned marker object. */
-export function disposeRenderedMarker(rm: RenderedMarker): void {
-  rm.dispose();
 }

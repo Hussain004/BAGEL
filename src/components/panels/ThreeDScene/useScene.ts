@@ -22,8 +22,16 @@ import { chartTheme } from '../../../utils/chartTheme';
 
 type SceneCamera = THREE.PerspectiveCamera | THREE.OrthographicCamera;
 
-const MIN_ZOOM_LEVEL = 0.1;
-const MAX_ZOOM_LEVEL = 10;
+/**
+ * Zoom-level bounds, shared by all three clamp systems: the published
+ * `zoomLevel` state, the panel's slider (which takes `Math.log2` of these),
+ * and the orthographic OrbitControls wheel clamp. The perspective distance
+ * limits are also derived from these via `updatePerspectiveZoomLimits`
+ * (`fitDistance / MAX` … `fitDistance / MIN`), so exporting them keeps the
+ * keyboard steps, the slider, and both projection wheels on one scale.
+ */
+export const MIN_ZOOM_LEVEL = 0.1;
+export const MAX_ZOOM_LEVEL = 10;
 
 export interface SceneRefs {
   renderer: THREE.WebGLRenderer;
@@ -106,7 +114,15 @@ export function useScene(): {
     perspectiveCamera.position.set(8, -8, 5);
     perspectiveCamera.lookAt(0, 0, 0);
 
-    const orthographicCamera = new THREE.OrthographicCamera(-10, 10, 10, -10, -5000, 5000);
+    // Positive near keeps the standard top-down map view intact: the
+    // ortho camera always sits above its target (resetCamera puts it at
+    // least 10 m up, and the fit radius scales with content), so every
+    // piece of content lands between near and far along the view axis.
+    // The previous negative near (-5000) only mattered for content *behind*
+    // the camera, which doesn't occur in the top-down flow - and it wasted
+    // depth precision for nothing (ortho depth is linear, but garbage near
+    // planes still clip unpredictably across drivers).
+    const orthographicCamera = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 10000);
     orthographicCamera.up.set(0, 1, 0);
     orthographicCamera.position.set(0, 0, 10);
     orthographicCamera.lookAt(0, 0, 0);
@@ -137,8 +153,12 @@ export function useScene(): {
       next.enableRotate = mode === 'perspective';
       next.minDistance = 0.5;
       next.maxDistance = 1500;
-      next.minZoom = 0.02;
-      next.maxZoom = 200;
+      // Ortho wheel zoom clamps to the same [MIN, MAX] zoom-level range the
+      // published `zoomLevel` and the panel slider use; the previous
+      // 0.02/200 let the wheel run 20x past the slider while the reported
+      // level clamped at the slider's end.
+      next.minZoom = MIN_ZOOM_LEVEL;
+      next.maxZoom = MAX_ZOOM_LEVEL;
       return next;
     };
 
@@ -385,6 +405,18 @@ export function useScene(): {
       unsubTheme();
       controls.removeEventListener('change', syncZoomLevel);
       controls.dispose();
+      // Detach subtrees this scene doesn't own before the disposal pass.
+      // The robot model and MESH_RESOURCE marker meshes are shallow clones
+      // whose geometry/material references are shared with the mesh-loader
+      // LRU cache (`cloneForConsumer`); disposing them here would poison
+      // the cache for every future panel. Their own lifetimes free the
+      // resources they own (RobotSubtree.dispose / RenderedMarker.dispose)
+      // and JS GC reclaims the shared clones once those lifetimes drop them.
+      const externallyOwned: THREE.Object3D[] = [];
+      scene.traverse((obj) => {
+        if (obj.userData?.externallyOwned) externallyOwned.push(obj);
+      });
+      for (const obj of externallyOwned) obj.parent?.remove(obj);
       // Dispose every geometry / material we ever attached.
       scene.traverse((obj) => {
         const mesh = obj as THREE.Mesh & {

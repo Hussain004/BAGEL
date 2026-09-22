@@ -48,11 +48,6 @@ export interface RobotSubtreeOptions {
    * preview a robot against the scene's dark background.
    */
   defaultColor?: number;
-  /**
-   * Override colours for the robot links / joints - used by the per-bag
-   * tint flow when comparing two URDFs side-by-side (future use).
-   */
-  tint?: THREE.Color;
 }
 
 export interface RobotSubtreeWarning {
@@ -127,7 +122,7 @@ function makeGeometry(geom: UrdfGeometry): THREE.BufferGeometry | null {
   }
 }
 
-function makeMaterial(visual: UrdfVisual, fallback: number, tint?: THREE.Color): THREE.Material {
+function makeMaterial(visual: UrdfVisual, fallback: number): THREE.Material {
   const color = visual.material?.color?.rgba;
   let r = ((fallback >> 16) & 0xff) / 255;
   let g = ((fallback >> 8) & 0xff) / 255;
@@ -140,7 +135,6 @@ function makeMaterial(visual: UrdfVisual, fallback: number, tint?: THREE.Color):
     a = color[3];
   }
   const threeColor = new THREE.Color(r, g, b);
-  if (tint) threeColor.lerp(tint, 0.35);
   const mat = new THREE.MeshLambertMaterial({
     color: threeColor,
     transparent: a < 1,
@@ -173,6 +167,11 @@ export async function buildRobotSubtree(
   const root = new THREE.Group();
   root.name = `urdf:${model.name}`;
   root.renderOrder = -1;
+  // Mesh visuals under this root are clones that share geometry/material
+  // with the mesh-loader LRU cache; `useScene`'s unmount traversal skips
+  // flagged subtrees so the cache survives a panel close. Disposal of the
+  // resources this builder actually owns is `dispose()`'s job.
+  root.userData.externallyOwned = true;
 
   // Anchor link must exist; fall back to the first model root if the named
   // anchor isn't found (defensive - the modal should have validated already).
@@ -224,7 +223,7 @@ export async function buildRobotSubtree(
     ownedObjects.add(linkGroup);
     links.set(link.name, { group: linkGroup });
 
-    attachVisuals(link, linkGroup, defaultColor, options.tint, warnings, ownedGeometries, ownedMaterials, ownedObjects, meshLoadPromises);
+    attachVisuals(link, linkGroup, defaultColor, warnings, ownedGeometries, ownedMaterials, ownedObjects, meshLoadPromises);
 
     const outgoing = childrenByLink.get(link.name) ?? [];
     for (const joint of outgoing) {
@@ -329,7 +328,6 @@ function attachVisuals(
   link: UrdfLink,
   linkGroup: THREE.Group,
   defaultColor: number,
-  tint: THREE.Color | undefined,
   warnings: RobotSubtreeWarning[],
   ownedGeometries: Set<THREE.BufferGeometry>,
   ownedMaterials: Set<THREE.Material>,
@@ -417,7 +415,7 @@ function attachVisuals(
       });
       continue;
     }
-    const material = makeMaterial(visual, defaultColor, tint);
+    const material = makeMaterial(visual, defaultColor);
     material.userData = { ...material.userData, isUrdfDefault: !visual.material?.color };
     const mesh = new THREE.Mesh(geometry, material);
     mesh.renderOrder = -1;

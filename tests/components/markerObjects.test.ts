@@ -35,7 +35,7 @@ vi.mock('../../src/utils/meshLoader', () => ({
 // Imported after vi.mock so the marker factory picks up the mocked module.
 import {
   createMarkerObject,
-  normaliseMarker,
+  extractMarkers,
   MARKER_TYPE,
   MARKER_ACTION,
   type MarkerData,
@@ -361,9 +361,13 @@ describe('mixed MarkerArray', () => {
   });
 });
 
-describe('normaliseMarker', () => {
+// `normaliseMarker` is module-internal now; `extractMarkers` is the public
+// entry point, so these normalisation cases go through it. The single-Marker
+// detection path requires `type` + `action` + `pose` to all be present, so
+// both fixtures carry a pose.
+describe('extractMarkers normalisation', () => {
   it('reads mesh_use_embedded_materials with a default of false', () => {
-    const defaulted = normaliseMarker(
+    const defaulted = extractMarkers(
       {
         ns: 'a',
         id: 1,
@@ -378,18 +382,24 @@ describe('normaliseMarker', () => {
       },
       0n,
     );
-    expect(defaulted.meshUseEmbeddedMaterials).toBe(false);
+    expect(defaulted).toHaveLength(1);
+    expect(defaulted[0].meshUseEmbeddedMaterials).toBe(false);
 
-    const truthy = normaliseMarker(
+    const truthy = extractMarkers(
       {
         ns: 'a',
         id: 1,
         type: 10,
         action: 0,
+        pose: {
+          position: { x: 0, y: 0, z: 0 },
+          orientation: { x: 0, y: 0, z: 0, w: 1 },
+        },
         mesh_use_embedded_materials: true,
       },
       0n,
     );
-    expect(truthy.meshUseEmbeddedMaterials).toBe(true);
+    expect(truthy).toHaveLength(1);
+    expect(truthy[0].meshUseEmbeddedMaterials).toBe(true);
   });
 });

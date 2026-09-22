@@ -24,7 +24,11 @@ import {
 } from './sceneKind';
 import { useRobotModelStore } from '../../../store/robotModelStore';
 import { useJointStates } from '../../../hooks/useJointStates';
-import { buildRobotSubtree, type RobotSubtree } from './robotModel';
+import {
+  buildRobotSubtree,
+  type RobotSubtree,
+  type RobotSubtreeWarning,
+} from './robotModel';
 import { PanelShell } from '../PanelShell';
 import { getTopicColor } from '../../../utils/color';
 import { nsToSeconds } from '../../../utils/time';
@@ -40,9 +44,10 @@ import {
 import { useMessageAtTime } from '../../../hooks/useMessageAtTime';
 import { useTopicMessages, type DecodedMessage } from '../../../hooks/useTopicMessages';
 import { useTFGraph, type TFGraph } from '../TFTree/useTFGraph';
-import type { AxisClip, ColorMode, HeightAxis } from '../../../utils/pointcloud';
-import { useScene } from './useScene';
+import type { ColorMode, HeightAxis } from '../../../utils/pointcloud';
+import { useScene, MIN_ZOOM_LEVEL, MAX_ZOOM_LEVEL } from './useScene';
 import {
+  computeFit,
   createGroundGrid,
   createLaserScan,
   createPointCloud,
@@ -50,6 +55,7 @@ import {
   createWorldAxes,
   disposeObject,
   extractPose,
+  pickFrameId,
   setCloudStyle,
   setPoseAxesColor,
   setPoseAxesStyle,
@@ -58,6 +64,7 @@ import {
   type CloudObject,
   type PoseAxesObject,
 } from './sceneObjects';
+import { buildAxisClip } from './clipBox';
 import { applyTransform, pickWorldFrame } from './tfTransform';
 import { useDecodedCloud } from './useDecodedPointCloud';
 import { SpatialOverlay } from './spatialOverlay';
@@ -95,11 +102,11 @@ interface ThreeDSceneProps {
 }
 
 /**
- * Hard cap on marker messages we decode for a panel. Real-world bags rarely
- * exceed a few thousand MarkerArray messages per topic; the cap exists so a
- * pathological bag (debug topic publishing at 100 Hz for an hour) doesn't
- * OOM the worker. Hitting it just means later-than-cutoff markers won't
- * appear when scrubbing past the limit.
+ * Hard cap on marker messages we decode for a panel: 50,000. Real-world bags
+ * rarely exceed a few thousand MarkerArray messages per topic; the cap exists
+ * so a pathological bag (debug topic publishing at 100 Hz for an hour, which
+ * is 360k messages) doesn't OOM the worker. Hitting it just means
+ * later-than-cutoff markers won't appear when scrubbing past the limit.
  */
 const MARKER_MESSAGE_LIMIT = 50_000;
 
@@ -420,9 +427,6 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
   const hasMapLayer =
     sceneKind === 'occupancygrid' ||
     selectedSpatialOverlays.some((candidate) => detectKind(candidate.type) === 'occupancygrid');
-  const hasPoseLayer =
-    sceneKind === 'pose' ||
-    selectedSpatialOverlays.some((candidate) => detectKind(candidate.type) === 'pose');
 
   const setColorMode = (v: ColorMode) => updateSettings(panelId, { colorMode: v });
   const setPointSize = (v: number) => updateSettings(panelId, { pointSize: v });
@@ -452,12 +456,22 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
       updateSettings(panelId, { pivot: v }),
     [panelId, updateSettings],
   );
+  // Toggle helpers read the *fresh* store entry (not this render's closure)
+  // so rapid successive updates - e.g. several namespace chips flipped in one
+  // tick - each build on the previous write instead of a stale snapshot.
+  const freshSettings = () =>
+    useThreeDPanelStore.getState().byId[panelId] ?? effectiveDefaults;
   const toggleNamespaceHidden = (ns: string, hidden: boolean) => {
-    const cur = new Set(hiddenMarkerNamespaces);
+    const cur = new Set(freshSettings().hiddenMarkerNamespaces);
     if (hidden) cur.add(ns);
     else cur.delete(ns);
     updateSettings(panelId, { hiddenMarkerNamespaces: Array.from(cur).sort() });
   };
+  // "Show all": one patch clearing the whole list. Looping
+  // `toggleNamespaceHidden` here would recompute every write from the same
+  // stale render-captured array, so all but the last chip would reappear.
+  const showAllNamespaces = () =>
+    updateSettings(panelId, { hiddenMarkerNamespaces: [] });
   const setMapAlpha = (v: number) => updateSettings(panelId, { mapAlpha: v });
   const setMapColorScheme = (v: MapColorSchemeChoice) =>
     updateSettings(panelId, { mapColorScheme: v });
@@ -474,14 +488,14 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
   const setCameraFrustumFar = (v: number) =>
     updateSettings(panelId, { cameraFrustumFar: v });
   const toggleFrustumTopicHidden = (t: string, hidden: boolean) => {
-    const cur = new Set(hiddenFrustumTopics);
+    const cur = new Set(freshSettings().hiddenFrustumTopics);
     if (hidden) cur.add(t);
     else cur.delete(t);
     updateSettings(panelId, { hiddenFrustumTopics: Array.from(cur).sort() });
   };
   const toggleSpatialOverlay = (candidateBagId: string, topic: string, visible: boolean) => {
     const key = overlayKey(candidateBagId, topic);
-    const current = new Set(spatialOverlayTopics);
+    const current = new Set(freshSettings().spatialOverlayTopics);
     if (visible) current.add(key);
     else current.delete(key);
     updateSettings(panelId, { spatialOverlayTopics: Array.from(current).sort() });
@@ -492,10 +506,11 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     patch: Partial<SpatialOverlayStyle>,
   ) => {
     const key = overlayKey(candidateBagId, topic);
+    const styles = freshSettings().spatialOverlayStyles;
     updateSettings(panelId, {
       spatialOverlayStyles: {
-        ...spatialOverlayStyles,
-        [key]: { ...spatialOverlayStyles[key], ...patch },
+        ...styles,
+        [key]: { ...styles[key], ...patch },
       },
     });
   };
@@ -515,16 +530,22 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
   const setSectionAccumulationOpen = (v: boolean) => updateSettings(panelId, { sectionAccumulationOpen: v });
   const setSectionOverlaysOpen = (v: boolean) => updateSettings(panelId, { sectionOverlaysOpen: v });
 
-  const axisClip: AxisClip | undefined = clipBoxOn
-    ? {
-        ...(clipXMin !== null ? { xMin: clipXMin } : {}),
-        ...(clipXMax !== null ? { xMax: clipXMax } : {}),
-        ...(clipYMin !== null ? { yMin: clipYMin } : {}),
-        ...(clipYMax !== null ? { yMax: clipYMax } : {}),
-        ...(clipZMin !== null ? { zMin: clipZMin } : {}),
-        ...(clipZMax !== null ? { zMax: clipZMax } : {}),
-      }
-    : undefined;
+  // Built inside useMemo: `useDecodedCloud` lists `axisClip` in its effect
+  // deps, so a fresh object every paint would re-fire the worker decode on
+  // each render in a self-sustaining loop.
+  const axisClip = useMemo(
+    () =>
+      buildAxisClip({
+        clipBoxOn,
+        clipXMin,
+        clipXMax,
+        clipYMin,
+        clipYMax,
+        clipZMin,
+        clipZMax,
+      }),
+    [clipBoxOn, clipXMin, clipXMax, clipYMin, clipYMax, clipZMin, clipZMax],
+  );
 
   // v1.3.3 - issue #44: "Save as default" snapshots the current panel's
   // settings as the kind-level user default; "Reset to default" applies the
@@ -579,6 +600,10 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     heightAxis: sceneKind === 'pointcloud' ? heightAxis : undefined,
     axisClip: sceneKind === 'pointcloud' ? axisClip : undefined,
     bagId,
+    // Only cloud-shaped panels want the worker decode; pose / map / marker
+    // panels mount this hook unconditionally (rules of hooks) and pass false
+    // so they don't burn a round-trip per playhead tick on unread results.
+    enabled: isCloud,
   });
   const poseState = useMessageAtTime(topicName, playheadNs, bagId);
   // Marker streams are unlike clouds and poses: every marker persists in the
@@ -1059,7 +1084,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
       upFixMatrix,
     );
 
-    updateMapPlane(owned.mapPlane, decoded);
+    updateMapPlane(owned.mapPlane, decoded, scheme);
     if (owned.mapPlane.bounds) {
       setStats({
         points: decoded.width * decoded.height,
@@ -1259,6 +1284,9 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
   // against the user swapping models mid-build with a cancellation flag.
   const robotRef = useRef<RobotSubtree | null>(null);
   const robotTransformCacheRef = useRef<{ key: string; matrix: THREE.Matrix4 } | null>(null);
+  // Non-fatal URDF build warnings (missing links, unloadable meshes), surfaced
+  // as an amber hint in the Overlays section instead of being dropped.
+  const [robotWarnings, setRobotWarnings] = useState<RobotSubtreeWarning[]>([]);
 
   useEffect(() => {
     const refs = sceneRef.current;
@@ -1270,6 +1298,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
         refs.worldGroup.remove(existing.root);
         existing.dispose();
         robotRef.current = null;
+        setRobotWarnings([]);
         refs.renderOnce();
       }
       return;
@@ -1289,8 +1318,12 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
         existing.dispose();
       }
       robotRef.current = subtree;
-      subtree.root.visible = !robotHidden;
+      // Read the hide flag from the store, not this effect's closure: the
+      // closure captured whatever `robotHidden` was when the effect ran, so
+      // a toggle during the async build would be overwritten on arrival.
+      subtree.root.visible = !useRobotModelStore.getState().hiddenInPanel[panelId];
       refs.worldGroup.add(subtree.root);
+      setRobotWarnings(subtree.warnings);
       // Force the per-tick transform effect below to re-apply at first paint.
       robotTransformCacheRef.current = null;
       refs.renderOnce();
@@ -1299,11 +1332,27 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     return () => {
       cancelled = true;
     };
-    // sceneKind in the deps so a panel that switches data flavour (e.g. via
-    // a topic-row drag from a pointcloud to a markerarray panel kind) still
-    // rebuilds correctly. Also re-run when the anchor link changes so the
-    // root group's local frame matches the new anchor.
-  }, [sceneRef, robotModel, robotHidden, sceneKind]);
+    // Only rebuild when the loaded URDF or the scene mount changes. The hide
+    // flag has its own visibility effect below, and the panel's scene kind
+    // never changes after mount (kinds are fixed per topic), so neither
+    // belongs here: each extra dep meant a full async rebuild (mesh loads)
+    // for a setting that only toggles `visible`.
+  }, [sceneRef, robotModel, panelId]);
+
+  // Unmount-only: dispose the robot subtree. Declared after `useScene` (whose
+  // teardown detaches `externallyOwned` nodes before its own dispose pass), so
+  // React runs that detach first and this cleanup only frees what the subtree
+  // owns. Deliberately NOT the build effect's cleanup above: that one must
+  // keep working for mid-life rebuilds (model swap, scene remount), where the
+  // incoming build disposes the previous tree itself.
+  useEffect(() => {
+    return () => {
+      const subtree = robotRef.current;
+      if (!subtree) return;
+      subtree.dispose();
+      robotRef.current = null;
+    };
+  }, []);
 
   // Apply hide toggle without rebuilding.
   useEffect(() => {
@@ -1494,18 +1543,14 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     if (hasAutoFitRef.current) return;
     const refs = sceneRef.current;
     if (!refs || !stats.bounds) return;
-    const { min, max } = stats.bounds;
-    const cx = (min.x + max.x) / 2;
-    const cy = (min.y + max.y) / 2;
-    const cz = (min.z + max.z) / 2;
-    const radius = Math.max(
-      Math.hypot(max.x - min.x, max.y - min.y, max.z - min.z) * 0.7,
-      3,
-    );
-    const target = new THREE.Vector3(cx, cy, cz).applyMatrix4(refs.userGroup.matrix);
+    const { target, radius } = computeFit(stats.bounds, refs.userGroup.matrix);
     refs.resetCamera(target, radius);
+    // Re-apply a stored custom pivot after the fit so a reopened panel orbits
+    // around the point the user picked, not the fit centre. The first-line
+    // guard means later pivot edits (shift+click, reset) never re-run the fit.
+    if (pivot) refs.setOrbitTarget(new THREE.Vector3(pivot.x, pivot.y, pivot.z));
     hasAutoFitRef.current = true;
-  }, [stats.bounds, sceneRef]);
+  }, [stats.bounds, pivot, sceneRef]);
 
   const accent = getTopicColor(topicName, type);
   const startNs = bag?.startTime ?? 0n;
@@ -1513,20 +1558,8 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
   const handleResetCamera = () => {
     const refs = sceneRef.current;
     if (!refs) return;
-    if (stats.bounds) {
-      const { min, max } = stats.bounds;
-      const cx = (min.x + max.x) / 2;
-      const cy = (min.y + max.y) / 2;
-      const cz = (min.z + max.z) / 2;
-      const radius = Math.max(
-        Math.hypot(max.x - min.x, max.y - min.y, max.z - min.z) * 0.7,
-        3,
-      );
-      const target = new THREE.Vector3(cx, cy, cz).applyMatrix4(refs.userGroup.matrix);
-      refs.resetCamera(target, radius);
-    } else {
-      refs.resetCamera(new THREE.Vector3(0, 0, 0), 10);
-    }
+    const { target, radius } = computeFit(stats.bounds, refs.userGroup.matrix);
+    refs.resetCamera(target, radius);
     // Fit re-centres the orbit on the cloud, which means any manual pivot is
     // implicitly overridden. Drop the marker so the user isn't left wondering
     // why orbiting no longer happens around their picked point.
@@ -1541,16 +1574,8 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
   const handleResetPivot = () => {
     const refs = sceneRef.current;
     if (!refs) return;
-    if (stats.bounds) {
-      const { min, max } = stats.bounds;
-      const cx = (min.x + max.x) / 2;
-      const cy = (min.y + max.y) / 2;
-      const cz = (min.z + max.z) / 2;
-      const target = new THREE.Vector3(cx, cy, cz).applyMatrix4(refs.userGroup.matrix);
-      refs.setOrbitTarget(target);
-    } else {
-      refs.setOrbitTarget(new THREE.Vector3(0, 0, 0));
-    }
+    const { target } = computeFit(stats.bounds, refs.userGroup.matrix);
+    refs.setOrbitTarget(target);
     setPivot(null);
   };
 
@@ -1616,10 +1641,13 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
 
   // Visually-hidden scene summary for screen readers - the canvas itself
   // has no accessible content otherwise. Kind + frame covers every scene
-  // type; point count is meaningful for the two kinds that have one.
+  // type; the point count is only shown for the two kinds where `stats.points`
+  // really is a point count (on a map it is a cell count, on a pose it is a
+  // hard-coded 1, so including it made the summary read "Pose scene, 1 points").
+  const countsPoints = sceneKind === 'pointcloud' || sceneKind === 'laserscan';
   const sceneSummary = `${SCENE_KIND_LABELS[sceneKind]} scene${
     stats.sourceFrame ? `, frame ${stats.sourceFrame}` : ''
-  }${stats.points > 0 ? `, ${stats.points.toLocaleString()} points` : ''}`;
+  }${countsPoints && stats.points > 0 ? `, ${stats.points.toLocaleString()} points` : ''}`;
 
   return (
     <PanelShell
@@ -1663,7 +1691,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
       {sceneReady &&
         showRobotMarkers &&
         overlayBagMeta.size > 1 &&
-        bagOrder.map((id) => (
+        bagOrder.filter((id) => allBags.has(id)).map((id) => (
           <RobotMarker
             key={id}
             bagId={id}
@@ -1741,9 +1769,9 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
               <span>zoom</span>
               <input
                 type="range"
-                aria-label="Map zoom"
-                min={-3.3219}
-                max={3.3219}
+                aria-label="Zoom"
+                min={Math.log2(MIN_ZOOM_LEVEL)}
+                max={Math.log2(MAX_ZOOM_LEVEL)}
                 step={0.05}
                 value={Math.log2(zoomLevel)}
                 onChange={(event) =>
@@ -1792,6 +1820,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
               markerNamespaces={markerNamespaces}
               hiddenMarkerNamespaces={hiddenMarkerNamespaces}
               onToggleNamespace={toggleNamespaceHidden}
+              onShowAllNamespaces={showAllNamespaces}
               mapAlpha={mapAlpha}
               setMapAlpha={setMapAlpha}
               mapColorScheme={mapColorScheme}
@@ -1799,7 +1828,6 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
               showRobotMarkers={showRobotMarkers}
               setShowRobotMarkers={setShowRobotMarkers}
               multiBag={overlayBagMeta.size > 1}
-              hasPoseLayer={hasPoseLayer}
               poseDisplayStyle={poseDisplayStyle}
               setPoseDisplayStyle={setPoseDisplayStyle}
               poseFlattenOrientation={poseFlattenOrientation}
@@ -1815,6 +1843,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
               spatialOverlayStyles={spatialOverlayStyles}
               onSetSpatialOverlayStyle={setSpatialOverlayStyle}
               overlayBagMeta={overlayBagMeta}
+              selectedOverlayCount={selectedSpatialOverlays.length}
               hasPointCloudLayer={hasPointCloudLayer}
               hasPointLayer={hasPointLayer}
               hasMapLayer={hasMapLayer}
@@ -1822,6 +1851,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
               robotName={robotModel?.sourceName ?? null}
               robotHidden={robotHidden}
               setRobotHidden={(hidden) => setRobotHidden(panelId, hidden)}
+              robotWarnings={robotWarnings}
               robotHasJointStates={jointStates.hasTopic}
               cameraFrustumCount={cameraInfoTopics.length}
               cameraFrustumsOn={cameraFrustumsOn}
@@ -1853,15 +1883,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
 
           <OverlayCard variant="subtle" className="absolute top-2 left-2 text-text-muted text-[10px] mono leading-tight px-2 py-1 max-w-[60%]">
             <div className="text-text-secondary">
-              {sceneKind === 'pointcloud'
-                ? 'PointCloud2'
-                : sceneKind === 'laserscan'
-                  ? 'LaserScan'
-                  : sceneKind === 'markerarray'
-                    ? 'MarkerArray'
-                    : sceneKind === 'occupancygrid'
-                      ? 'OccupancyGrid'
-                      : 'Pose'}
+              {SCENE_KIND_LABELS[sceneKind]}
             </div>
             {stats.sourceFrame && (
               <div>
@@ -2009,6 +2031,8 @@ interface ControlsCardProps {
   /** Namespaces the user has hidden from the marker filter. */
   hiddenMarkerNamespaces: string[];
   onToggleNamespace: (ns: string, hidden: boolean) => void;
+  /** Clear the hidden-namespace list in one write ("show all"). */
+  onShowAllNamespaces: () => void;
   /** Global alpha multiplier for OccupancyGrid panels (0…1). */
   mapAlpha: number;
   setMapAlpha: (a: number) => void;
@@ -2019,8 +2043,6 @@ interface ControlsCardProps {
   showRobotMarkers: boolean;
   setShowRobotMarkers: (v: boolean) => void;
   multiBag: boolean;
-  /** True when the panel's own topic, or a selected overlay, is a pose-typed topic. */
-  hasPoseLayer: boolean;
   poseDisplayStyle: PoseDisplayStyle;
   setPoseDisplayStyle: (v: PoseDisplayStyle) => void;
   poseFlattenOrientation: boolean;
@@ -2043,6 +2065,8 @@ interface ControlsCardProps {
   ) => void;
   /** Color + display label per loaded bag, for tagging cross-bag overlay candidates. */
   overlayBagMeta: Map<string, { color: string; label: string }>;
+  /** How many overlay candidates are currently selected (drives the "N layers" badges). */
+  selectedOverlayCount: number;
   hasPointCloudLayer: boolean;
   hasPointLayer: boolean;
   hasMapLayer: boolean;
@@ -2053,6 +2077,8 @@ interface ControlsCardProps {
   /** This panel hides the robot model. */
   robotHidden: boolean;
   setRobotHidden: (hidden: boolean) => void;
+  /** Non-fatal URDF build warnings, surfaced as an amber hint. */
+  robotWarnings: RobotSubtreeWarning[];
   /** Bag has a JointState topic the model can ingest. */
   robotHasJointStates: boolean;
   /** Number of `sensor_msgs/CameraInfo` topics in the bag (v1.3.2). */
@@ -2128,6 +2154,7 @@ function ControlsCard({
   markerNamespaces,
   hiddenMarkerNamespaces,
   onToggleNamespace,
+  onShowAllNamespaces,
   mapAlpha,
   setMapAlpha,
   mapColorScheme,
@@ -2135,7 +2162,6 @@ function ControlsCard({
   showRobotMarkers,
   setShowRobotMarkers,
   multiBag,
-  hasPoseLayer,
   poseDisplayStyle,
   setPoseDisplayStyle,
   poseFlattenOrientation,
@@ -2151,6 +2177,7 @@ function ControlsCard({
   spatialOverlayStyles,
   onSetSpatialOverlayStyle,
   overlayBagMeta,
+  selectedOverlayCount,
   hasPointCloudLayer,
   hasPointLayer,
   hasMapLayer,
@@ -2158,6 +2185,7 @@ function ControlsCard({
   robotName,
   robotHidden,
   setRobotHidden,
+  robotWarnings,
   robotHasJointStates,
   cameraFrustumCount,
   cameraFrustumsOn,
@@ -2198,6 +2226,7 @@ function ControlsCard({
     <OverlayCard elevated className="text-xs mono">
       <button
         onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
         className="w-full px-2.5 py-1.5 flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors"
       >
         <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -2205,9 +2234,9 @@ function ControlsCard({
           <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
         </svg>
         <span>Display</span>
-        {spatialOverlayTopics.length > 0 && (
+        {selectedOverlayCount > 0 && (
           <span className="text-accent-cyan text-[10px]">
-            {spatialOverlayTopics.length + 1} layers
+            {selectedOverlayCount + 1} layers
           </span>
         )}
       </button>
@@ -2222,6 +2251,7 @@ function ControlsCard({
                   <button
                     key={m}
                     onClick={() => setColorMode(m)}
+                    aria-pressed={colorMode === m}
                     className={`px-2 py-0.5 rounded-md transition-colors ${
                       colorMode === m
                         ? 'bg-accent-blue/15 text-accent-blue border border-accent-blue/40'
@@ -2274,6 +2304,7 @@ function ControlsCard({
               </div>
               <input
                 type="range"
+                aria-label="Point size"
                 min={0.2}
                 max={8}
                 step={0.1}
@@ -2291,6 +2322,7 @@ function ControlsCard({
               </div>
               <input
                 type="range"
+                aria-label="Map alpha"
                 min={0.05}
                 max={1}
                 step={0.05}
@@ -2309,6 +2341,7 @@ function ControlsCard({
                   <button
                     key={v}
                     onClick={() => setMapColorScheme(v)}
+                    aria-pressed={mapColorScheme === v}
                     className={`px-2 py-0.5 rounded-md transition-colors ${
                       mapColorScheme === v
                         ? 'bg-accent-blue/15 text-accent-blue border border-accent-blue/40'
@@ -2328,7 +2361,12 @@ function ControlsCard({
               </div>
             </div>
           )}
-          {hasPoseLayer && (
+          {/* Pose display controls only apply to this panel's own pose topic;
+              pose-typed *overlays* get their per-candidate style block in the
+              Overlays section below, so gating here on the panel kind (rather
+              than "any pose layer exists") is what keeps the controls from
+              showing up on panels whose settings they don't affect. */}
+          {sceneKind === 'pose' && (
             <div>
               <div className="text-text-tertiary text-[10px] mb-1">pose style</div>
               <div className="flex gap-1">
@@ -2336,6 +2374,7 @@ function ControlsCard({
                   <button
                     key={v}
                     onClick={() => setPoseDisplayStyle(v)}
+                    aria-pressed={poseDisplayStyle === v}
                     className={`px-2 py-0.5 rounded-md transition-colors ${
                       poseDisplayStyle === v
                         ? 'bg-accent-blue/15 text-accent-blue border border-accent-blue/40'
@@ -2484,6 +2523,7 @@ function ControlsCard({
                 </label>
                 <input
                   type="range"
+                  aria-label="Maximum range"
                   min={1}
                   max={200}
                   step={1}
@@ -2512,11 +2552,13 @@ function ControlsCard({
                           value={clipBounds[`${axis}Min`]}
                           onChange={(v) => onSetClipBound(axis, 'min', v)}
                           placeholder="min"
+                          label={`${axis} min clip bound`}
                         />
                         <ClipBoundInput
                           value={clipBounds[`${axis}Max`]}
                           onChange={(v) => onSetClipBound(axis, 'max', v)}
                           placeholder="max"
+                          label={`${axis} max clip bound`}
                         />
                       </div>
                     ))}
@@ -2564,6 +2606,7 @@ function ControlsCard({
                       key={m}
                       onClick={() => setAccumMode(m)}
                       disabled={!accumulating}
+                      aria-pressed={accumMode === m}
                       title={
                         m === 'ring'
                           ? 'FIFO ring buffer — most recent N points'
@@ -2589,6 +2632,7 @@ function ControlsCard({
                     </div>
                     <input
                       type="range"
+                      aria-label="Voxel size"
                       min={0.05}
                       max={2.0}
                       step={0.05}
@@ -2608,6 +2652,7 @@ function ControlsCard({
                   </div>
                   <input
                     type="range"
+                    aria-label="Accumulator points per frame"
                     min={1000}
                     max={500_000}
                     step={5000}
@@ -2626,12 +2671,14 @@ function ControlsCard({
                   </div>
                   <input
                     type="range"
+                    aria-label="Accumulator point budget"
                     min={250_000}
                     max={10_000_000}
                     step={250_000}
                     value={accumBudget}
+                    disabled={!accumulating}
                     onChange={(e) => setAccumBudget(Number(e.target.value))}
-                    className="w-full accent-accent-blue"
+                    className="w-full accent-accent-blue disabled:opacity-40"
                   />
                 </div>
                 {accumulating && (
@@ -2677,7 +2724,7 @@ function ControlsCard({
                 <div>
                   <div className="flex items-center justify-between text-text-tertiary text-[10px] mb-1">
                     <span>scene topics</span>
-                    <span>{spatialOverlayTopics.length + 1} layers</span>
+                    <span>{selectedOverlayCount + 1} layers</span>
                   </div>
                   <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
                     {spatialOverlayCandidates.map((candidate) => {
@@ -2696,6 +2743,12 @@ function ControlsCard({
                       const title = bagMeta
                         ? `${bagMeta.label}: ${candidate.name} (${candidate.type})`
                         : `${candidate.name} (${candidate.type})`;
+                      // Two bags can expose the same topic name, so prefix the
+                      // color input's accessible name with the bag label to
+                      // keep the two swatches distinguishable to screen readers.
+                      const colorLabel = bagMeta
+                        ? `${bagMeta.label}: ${candidate.name} color`
+                        : `${candidate.name} color`;
                       return (
                         <div key={key}>
                           <label
@@ -2746,7 +2799,7 @@ function ControlsCard({
                               <div className="flex items-center gap-1.5">
                                 <input
                                   type="color"
-                                  aria-label={candidate.name + ' color'}
+                                  aria-label={colorLabel}
                                   value={style.color ?? '#22d3ee'}
                                   onFocus={(e) => e.currentTarget.scrollIntoView({ block: 'center' })}
                                   onChange={(event) =>
@@ -2782,6 +2835,7 @@ function ControlsCard({
                                   <button
                                     key={v}
                                     type="button"
+                                    aria-pressed={(style.mapColorScheme ?? 'auto') === v}
                                     onClick={() =>
                                       onSetSpatialOverlayStyle(candidate.bagId, candidate.name, {
                                         mapColorScheme: v,
@@ -2807,6 +2861,7 @@ function ControlsCard({
                                   <button
                                     key={v}
                                     type="button"
+                                    aria-pressed={(style.poseDisplayStyle ?? 'arrow') === v}
                                     onClick={() =>
                                       onSetSpatialOverlayStyle(candidate.bagId, candidate.name, {
                                         poseDisplayStyle: v,
@@ -2838,7 +2893,7 @@ function ControlsCard({
                               <div className="flex items-center gap-1.5">
                                 <input
                                   type="color"
-                                  aria-label={candidate.name + ' color'}
+                                  aria-label={colorLabel}
                                   value={style.color ?? overlayBagMeta.get(candidate.bagId)?.color ?? '#22d3ee'}
                                   onFocus={(e) => e.currentTarget.scrollIntoView({ block: 'center' })}
                                   onChange={(event) =>
@@ -2881,10 +2936,7 @@ function ControlsCard({
                     <span>namespaces ({markerNamespaces.length})</span>
                     {hiddenSet.size > 0 && (
                       <button
-                        onClick={() => {
-                          // "Show all" — flip every hidden ns visible.
-                          for (const ns of hiddenSet) onToggleNamespace(ns, false);
-                        }}
+                        onClick={onShowAllNamespaces}
                         className="text-text-tertiary hover:text-accent-blue underline decoration-dotted"
                         title="Show every namespace again"
                       >
@@ -2942,6 +2994,15 @@ function ControlsCard({
                   {!robotHasJointStates && (
                     <div className="text-text-tertiary text-[10px] mt-0.5">
                       no /joint_states - joints stay at rest
+                    </div>
+                  )}
+                  {robotWarnings.length > 0 && (
+                    <div
+                      className="text-accent-amber/80 text-[10px] leading-tight mt-0.5"
+                      title={robotWarnings.map((w) => w.message).join('\n')}
+                    >
+                      {robotWarnings.length} model warning
+                      {robotWarnings.length === 1 ? '' : 's'} (hover for details)
                     </div>
                   )}
                 </div>
@@ -3037,8 +3098,8 @@ function ControlsCard({
               className="flex-1 px-2 py-0.5 rounded-md transition-colors border border-border text-text-secondary hover:border-accent-blue/40 hover:text-accent-blue"
               title={
                 hasSavedDefault
-                  ? `Apply the saved ${sceneKindLabel} default to this panel.`
-                  : `Reset this panel to the built-in ${sceneKindLabel} defaults.`
+                  ? `Apply the saved ${sceneKindLabel} default to this panel. This also clears overlay selections and any hidden namespace / camera filters.`
+                  : `Reset this panel to the built-in ${sceneKindLabel} defaults. This also clears overlay selections and any hidden namespace / camera filters.`
               }
             >
               reset
@@ -3102,16 +3163,20 @@ function ClipBoundInput({
   value,
   onChange,
   placeholder,
+  label,
 }: {
   value: number | null;
   onChange: (v: number | null) => void;
   placeholder: string;
+  /** Accessible name; the placeholder alone ("min"/"max") is ambiguous across axes. */
+  label: string;
 }) {
   return (
     <input
       type="number"
       step="any"
       placeholder={placeholder}
+      aria-label={label}
       value={value ?? ''}
       onChange={(e) => {
         const v = parseFloat(e.target.value);
@@ -3120,13 +3185,6 @@ function ClipBoundInput({
       className="w-full min-w-0 px-1.5 py-0.5 rounded bg-surface border border-border text-text-primary text-[10px] mono placeholder:text-text-muted focus:outline-none focus:border-accent-blue/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
     />
   );
-}
-
-function pickFrameId(value: Record<string, unknown> | null | undefined): string | undefined {
-  if (!value) return undefined;
-  const header = value.header as { frame_id?: unknown } | undefined;
-  const fid = header?.frame_id;
-  return typeof fid === 'string' && fid.length > 0 ? fid : undefined;
 }
 
 /**

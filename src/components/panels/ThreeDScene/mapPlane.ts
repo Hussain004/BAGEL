@@ -13,7 +13,11 @@
  */
 
 import * as THREE from 'three';
-import type { MapPlaneTier, OccupancyGridDecoded } from '../../../utils/occupancyGrid';
+import type {
+  MapPlaneTier,
+  OccupancyGridColorScheme,
+  OccupancyGridDecoded,
+} from '../../../utils/occupancyGrid';
 
 export interface MapPlaneObject {
   object: THREE.Group;
@@ -25,6 +29,13 @@ export interface MapPlaneObject {
   texture: THREE.DataTexture | null;
   /** Last decoded content key — short-circuit identical-data updates. */
   lastContentKey: string | null;
+  /**
+   * Color scheme the current texture was built with. `contentKey` only
+   * fingerprints cells + dimensions, so a scheme switch on an unchanged
+   * static map would otherwise short-circuit and never recolor; tracking
+   * the scheme here forces one rebuild per switch.
+   */
+  lastScheme: OccupancyGridColorScheme | null;
   /** Optional axis-aligned bounds (world frame, before TF). Null when empty. */
   bounds: {
     min: { x: number; y: number; z: number };
@@ -80,6 +91,7 @@ export function createMapPlane(renderOrder: number = MAP_PLANE_RENDER_ORDER.map)
     material,
     texture: null,
     lastContentKey: null,
+    lastScheme: null,
     bounds: null,
   };
 }
@@ -88,13 +100,24 @@ export function createMapPlane(renderOrder: number = MAP_PLANE_RENDER_ORDER.map)
  * Push a freshly-decoded grid into the plane. No-ops when the content key
  * matches the previous update — saves the GPU-side texture upload and the
  * matrix recompute on every playhead tick.
+ *
+ * `scheme` is the resolved color scheme the `decoded` buffer was coloured
+ * with. It participates in the short-circuit because `contentKey` doesn't
+ * fingerprint the palette: toggling map/costmap/auto on a static map hands
+ * back the same key with different pixels, and the texture must still be
+ * rebuilt (otherwise the scheme buttons look like no-ops until the cells
+ * themselves change).
  */
-export function updateMapPlane(obj: MapPlaneObject, decoded: OccupancyGridDecoded): void {
+export function updateMapPlane(
+  obj: MapPlaneObject,
+  decoded: OccupancyGridDecoded,
+  scheme: OccupancyGridColorScheme,
+): void {
   const { width, height, resolution, origin, rgba, contentKey } = decoded;
   const widthM = width * resolution;
   const heightM = height * resolution;
 
-  if (obj.lastContentKey !== contentKey) {
+  if (obj.lastContentKey !== contentKey || obj.lastScheme !== scheme) {
     // Dispose the previous texture before swapping — DataTexture allocates
     // GPU memory that won't be reclaimed by JS GC alone.
     if (obj.texture) obj.texture.dispose();
@@ -120,6 +143,7 @@ export function updateMapPlane(obj: MapPlaneObject, decoded: OccupancyGridDecode
     obj.material.map = tex;
     obj.material.needsUpdate = true;
     obj.lastContentKey = contentKey;
+    obj.lastScheme = scheme;
   }
 
   // Scale the unit plane and move its centre by half the metric dimensions,
