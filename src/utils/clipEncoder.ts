@@ -13,6 +13,7 @@
  */
 
 import { zipSync } from 'fflate';
+import { BLOB_URL_REVOKE_DELAY_MS } from './export';
 
 /**
  * Wait for the panel to finish re-rendering at the new playhead time.
@@ -141,5 +142,7 @@ export function downloadBytes(data: Uint8Array | Blob, filename: string): void {
   a.href = url;
   a.download = filename;
   a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  // Same deferred revoke delay as export.ts's downloadText (see
+  // BLOB_URL_REVOKE_DELAY_MS): immediate revoke can cancel the download.
+  setTimeout(() => URL.revokeObjectURL(url), BLOB_URL_REVOKE_DELAY_MS);
 }

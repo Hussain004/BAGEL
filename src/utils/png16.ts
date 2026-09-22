@@ -48,6 +48,7 @@ export function decodeGrayscalePng(data: Uint8Array): DecodedGrayscalePng {
   const idatParts: Uint8Array[] = [];
 
   let offset = 8;
+  let sawIend = false;
   while (offset + 8 <= data.length) {
     const length = view.getUint32(offset, false);
     const type = String.fromCharCode(
@@ -57,6 +58,14 @@ export function decodeGrayscalePng(data: Uint8Array): DecodedGrayscalePng {
       data[offset + 7],
     );
     const chunkStart = offset + 8;
+    // The 4-byte length field is producer-controlled: a truncated file
+    // would otherwise read past the DataView end (RangeError) or silently
+    // zero-fill. Chunk = length payload + 4-byte trailing CRC.
+    if (chunkStart + length + 4 > data.length) {
+      throw new Error(
+        `PNG truncated: '${type}' chunk at offset ${offset} claims ${length} bytes but only ${data.length - chunkStart} remain.`,
+      );
+    }
     if (type === 'IHDR') {
       width = view.getUint32(chunkStart, false);
       height = view.getUint32(chunkStart + 4, false);
@@ -66,10 +75,14 @@ export function decodeGrayscalePng(data: Uint8Array): DecodedGrayscalePng {
     } else if (type === 'IDAT') {
       idatParts.push(data.subarray(chunkStart, chunkStart + length));
     } else if (type === 'IEND') {
+      sawIend = true;
       break;
     }
     offset = chunkStart + length + 4; // skip the trailing CRC
   }
+  // IEND is mandatory in every PNG; missing it means the input stopped early
+  // (mid-chunk header or before it reached a readable IEND).
+  if (!sawIend) throw new Error('PNG truncated: missing IEND chunk.');
 
   if (colorType !== 0) {
     throw new Error(`Unsupported PNG color type ${colorType} (expected grayscale).`);

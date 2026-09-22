@@ -29,12 +29,33 @@ export function flattenNumeric(
     if (prefix) out[prefix] = obj ? 1 : 0;
     return out;
   }
-  if (Array.isArray(obj)) {
-    // Numeric typed arrays count as plottable per-element; skip large arrays.
-    if (obj.length > 0 && obj.length <= 16 && obj.every((v) => typeof v === 'number')) {
-      obj.forEach((v, i) => {
-        out[`${prefix}[${i}]`] = v as number;
-      });
+  // Arrays AND typed arrays (ArrayBuffer views) are handled here so neither
+  // can fall through to Object.entries and emit unbounded `covariance.0`-style
+  // dot-index keys. Bracket-index paths (`covariance[0]`) are what mathExpr's
+  // identifier grammar resolves - see its "bracket-index notation" comment.
+  //
+  // Length caps (deliberate): plain arrays keep the historical 16-element
+  // limit (longer numeric arrays are bulk data, e.g. image bytes, not
+  // plottable series); typed arrays get 64 because the CDR MessageReader
+  // deserializes fixed-size numeric arrays (float64[36] pose covariance)
+  // into Float64Array, so a 6x6 covariance must flatten in full as
+  // covariance[0..35] rather than be skipped.
+  if (Array.isArray(obj) || ArrayBuffer.isView(obj)) {
+    const arr = obj as unknown as ArrayLike<unknown>;
+    // DataView (also an ArrayBuffer view) has no indexed elements.
+    const len = typeof arr.length === 'number' ? arr.length : 0;
+    const limit = ArrayBuffer.isView(obj) ? 64 : 16;
+    if (len === 0 || len > limit) return out;
+    // Skip arrays carrying any non-numeric element (historic behavior for
+    // plain string/bool/object arrays); bigint leaves are coerced like the
+    // scalar bigint branch above.
+    for (let i = 0; i < len; i++) {
+      const v = arr[i];
+      if (typeof v !== 'number' && typeof v !== 'bigint') return out;
+    }
+    for (let i = 0; i < len; i++) {
+      const v = arr[i];
+      out[`${prefix}[${i}]`] = typeof v === 'bigint' ? Number(v) : (v as number);
     }
     return out;
   }
@@ -137,6 +158,21 @@ export function isPointCloud2Type(type: string): boolean {
 export function isCustomLidarType(type: string): boolean {
   if (!type) return false;
   return type.endsWith('/CustomMsg');
+}
+
+/**
+ * Wider sibling of `isCustomLidarType`: also accepts vendor `/PointCloud`
+ * type names (anything that says "PointCloud" plus a package prefix).
+ *
+ * Named distinctly because the two genuinely differ - `isCustomLidarType`
+ * is what `isCloudType` (and therefore the scene/topic UI) uses, while this
+ * one exists for callers that want the looser name match. Both live here so
+ * type-name predicates have a single source of truth; `customCloud.ts`
+ * re-exports `isCustomLidarType` from this module.
+ */
+export function isCustomLidarCapableType(type: string): boolean {
+  if (!type) return false;
+  return type.endsWith('/CustomMsg') || type.endsWith('/PointCloud');
 }
 
 /** True if a type is any point cloud the 3D scene can render. */

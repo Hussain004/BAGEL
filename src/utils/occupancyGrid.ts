@@ -244,8 +244,6 @@ export function decodeOccupancyGrid(
   };
 }
 
-/** True if a ROS type name is `nav_msgs/OccupancyGrid` (with or without `/msg/`). */
-export function isOccupancyGridType(type: string): boolean {
-  if (!type) return false;
-  return type.endsWith('/OccupancyGrid');
-}
+// Type-name predicates live in `messages.ts` (single source of truth);
+// re-exported here so existing importers of this module keep resolving.
+export { isOccupancyGridType } from './messages';

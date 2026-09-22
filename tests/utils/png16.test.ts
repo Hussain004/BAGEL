@@ -161,4 +161,32 @@ describe('png16/decodeGrayscalePng', () => {
   it('rejects data that is not a PNG', () => {
     expect(() => decodeGrayscalePng(new Uint8Array([1, 2, 3, 4]))).toThrow(/not a png/i);
   });
+
+  it('throws a descriptive error when a chunk payload is truncated', () => {
+    const png = buildGrayscalePng(2, 2, 16, [0, 4096, 32768, 65535]);
+    // Cut right after the IDAT length+type headers: the declared length no
+    // longer fits the buffer, which previously read past the DataView end.
+    let idatAt = -1;
+    for (let i = 0; i + 4 <= png.length; i++) {
+      if (png[i] === 0x49 && png[i + 1] === 0x44 && png[i + 2] === 0x41 && png[i + 3] === 0x54) {
+        idatAt = i;
+        break;
+      }
+    }
+    expect(idatAt).toBeGreaterThan(0);
+    const truncated = png.subarray(0, idatAt + 4); // length + 'IDAT', no payload/CRC
+    expect(() => decodeGrayscalePng(truncated)).toThrow(/PNG truncated/);
+    expect(() => decodeGrayscalePng(truncated)).toThrow(/IDAT/);
+  });
+
+  it('throws when the input stops before IEND', () => {
+    const png = buildGrayscalePng(2, 2, 8, [1, 2, 3, 4]);
+    // Drop exactly the 12-byte IEND chunk: every earlier chunk still reads
+    // cleanly, so the missing-IEND guard fires.
+    const noIend = png.subarray(0, png.length - 12);
+    expect(() => decodeGrayscalePng(noIend)).toThrow(/PNG truncated: missing IEND/);
+    // One byte further back and even the trailing CRC is short.
+    const midChunk = png.subarray(0, png.length - 13);
+    expect(() => decodeGrayscalePng(midChunk)).toThrow(/PNG truncated/);
+  });
 });

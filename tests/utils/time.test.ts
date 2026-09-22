@@ -54,6 +54,20 @@ describe('time/formatDuration', () => {
     expect(formatDuration(125)).toBe('2m 5s');
   });
 
+  it('rounds the total before decomposing (never renders "1m 60s")', () => {
+    // Pre-fix the remainder 59.7s rounded up to 60 on its own.
+    expect(formatDuration(119.7)).toBe('2m 0s');
+    expect(formatDuration(60)).toBe('1m 0s');
+    expect(formatDuration(3599.6)).toBe('1h 0m');
+  });
+
+  it('keeps near-boundary sub-minute values in seconds', () => {
+    expect(formatDuration(59.7)).toBe('59.7s');
+    // 59.96 rounds to 60.0 at one decimal; it must not render as "60.0s".
+    expect(formatDuration(59.96)).toBe('1m 0s');
+    expect(formatDuration(0)).toBe('0ms');
+  });
+
   it('formats hours + minutes for long bags', () => {
     expect(formatDuration(3 * 3600 + 12 * 60 + 5)).toBe('3h 12m');
   });
@@ -103,5 +117,16 @@ describe('time/interpolatePlayhead', () => {
 
   it('produces a bigint even for tiny ranges', () => {
     expect(typeof interpolatePlayhead(0n, 10n, 0.5)).toBe('bigint');
+  });
+
+  it('returns startNs for a zero-length segment (NaN fraction)', () => {
+    // A zero-duration segment makes callers compute fraction as 0/0 = NaN;
+    // BigInt(NaN) would throw RangeError.
+    const t = 5_000n;
+    expect(interpolatePlayhead(t, t, NaN)).toBe(t);
+    expect(interpolatePlayhead(t, t, Number(t - t) / Number(t - t))).toBe(t);
+    // Any other non-finite fraction pins to the start rather than throwing.
+    expect(interpolatePlayhead(start, end, NaN)).toBe(start);
+    expect(interpolatePlayhead(start, end, Infinity)).toBe(start);
   });
 });

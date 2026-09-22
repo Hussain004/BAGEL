@@ -47,7 +47,16 @@ export function decodeCompressedDepthImage(
   const depth = new Float32Array(png.width * png.height);
   for (let i = 0; i < depth.length; i++) {
     const raw = png.samples[i]!;
-    depth[i] = isInverseDepth ? (raw === 0 ? NaN : depthQuantA / (raw - depthQuantB)) : raw;
+    if (!isInverseDepth) {
+      depth[i] = raw;
+      continue;
+    }
+    // Dequantize inverse depth. raw === 0 is the encoding's "no
+    // measurement" marker, and raw === depthQuantB would divide by zero and
+    // leak Infinity/NaN into the visualization; both decode to NaN, the same
+    // invalid-pixel sentinel (no measurement) the surrounding code uses.
+    const denom = raw - depthQuantB;
+    depth[i] = raw === 0 || denom === 0 ? NaN : depthQuantA / denom;
   }
   return { width: png.width, height: png.height, depth };
 }

@@ -9,6 +9,7 @@ import {
   isTfTopic,
   isPointCloud2Type,
   isCustomLidarType,
+  isCustomLidarCapableType,
   isCloudType,
   isLaserScanType,
   isOccupancyGridType,
@@ -56,9 +57,38 @@ describe('messages/flattenNumeric', () => {
     });
   });
 
-  it('skips arrays longer than 16 (image / covariance / cloud data)', () => {
+  it('skips plain arrays longer than 16 (bulk / image-style data)', () => {
     const big = Array.from({ length: 64 }, (_, i) => i);
     expect(flattenNumeric({ data: big })).toEqual({});
+  });
+
+  it('still caps a plain (untyped) 36-element array at 16, so it is skipped', () => {
+    // Documented choice: only typed arrays (what the CDR MessageReader emits
+    // for fixed-size numeric fields) get the raised 64-element cap.
+    const plainCovariance = Array.from({ length: 36 }, (_, i) => i);
+    expect(flattenNumeric({ covariance: plainCovariance })).toEqual({});
+  });
+
+  it('expands a Float64Array covariance in full with bracket-index paths', () => {
+    // float64[36] pose covariance arrives as a Float64Array and must land as
+    // covariance[0..35] (the mathExpr bracket notation), not covariance.0
+    // dot keys or a skipped field.
+    const covariance = new Float64Array(36);
+    for (let i = 0; i < 36; i++) covariance[i] = i;
+    const flat = flattenNumeric({ pose: { covariance } });
+    expect(Object.keys(flat)).toHaveLength(36);
+    expect(flat['pose.covariance[0]']).toBe(0);
+    expect(flat['pose.covariance[35]']).toBe(35);
+  });
+
+  it('skips typed arrays beyond the documented 64-element cap', () => {
+    expect(flattenNumeric({ samples: new Float64Array(65) })).toEqual({});
+  });
+
+  it('never emits dot-index keys for bulk Uint8 typed arrays', () => {
+    const flat = flattenNumeric({ data: new Uint8Array(100) });
+    expect(flat).toEqual({});
+    expect(Object.keys(flat).some((k) => /\.\d+$/.test(k))).toBe(false);
   });
 
   it('returns empty for null / undefined / strings', () => {
@@ -157,6 +187,17 @@ describe('messages/type sniffing', () => {
     expect(isCloudType('sensor_msgs/PointCloud2')).toBe(true);
     expect(isCloudType('livox_ros_driver/msg/CustomMsg')).toBe(true);
     expect(isCloudType('sensor_msgs/Image')).toBe(false);
+  });
+
+  it('isCustomLidarCapableType widens to vendor /PointCloud names; the narrow one does not', () => {
+    // The two predicates genuinely differ; both live in messages.ts so the
+    // lists can't drift (customCloud.ts re-exports the narrow one).
+    expect(isCustomLidarCapableType('livox_ros_driver2/msg/CustomMsg')).toBe(true);
+    expect(isCustomLidarCapableType('vendor_msgs/PointCloud')).toBe(true);
+    expect(isCustomLidarCapableType('sensor_msgs/PointCloud2')).toBe(false);
+    expect(isCustomLidarCapableType('')).toBe(false);
+    expect(isCustomLidarType('vendor_msgs/PointCloud')).toBe(false);
+    expect(isCustomLidarType('')).toBe(false);
   });
 
   it('isLaserScanType + isOccupancyGridType are exact', () => {

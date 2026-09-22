@@ -153,24 +153,32 @@ interface FieldReader {
   size: number;
 }
 
-function makeFieldReader(datatype: number): FieldReader | null {
+/**
+ * Build a reader for a PointField datatype.
+ *
+ * `littleEndian` mirrors PointCloud2's `is_bigendian` flag: big-endian
+ * producers need `littleEndian = false` so DataView byte-swaps each read.
+ * (The Float32Array fast path can't express byte order, so big-endian
+ * clouds always take the DataView path.)
+ */
+function makeFieldReader(datatype: number, littleEndian = true): FieldReader | null {
   switch (datatype) {
     case POINT_FIELD_TYPE.INT8:
       return { read: (v, o) => v.getInt8(o), size: 1 };
     case POINT_FIELD_TYPE.UINT8:
       return { read: (v, o) => v.getUint8(o), size: 1 };
     case POINT_FIELD_TYPE.INT16:
-      return { read: (v, o) => v.getInt16(o, true), size: 2 };
+      return { read: (v, o) => v.getInt16(o, littleEndian), size: 2 };
     case POINT_FIELD_TYPE.UINT16:
-      return { read: (v, o) => v.getUint16(o, true), size: 2 };
+      return { read: (v, o) => v.getUint16(o, littleEndian), size: 2 };
     case POINT_FIELD_TYPE.INT32:
-      return { read: (v, o) => v.getInt32(o, true), size: 4 };
+      return { read: (v, o) => v.getInt32(o, littleEndian), size: 4 };
     case POINT_FIELD_TYPE.UINT32:
-      return { read: (v, o) => v.getUint32(o, true), size: 4 };
+      return { read: (v, o) => v.getUint32(o, littleEndian), size: 4 };
     case POINT_FIELD_TYPE.FLOAT32:
-      return { read: (v, o) => v.getFloat32(o, true), size: 4 };
+      return { read: (v, o) => v.getFloat32(o, littleEndian), size: 4 };
     case POINT_FIELD_TYPE.FLOAT64:
-      return { read: (v, o) => v.getFloat64(o, true), size: 8 };
+      return { read: (v, o) => v.getFloat64(o, littleEndian), size: 8 };
     default:
       return null;
   }
@@ -270,10 +278,13 @@ export function decodePointCloud2(
   const zField = fields.find((f) => f.name === 'z');
   if (!xField || !yField || !zField) return null;
 
-  const xReader = makeFieldReader(xField.datatype);
-  const yReader = makeFieldReader(yField.datatype);
-  const zReader = makeFieldReader(zField.datatype);
+  const xReader = makeFieldReader(xField.datatype, !msg.is_bigendian);
+  const yReader = makeFieldReader(yField.datatype, !msg.is_bigendian);
+  const zReader = makeFieldReader(zField.datatype, !msg.is_bigendian);
   if (!xReader || !yReader || !zReader) return null;
+  // Byte order the DataView reads use: PointCloud2's is_bigendian flag
+  // decides whether each element needs a swap (default little-endian).
+  const le = !msg.is_bigendian;
 
   const colorMode: ColorMode = options.colorMode ?? 'height';
   // Squared cap avoids a sqrt per point in the hot loop. 0 / undefined / NaN
@@ -301,12 +312,21 @@ export function decodePointCloud2(
   const rgbField = fields.find((f) => f.name === 'rgb' || f.name === 'rgba');
   const ringField = fields.find((f) => f.name === 'ring');
 
-  const intensityReader = intensityField ? makeFieldReader(intensityField.datatype) : null;
-  const ringReader = ringField ? makeFieldReader(ringField.datatype) : null;
+  const intensityReader = intensityField ? makeFieldReader(intensityField.datatype, le) : null;
+  const ringReader = ringField ? makeFieldReader(ringField.datatype, le) : null;
 
   const totalPoints = Math.min(width * height, Math.floor(data.byteLength / pointStep));
-  const cap = options.maxPoints ?? DEFAULT_POINT_LIMIT;
-  const stride = Math.max(1, Math.ceil(totalPoints / cap));
+  // maxPoints <= 0 / NaN (bad UI state) would otherwise give stride =
+  // Infinity and a zero-length sample buffer to write into; fall back to
+  // the default cap. The finite-stride guard keeps the loop bounds valid
+  // for any residual non-finite intermediate.
+  const requestedCap = options.maxPoints ?? DEFAULT_POINT_LIMIT;
+  const cap =
+    Number.isFinite(requestedCap) && requestedCap >= 1
+      ? Math.floor(requestedCap)
+      : DEFAULT_POINT_LIMIT;
+  const rawStride = Math.ceil(totalPoints / cap);
+  const stride = Number.isFinite(rawStride) && rawStride >= 1 ? rawStride : 1;
   const sampleCount = Math.ceil(totalPoints / stride);
 
   const buffers = takeBuffers(options.reuse ?? null, sampleCount);
@@ -316,10 +336,13 @@ export function decodePointCloud2(
 
   // Fast path: x/y/z are all FLOAT32 → read through a Float32Array view, no
   // DataView dispatch. Common case for Velodyne, Ouster, RealSense, ZED.
+  // Big-endian clouds are excluded: a typed-array view reads host (little)
+  // endian, so those decode via the DataView path with le === false.
   const xyzFastPath =
     xField.datatype === POINT_FIELD_TYPE.FLOAT32 &&
     yField.datatype === POINT_FIELD_TYPE.FLOAT32 &&
     zField.datatype === POINT_FIELD_TYPE.FLOAT32 &&
+    le &&
     // Float32Array requires a 4-byte aligned offset; nearly all PC2 fields are.
     (data.byteOffset & 3) === 0 &&
     (pointStep & 3) === 0 &&
@@ -401,7 +424,7 @@ export function decodePointCloud2(
       }
 
       if (colorMode === 'rgb' && rgbField) {
-        const raw = view.getUint32(i * pointStep + rgbField.offset, true);
+        const raw = view.getUint32(i * pointStep + rgbField.offset, le);
         const r = ((raw >> 16) & 0xff) / 255;
         const g = ((raw >> 8) & 0xff) / 255;
         const b = (raw & 0xff) / 255;
@@ -455,7 +478,7 @@ export function decodePointCloud2(
       }
 
       if (colorMode === 'rgb' && rgbField) {
-        const raw = view.getUint32(base + rgbField.offset, true);
+        const raw = view.getUint32(base + rgbField.offset, le);
         const r = ((raw >> 16) & 0xff) / 255;
         const g = ((raw >> 8) & 0xff) / 255;
         const b = (raw & 0xff) / 255;

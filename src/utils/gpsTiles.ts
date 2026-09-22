@@ -19,8 +19,10 @@
  * Why opt-in
  * ----------
  * BAGEL's pitch is "no data leaves your machine" — tile fetches break that.
- * The toggle defaults off; turning it on hits the configured OSM endpoint
- * (with a user-agent identifying BAGEL, per OSM tile-usage policy).
+ * The toggle defaults off; turning it on hits the configured OSM endpoint.
+ * Fetches carry no custom User-Agent header: JavaScript cannot override the
+ * browser's UA, so requests go out with the browser's default headers only
+ * (the inline comment at the fetch site documents this).
  */
 
 const TILE_SIZE = 256;
@@ -33,6 +35,12 @@ const MAX_CACHED_TILES = 200;
 /** Wider zoom clamp than typical web maps — Roboticists may want streets or city overview. */
 const MIN_ZOOM = 2;
 const MAX_ZOOM = 19;
+/**
+ * Latitude clamp for the Mercator term in `pickZoomForScale`. Sitting just
+ * inside the poles keeps cos(lat) positive: at |lat| >= pi/2 it hits zero
+ * (log2 -> -Infinity) or goes negative (log2 -> NaN), and NaN clamps to NaN.
+ */
+const MAX_LAT_RAD = Math.PI / 2 - 1e-6;
 
 export interface TileCoord {
   x: number;
@@ -83,7 +91,12 @@ export function pickZoomForScale(metresPerPixel: number, latRad: number): number
   // We want: metresPerPixel ≈ (EARTH_CIRCUMFERENCE * cos(lat)) / (2^z * 256)
   // → 2^z = (EARTH_CIRCUMFERENCE * cos(lat)) / (256 * metresPerPixel)
   const earthCircumferenceM = 40075016.686;
-  const mPerTilePixelAtZ0 = (earthCircumferenceM * Math.cos(latRad)) / TILE_SIZE;
+  // Clamp the latitude just inside the poles (see MAX_LAT_RAD); non-finite
+  // input falls back to the equator so the result stays finite.
+  const lat = Number.isFinite(latRad)
+    ? Math.max(-MAX_LAT_RAD, Math.min(MAX_LAT_RAD, latRad))
+    : 0;
+  const mPerTilePixelAtZ0 = (earthCircumferenceM * Math.cos(lat)) / TILE_SIZE;
   const z = Math.log2(mPerTilePixelAtZ0 / Math.max(metresPerPixel, 1e-6));
   return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Math.round(z)));
 }

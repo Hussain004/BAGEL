@@ -7,8 +7,10 @@
  * `fetch` natively so we can build a `BagSource` and exercise the same code
  * the browser runs.
  *
- * Coverage is scoped to `src/parsers/**` and `src/utils/**` — the React
- * panels are tested manually (and via the `verify` skill) since the panel
+ * Coverage is scoped to `src/parsers/**`, `src/utils/**`, `src/store/**`,
+ * and `src/live/**` (the store and live-connection modules have direct
+ * tests today); the React panels are tested manually (and via the `verify`
+ * skill) since the panel
  * surface is still moving and the v0.9 mocking overhead would outweigh the
  * value. Tests are kept under `tests/` rather than co-located beside source
  * so editing a panel doesn't accidentally trigger a 200-file test re-run.
@@ -38,10 +40,13 @@ export default defineConfig({
     },
     coverage: {
       provider: 'v8',
-      include: ['src/parsers/**', 'src/utils/**'],
+      include: ['src/parsers/**', 'src/utils/**', 'src/store/**', 'src/live/**'],
       exclude: [
         '**/*.d.ts',
-        // Worker / browser-only modules: not exercised under node.
+        // Workers live outside `include` (parsers/utils/store/live), so this
+        // entry can never match a file; it is kept to document intent: the
+        // worker/browser-only layer is deliberately not expected to be
+        // covered under the Node test environment.
         'src/workers/**',
       ],
       reporter: ['text', 'json-summary'],

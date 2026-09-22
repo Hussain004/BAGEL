@@ -55,19 +55,10 @@ interface QuatLike {
 
 const EARTH_RADIUS_M = 6378137;
 
-/** True if `t` is a ROS2 type name that can yield a 2D trajectory. */
-export function isTrajectoryType(type: string): boolean {
-  return (
-    type.endsWith('/Odometry') ||
-    type.endsWith('/PoseStamped') ||
-    type.endsWith('/PoseWithCovarianceStamped') ||
-    type.endsWith('/Pose') ||
-    type.endsWith('/Point') ||
-    type.endsWith('/PointStamped') ||
-    type.endsWith('/TransformStamped') ||
-    type.endsWith('/NavSatFix')
-  );
-}
+// Type-name predicates live in `messages.ts` (single source of truth);
+// `isTrajectoryCapableType` and `isTrajectoryType` are the same list, so
+// this module re-exports the canonical one under its historical name.
+export { isTrajectoryCapableType as isTrajectoryType } from './messages';
 
 /** Extract (x, y, yaw) from one deserialized message, given its known type. */
 function extractOne(

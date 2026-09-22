@@ -100,6 +100,19 @@ describe('compressedDepth/decodeCompressedDepthImage', () => {
     expect(Number.isNaN(decoded.depth[0])).toBe(true);
   });
 
+  it('32FC1: a sample equal to depthQuantB (zero denominator) decodes to NaN', () => {
+    // depthQuantA / (raw - depthQuantB) with raw == depthQuantB would be a
+    // divide-by-zero leaking Infinity into the depth visualization; it must
+    // decode to the same invalid-pixel sentinel (NaN) as raw === 0.
+    const depthQuantA = 100;
+    const depthQuantB = 50;
+    const png = build16BitPng(2, 1, [depthQuantB, 500]);
+    const message = withConfigHeader(png, depthQuantA, depthQuantB);
+    const decoded = decodeCompressedDepthImage(message, '32FC1');
+    expect(Number.isNaN(decoded.depth[0])).toBe(true);
+    expect(decoded.depth[1]).toBeCloseTo(depthQuantA / (500 - depthQuantB), 4);
+  });
+
   it('is case-insensitive on the image encoding token', () => {
     const png = build16BitPng(1, 1, [42]);
     const message = withConfigHeader(png, 0, 0);

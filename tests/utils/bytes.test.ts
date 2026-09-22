@@ -22,6 +22,20 @@ describe('bytes/formatFileSize', () => {
     expect(formatFileSize(1536)).toBe('1.5 KB');
     expect(formatFileSize(2.5 * 1024 * 1024)).toBe('2.5 MB');
   });
+
+  it('renders non-finite and negative input as "0 B" instead of NaN', () => {
+    expect(formatFileSize(NaN)).toBe('0 B');
+    expect(formatFileSize(Infinity)).toBe('0 B');
+    expect(formatFileSize(-Infinity)).toBe('0 B');
+    expect(formatFileSize(-1)).toBe('0 B');
+  });
+
+  it('rounds non-integer byte counts', () => {
+    expect(formatFileSize(10.4)).toBe('10 B');
+    expect(formatFileSize(2047.6)).toBe('2.0 KB');
+    // Sub-byte values must not index a negative unit ("... undefined").
+    expect(formatFileSize(0.5)).toBe('1 B');
+  });
 });
 
 describe('bytes/toHexDump', () => {

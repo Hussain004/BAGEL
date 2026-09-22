@@ -18,6 +18,14 @@ import { flattenNumeric } from './messages';
 export type ExportFormat = 'csv' | 'json';
 
 /**
+ * Shared blob-URL revoke delay for browser downloads. Revoking immediately
+ * can cancel the download mid-flight on Chromium; 5 s is generous enough
+ * for the transfer to start while still reclaiming the URL promptly.
+ * `downloadText` here and `downloadBytes` in clipEncoder.ts both use it.
+ */
+export const BLOB_URL_REVOKE_DELAY_MS = 5000;
+
+/**
  * CSV of flattened numeric fields.
  *
  * Columns are the union of every numeric leaf field across all messages,
@@ -65,8 +73,9 @@ function csvEscape(value: string): string {
 }
 
 /**
- * Full deserialized JSON dump. Each line is one message:
- *   { "timestamp": "1700000000000000000n", "value": { ... } }
+ * Full deserialized JSON dump. Each line is one message (the key names are
+ * the literal output: `timestamp_ns`, `value`):
+ *   { "timestamp_ns": "1700000000000000000n", "value": { ... } }
  *
  * NDJSON (one object per line) instead of a single big array so the file
  * can be streamed line-by-line in downstream tools like jq or DuckDB.
@@ -76,6 +85,7 @@ export function toNdjson(messages: DecodedMessage[]): string {
   for (let i = 0; i < messages.length; i++) {
     const m = messages[i];
     const obj = {
+      // Kept in sync with the JSDoc example above.
       timestamp_ns: m.timestamp.toString(),
       value: m.value,
     };
@@ -119,9 +129,9 @@ export function downloadText(text: string, filename: string, mime: string): void
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  // Defer revocation so the browser actually completes the download —
-  // immediate revoke can cancel mid-flight on Chromium.
-  setTimeout(() => URL.revokeObjectURL(url), 1500);
+  // Defer revocation (see BLOB_URL_REVOKE_DELAY_MS) so the browser actually
+  // completes the download: an immediate revoke can cancel mid-flight.
+  setTimeout(() => URL.revokeObjectURL(url), BLOB_URL_REVOKE_DELAY_MS);
 }
 
 /**

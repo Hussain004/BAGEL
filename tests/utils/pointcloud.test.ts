@@ -203,6 +203,134 @@ describe('pointcloud/decodePointCloud2 — slow path (FLOAT64)', () => {
   });
 });
 
+describe('pointcloud/decodePointCloud2 - big-endian payloads', () => {
+  /** Same layout as buildFloat32Cloud, written big-endian (is_bigendian: true). */
+  function buildBigEndianFloat32Cloud(points: number[][]): PointCloud2Message {
+    const pointStep = 12;
+    const data = new Uint8Array(points.length * pointStep);
+    const view = new DataView(data.buffer);
+    for (let i = 0; i < points.length; i++) {
+      view.setFloat32(i * pointStep + 0, points[i][0], false);
+      view.setFloat32(i * pointStep + 4, points[i][1], false);
+      view.setFloat32(i * pointStep + 8, points[i][2], false);
+    }
+    const fields: PointField[] = [
+      { name: 'x', offset: 0, datatype: POINT_FIELD_TYPE.FLOAT32, count: 1 },
+      { name: 'y', offset: 4, datatype: POINT_FIELD_TYPE.FLOAT32, count: 1 },
+      { name: 'z', offset: 8, datatype: POINT_FIELD_TYPE.FLOAT32, count: 1 },
+    ];
+    return {
+      header: { frame_id: 'velodyne' },
+      width: points.length,
+      height: 1,
+      fields,
+      point_step: pointStep,
+      row_step: points.length * pointStep,
+      data,
+      is_bigendian: true,
+      is_dense: true,
+    };
+  }
+
+  /** Same for the FLOAT64 slow path. */
+  function buildBigEndianFloat64Cloud(points: number[][]): PointCloud2Message {
+    const pointStep = 24;
+    const data = new Uint8Array(points.length * pointStep);
+    const view = new DataView(data.buffer);
+    for (let i = 0; i < points.length; i++) {
+      view.setFloat64(i * pointStep + 0, points[i][0], false);
+      view.setFloat64(i * pointStep + 8, points[i][1], false);
+      view.setFloat64(i * pointStep + 16, points[i][2], false);
+    }
+    const fields: PointField[] = [
+      { name: 'x', offset: 0, datatype: POINT_FIELD_TYPE.FLOAT64, count: 1 },
+      { name: 'y', offset: 8, datatype: POINT_FIELD_TYPE.FLOAT64, count: 1 },
+      { name: 'z', offset: 16, datatype: POINT_FIELD_TYPE.FLOAT64, count: 1 },
+    ];
+    return {
+      header: { frame_id: 'velodyne' },
+      width: points.length,
+      height: 1,
+      fields,
+      point_step: pointStep,
+      row_step: points.length * pointStep,
+      data,
+      is_bigendian: true,
+      is_dense: true,
+    };
+  }
+
+  it('decodes big-endian FLOAT32 positions (fast path is skipped)', () => {
+    const inputs = [
+      [0, 0, 0],
+      [1, 2, 3],
+      [-1, 0.5, -0.5],
+    ];
+    const decoded = decodePointCloud2(buildBigEndianFloat32Cloud(inputs));
+    expect(decoded).not.toBeNull();
+    expect(decoded!.pointCount).toBe(3);
+    expect(Array.from(decoded!.positions)).toEqual([0, 0, 0, 1, 2, 3, -1, 0.5, -0.5]);
+  });
+
+  it('decodes big-endian FLOAT64 positions (DataView littleEndian=false)', () => {
+    const inputs = [
+      [1.5, -2.25, 0.125],
+      [10, -10, 1],
+    ];
+    const decoded = decodePointCloud2(buildBigEndianFloat64Cloud(inputs));
+    expect(decoded).not.toBeNull();
+    expect(decoded!.pointCount).toBe(2);
+    expect(Array.from(decoded!.positions)).toEqual([1.5, -2.25, 0.125, 10, -10, 1]);
+  });
+
+  it('treats a missing / false is_bigendian flag as little-endian (unchanged)', () => {
+    const msg = buildFloat32Cloud([[1, 2, 3]]);
+    expect(decodePointCloud2({ ...msg, is_bigendian: undefined })!.positions[0]).toBe(1);
+    expect(decodePointCloud2({ ...msg, is_bigendian: false })!.positions[0]).toBe(1);
+  });
+});
+
+describe('pointcloud/decodePointCloud2 - maxPoints edge cases', () => {
+  const four = () =>
+    buildFloat32Cloud([
+      [0, 0, 0],
+      [1, 1, 1],
+      [2, 2, 2],
+      [3, 3, 3],
+    ]);
+
+  it('maxPoints: 0 falls back to the default cap (no zero-length buffer)', () => {
+    // A zero cap used to give stride = Infinity and sampleCount = 0, writing
+    // into a zero-length Float32Array.
+    const decoded = decodePointCloud2(four(), { maxPoints: 0 });
+    expect(decoded).not.toBeNull();
+    expect(decoded!.pointCount).toBe(4);
+    expect(decoded!.positions).toHaveLength(12);
+  });
+
+  it('maxPoints: 0 also recovers when the reuse buffers are sized for points', () => {
+    const decoded = decodePointCloud2(four(), {
+      maxPoints: 0,
+      reuse: { positions: new Float32Array(12), colors: new Float32Array(12) },
+    });
+    expect(decoded).not.toBeNull();
+    expect(decoded!.pointCount).toBe(4);
+  });
+
+  it('maxPoints: 1 decodes exactly one sampled point', () => {
+    const decoded = decodePointCloud2(four(), { maxPoints: 1 });
+    expect(decoded).not.toBeNull();
+    expect(decoded!.pointCount).toBe(1);
+    expect(Array.from(decoded!.positions)).toEqual([0, 0, 0]);
+  });
+
+  it('negative maxPoints falls back to the default cap too', () => {
+    const decoded = decodePointCloud2(four(), { maxPoints: -5 });
+    expect(decoded).not.toBeNull();
+    expect(decoded!.pointCount).toBe(4);
+  });
+});
+
 describe('pointcloud/Turbo colormap helpers', () => {
   it('turboColor endpoints differ and high-end is dominated by red', () => {
     const lo = turboColor(0);

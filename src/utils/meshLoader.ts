@@ -120,7 +120,7 @@ function evictUntilFit(needed: number): void {
     (cache.size >= CACHE_MAX_ENTRIES || cachedVertices + needed > CACHE_MAX_VERTICES)
   ) {
     const oldestKey = cache.keys().next().value;
-    if (!oldestKey) break;
+    if (oldestKey === undefined) break;
     const entry = cache.get(oldestKey);
     if (entry) {
       disposeRecursive(entry.source);

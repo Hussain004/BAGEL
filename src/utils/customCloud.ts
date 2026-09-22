@@ -36,19 +36,11 @@ interface CustomCloudMessage {
   points?: CustomPointLike[];
 }
 
-/**
- * True if the type name matches a known list-of-points custom point cloud
- * message. Used as a cheap pre-filter before peering at the message itself.
- */
-export function isCustomLidarType(type: string): boolean {
-  if (!type) return false;
-  // Livox is by far the most common; cover both old (`/CustomMsg`) and the
-  // current `/msg/CustomMsg` namespacing.
-  if (type.endsWith('/CustomMsg')) return true;
-  // Future-proofing — anything that says "points" + a vendor driver suffix.
-  if (type.endsWith('/PointCloud')) return true;
-  return false;
-}
+// Type-name predicates live in `messages.ts` (single source of truth);
+// re-exported here so existing importers of this module keep resolving.
+// The wider "vendor /PointCloud names also match" variant is exported from
+// `messages.ts` as `isCustomLidarCapableType`.
+export { isCustomLidarType } from './messages';
 
 /**
  * Structural detector: given a deserialized message value, decide whether it
@@ -95,8 +87,17 @@ export function decodeCustomCloud(
   if (!Array.isArray(pts) || pts.length === 0) return null;
 
   const colorMode: ColorMode = options.colorMode ?? 'height';
-  const cap = options.maxPoints ?? DEFAULT_POINT_LIMIT;
-  const stride = Math.max(1, Math.ceil(pts.length / cap));
+  // maxPoints <= 0 / NaN (bad UI state) would otherwise give stride =
+  // Infinity and a zero-length positions/colors buffer to write into; fall
+  // back to the default cap. The finite-stride guard keeps the loop bounds
+  // valid for any residual non-finite intermediate.
+  const requestedCap = options.maxPoints ?? DEFAULT_POINT_LIMIT;
+  const cap =
+    Number.isFinite(requestedCap) && requestedCap >= 1
+      ? Math.floor(requestedCap)
+      : DEFAULT_POINT_LIMIT;
+  const rawStride = Math.ceil(pts.length / cap);
+  const stride = Number.isFinite(rawStride) && rawStride >= 1 ? rawStride : 1;
   const sampleCount = Math.ceil(pts.length / stride);
   const rangeSqCap =
     options.maxRange && options.maxRange > 0

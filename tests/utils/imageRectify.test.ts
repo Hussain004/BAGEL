@@ -137,11 +137,10 @@ describe('applyRemap', () => {
     const src = new Uint8ClampedArray(w * h * 4);
     for (let i = 0; i < src.length; i++) src[i] = (i * 7 + 13) % 256;
     const dst = applyRemap(src, { mapX, mapY, width: w, height: h });
-    // Bilinear at integer coords is exact for interior pixels.
-    // Edge pixels (last row / last col) have x1=w or y1=h which trips the
-    // boundary check, so only verify the interior.
-    for (let v = 0; v < h - 1; v++) {
-      for (let u = 0; u < w - 1; u++) {
+    // Bilinear at integer coords is exact. The +1 neighbours are clamped to
+    // the last index, so the final row / column sample correctly too.
+    for (let v = 0; v < h; v++) {
+      for (let u = 0; u < w; u++) {
         const base = (v * w + u) * 4;
         for (let c = 0; c < 4; c++) {
           expect(dst[base + c]).toBe(src[base + c]);

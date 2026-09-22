@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { compileExpr, type CompiledExpr } from '../../src/utils/mathExpr';
+import { flattenNumeric } from '../../src/utils/messages';
 
 function compile(src: string): CompiledExpr {
   const result = compileExpr(src);
@@ -71,6 +72,14 @@ describe('compileExpr - variables', () => {
 
   it('reads bracket-index variables', () => {
     expect(eval_('covariance[0] + 1', { 'covariance[0]': 9 })).toBe(10);
+  });
+
+  it('resolves bracket-index paths produced by flattenNumeric end to end', () => {
+    // flattenNumeric emits `covariance[i]` for typed arrays; the expression
+    // compiler must look those exact keys up.
+    const flat = flattenNumeric({ covariance: new Float64Array([1, 2, 3]) });
+    expect(flat).toEqual({ 'covariance[0]': 1, 'covariance[1]': 2, 'covariance[2]': 3 });
+    expect(eval_('covariance[1] + covariance[2]', flat)).toBe(5);
   });
 
   it('returns null for missing variable', () => {

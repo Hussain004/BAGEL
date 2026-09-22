@@ -115,15 +115,18 @@ export function applyRemap(src: Uint8ClampedArray, map: RemapMap): Uint8ClampedA
       // Integer part and fractional part for bilinear interpolation.
       const x0 = Math.floor(sx);
       const y0 = Math.floor(sy);
-      const x1 = x0 + 1;
-      const y1 = y0 + 1;
 
-      // Boundary check: need all four neighbours to be inside.
-      // Use width-1 and height-1 so the bilinear read is always valid.
-      if (x0 < 0 || y0 < 0 || x1 >= width || y1 >= height) {
+      // Boundary check: reject only when the top-left sample itself is
+      // outside the source. The +1 neighbours are clamped to the last valid
+      // index rather than rejecting, so sx == width-1 (the final column,
+      // where the 2x2 neighbourhood still fits after clamping) is sampled
+      // instead of dropped.
+      if (x0 < 0 || y0 < 0 || x0 >= width || y0 >= height) {
         // Transparent black - dst is already zeroed, so nothing to do.
         continue;
       }
+      const x1 = Math.min(x0 + 1, width - 1);
+      const y1 = Math.min(y0 + 1, height - 1);
 
       const fx = sx - x0;
       const fy = sy - y0;
