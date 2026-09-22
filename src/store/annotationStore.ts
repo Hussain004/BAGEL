@@ -70,6 +70,14 @@ interface AnnotationState {
   addAnnotation: (timeNs: bigint, label: string) => string;
   removeAnnotation: (id: string) => void;
   updateLabel: (id: string, label: string) => void;
+  /**
+   * Shift every annotation by `deltaNs` and persist. Annotations store
+   * absolute aligned nanoseconds, so when bagStore changes the offset
+   * added to bag-local time (alignment mode or anchor switch) each stored
+   * coordinate must move by the same delta or bookmarks snap to the
+   * 0% / 100% edges of the re-based range.
+   */
+  shiftAllBy: (deltaNs: bigint) => void;
   clearAll: () => void;
 
   /**
@@ -111,6 +119,17 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
     set({ annotations: [] });
     const key = get().currentBagKey;
     if (key) writeStorage(key, []);
+  },
+
+  shiftAllBy: (deltaNs) => {
+    const state = get();
+    if (deltaNs === 0n || state.annotations.length === 0) return;
+    const next = sorted(
+      state.annotations.map((a) => ({ ...a, timeNs: a.timeNs + deltaNs })),
+    );
+    set({ annotations: next });
+    const key = state.currentBagKey;
+    if (key) writeStorage(key, next);
   },
 
   loadForBag: (bagKey, fromHash) => {

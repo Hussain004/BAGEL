@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useBagStore, type BagEntry } from '../../src/store/bagStore';
 import { getAllPanels, useLayoutStore, type LayoutNode } from '../../src/store/layoutStore';
-import { usePresetStore } from '../../src/store/presetStore';
+import { usePresetStore, loadPresets } from '../../src/store/presetStore';
 
 function bagEntry(id: string, topics: { name: string; type: string }[]): BagEntry {
   return {
@@ -150,5 +150,51 @@ describe('presetStore', () => {
       expect.stringContaining('"name":"IMU"'),
     );
     vi.unstubAllGlobals();
+  });
+
+  describe('loadPresets - corrupt storage', () => {
+    const validSlot = { node: 'slot', kind: 'plot', type: 'sensor_msgs/Imu' };
+
+    function loadFrom(raw: unknown) {
+      vi.stubGlobal('window', {
+        localStorage: { getItem: vi.fn().mockReturnValue(JSON.stringify(raw)) },
+      });
+      try {
+        return loadPresets();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    }
+
+    it('keeps only structurally valid entries from a corrupt list', () => {
+      const out = loadFrom([
+        { id: 'ok', name: 'Good', tree: validSlot },
+        // Missing tree entirely.
+        { id: 'no-tree', name: 'Broken' },
+        // Split whose children is not an array.
+        {
+          id: 'bad-children',
+          name: 'Broken',
+          tree: { node: 'split', orientation: 'horizontal', children: 'nope' },
+        },
+        // Non-object entries.
+        'not-an-object',
+        null,
+        42,
+        // Slot with non-string fields.
+        { id: 'bad-slot', name: 'Broken', tree: { node: 'slot', kind: 7, type: 'x' } },
+        // Nested corruption: valid split wrapping an invalid child.
+        {
+          id: 'nested',
+          name: 'Broken',
+          tree: { node: 'split', orientation: 'vertical', children: [validSlot, null] },
+        },
+      ]);
+      expect(out.map((p) => p.id)).toEqual(['ok']);
+    });
+
+    it('returns an empty list for a non-array payload', () => {
+      expect(loadFrom({ nope: true })).toEqual([]);
+    });
   });
 });

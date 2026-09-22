@@ -11,7 +11,8 @@
  * pivot, grid + axes toggles, …) that the user is expected to set once and
  * keep using as they open more panels alongside.
  *
- * Lifting the state into a zustand store keyed by `panelId` (`3d:topicName`)
+ * Lifting the state into a zustand store keyed by `panelId` (`3d:bagId:topicName`
+ * in the multi-bag era; legacy `3d:topicName` ids still resolve)
  * solves it categorically: a remount re-reads from the store on first paint
  * and the user's choices stick. As a bonus, closing and re-opening the same
  * 3D panel also restores its settings — same id, same row in the store.

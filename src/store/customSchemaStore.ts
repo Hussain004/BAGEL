@@ -25,8 +25,8 @@
  *   - `TopicRow` uses `useSchemaResolution(typeName)` to decide whether
  *     to render the normal panel-buttons or a "Add schema" affordance.
  *   - `SchemaPasteModal` calls `setSchema` after successful validation.
- *   - The about modal exposes `allSchemas()` so users can review or
- *     remove entries without DevTools.
+ *   - The About modal lists saved schemas via the `schemas` map so users
+ *     can review or remove entries without DevTools.
  */
 
 import { create } from 'zustand';
@@ -40,8 +40,6 @@ interface CustomSchemaState {
   deleteSchema: (typeName: string) => void;
   /** Drop every saved schema. Used by the "clear all" affordance. */
   clearAll: () => void;
-  /** True if a custom schema is registered for `typeName`. */
-  has: (typeName: string) => boolean;
 }
 
 function loadFromStorage(): Record<string, string> {
@@ -75,7 +73,7 @@ function saveToStorage(schemas: Record<string, string>): void {
   }
 }
 
-export const useCustomSchemaStore = create<CustomSchemaState>((set, get) => ({
+export const useCustomSchemaStore = create<CustomSchemaState>((set) => ({
   schemas: loadFromStorage(),
 
   setSchema: (typeName, schemaText) => {
@@ -101,6 +99,4 @@ export const useCustomSchemaStore = create<CustomSchemaState>((set, get) => ({
     saveToStorage({});
     set({ schemas: {} });
   },
-
-  has: (typeName) => typeName in get().schemas,
 }));

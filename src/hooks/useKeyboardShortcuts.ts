@@ -35,7 +35,7 @@ export const SHORTCUTS: ShortcutDescription[] = [
   { keys: 'T', description: 'Focus the topic search box', group: 'Navigation' },
   { keys: 'Esc', description: 'Restore a maximized panel, or close the most recently opened one', group: 'Panels' },
   { keys: 'Shift + Esc', description: 'Close every open panel', group: 'Panels' },
-  { keys: 'O', description: 'Open a different bag file', group: 'Navigation' },
+  { keys: 'O', description: 'Clear bags and return to the loader', group: 'Navigation' },
   { keys: '?', description: 'Show this shortcuts list', group: 'Help' },
 ];
 
@@ -60,17 +60,17 @@ export function useKeyboardShortcuts(): void {
       const typing = isTypingTarget(e.target);
 
       // Esc always works — even when typing — but unblurs first if you're
-      // in an input. Otherwise it closes the most recent panel.
+      // in an input. With a modal or the schema-paste dialog open, stand
+      // down entirely and let the overlay's own Escape handler close it
+      // (closing here too raced it, and the schema-paste slot wasn't
+      // checked at all, so Escape used to close a panel behind the dialog).
       if (e.key === 'Escape') {
         if (typing) {
           (e.target as HTMLElement).blur();
           return;
         }
-        if (useUiStore.getState().modal) {
-          e.preventDefault();
-          useUiStore.getState().setModal(null);
-          return;
-        }
+        const ui = useUiStore.getState();
+        if (ui.modal !== null || ui.schemaPaste !== null) return;
         e.preventDefault();
         const layout = useLayoutStore.getState();
         if (layout.maximizedId) {
@@ -90,6 +90,11 @@ export function useKeyboardShortcuts(): void {
       }
 
       if (typing) return;
+
+      // No global bindings while an overlay is up: O/M/L/arrows must not
+      // mutate bags, bookmarks, or the playhead behind a dialog.
+      const overlay = useUiStore.getState();
+      if (overlay.modal !== null || overlay.schemaPaste !== null) return;
 
       // Fires before the playback bindings so '?' isn't swallowed by anything
       // else. 'A' used to open About here too, freed up for panel-scoped 3D

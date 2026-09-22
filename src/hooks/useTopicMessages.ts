@@ -249,8 +249,12 @@ export function useTopicMessages(
         .then((msgs) => {
           // The worker's array is the source of truth — picking it (instead
           // of the locally-accumulated buffer) avoids any drift if a batch
-          // were ever dropped on the wire.
-          cache.set(cacheKey, msgs);
+          // were ever dropped on the wire. The guard skips the write when
+          // the entry was invalidated (bag removed / full cache clear) so a
+          // removed bag's decode can't resurrect its arrays in the cache.
+          if (inFlight.get(cacheKey) === newEntry) {
+            cache.set(cacheKey, msgs);
+          }
           const final = { result: msgs };
           newEntry.completed = final;
           for (const l of newEntry.listeners) l.onComplete(final);
@@ -288,10 +292,31 @@ export function useTopicMessages(
 /** Drop everything from the message cache (used when bags change). */
 export function clearTopicMessageCache(): void {
   cache.clear();
-  // Orphan any in-flight decodes — their cache writes will land under keys
-  // that will never be queried again, but the listeners are gone so no UI
-  // state will be touched. Memory is reclaimed when the worker promise
-  // resolves and the closure drops.
+  // Orphan any in-flight decodes: their listeners are gone so no UI
+  // state will be touched, and their completion skips the cache write
+  // (the entry is no longer in `inFlight`). Memory is reclaimed when the
+  // worker promise resolves and the closure drops.
   for (const entry of inFlight.values()) entry.listeners.clear();
   inFlight.clear();
+}
+
+/**
+ * Drop the cache entries for a single bag (keys are `${bagId}::...`).
+ * Called from `removeBag` / `clearAll`: without it, swapping comparison
+ * bags leaks every decoded array for the rest of the session, since the
+ * full clear above only fires at the zero-bag transition.
+ */
+export function clearTopicMessageCacheFor(bagId: string): void {
+  const prefix = `${bagId}::`;
+  for (const key of [...cache.keys()]) {
+    if (key.startsWith(prefix)) cache.delete(key);
+  }
+  // Orphan matching in-flight decodes the same way the full clear does:
+  // drop listeners so no UI state is touched, and remove the entry so its
+  // completion skips the cache write.
+  for (const [key, entry] of [...inFlight.entries()]) {
+    if (!key.startsWith(prefix)) continue;
+    entry.listeners.clear();
+    inFlight.delete(key);
+  }
 }

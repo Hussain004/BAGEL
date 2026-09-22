@@ -50,16 +50,25 @@ function aliasesFor(typeName: string): string[] {
 function fetchSupportedTypes(): Promise<Set<string>> {
   if (supportedTypesCache) return Promise.resolve(supportedTypesCache);
   if (supportedTypesPromise) return supportedTypesPromise;
-  supportedTypesPromise = getSupportedTypes().then((arr) => {
-    // Index every alias so an `endsWith('/Type')` topic-tag finds its
-    // registry entry whether the registry stores `pkg/Type` or `pkg/msg/Type`.
-    const set = new Set<string>();
-    for (const name of arr) {
-      for (const alias of aliasesFor(name)) set.add(alias);
-    }
-    supportedTypesCache = set;
-    return set;
-  });
+  supportedTypesPromise = getSupportedTypes()
+    .then((arr) => {
+      // Index every alias so an `endsWith('/Type')` topic-tag finds its
+      // registry entry whether the registry stores `pkg/Type` or `pkg/msg/Type`.
+      const set = new Set<string>();
+      for (const name of arr) {
+        for (const alias of aliasesFor(name)) set.add(alias);
+      }
+      supportedTypesCache = set;
+      return set;
+    })
+    .catch((err: unknown) => {
+      // Don't cache a rejection: reset so the next mount retries instead
+      // of inheriting a permanently rejected promise (and an unhandled
+      // rejection) for the rest of the session, then rethrow for the
+      // caller's own catch.
+      supportedTypesPromise = null;
+      throw err;
+    });
   return supportedTypesPromise;
 }
 
@@ -76,9 +85,16 @@ export function useSchemaResolution(
   useEffect(() => {
     if (supportedTypes) return;
     let cancelled = false;
-    void fetchSupportedTypes().then((set) => {
-      if (!cancelled) setSupportedTypes(set);
-    });
+    void fetchSupportedTypes()
+      .then((set) => {
+        if (!cancelled) setSupportedTypes(set);
+      })
+      .catch(() => {
+        // Fetch failed: the cached promise has been reset to null (see
+        // fetchSupportedTypes), so the next mount retries. This mount
+        // keeps the optimistic `{ resolved: true, loading: true }` state
+        // rather than flashing "schema missing" on a transient failure.
+      });
     return () => {
       cancelled = true;
     };

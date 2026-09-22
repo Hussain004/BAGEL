@@ -33,10 +33,12 @@ import {
 } from '../parsers';
 import { LiveConnection } from '../live/liveConnection';
 import { getTopicColor } from '../utils/color';
+import { clearTopicMessageCacheFor } from '../hooks/useTopicMessages';
 import { useLayoutStore } from './layoutStore';
 import { usePinnedTopicsStore } from './pinnedTopicsStore';
 import { usePlayheadStore } from './playheadStore';
 import { useCustomSchemaStore } from './customSchemaStore';
+import { useAnnotationStore } from './annotationStore';
 import { classifyBagError, type ActionableError } from '../utils/actionableError';
 
 export type TimeAlignment = 'wall-clock' | 'bag-start' | 'anchor';
@@ -316,6 +318,10 @@ export const useBagStore = create<BagState>((set, get) => ({
     // doesn't depend on bagStore) so no cycle.
     useLayoutStore.getState().closePanelsForBag(id);
     usePinnedTopicsStore.getState().clearForBag(id);
+    // Drop this bag's decoded-message cache entries too; without this,
+    // swapping comparison bags leaks every decoded array for the session
+    // (the full clear only fires at the zero-bag transition).
+    clearTopicMessageCacheFor(id);
     const newBags = new Map(state.bags);
     newBags.delete(id);
     const newOrder = state.bagOrder.filter((x) => x !== id);
@@ -345,6 +351,18 @@ export const useBagStore = create<BagState>((set, get) => ({
 
   setAlignment: (mode: TimeAlignment) => {
     const state = get();
+    // Annotations persist absolute aligned ns, so a mode change re-bases
+    // them by the change in the offset applied to the focused bag's
+    // bag-local time (delta = old offset - new offset).
+    if (mode !== state.alignment && state.focusBagId) {
+      const entry = state.bags.get(state.focusBagId);
+      if (entry) {
+        shiftAnnotationsForOffset(
+          alignmentOffsetFor(entry, state.alignment),
+          alignmentOffsetFor(entry, mode),
+        );
+      }
+    }
     set({ alignment: mode });
     syncPlayheadRange(state.bags, state.bagOrder, mode, false);
   },
@@ -353,6 +371,15 @@ export const useBagStore = create<BagState>((set, get) => ({
     const state = get();
     const entry = state.bags.get(id);
     if (!entry) return;
+    // Under anchor alignment, moving an anchor re-bases that bag's aligned
+    // coordinates. The annotation store only ever holds the focused bag's
+    // set, so only shift when the edited bag is the focused one.
+    if (state.alignment === 'anchor' && id === state.focusBagId) {
+      shiftAnnotationsForOffset(
+        alignmentOffsetFor(entry, 'anchor'),
+        alignmentOffsetFor({ ...entry, anchorNs }, 'anchor'),
+      );
+    }
     const newBags = new Map(state.bags);
     newBags.set(id, { ...entry, anchorNs });
     set({ bags: newBags });
@@ -363,6 +390,20 @@ export const useBagStore = create<BagState>((set, get) => ({
 
   clearAll: () => {
     const state = get();
+    // Re-base the loaded annotation set back to wall-clock before the
+    // alignment mode resets below: persisted marks have to be stored in the
+    // coordinates that a future load will read them under (wall-clock after
+    // clearAll), or re-opening the same file lands them off by the bag's
+    // start offset.
+    if (state.alignment !== 'wall-clock' && state.focusBagId) {
+      const entry = state.bags.get(state.focusBagId);
+      if (entry) {
+        shiftAnnotationsForOffset(
+          alignmentOffsetFor(entry, state.alignment),
+          alignmentOffsetFor(entry, 'wall-clock'),
+        );
+      }
+    }
     for (const id of state.bagOrder) {
       const entry = state.bags.get(id);
       if (entry?.kind === 'live') {
@@ -371,6 +412,7 @@ export const useBagStore = create<BagState>((set, get) => ({
         disposeParserCachesFor(id);
         releaseBagWorker(id);
       }
+      clearTopicMessageCacheFor(id);
     }
     set({
       bags: new Map(),
@@ -378,6 +420,11 @@ export const useBagStore = create<BagState>((set, get) => ({
       focusBagId: null,
       bag: null,
       source: null,
+      // Reset alignment along with the bags: the Toolbar only shows the
+      // alignment selector with 2+ bags loaded, so leaving a non-default
+      // mode set here would strand the next single-bag session in
+      // bag-start/anchor mode with no control to change it back.
+      alignment: 'wall-clock',
       isLoading: false,
       error: null,
       loadProgress: 0,
@@ -438,6 +485,18 @@ export function alignedTimeFor(entry: BagEntry, bagLocalNs: bigint, mode: TimeAl
 }
 
 /**
+ * Re-base the focused bag's annotations after its aligned-time offset
+ * changed. Annotations persist absolute aligned ns, so the stored values
+ * must move by `oldOffset - newOffset` to keep pointing at the same
+ * bag-local instant (and therefore the same fraction of the aligned range).
+ */
+function shiftAnnotationsForOffset(oldOffset: bigint, newOffset: bigint): void {
+  const delta = oldOffset - newOffset;
+  if (delta === 0n) return;
+  useAnnotationStore.getState().shiftAllBy(delta);
+}
+
+/**
  * Resolve a bagId — empty string / undefined / unknown ids all fall back to
  * the focused bag. Returns null when no bag at all is loaded.
  *
@@ -476,6 +535,11 @@ export function alignedTimelineRange(
   for (const id of bagOrder) {
     const entry = bags.get(id);
     if (!entry) continue;
+    // A live bag before its first message carries a zeroed summary
+    // (start = end = 0n). Including it would anchor the union at the epoch
+    // and stretch the scrubber to a 56-year range with the head parked at
+    // 1970, so entries with no end time are skipped entirely.
+    if (entry.summary.endTime <= 0n) continue;
     const s = alignedTimeFor(entry, entry.summary.startTime, mode);
     const e = alignedTimeFor(entry, entry.summary.endTime, mode);
     if (start === null || s < start) start = s;

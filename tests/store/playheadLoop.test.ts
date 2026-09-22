@@ -200,4 +200,22 @@ describe('discreteSeekId - distinguishes a jump from continuous motion', () => {
     store.seekFraction(0.5);
     expect(usePlayheadStore.getState().discreteSeekId).toBe(1);
   });
+
+  it('is left untouched by advanceTo() (continuous live-edge follow)', () => {
+    const store = usePlayheadStore.getState();
+    store.seek(2n * ONE_SEC_NS);
+    expect(usePlayheadStore.getState().discreteSeekId).toBe(1);
+    store.advanceTo(5n * ONE_SEC_NS);
+    expect(usePlayheadStore.getState().timeNs).toBe(5n * ONE_SEC_NS);
+    expect(usePlayheadStore.getState().discreteSeekId).toBe(1);
+  });
+
+  it('advanceTo() clamps into [startNs, endNs] like seek()', () => {
+    const store = usePlayheadStore.getState();
+    store.advanceTo(-5n * ONE_SEC_NS);
+    expect(usePlayheadStore.getState().timeNs).toBe(0n);
+    store.advanceTo(99n * ONE_SEC_NS); // endNs is 10s after resetStore()
+    expect(usePlayheadStore.getState().timeNs).toBe(10n * ONE_SEC_NS);
+    expect(usePlayheadStore.getState().discreteSeekId).toBe(0);
+  });
 });

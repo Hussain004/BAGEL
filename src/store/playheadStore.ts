@@ -52,8 +52,9 @@ interface PlayheadState {
   loop: boolean;
   /**
    * Incremented on every `seek()` call (Home/End/arrow keys, annotation
-   * clicks, "back to live") and left untouched by `tick()` (RAF playback)
-   * and `seekFraction()` (pointer-drag scrubbing). The Timeline reads this
+   * clicks, "back to live") and left untouched by `tick()` (RAF playback),
+   * `seekFraction()` (pointer-drag scrubbing), and `advanceTo()`
+   * (continuous live-edge follow / range re-clamps). The Timeline reads this
    * to tell "the user just jumped somewhere" from "the head is moving
    * continuously" - it briefly animates the progress fill's width for the
    * former so the jump reads as travel, and never for the latter, where an
@@ -66,6 +67,14 @@ interface PlayheadState {
   initFromBag: (startNs: bigint, endNs: bigint) => void;
   /** Snap the playhead to a specific (clamped) timestamp. */
   seek: (timeNs: bigint) => void;
+  /**
+   * Move the playhead to a specific (clamped) timestamp WITHOUT bumping
+   * `discreteSeekId`. For continuous motion (live-edge follow at message
+   * rate, re-clamping a paused head when ring evictions move the range)
+   * where treating every bump as a discrete jump would churn Timeline
+   * animations and hash writes.
+   */
+  advanceTo: (timeNs: bigint) => void;
   /** Snap by a fraction [0, 1] of the bag duration. */
   seekFraction: (fraction: number) => void;
   setPlaying: (playing: boolean) => void;
@@ -99,6 +108,11 @@ export const usePlayheadStore = create<PlayheadState>((set, get) => ({
   seek: (timeNs) => {
     const { startNs, endNs, discreteSeekId } = get();
     set({ timeNs: clamp(timeNs, startNs, endNs), discreteSeekId: discreteSeekId + 1 });
+  },
+
+  advanceTo: (timeNs) => {
+    const { startNs, endNs } = get();
+    set({ timeNs: clamp(timeNs, startNs, endNs) });
   },
 
   seekFraction: (fraction) => {

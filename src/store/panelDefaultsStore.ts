@@ -4,7 +4,8 @@
  * v1.3.3 - "saving defaults would be great" (issue #44).
  *
  * The v0.4+ `threeDPanelStore` already persists each panel's Display-card
- * choices within a session, keyed by `panelId` (`3d:<topicName>`). What it
+ * choices within a session, keyed by `panelId` (`3d:bagId:<topicName>` in
+ * the multi-bag era). What it
  * doesn't do is survive a page reload, and it doesn't carry across to a
  * different topic name - drop a new bag whose PointCloud2 topic is named
  * differently and you're back to the hard-coded defaults.

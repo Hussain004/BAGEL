@@ -45,19 +45,31 @@ import {
 import { usePlayheadStore } from '../store/playheadStore';
 import { useAnnotationStore, type Annotation } from '../store/annotationStore';
 
-const PANEL_KIND_VALUES: ReadonlySet<string> = new Set([
-  'plot',
-  'image',
-  'raw',
-  'trajectory',
-  'tf',
-  '3d',
-  'diagnostic',
-  'log',
-  'health',
-]);
+/**
+ * Every `PanelKind` as a compile-time exhaustiveness guard: adding a kind
+ * to the `PanelKind` union without listing it here is a type error, so the
+ * parse-time set below can never fall behind `layoutStore`. (An omitted
+ * kind made `parsePanel` return null, which aborted the whole layout parse
+ * and lost every panel whenever that kind was present in a shared hash.)
+ */
+const PANEL_KIND_COVERAGE: Record<PanelKind, true> = {
+  plot: true,
+  image: true,
+  raw: true,
+  trajectory: true,
+  tf: true,
+  '3d': true,
+  diagnostic: true,
+  log: true,
+  health: true,
+  splat: true,
+};
 
-interface ParsedHash {
+const PANEL_KIND_VALUES: ReadonlySet<string> = new Set(
+  Object.keys(PANEL_KIND_COVERAGE) as PanelKind[],
+);
+
+export interface ParsedHash {
   timeSec?: number;
   /** Layout tree where leaves carry placeholder `type: ''` — caller resolves. */
   root: LayoutNode | null;
@@ -205,7 +217,7 @@ function parseFlatEncoding(input: string): LayoutNode | null {
   };
 }
 
-function parseHash(hash: string): ParsedHash {
+export function parseHash(hash: string): ParsedHash {
   const trimmed = hash.replace(/^#/, '');
   if (!trimmed) return { root: null };
   const params = new URLSearchParams(trimmed);
@@ -286,6 +298,37 @@ function parseHash(hash: string): ParsedHash {
   return out;
 }
 
+/**
+ * Read `location.hash` exactly once into `ref` and return that first parse
+ * forever after. The page-load hash must be captured before any effect can
+ * clear or rewrite it: on a fresh load the hash-write effect's clear branch
+ * runs while `bag` is still null, and the restore effect runs later (after
+ * the bag arrives) - reading `window.location.hash` at that point would
+ * find it already wiped, losing `p`/`t`/`a`/`bm`.
+ */
+export function readSnapshotOnce(ref: { current: ParsedHash | null }): ParsedHash {
+  if (ref.current === null) {
+    ref.current = parseHash(typeof window === 'undefined' ? '' : window.location.hash);
+  }
+  return ref.current;
+}
+
+/**
+ * True when a parsed hash carries anything the restore effect would apply.
+ * A hash without any of these keys (stale, garbage, leftover state) is not
+ * a pending shared link, so the hash-write effect may clear it immediately
+ * instead of holding the URL until a bag is loaded.
+ */
+export function hasRestoreContent(parsed: ParsedHash): boolean {
+  return (
+    parsed.root !== null ||
+    parsed.bagUrl !== undefined ||
+    parsed.timeSec !== undefined ||
+    parsed.anchors !== undefined ||
+    parsed.bookmarks !== undefined
+  );
+}
+
 /** Serialise a layout tree back to the compact `P/H/V` form. */
 function encodeNode(node: LayoutNode): string {
   if (node.node === 'panel') {
@@ -300,7 +343,7 @@ function encodeNode(node: LayoutNode): string {
   return `${tag}(${node.children.map(encodeNode).join(',')})`;
 }
 
-function encodeHash(
+export function encodeHash(
   timeSec: number,
   root: LayoutNode | null,
   bagUrl: string | null,
@@ -382,8 +425,15 @@ function attachTypesAndPrune(
  * useUrlState — Restore layout + playhead from the URL hash on bag load, and
  * write changes back to the hash as the user interacts.
  *
- * Restore fires once per `(fileName, fileSize)` pair so re-opening the same
- * file (or coming back to the page) re-applies the saved session.
+ * Restore rule: the incoming page-load hash is parsed ONCE into a ref on
+ * the first effect run (before the hash-write effect's clear branch can
+ * wipe it) and that snapshot is consumed EXACTLY once - by the first bag
+ * load after page load. Every later bag load and every focus switch only
+ * reloads the focused bag's annotations; re-applying the full hash there
+ * would re-seek the playhead, re-apply anchors, and re-run `restoreLayout`
+ * (nulling `maximizedId` and regenerating split ids), resurrecting panels
+ * the user just closed. If every bag is removed and a new one is loaded
+ * later, the snapshot is applied only if it has not been consumed yet.
  */
 export function useUrlState(): void {
   const bag = useBagStore((s) => s.bag);
@@ -395,6 +445,10 @@ export function useUrlState(): void {
   // Track which (name, size) we've already restored against so we don't
   // re-apply on every render or fight the user as they close panels.
   const restoredKeyRef = useRef<string | null>(null);
+  /** Page-load hash, captured once before anything can clear it. */
+  const snapshotRef = useRef<ParsedHash | null>(null);
+  /** True once the page-load snapshot has been consumed (see rule above). */
+  const snapshotConsumedRef = useRef(false);
   /** Tracks whether we've already kicked off the page-load URL fetch — set
    *  on first attempt so a fetch failure doesn't loop. */
   const urlAutoLoadStartedRef = useRef(false);
@@ -406,9 +460,17 @@ export function useUrlState(): void {
   // re-fetches the bag so the recipient sees the same data. Fires once
   // per page load; user-driven loads after that are not auto-overridden.
   useEffect(() => {
+    // Capture the incoming hash first (this effect runs before the
+    // hash-write effect below, so nothing has cleared it yet).
+    const parsed = readSnapshotOnce(snapshotRef);
+    // Nothing restorable in the incoming hash means there is no pending
+    // restore: mark it consumed so the hash-write effect's clear branch is
+    // free to drop a stale/garbage hash right away.
+    if (!snapshotConsumedRef.current && !hasRestoreContent(parsed)) {
+      snapshotConsumedRef.current = true;
+    }
     if (urlAutoLoadStartedRef.current) return;
     if (bag || isLoading || error) return;
-    const parsed = parseHash(window.location.hash);
     if (!parsed.bagUrl) return;
     urlAutoLoadStartedRef.current = true;
     void loadBagFromUrl(parsed.bagUrl).catch(() => {});
@@ -424,36 +486,45 @@ export function useUrlState(): void {
     if (restoredKeyRef.current === key) return;
     restoredKeyRef.current = key;
 
-    const parsed = parseHash(window.location.hash);
+    const snapshot = readSnapshotOnce(snapshotRef);
+    // First bag load after page load consumes the snapshot; later loads
+    // (focus switches, reload-after-clear) fall through to annotation
+    // reload only. See the restore rule in the doc comment above.
+    const firstRestore = !snapshotConsumedRef.current;
+    if (firstRestore) snapshotConsumedRef.current = true;
 
-    // Apply playhead first so any panels that mount with the playhead read
-    // the restored time immediately. The hash encodes seconds from the
-    // playhead range start (aligned time under multi-bag); under v0.7/v0.8
-    // single-bag wall-clock alignment this is identical to seconds from
-    // bag.startTime, so existing share links round-trip exactly.
-    const phState = usePlayheadStore.getState();
-    const { startNs: phStart, endNs: phEnd } = phState;
-
-    if (parsed.timeSec !== undefined) {
-      const targetNs = phStart + BigInt(Math.round(parsed.timeSec * 1e9));
-      const clamped =
-        targetNs < phStart ? phStart : targetNs > phEnd ? phEnd : targetNs;
-      phState.seek(clamped);
-    }
-
-    // Apply saved per-bag anchors (v1.0). Only sets anchors for bags that
-    // are actually loaded; stale bagIds from a prior session are dropped.
-    if (parsed.anchors) {
+    // 1. Saved per-bag anchors first (v1.0): under `anchor` alignment
+    //    applying an anchor re-syncs the playhead range, so the seek and
+    //    bookmark hydration below must see the post-anchor range. Only
+    //    sets anchors for bags that are actually loaded; stale bagIds
+    //    from a prior session are dropped.
+    if (firstRestore && snapshot.anchors) {
       const bagState = useBagStore.getState();
-      for (const [bagId, anchorNs] of parsed.anchors) {
+      for (const [bagId, anchorNs] of snapshot.anchors) {
         if (bagState.bags.has(bagId)) {
           bagState.setAnchor(bagId, anchorNs);
         }
       }
     }
 
-    // Load bookmarks for this bag (v1.4.3). URL-hash bookmarks take priority
-    // over localStorage so a shared link restores the sender's annotations.
+    // 2. Then the playhead seek. The hash encodes seconds from the
+    //    playhead range start (aligned time under multi-bag); under
+    //    v0.7/v0.8 single-bag wall-clock alignment this is identical to
+    //    seconds from bag.startTime, so existing share links round-trip
+    //    exactly. Range captured after the anchor step above.
+    const phState = usePlayheadStore.getState();
+    const { startNs: phStart, endNs: phEnd } = phState;
+    if (firstRestore && snapshot.timeSec !== undefined) {
+      const targetNs = phStart + BigInt(Math.round(snapshot.timeSec * 1e9));
+      const clamped =
+        targetNs < phStart ? phStart : targetNs > phEnd ? phEnd : targetNs;
+      phState.seek(clamped);
+    }
+
+    // 3. Then bookmarks, hydrated against the final range start from
+    //    step 1-2. URL-hash bookmarks take priority over localStorage so
+    //    a shared link restores the sender's annotations; on any later
+    //    load we just reload this bag's stored set.
     {
       const bagEntry = useBagStore.getState().bags.get(useBagStore.getState().focusBagId ?? '');
       const bagKey =
@@ -461,8 +532,8 @@ export function useUrlState(): void {
           ? bagEntry.source.url
           : `${bag.fileName}:${bag.fileSize}`;
 
-      if (parsed.bookmarks) {
-        const hydrated: Annotation[] = parsed.bookmarks.map((b) => {
+      if (firstRestore && snapshot.bookmarks) {
+        const hydrated: Annotation[] = snapshot.bookmarks.map((b) => {
           const ns = phStart + BigInt(Math.round(b.timeSec * 1e9));
           const clamped = ns < phStart ? phStart : ns > phEnd ? phEnd : ns;
           return { id: b.id, timeNs: clamped, label: b.label };
@@ -473,14 +544,15 @@ export function useUrlState(): void {
       }
     }
 
-    if (!parsed.root) return;
+    // 4. Layout restore - first consumption of the snapshot only.
+    if (!firstRestore || !snapshot.root) return;
 
     const bagState = useBagStore.getState();
     const bagTopicTypes = new Map<string, Map<string, string>>();
     for (const [id, entry] of bagState.bags) {
       bagTopicTypes.set(id, new Map(entry.summary.topics.map((t) => [t.name, t.type])));
     }
-    const restoredTree = attachTypesAndPrune(parsed.root, bagTopicTypes, bagState.focusBagId);
+    const restoredTree = attachTypesAndPrune(snapshot.root, bagTopicTypes, bagState.focusBagId);
     if (!restoredTree) return;
 
     useLayoutStore.getState().restoreLayout(restoredTree);
@@ -489,8 +561,12 @@ export function useUrlState(): void {
   // ── Write hash on change ───────────────────────────────────────────────
   useEffect(() => {
     if (!bag) {
-      // No bag → no hash. Avoid leaving stale state in the URL.
-      if (window.location.hash) {
+      // No bag → no hash. Avoid leaving stale state in the URL, but never
+      // wipe an incoming shared-link hash before the restore effect has
+      // consumed it: a fresh page load has `bag === null` on the very
+      // first commit, and clearing here would destroy `p`/`t`/`a`/`bm`
+      // before any bag arrives to restore them against.
+      if (snapshotConsumedRef.current && window.location.hash) {
         window.history.replaceState(null, '', window.location.pathname + window.location.search);
       }
       return;
@@ -525,12 +601,10 @@ export function useUrlState(): void {
       const { annotations } = useAnnotationStore.getState();
       const bookmarks =
         annotations.length > 0
-          ? annotations
-              .map((a) => ({
-                timeSec: Math.max(0, Number(a.timeNs - playhead.startNs) / 1e9),
-                label: a.label,
-              }))
-              .filter((b) => b.timeSec >= 0)
+          ? annotations.map((a) => ({
+              timeSec: Math.max(0, Number(a.timeNs - playhead.startNs) / 1e9),
+              label: a.label,
+            }))
           : null;
       const next = encodeHash(
         timeSec,

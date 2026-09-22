@@ -40,13 +40,42 @@ export interface LayoutPreset {
   tree: PresetNode;
 }
 
-function loadPresets(): LayoutPreset[] {
+/** Structural guard for one persisted preset tree node (slot or split). */
+function isValidPresetNode(node: unknown): node is PresetNode {
+  if (typeof node !== 'object' || node === null) return false;
+  const n = node as Record<string, unknown>;
+  if (n.node === 'slot') {
+    return typeof n.kind === 'string' && typeof n.type === 'string';
+  }
+  if (n.node === 'split') {
+    return (
+      (n.orientation === 'horizontal' || n.orientation === 'vertical') &&
+      Array.isArray(n.children) &&
+      n.children.every(isValidPresetNode)
+    );
+  }
+  return false;
+}
+
+/**
+ * Structural guard for a persisted preset entry. localStorage is
+ * user-editable and versions get renamed, so a corrupt entry must be
+ * dropped here rather than surviving into `applyPreset`, where
+ * `resolvePresetNode` would throw out of the zustand setter.
+ */
+export function isValidPreset(p: unknown): p is LayoutPreset {
+  if (typeof p !== 'object' || p === null) return false;
+  const r = p as Record<string, unknown>;
+  return typeof r.id === 'string' && typeof r.name === 'string' && isValidPresetNode(r.tree);
+}
+
+export function loadPresets(): LayoutPreset[] {
   if (typeof window === 'undefined') return [];
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as LayoutPreset[]) : [];
+    return Array.isArray(parsed) ? parsed.filter(isValidPreset) : [];
   } catch {
     return [];
   }

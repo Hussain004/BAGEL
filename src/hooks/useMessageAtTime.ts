@@ -78,7 +78,11 @@ export function useMessageAtTime(
     sessionRef.current++;
     pendingTimeRef.current = null;
     inflightRef.current = false;
-    if (!entry || entry.kind === 'live') {
+    // `topicName` may be the `''` sentinel from callers with no matching
+    // topic (image panels without camera_info, URDF panels without
+    // joint_states) - stay idle instead of issuing a pointless worker RPC
+    // and flashing `loading` on every playhead tick.
+    if (!entry || !topicName || entry.kind === 'live') {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setState({ message: null, loading: false, error: null });
     }
@@ -93,6 +97,18 @@ export function useMessageAtTime(
   }, [entry, topicName]);
 
   useEffect(() => {
+    if (!topicName) {
+      // The `''` sentinel: stay idle. The updater returns the prior state
+      // when already idle so a playhead tick (this effect's usual trigger)
+      // doesn't churn a fresh object - and thus a re-render - every frame.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setState((s) =>
+        s.message === null && !s.loading && s.error === null
+          ? s
+          : { message: null, loading: false, error: null },
+      );
+      return;
+    }
     if (!entry || entry.kind === 'live' || !entry.source) return;
 
     const mySession = sessionRef.current;

@@ -37,7 +37,11 @@ interface LiveState {
    */
   revisions: Map<string, number>;
 
-  /** Latest message time per bag - the "live edge" that followLive seeks to. */
+  /**
+   * Latest message time per bag. Only an identity/change token: hooks
+   * subscribe to the map so a bump re-runs their effect (the actual live
+   * edge they follow is read from the ring buffer, not from here).
+   */
   edgeTimes: Map<string, bigint>;
 
   /** Per-bag WebSocket connection status. */

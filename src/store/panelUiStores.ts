@@ -2,8 +2,9 @@
  * Per-panel UI state for the 2D visualisation panels.
  *
  * Same pattern as `threeDPanelStore.ts`: each store keeps a `byId` record
- * keyed by `${kind}:${topicName}` (the same id `layoutStore` already uses
- * for `PanelLeaf`). State is read fresh on every paint, so when v0.7's
+ * keyed by the `layoutStore` `PanelLeaf` id - `kind:bagId:topicName` in the
+ * multi-bag era (legacy `kind:topicName` ids still resolve). State is read
+ * fresh on every paint, so when v0.7's
  * drag-to-dock forces a `react-resizable-panels` remount of the affected
  * subtree the panel rehydrates from the store and the user's choices stick.
  *
