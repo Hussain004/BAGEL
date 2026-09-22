@@ -229,8 +229,11 @@ function flattenSchemaText(defs) {
 // ── Helpers for synthetic data ──────────────────────────────────────────
 function header(frameId, ns) {
   const sec = Number(ns / 1_000_000_000n);
-  const nsec = Number(ns % 1_000_000_000n);
-  return { stamp: { sec, nsec }, frame_id: frameId };
+  // builtin_interfaces/Time names the sub-second field `nanosec`; writing
+  // `nsec` here used to serialize it as 0 because MessageWriter looks fields
+  // up by name and encodes unknown numeric fields as 0.
+  const nanosec = Number(ns % 1_000_000_000n);
+  return { stamp: { sec, nanosec }, frame_id: frameId };
 }
 
 function quatFromYaw(yaw) {
@@ -516,7 +519,7 @@ function buildMarkerArrayMessage(timeNs) {
     },
     scale: { x: 0.6, y: 0.4, z: 0.3 },
     color: { r: 0.2, g: 0.7, b: 1.0, a: 0.9 },
-    lifetime: { sec: 0, nsec: 0 },
+    lifetime: { sec: 0, nanosec: 0 },
     frame_locked: true,
     points: [],
     colors: [],
@@ -593,7 +596,7 @@ function buildMarkerArrayMessage(timeNs) {
     },
     scale: { x: 0.08, y: 0, z: 0 },
     color: { r: 0.4, g: 1.0, b: 0.6, a: 0.9 },
-    lifetime: { sec: 0, nsec: 0 },
+    lifetime: { sec: 0, nanosec: 0 },
     frame_locked: false,
     points: pathPoints,
     colors: [],
@@ -699,7 +702,7 @@ function buildOccupancyGridMessage(timeNs) {
   return {
     header: header('map', timeNs),
     info: {
-      map_load_time: { sec: 0, nsec: 0 },
+      map_load_time: { sec: 0, nanosec: 0 },
       resolution: MAP_RESOLUTION,
       width: MAP_WIDTH,
       height: MAP_HEIGHT,

@@ -5,8 +5,21 @@
  * Run: node --experimental-vm-modules scripts/verify-parsers.mjs
  */
 
-import { readFileSync } from 'fs';
-import { join } from 'path';
+import { existsSync, readFileSync } from 'fs';
+import { basename, join } from 'path';
+import { fileURLToPath } from 'node:url';
+
+// Resolve fixtures relative to the repository instead of a hardcoded
+// machine-specific path so the script works on any checkout.
+const repoRoot = join(fileURLToPath(new URL('.', import.meta.url)), '..');
+const testFilesDir = join(repoRoot, 'test_files');
+if (!existsSync(testFilesDir)) {
+  console.error(
+    'test_files/ not found next to the repository. These fixtures are gitignored;\n' +
+    'place real .db3 files under test_files/db3/ and .mcap files under test_files/mcap/data/.',
+  );
+  process.exit(1);
+}
 
 // ============================================================
 // 1. Test sql.js with the real .db3 file
@@ -14,10 +27,11 @@ import { join } from 'path';
 async function testDb3() {
   console.log('\n=== Testing DB3 Parser ===\n');
   
-  const dbPath = join(
-    'C:', 'Users', 'hussa', 'OneDrive - Higher Education Commission',
-    'Documents', 'GitHub', 'BAGEL', 'test_files', 'db3', 'sample.625-2.bag2_0.db3'
-  );
+  const dbPath = join(testFilesDir, 'db3', 'sample.625-2.bag2_0.db3');
+  if (!existsSync(dbPath)) {
+    console.error(`No DB3 fixture at ${dbPath}; add one to enable this check.`);
+    return;
+  }
   
   try {
     // Load sql.js
@@ -66,10 +80,11 @@ async function testDb3() {
 async function testMcap() {
   console.log('\n=== Testing MCAP Parser ===\n');
   
-  const mcapDir = join(
-    'C:', 'Users', 'hussa', 'OneDrive - Higher Education Commission',
-    'Documents', 'GitHub', 'BAGEL', 'test_files', 'mcap', 'data'
-  );
+  const mcapDir = join(testFilesDir, 'mcap', 'data');
+  if (!existsSync(mcapDir)) {
+    console.error(`No MCAP fixture directory at ${mcapDir}; add one to enable this check.`);
+    return;
+  }
   
   try {
     const { McapStreamReader } = await import('@mcap/core');
@@ -100,7 +115,7 @@ async function testMcap() {
       const data = readFileSync(file.path);
       const header = Array.from(data.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join(' ');
       const ascii = Array.from(data.slice(0, 8)).map(b => b >= 32 && b < 127 ? String.fromCharCode(b) : '.').join('');
-      console.log(`\n  ${file.path.split('\\').pop()} (${file.size}b): ${header} | ${ascii}`);
+      console.log(`\n  ${basename(file.path)} (${file.size}b): ${header} | ${ascii}`);
       
       // Try parsing
       try {

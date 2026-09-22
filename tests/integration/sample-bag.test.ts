@@ -43,7 +43,7 @@ describeWithSample('integration/tour.mcap — detectFormat + parseBag', () => {
     expect(summary.format).toBe('mcap');
     expect(summary.fileName).toBe('tour.mcap');
 
-    // scripts/build-sample-bag.mjs writes exactly these seven topics.
+    // scripts/build-sample-bag.mjs writes exactly these ten topics.
     const expected = new Set([
       '/odom',
       '/imu/data',
@@ -52,6 +52,9 @@ describeWithSample('integration/tour.mcap — detectFormat + parseBag', () => {
       '/markers',
       '/map',
       '/gps/fix',
+      '/camera/image_raw',
+      '/camera/camera_info',
+      '/camera_rear/camera_info',
     ]);
     const names = new Set(summary.topics.map((t) => t.name));
     for (const name of expected) {
@@ -104,6 +107,24 @@ describeWithSample('integration/tour.mcap — message reads', () => {
     const pose = (first.pose as { pose: { position: { x: number; y: number } } }).pose;
     expect(typeof pose.position.x).toBe('number');
     expect(typeof pose.position.y).toBe('number');
+  });
+
+  it('preserves sub-second nanosec in header stamps', async () => {
+    // The generator must write the ROS2 field name `nanosec`. A `nsec` field
+    // name is silently dropped by MessageWriter (unknown numeric fields
+    // encode as 0), which would quantize every stamp to whole seconds.
+    const source = sampleSource();
+    const summary = await parseBag(source);
+    const decoded = await readDeserializedMessages(source, summary.format, '/odom', 3);
+    expect(decoded.length).toBeGreaterThan(1);
+    const stamps = decoded.map(
+      (m) =>
+        (m.value as { header: { stamp: { sec: number; nanosec: number } } }).header.stamp,
+    );
+    // /odom publishes at 10 Hz, so early messages share a second but must
+    // carry distinct, non-zero sub-second parts.
+    expect(stamps.some((s) => s.nanosec !== 0)).toBe(true);
+    expect(new Set(stamps.map((s) => `${s.sec}.${s.nanosec}`)).size).toBe(stamps.length);
   });
 
   it('returns the message nearest to the midpoint of the bag', async () => {

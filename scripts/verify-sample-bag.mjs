@@ -1,6 +1,6 @@
 /**
  * Sanity-check the generated sample bag: open it with McapIndexedReader and
- * print the topic table. If this prints the expected four topics with the
+ * print the topic table. If this prints the expected topics with the
  * right counts, the bag is valid for BAGEL.
  */
 

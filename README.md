@@ -9,7 +9,7 @@
 **Explore ROS1 & ROS2 bag files in your browser. No installation required.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6.svg)](https://www.typescriptlang.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-8-646cff.svg)](https://vite.dev/)
 [![Version](https://img.shields.io/badge/version-1.7.1-3b82f6.svg)](https://github.com/Hussain004/BAGEL/releases)
@@ -101,7 +101,7 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 - **Per-topic CSV / NDJSON export** from every panel header.
 - **Bag editing / MCAP clip export**: trim the time range, drop topics you don't need, download a fresh indexed `.mcap`. Replaces the `mcap filter` CLI workflow for the common cuts. **v1.2 extends the editor to ROS1 `.bag` and ROS2 `.db3` inputs** alongside MCAP - output is always MCAP regardless of input format. `.db3` topics whose type isn't in BAGEL's bundled registry are flagged in the modal and excluded by default; opt them in to include them with a schema-less channel. *(v1.1 / v1.2)*
 - **Paste-your-own `.msg` schema** flow for ROS2 `.db3` topics whose types aren't in the bundled registry. Persisted across sessions in `localStorage`.
-- **Clip export**: Export button in the Toolbar renders any open panel (Image, Plot, Trajectory, or 3D Scene) frame-by-frame to a PNG zip or WebM video. Uses a frame-sync protocol (seek playhead, 2x rAF + 250 ms settle, `canvas.toBlob()`) so every panel type captures correctly. PNG frames are zipped with `fflate` at level 0 (no re-compression of already-deflated PNGs); WebM uses a two-phase `MediaRecorder` + `captureStream(0)` + `requestFrame()` approach so video playback speed is always correct. *(v1.4.2)*
+- **Clip export**: Export button in the Toolbar renders any open panel (Image, Plot, Trajectory, or 3D Scene) frame-by-frame to a PNG zip or MP4 video (WebM fallback on browsers that cannot record MP4). Uses a frame-sync protocol (seek playhead, 2x rAF + 250 ms settle, `canvas.toBlob()`) so every panel type captures correctly. PNG frames are zipped with `fflate` at level 0 (no re-compression of already-deflated PNGs); video uses a two-phase `MediaRecorder` + `captureStream(0)` + `requestFrame()` approach so video playback speed is always correct. *(v1.4.2)*
 - **Timeline bookmarks**: drop named markers at any timestamp on the scrubber (double-click the bar, click the `+` button, or press `M`), click a tick to seek, hover to see the label. Bookmarks persist to `localStorage` per bag and are encoded in the URL hash (`bm=`) for sharing. *(v1.4.3)*
 
 ### Robot model (URDF) overlay *(v1.3.0)*
@@ -125,9 +125,9 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 
 ### Analysis tools *(v1.4)*
 
-- **Bag Health dashboard** *(v1.4.0, extended v1.5.6)*: a per-topic analytics panel showing measured Hz, jitter (p50/p95 inter-message gap deviation), gap events (pauses longer than 3x the expected period), and bandwidth (bytes/s). Opens from a `Health` button in the Toolbar. Data is computed once per bag in a background scan and cached. *(v1.5.6)* When multiple bags are loaded, a chip strip at the top lets you switch the view between bags without opening additional panels.
+- **Bag Health dashboard** *(v1.4.0, extended v1.5.6)*: a per-topic analytics panel showing measured Hz, jitter (standard deviation of inter-message gaps), gap events (pauses longer than 3x the expected period), and bandwidth (bytes/s). Opens from a `Health` button in the Toolbar. Data is computed once per bag in a background scan and cached. *(v1.5.6)* When multiple bags are loaded, a chip strip at the top lets you switch the view between bags without opening additional panels.
 - **Math expressions in plots** *(v1.4.1)*: type arithmetic expressions (`vel_x * 2 + offset`, `sqrt(x*x + y*y)`) as derived series directly in the TimeSeriesPlot panel. References other numeric fields from the same topic; evaluated in a sandboxed expression engine (no `eval`).
-- **Clip export** *(v1.4.2)*: render any panel to an animated PNG zip or WebM video via a frame-sync protocol. Toolbar Export button opens the modal.
+- **Clip export** *(v1.4.2)*: render any panel to an animated PNG zip or MP4 video (WebM fallback) via a frame-sync protocol. Toolbar Export button opens the modal.
 - **Timeline bookmarks** *(v1.4.3)*: named markers on the scrubber, persisted per bag and shareable via the `bm=` URL hash segment.
 
 ### UX and quality
@@ -138,7 +138,7 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 - **Saved Display defaults**: per-data-type defaults for the 3D panel's Display card (colour mode, accumulator, point size, range filter, up axis, camera-frustum master toggle), persisted across sessions. Manageable from the About modal. *(v1.3.3 / v1.3.4)*
 - **Accessibility pass**: ARIA roles + focus management on every modal, `prefers-reduced-motion` respected, focus-visible rings throughout.
 - **Bundled `tour.mcap` sample bag** exercises every panel type. Drop in zero seconds with the "Try a sample bag" button.
-- **526-test Vitest suite** + GitHub Actions CI runs `tsc -b` + `pnpm test` on every PR. *(v1.0, expanded each release)*
+- **600+-test Vitest suite** + GitHub Actions CI runs `tsc -b` + `pnpm test` on every PR. *(v1.0, expanded each release)*
 - **Bags well over 2 GB work in the browser**: range reads + lazy decoding throughout the parser stack.
 
 > Looking for the long version with implementation notes and design tradeoffs for each release? See **[FEATURES.md](FEATURES.md)**.
@@ -161,7 +161,7 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 - **v1.4.3**: Timeline bookmarks. Named amber ticks on the scrubber; double-click the bar (or press `M`, or use the `+` button) to drop a bookmark at any timestamp, click to seek, hover to see the label and delete it. Bookmarks persist to `localStorage` keyed by bag fingerprint and are encoded in the URL hash as `bm=timeSec.3f,label|...` tuples so a shared link opens the bag with the sender's annotations intact. `loadForBag` lets URL-hash bookmarks take priority over localStorage. 11 new tests in `tests/store/annotations.test.ts`; 303 total.
 - **v1.4.2**: Clip export. Export button in the Toolbar opens a modal to render any open panel (Image, 3D Scene, Plot, Trajectory) frame-by-frame to a PNG zip or WebM video. Frame-sync protocol: seek playhead, double rAF + 250 ms settle, `canvas.toBlob()`. PNG frames zipped via `fflate` (level 0 - no recompression of already-compressed PNGs); WebM encoded via a two-phase `MediaRecorder` + `captureStream(0)` + `requestFrame()` approach so video playback speed matches the requested fps regardless of how long each frame takes to capture. `preserveDrawingBuffer: true` added to `THREE.WebGLRenderer` so the 3D panel's canvas is always readable. Capture registry (`captureRegistry.ts`) lets panels register their canvas without prop drilling. New `fflate` dependency.
 - **v1.4.1**: Math expressions as derived series in TimeSeriesPlot. Add expressions like `vel * 2 + offset` or `sqrt(x*x + y*y)` as extra series in any plot panel. Tokenizer + recursive-descent evaluator with no `eval`, supports `+`, `-`, `*`, `/`, unary minus, `sqrt()`, `abs()`, `pow()`, `min()`, `max()`. 36 new tests in `tests/utils/mathExpr.test.ts`; covers all operators, precedence, error paths.
-- **v1.4.0**: Bag Health dashboard. `Health` button in the Toolbar opens a per-topic analytics table showing measured Hz, jitter (p50/p95 inter-message gap standard deviation), gap events (pauses > 3x expected period), and bandwidth. Computed once per bag in a background stats scan (first `getHealthStats` call caches the result). Supports MCAP, DB3, and ROS1 `.bag`. Renders as a sortable table with severity chips (green/amber/red) and a per-topic detail row. 12 new tests.
+- **v1.4.0**: Bag Health dashboard. `Health` button in the Toolbar opens a per-topic analytics table showing measured Hz, jitter (standard deviation of inter-message gaps), gap events (pauses > 3x expected period), and bandwidth. Computed once per bag in a background stats scan (first `getHealthStats` call caches the result). Supports MCAP, DB3, and ROS1 `.bag`. Renders as a sortable table with severity chips (green/amber/red) and a per-topic detail row. 12 new tests.
 - **v1.3.4**: Image rectification, per-camera frustum hide, About-modal defaults management. `ImageViewer` gains an `undistort` button (alongside the existing `CameraInfo` overlay toggle) that applies per-frame plumb-bob (Brown-Conrady) undistortion using the paired `sensor_msgs/CameraInfo`'s `D[0..4]` coefficients - forward-distortion remap table precomputed on demand and cached by intrinsics fingerprint (LRU-4 so a 4-camera rig pays only one build per unique calibration). The 3D panel's camera-frustum section grows per-camera hide checkboxes that appear when the bag has 2+ `CameraInfo` topics, parallel to the v0.8 marker-namespace filter - hidden topics are excluded from both the `CameraInfoFeed` mounts and the Three.js scene, so disabling a camera costs literally nothing at runtime. The About modal gains a "Saved Display defaults" table listing each saved kind default with a per-row `clear` and a section-level `clear all`, mirroring the existing custom-schemas section. `hiddenFrustumTopics` joins `NON_PORTABLE_FIELDS` so per-bag topic-name choices are never baked into a cross-bag default. 16 new tests; total suite now 292.
 - **v1.3.3**: Saved Display defaults + loop playback. The 3D panel's Display card grows `save as default` / `reset` / `clear saved` affordances that persist your colour mode, accumulator state, point size, range filter, up-axis, and camera-frustum knobs per data type (`PointCloud2` / `LaserScan` / `MarkerArray` / `OccupancyGrid` / `Pose`) to `localStorage`, so the next bag you open spins up new panels with your preferred settings instead of the built-in defaults. Closes issue #44. The Timeline grows a `loop` toggle (also bound to `L`) that wraps the playhead back to start instead of pausing at the end of the bag, persisted so the choice survives a reload. Closes issue #45. 20 new tests; total suite now 276.
 - **v1.3.2**: `sensor_msgs/CameraInfo` first-class support. ImageViewer grows an overlay (principal-point reticle, focal-length badge, calibration-likely-unfilled chip) with auto-pair by topic-name convention (`/camera/image_raw` -> `/camera/camera_info`) and a per-panel manual override. The 3D scene renders a wireframe camera frustum in each camera's optical frame, sized by intrinsics, with a per-panel far-plane slider; when the camera's TF chains to the robot, the frustum follows the robot through scrubs. 21 new tests; total suite now 256.
@@ -444,6 +444,17 @@ src/
     ├── gpsTiles.ts       # OSM slippy-map projection + tile LRU loader (v0.9)
     ├── export.ts         # CSV + NDJSON encoders + download trigger
     ├── meshLoader.ts     # v1.3 Three.js .stl/.dae/.obj dispatcher (lazy + LRU)
+    ├── actionableError.ts # User-facing error classification for bags and panels
+    ├── anomalies.ts      # Timeline anomaly detection (gaps, rate shifts)
+    ├── captureRegistry.ts # Panel canvas registry for clip export
+    ├── chartTheme.ts     # uplot theme tokens for light and dark
+    ├── clipEncoder.ts    # PNG-zip / MP4 / WebM clip recording pipeline
+    ├── compressedDepth.ts # compressed_depth_image_transport 16-bit decode
+    ├── imageRectify.ts   # CameraInfo plumb-bob undistortion
+    ├── mathExpr.ts       # Sandboxed arithmetic expressions for plot series
+    ├── messageDensity.ts # Message-density buckets for the timeline
+    ├── png16.ts          # 16-bit PNG scanline decoder
+    ├── topicStats.ts     # Hz, jitter, gap, and bandwidth stats
     └── version.ts        # APP_VERSION constant
 ```
 
@@ -469,11 +480,11 @@ ThreeDScene/
 
 ### Build-time scripts
 
-- `scripts/build-sample-bag.mjs`: generates `public/sample-bags/tour.mcap`, a ~2 MB synthetic bag with `/odom`, `/imu/data`, `/scan`, `/tf`, `/markers`, `/map`, and `/gps/fix` topics over 30 seconds. The `/markers` topic publishes 8 markers at 1 Hz across `status` (base_link, frame-locked) and `planning` (odom) namespaces to exercise the v0.8 MarkerArray renderer end-to-end. `/map` publishes a 100×100 `nav_msgs/OccupancyGrid` that expands outward over the bag, mimicking an incremental SLAM run with outer walls, two pillars, and a mid-cost diagonal corridor to exercise the v0.9 cost ramp. `/gps/fix` projects the figure-eight onto realistic lat/lon around Cambridge UK so the v0.9 OSM tile underlay shows familiar streets when toggled on. Idempotent; rerun only if the synthetic data needs changing. The output is committed so a fresh checkout serves the sample without a Node build step.
+- `scripts/build-sample-bag.mjs`: generates `public/sample-bags/tour.mcap`, a ~3.3 MB synthetic bag with `/odom`, `/imu/data`, `/scan`, `/tf`, `/markers`, `/map`, `/gps/fix`, `/camera/image_raw`, `/camera/camera_info`, and `/camera_rear/camera_info` topics over 30 seconds. The `/markers` topic publishes 8 markers at 1 Hz across `status` (base_link, frame-locked) and `planning` (odom) namespaces to exercise the v0.8 MarkerArray renderer end-to-end. `/map` publishes a 100×100 `nav_msgs/OccupancyGrid` that expands outward over the bag, mimicking an incremental SLAM run with outer walls, two pillars, and a mid-cost diagonal corridor to exercise the v0.9 cost ramp. `/gps/fix` projects the figure-eight onto realistic lat/lon around Cambridge UK so the v0.9 OSM tile underlay shows familiar streets when toggled on. Idempotent; rerun only if the synthetic data needs changing. The output is committed so a fresh checkout serves the sample without a Node build step.
 - `scripts/verify-sample-bag.mjs`: parses the generated bag with `McapIndexedReader` and prints the topic table; smoke-test the writer when you change the synthesiser.
 - `scripts/verify-parsers.mjs`: Node-side verification of the `.db3` and `.mcap` parser paths against the real test fixtures in `test_files/`.
 
-### Tests (v1.0 - v1.3.3)
+### Tests
 
 ```
 tests/
@@ -484,7 +495,7 @@ tests/
 │   ├── cdr.test.ts             # CDR round-trips (String, Twist, Odometry w/ covariance)
 │   ├── mcap.test.ts            # Parse + read + at-time + cache invalidation against synth bags
 │   ├── db3.test.ts             # .db3 dispatch via mocked sql.js locateFile
-│   ├── bag.test.ts             # ROS1 .bag, skipped on 10 GB fixtures, ready for a smaller one
+│   ├── bag.test.ts             # ROS1 .bag read paths against the synthetic writer
 │   ├── edit.test.ts            # v1.1 trim + topic filter round-trips (synth + tour.mcap)
 │   ├── editDb3.test.ts         # v1.2 .db3-in / MCAP-out + missing-schema opt-in path
 │   ├── editRos1.test.ts        # v1.2 .bag-in / MCAP-out + connection-record schema flow
@@ -517,7 +528,7 @@ tests/
     └── real-db3.test.ts        # test_files/db3/sample.db3 (skipped on CI; gitignored)
 ```
 
-Run with `pnpm test` (one-shot, under 20 s wall time, 526 passing tests) or `pnpm test:watch` for HMR-style re-runs. `pnpm test:coverage` adds an `@vitest/coverage-v8` report under `coverage/`. The `tests/` directory uses synthetic fixtures (no disk hit) and the bundled `tour.mcap` as the integration layer, so a fresh checkout has everything the suite needs without downloading any new fixtures.
+Run with `pnpm test` (one-shot, under 20 s wall time, 600+ passing tests) or `pnpm test:watch` for HMR-style re-runs. `pnpm test:coverage` adds an `@vitest/coverage-v8` report under `coverage/`. The `tests/` directory uses synthetic fixtures (no disk hit) and the bundled `tour.mcap` as the integration layer, so a fresh checkout has everything the suite needs without downloading any new fixtures.
 
 ---
 

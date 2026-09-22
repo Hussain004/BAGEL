@@ -41,6 +41,6 @@ jobs:
       # The real-bag fixtures aren't in CI (`test_files/` is gitignored), so
       # those test suites skip themselves. The synthetic in-memory MCAPs and
       # the committed sample bag (`public/sample-bags/tour.mcap`) carry the
-      # coverage on CI. ~150 active tests; under 30 s wall time.
+      # coverage on CI. 600+ active tests; under 30 s wall time.
       - name: Run tests
         run: pnpm test
