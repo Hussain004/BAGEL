@@ -32,9 +32,9 @@ import {
   type DecodedMessage,
 } from '../../../hooks/useTopicMessages';
 import { usePlayheadStore } from '../../../store/playheadStore';
-import { nsToSeconds } from '../../../utils/time';
 import { PanelShell } from '../PanelShell';
 import { PanelLoadingState, PanelErrorState, PanelEmptyState } from '../shared/PanelStates';
+import { formatRelativeTime } from '../shared/formatRelativeTime';
 import { getTopicColor } from '../../../utils/color';
 import { nearestMessageIndex } from '../../../utils/messages';
 
@@ -342,10 +342,9 @@ export function Log({ panelId, topicName, type, bagId }: LogPanelProps) {
             {playheadIdx >= 0 && bag && filteredLogs[playheadIdx] && (
               <span>
                 t ={' '}
-                {nsToSeconds(
+                {formatRelativeTime(
                   filteredLogs[playheadIdx].timestamp - bag.startTime,
-                ).toFixed(3)}
-                s
+                )}
               </span>
             )}
           </div>
@@ -386,6 +385,8 @@ function FilterBar({
   autoFollow,
   onToggleAutoFollow,
   uniqueNodeCount,
+  total,
+  shown,
 }: FilterBarProps) {
   return (
     <div className="px-4 py-2 border-b border-border flex items-center gap-2 flex-wrap">
@@ -445,6 +446,10 @@ function FilterBar({
       >
         {autoFollow ? 'Following' : 'Follow'}
       </button>
+      {/* Shown-vs-total count, mirroring DiagnosticArray's FilterBar span. */}
+      <span className="text-text-muted text-xs mono tabular-nums flex-shrink-0">
+        {shown.toLocaleString()} / {total.toLocaleString()} shown
+      </span>
     </div>
   );
 }
@@ -490,7 +495,7 @@ function LogRow({ entry, top, isPlayhead, bagStartNs, searchTerm, onClick }: Log
         {entry.severity}
       </span>
       <span className="text-text-muted tabular-nums flex-shrink-0 w-16 text-right">
-        {nsToSeconds(entry.timestamp - bagStartNs).toFixed(2)}s
+        {formatRelativeTime(entry.timestamp - bagStartNs)}
       </span>
       <span
         className="text-text-secondary truncate flex-shrink-0 max-w-[160px]"

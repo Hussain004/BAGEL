@@ -107,6 +107,10 @@ export function TrajectoryPlot({ panelId, topicName, type, bagId }: TrajectoryPl
   // [points, view, playheadNs] dependency list without needing an imperative
   // mid-async repaint path.
   const [tileGeneration, setTileGeneration] = useState(0);
+  // Bumped by the resize observer after it re-allocates the (cleared)
+  // canvas backing store, so the render effect repaints even when setView
+  // resolves to an unchanged view.
+  const [sizeVersion, setSizeVersion] = useState(0);
 
   // (Re)compute the auto-fit view whenever the data bounds change.
   const recomputeFit = useCallback(() => {
@@ -153,6 +157,12 @@ export function TrajectoryPlot({ panelId, topicName, type, bagId }: TrajectoryPl
       canvas.height = Math.max(1, Math.round(h * dpr));
       canvas.style.width = `${w}px`;
       canvas.style.height = `${h}px`;
+      // Setting canvas.width clears the bitmap. The render effect below is
+      // what repaints, but it only re-runs when one of its deps changes -
+      // setView often resolves to the identical view object, leaving the
+      // canvas blank after a resize. Bumping sizeVersion always schedules
+      // that repaint.
+      setSizeVersion((v) => v + 1);
       const fit = recomputeFit();
       if (fit) {
         autoFitRef.current = fit;
@@ -379,7 +389,7 @@ export function TrajectoryPlot({ panelId, topicName, type, bagId }: TrajectoryPl
     }
 
     drawScaleBar(ctx, cw, ch, view, themeColors);
-  }, [points, view, playheadNs, projected, showMapTiles, navSatRef, tileGeneration, bagColor, bagCount, themeColors]);
+  }, [points, view, playheadNs, projected, showMapTiles, navSatRef, tileGeneration, sizeVersion, bagColor, bagCount, themeColors]);
 
   const accent = getTopicColor(topicName, type);
   const startNs = bag?.startTime ?? 0n;

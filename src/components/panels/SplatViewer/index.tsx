@@ -481,6 +481,7 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
       }
       if (!FLY_CODES.has(e.code)) return;
       heldKeys.add(e.code);
+      startTickLoop();
     };
     const onKeyUp = (e: KeyboardEvent) => heldKeys.delete(e.code);
     const onBlur = () => heldKeys.clear();
@@ -496,7 +497,21 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
     const spinQuat = new THREE.Quaternion();
     const spinOffset = new THREE.Vector3();
     let lastTime = performance.now();
-    let rafId = requestAnimationFrame(tick);
+    // The tick loop only runs while a fly key is actually held: keydown
+    // starts it, tick reschedules itself only when keys are still down, and
+    // the last keyup (or window blur) ends it on the next frame. An
+    // always-on loop would burn a core re-scheduling itself at 60fps doing
+    // nothing whenever the panel sits idle, which is the common case.
+    let rafId: number | null = null;
+
+    const startTickLoop = () => {
+      if (rafId !== null) return;
+      // Reset the dt baseline so the first frame after a pause doesn't
+      // treat the whole idle gap as elapsed time (dt is clamped anyway,
+      // but this keeps movement speed consistent across hold/release).
+      lastTime = performance.now();
+      rafId = requestAnimationFrame(tick);
+    };
 
     // Spin the splat itself around the pivot (camera and target both stay
     // put) - the object-space counterpart to Z/C's camera orbit, shared by
@@ -518,10 +533,15 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
     }
 
     function tick(now: number) {
+      if (heldKeys.size === 0) {
+        // Nothing held: stop instead of rescheduling. The next keydown
+        // restarts the loop via startTickLoop.
+        rafId = null;
+        return;
+      }
       rafId = requestAnimationFrame(tick);
       const dt = Math.min((now - lastTime) / 1000, 0.1);
       lastTime = now;
-      if (heldKeys.size === 0) return;
       const live = sceneRef.current;
       if (!live) return;
 
@@ -597,7 +617,7 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
     }
 
     return () => {
-      cancelAnimationFrame(rafId);
+      if (rafId !== null) cancelAnimationFrame(rafId);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('blur', onBlur);
@@ -715,8 +735,16 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
 
           {loadState.status === 'error' && (
             <div className="absolute inset-0 flex items-center justify-center bg-bg-primary/40 pointer-events-none">
-              <div className="px-3 py-1.5 rounded-md text-xs mono bg-surface/90 border border-red-500/40 text-red-400 max-w-md text-center">
+              <div className="px-3 py-1.5 rounded-md text-xs mono bg-surface/90 border border-accent-rose/40 text-accent-rose max-w-md text-center">
                 {loadState.message}
+              </div>
+            </div>
+          )}
+
+          {loadState.status === 'idle' && (
+            <div className="absolute inset-0 flex items-center justify-center bg-bg-primary/40 pointer-events-none">
+              <div className="px-3 py-1.5 rounded-md text-xs mono bg-surface/90 border border-border text-text-secondary max-w-md text-center">
+                No splat file open. Load a .ply, .splat, or .ksplat file to view splats.
               </div>
             </div>
           )}

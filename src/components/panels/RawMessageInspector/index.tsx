@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMessageAtTime } from '../../../hooks/useMessageAtTime';
 import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
 import { useBagLocalPlayhead } from '../../../hooks/useBagLocalPlayhead';
@@ -27,7 +27,6 @@ export function RawMessageInspector({ panelId, topicName, type, bagId }: RawMess
   const playheadNs = useBagLocalPlayhead(bagId);
   const { message, loading, error } = useMessageAtTime(topicName, playheadNs, bagId);
 
-  const startNs = bag?.startTime ?? 0n;
   const showInitialLoading = loading && !message;
 
   return (
@@ -76,9 +75,14 @@ export function RawMessageInspector({ panelId, topicName, type, bagId }: RawMess
             )}
           </div>
 
-          <div className="px-4 py-1.5 border-t border-border flex items-center justify-end text-text-muted text-xs mono">
-            <span>t = {nsToSeconds(message.timestamp - startNs).toFixed(3)}s</span>
-          </div>
+          {/* Relative-time footer only when the bag summary is present:
+              without it there is no bag start to measure against, and the
+              old `?? 0n` fallback turned t into raw epoch seconds. */}
+          {bag && (
+            <div className="px-4 py-1.5 border-t border-border flex items-center justify-end text-text-muted text-xs mono">
+              <span>t = {nsToSeconds(message.timestamp - bag.startTime).toFixed(3)}s</span>
+            </div>
+          )}
         </div>
       )}
     </PanelShell>
@@ -183,6 +187,17 @@ function CollapsibleNode({
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(startOpen);
+
+  // Re-adopt the default when the data under this node changes shape: the
+  // playhead can move between messages where the same array is small
+  // (startOpen) or large (starts closed), and a mounted node would
+  // otherwise keep the previous message's open state. Fires only when
+  // startOpen itself flips, so it never fights the user's manual toggles
+  // on an unchanged default.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing local state to a prop that only changes with the rendered message
+    setOpen(startOpen);
+  }, [startOpen]);
 
   return (
     <div className="leading-relaxed">

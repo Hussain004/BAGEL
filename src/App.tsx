@@ -23,10 +23,12 @@ class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryStat
   static getDerivedStateFromError(error: Error): ErrorBoundaryState { return { error }; }
   render() {
     if (this.state.error) {
+      // Theme utility classes (not hardcoded hex) so the crash screen stays
+      // readable in both themes, matching every other full-page state.
       return (
-        <div style={{ fontFamily: 'monospace', padding: '2rem', background: '#0a0e1a', color: '#f87171', minHeight: '100vh' }}>
-          <h1 style={{ color: '#fb923c', marginBottom: '1rem' }}>BAGEL crashed - please report this</h1>
-          <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '0.85rem' }}>
+        <div className="min-h-screen bg-bg-primary p-8 text-accent-rose mono">
+          <h1 className="text-accent-amber text-lg font-semibold mb-4">BAGEL crashed - please report this</h1>
+          <pre className="whitespace-pre-wrap break-all text-sm">
             {this.state.error.message}
             {'\n\n'}
             {this.state.error.stack}
@@ -41,7 +43,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryStat
 /**
  * Root Application Component.
  *
- * - No bag → DropZone landing page.
+ * - No bag → landing page.
  * - Bag loaded → Toolbar + Sidebar + PanelGrid + Timeline.
  *
  * Global cross-cutting hooks (keyboard shortcuts, URL hash sync) live here
@@ -49,6 +51,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryStat
  */
 function AppInner() {
   const bag = useBagStore((s) => s.bag);
+  const bagCount = useBagStore((s) => s.bags.size);
   const closeAllPanels = useLayoutStore((s) => s.closeAllPanels);
 
   // Global shortcuts (Space/Arrows/T/O/Esc/?/A) + URL hash sync + sync
@@ -66,20 +69,31 @@ function AppInner() {
     applyTheme(theme);
   }, [theme]);
 
-  // v0.8: when a *different* bag was loaded (single-bag flow), drop any
-  // panels + cached messages from the previous one. Multi-bag (v0.9) skips
-  // this: adding a second bag must not wipe panels from the first one.
-  // We continue to fire when the user goes back to zero bags (clearAll)
-  // since at that point there's nothing meaningful to render.
+  // Drop panels + cached messages that belonged to a bag that is no longer
+  // part of the picture. The key change alone is not enough to decide:
+  //   - going back to zero bags (clearAll) always cleans up, since there is
+  //     nothing meaningful left to render;
+  //   - a direct single-bag replace (one bag swapped for a different one
+  //     with no zero-bag frame in between) cleans up the old bag's panels;
+  //   - adding a second bag (v0.9 multi-bag), switching focus between bags,
+  //     or removing one of several bags must NOT wipe the survivors' panels,
+  //     so those are guarded by the previous bag count.
   const lastBagKeyRef = useRef<string | null>(null);
+  const lastBagCountRef = useRef<number | null>(null);
   useEffect(() => {
     const key = bag ? `${bag.fileName}::${bag.fileSize}` : null;
-    if (lastBagKeyRef.current !== null && lastBagKeyRef.current !== key && !bag) {
+    const prevKey = lastBagKeyRef.current;
+    const prevCount = lastBagCountRef.current;
+    const changed = prevKey !== null && prevKey !== key;
+    const wentEmpty = key === null;
+    const replacedSingle = key !== null && prevCount === 1 && bagCount <= 1;
+    if (changed && (wentEmpty || replacedSingle)) {
       closeAllPanels();
       clearTopicMessageCache();
     }
     lastBagKeyRef.current = key;
-  }, [bag?.fileName, bag?.fileSize, bag, closeAllPanels]);
+    lastBagCountRef.current = bagCount;
+  }, [bag, bagCount, closeAllPanels]);
 
   return (
     <>

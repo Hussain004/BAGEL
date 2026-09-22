@@ -554,11 +554,11 @@ function CanvasWithOverlay({ canvasRef, showOverlay, camera }: CanvasWithOverlay
           }}
           aria-hidden
         >
-          <svg width="22" height="22" viewBox="0 0 22 22">
-            <circle cx="11" cy="11" r="8" fill="none" stroke="#06b6d4" strokeWidth="1" opacity="0.85" />
-            <line x1="11" y1="0" x2="11" y2="22" stroke="#06b6d4" strokeWidth="0.7" opacity="0.85" />
-            <line x1="0" y1="11" x2="22" y2="11" stroke="#06b6d4" strokeWidth="0.7" opacity="0.85" />
-            <circle cx="11" cy="11" r="1.5" fill="#06b6d4" />
+          <svg className="text-accent-cyan" width="22" height="22" viewBox="0 0 22 22">
+            <circle cx="11" cy="11" r="8" fill="none" stroke="currentColor" strokeWidth="1" opacity="0.85" />
+            <line x1="11" y1="0" x2="11" y2="22" stroke="currentColor" strokeWidth="0.7" opacity="0.85" />
+            <line x1="0" y1="11" x2="22" y2="11" stroke="currentColor" strokeWidth="0.7" opacity="0.85" />
+            <circle cx="11" cy="11" r="1.5" fill="currentColor" />
           </svg>
         </div>
       )}
@@ -582,7 +582,7 @@ function CameraInfoBadge({ camera, calibrationLikelyUnfilled }: CameraInfoBadgeP
       </OverlayCard>
       {calibrationLikelyUnfilled && (
         <div
-          className="bg-amber-500/15 border border-amber-500/40 text-amber-300 rounded-md px-2 py-1 text-[10px] mono"
+          className="bg-accent-amber/15 border border-accent-amber/40 text-accent-amber rounded-md px-2 py-1 text-[10px] mono"
           title="Every coefficient in D[0..4] is zero. This is almost always a calibration template that was never run."
         >
           calibration likely unfilled
@@ -666,7 +666,7 @@ function CameraInfoHeaderToggle({
       className={`text-[10px] mono px-1.5 py-0.5 rounded border transition-colors ${
         enabled
           ? 'border-accent-cyan/60 text-accent-cyan bg-accent-cyan/10'
-          : 'border-border text-text-tertiary hover:text-text-secondary hover:border-border-strong'
+          : 'border-border text-text-tertiary hover:text-text-secondary hover:border-border-hover'
       }`}
       title={
         enabled
@@ -709,7 +709,7 @@ function RectifyHeaderToggle({
           ? 'border-border text-text-tertiary opacity-50 cursor-not-allowed'
           : enabled
             ? 'border-accent-violet/60 text-accent-violet bg-accent-violet/10'
-            : 'border-border text-text-tertiary hover:text-text-secondary hover:border-border-strong'
+            : 'border-border text-text-tertiary hover:text-text-secondary hover:border-border-hover'
       }`}
       title={
         unsupported

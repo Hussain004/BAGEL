@@ -8,7 +8,7 @@
 
 /* ============================================================
    BAGEL Design System
-   The landing page (DropZone) is the brand: glassmorphism, gradient
+   The landing page is the brand: glassmorphism, gradient
    orbs, animated grid. Once a bag is loaded, the workspace (PanelGrid,
    PanelShell) is deliberately flatter and quieter - an instrument, not
    a marketing page, and every panel gets a solid opaque background
@@ -195,23 +195,11 @@ select option {
 }
 
 /* ── Glassmorphism ── */
-.glass {
-  background: var(--color-overlay);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--color-border);
-}
-
 .glass-strong {
   background: var(--color-overlay-strong);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--color-border);
-}
-
-.glass-hover:hover {
-  background: var(--color-overlay-strong);
-  border-color: var(--color-border-hover);
 }
 
 /* ── Animations ── */
@@ -296,24 +284,6 @@ select option {
   }
 }
 
-@keyframes shimmer {
-  0% {
-    background-position: -200% 0;
-  }
-  100% {
-    background-position: 200% 0;
-  }
-}
-
-@keyframes float {
-  0%, 100% {
-    transform: translateY(0px);
-  }
-  50% {
-    transform: translateY(-6px);
-  }
-}
-
 @keyframes spin-slow {
   from {
     transform: rotate(0deg);
@@ -369,60 +339,14 @@ select option {
   animation: panel-out 120ms ease-in forwards;
 }
 
-.animate-shimmer {
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.04), transparent);
-  background-size: 200% 100%;
-  animation: shimmer 2s ease-in-out infinite;
-}
-
-.animate-float {
-  animation: float 3s ease-in-out infinite;
-}
-
 .animate-spin-slow {
   animation: spin-slow 8s linear infinite;
 }
 
-.animate-gradient {
-  background-size: 200% 200%;
-  animation: gradient-shift 4s ease infinite;
-}
-
-/* Stagger-in: a combined fade + lift used for the landing page cascade.
-   Elements start invisible and animate in with a delay set via inline style
-   (animationDelay), then stay visible (forwards fill). */
-@keyframes stagger-in {
-  from {
-    opacity: 0;
-    transform: translateY(16px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.animate-stagger-in {
-  opacity: 0;
-  animation: stagger-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-/* Staggered animation delays for lists */
-.stagger-1 { animation-delay: 0.05s; }
-.stagger-2 { animation-delay: 0.10s; }
-.stagger-3 { animation-delay: 0.15s; }
-.stagger-4 { animation-delay: 0.20s; }
-.stagger-5 { animation-delay: 0.25s; }
-.stagger-6 { animation-delay: 0.30s; }
-.stagger-7 { animation-delay: 0.35s; }
-.stagger-8 { animation-delay: 0.40s; }
-
 /* ── Progress Bar ── */
-/* No width transition here on purpose - this class is shared by the
-   Timeline seek fill (updates every RAF frame during playback/drag and
-   needs an *unanimated* width so it doesn't lag behind the real position)
-   and the DropZone load-progress fill (wants a smooth transition, applied
-   directly at that call site instead since the two need different timing). */
+/* No width transition here on purpose - the Timeline seek fill updates
+   every RAF frame during playback/drag and needs an *unanimated* width so
+   it doesn't lag behind the real position. */
 .progress-bar {
   background: linear-gradient(90deg, var(--color-accent-blue), var(--color-accent-cyan), var(--color-accent-violet));
   background-size: 200% 100%;
@@ -504,143 +428,6 @@ select option {
   border: 1px solid rgba(100, 116, 139, 0.2);
 }
 
-/* ── Drop Zone ──
-   The single most important control on the page, so it needs to read as a
-   focal object at rest, not just react on hover: a faint persistent surface
-   tint + ambient shadow lifts it off the flat background before the user
-   ever touches it. */
-@keyframes marching-ants {
-  to { stroke-dashoffset: -24; }
-}
-
-@keyframes sweep-light {
-  0% { transform: translateX(-100%) skewX(-15deg); }
-  100% { transform: translateX(200%) skewX(-15deg); }
-}
-
-@keyframes glow-breathe {
-  0%, 100% { filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.3)); }
-  50% { filter: drop-shadow(0 0 16px rgba(6, 182, 212, 0.5)); }
-}
-
-@keyframes ring-orbit {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-@keyframes badge-pop {
-  from {
-    opacity: 0;
-    transform: translateY(8px) scale(0.9);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-@keyframes input-glow-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
-  50% { box-shadow: 0 0 12px 2px rgba(59, 130, 246, 0.08); }
-}
-
-@keyframes shimmer-sweep {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
-}
-
-@keyframes dash-march {
-  to { stroke-dashoffset: -20; }
-}
-
-.dropzone {
-  border: 2.5px dashed var(--color-border);
-  border-radius: var(--radius-xl);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-panel);
-  transition:
-    border-color 0.3s ease,
-    background-color 0.3s ease,
-    box-shadow 0.3s ease,
-    transform 0.3s ease;
-  position: relative;
-  overflow: hidden;
-}
-
-.dropzone::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  opacity: 0;
-  background: linear-gradient(
-    105deg,
-    transparent 40%,
-    rgba(59, 130, 246, 0.06) 45%,
-    rgba(6, 182, 212, 0.08) 50%,
-    rgba(59, 130, 246, 0.06) 55%,
-    transparent 60%
-  );
-  transition: opacity 0.4s ease;
-  pointer-events: none;
-}
-
-.dropzone:hover::before,
-.dropzone-active::before {
-  opacity: 1;
-  animation: sweep-light 2.5s ease-in-out infinite;
-}
-
-.dropzone:hover,
-.dropzone-active {
-  border-color: var(--color-accent-blue);
-  background: rgba(59, 130, 246, 0.05);
-  box-shadow: var(--shadow-glow-blue), 0 8px 32px rgba(59, 130, 246, 0.08);
-  transform: translateY(-2px);
-}
-
-.dropzone-active {
-  animation: pulse-border 1.5s ease-in-out infinite;
-}
-
-/* ── Button hover glow ── */
-.btn-glow {
-  position: relative;
-  overflow: hidden;
-}
-
-.btn-glow::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  opacity: 0;
-  background: radial-gradient(circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
-    rgba(59, 130, 246, 0.15), transparent 70%);
-  transition: opacity 0.3s ease;
-  pointer-events: none;
-}
-
-.btn-glow:hover::after {
-  opacity: 1;
-}
-
-/* ── Input focus enhancements ── */
-.input-premium {
-  transition:
-    border-color 0.3s ease,
-    box-shadow 0.3s ease,
-    background-color 0.3s ease;
-}
-
-.input-premium:focus {
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.08), 0 0 16px rgba(59, 130, 246, 0.06);
-}
-
-.input-premium-emerald:focus {
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.08), 0 0 16px rgba(16, 185, 129, 0.06);
-}
-
 /* ── Topic Row ── */
 .topic-row {
   padding: 10px 16px;
@@ -670,15 +457,6 @@ select option {
 .mono {
   font-family: var(--font-mono);
   font-size: 0.85em;
-}
-
-/* ── Glow Effects ── */
-.glow-blue {
-  box-shadow: var(--shadow-glow-blue);
-}
-
-.glow-cyan {
-  box-shadow: var(--shadow-glow-cyan);
 }
 
 /* ── Wordmark ──
@@ -711,13 +489,6 @@ select option {
     var(--color-accent-cyan),
     var(--color-accent-blue) 70%
   );
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.text-gradient-warm {
-  background: linear-gradient(135deg, #f59e0b, #f43f5e, #ec4899);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -776,14 +547,19 @@ select:focus-visible {
 /* ── Reduced motion ──
    Users with motion sensitivity get static UI: animations are stripped to a
    single opacity transition so nothing's invisible, but nothing pulses or
-   shifts either. */
+   shifts either. Delays are zeroed too - several elements stagger their
+   entrance with an inline animation-delay, and a zero-duration animation
+   would otherwise still hold them at its start frame (invisible) until the
+   delay elapsed. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
     scroll-behavior: auto !important;
   }
 }

@@ -6,7 +6,8 @@ import { useAnnotationStore, type Annotation } from '../../store/annotationStore
 import { usePinnedTopicsStore } from '../../store/pinnedTopicsStore';
 import { useMessageDensity } from '../../hooks/useMessageDensity';
 import { computeMessageDensity } from '../../utils/messageDensity';
-import { nsToSeconds, formatDuration } from '../../utils/time';
+import { formatDuration } from '../../utils/time';
+import { formatRelativeTime } from '../panels/shared/formatRelativeTime';
 import type { AllTopicStats, MessageStats } from '../../types/bag';
 
 // Stable reference for "no pins" so the pinnedTopics selector below never
@@ -303,7 +304,7 @@ export function Timeline() {
 
       <div className="flex items-center gap-1 mono text-xs text-text-secondary min-w-[140px]">
         <span className="text-text-primary tabular-nums">
-          {formatRelative(timeNs - startNs)}
+          {formatRelativeTime(timeNs - startNs)}
         </span>
         <span className="text-text-muted">/</span>
         <span className="text-text-muted tabular-nums">{formatDuration(duration)}</span>
@@ -353,7 +354,7 @@ export function Timeline() {
             className="absolute -top-7 pointer-events-none px-1.5 py-0.5 rounded bg-bg-primary/95 border border-border text-[10px] mono text-text-primary whitespace-nowrap shadow-panel z-30"
             style={{ left: `${hoverInfo.x}px`, transform: 'translateX(-50%)' }}
           >
-            {formatRelative(BigInt(Math.max(0, Math.round(hoverInfo.timeSec * 1e9))))}
+            {formatRelativeTime(BigInt(Math.max(0, Math.round(hoverInfo.timeSec * 1e9))))}
           </div>
         )}
 
@@ -799,20 +800,15 @@ function BookmarkIcon() {
   );
 }
 
-function formatRelative(ns: bigint): string {
-  const sec = nsToSeconds(ns);
-  if (sec < 60) return `${sec.toFixed(2)}s`;
-  const m = Math.floor(sec / 60);
-  const s = sec - m * 60;
-  return `${m}m ${s.toFixed(1)}s`;
-}
-
 function SpeedSelect({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   const speeds = [0.25, 0.5, 1, 2, 4];
   return (
     <div className="flex items-center gap-1 text-xs">
-      <span className="text-text-muted mono">speed</span>
+      <label htmlFor="playback-speed" className="text-text-muted mono">
+        speed
+      </label>
       <select
+        id="playback-speed"
         value={value}
         onChange={(e) => onChange(parseFloat(e.target.value))}
         className="bg-surface border border-border rounded-md px-2 py-1 mono text-text-primary focus:outline-none focus:border-accent-blue/50"

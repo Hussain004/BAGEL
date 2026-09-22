@@ -46,13 +46,23 @@ type FpsOption = (typeof FPS_OPTIONS)[number];
 
 export function ClipExportModal() {
   const close = () => useUiStore.getState().setModal(null);
-  const { startNs, endNs } = usePlayheadStore();
+  // Selector subscriptions (not a whole-store subscribe) so playback ticks
+  // and other playhead churn don't re-render this modal; only the range
+  // endpoints matter here.
+  const startNs = usePlayheadStore((s) => s.startNs);
+  const endNs = usePlayheadStore((s) => s.endNs);
   const durationSec = Math.max(0, Number(endNs - startNs) / 1e9);
 
   const [panelIds] = useState<string[]>(() => listCapturablePanelIds());
   const [selectedPanelId, setSelectedPanelId] = useState(panelIds[0] ?? '');
   const [startSec, setStartSec] = useState(0);
   const [endSec, setEndSec] = useState(durationSec);
+  // Raw input text drafts: rendering startSec.toFixed(1) straight back into
+  // the controlled inputs rewrote them mid-typing (step-0.1 values like
+  // "0.3" collapsed after each keystroke). Draft wins while focused; blur
+  // falls back to the reformatted prop.
+  const [startDraft, setStartDraft] = useState<string | null>(null);
+  const [endDraft, setEndDraft] = useState<string | null>(null);
   const [fps, setFps] = useState<FpsOption>(12);
   const [format, setFormat] = useState<'png-zip' | 'video'>('png-zip');
   const [videoFormat] = useState(() => bestVideoFormat());
@@ -164,8 +174,14 @@ export function ClipExportModal() {
                   min={0}
                   max={durationSec}
                   step={0.1}
-                  value={startSec.toFixed(1)}
-                  onChange={(e) => setStartSec(Math.max(0, parseFloat(e.target.value) || 0))}
+                  value={startDraft ?? startSec.toFixed(1)}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setStartDraft(raw);
+                    const v = parseFloat(raw);
+                    if (Number.isFinite(v)) setStartSec(Math.max(0, v));
+                  }}
+                  onBlur={() => setStartDraft(null)}
                   disabled={isRunning}
                   className="w-20 bg-surface border border-border rounded-md px-2 py-1 text-xs mono text-text-primary focus:outline-none focus:border-accent-blue/60 disabled:opacity-50"
                 />
@@ -176,10 +192,14 @@ export function ClipExportModal() {
                   min={0}
                   max={durationSec}
                   step={0.1}
-                  value={endSec.toFixed(1)}
-                  onChange={(e) =>
-                    setEndSec(Math.min(durationSec, parseFloat(e.target.value) || durationSec))
-                  }
+                  value={endDraft ?? endSec.toFixed(1)}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setEndDraft(raw);
+                    const v = parseFloat(raw);
+                    if (Number.isFinite(v)) setEndSec(Math.min(durationSec, v));
+                  }}
+                  onBlur={() => setEndDraft(null)}
                   disabled={isRunning}
                   className="w-20 bg-surface border border-border rounded-md px-2 py-1 text-xs mono text-text-primary focus:outline-none focus:border-accent-blue/60 disabled:opacity-50"
                 />

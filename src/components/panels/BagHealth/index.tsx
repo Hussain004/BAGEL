@@ -5,6 +5,11 @@ import { computeAllTopicHealth, type TopicHealth } from '../../../utils/topicSta
 import { detectNonMonotonicStamps } from '../../../utils/anomalies';
 import type { AllTopicStats } from '../../../types/bag';
 import { PanelShell } from '../PanelShell';
+import {
+  PanelLoadingState,
+  PanelErrorState,
+  PanelEmptyState,
+} from '../shared/PanelStates';
 
 interface Props {
   panelId: string;
@@ -17,10 +22,11 @@ type SortKey = 'topic' | 'count' | 'meanHz' | 'jitterMs' | 'gaps' | 'bwKBs';
 type SortDir = 'asc' | 'desc';
 
 export function BagHealth({ panelId, topicName, type, bagId }: Props) {
-  const bagState = useBagStore((s) => s);
+  // Derived selector instead of a whole-store `(s) => s` subscribe, which
+  // re-rendered this panel on every playhead/layout/theme tick.
+  const panelEntry = useBagStore((s) => resolveBagEntry(s, bagId));
   const bags = useBagStore((s) => s.bags);
   const bagOrder = useBagStore((s) => s.bagOrder);
-  const panelEntry = resolveBagEntry(bagState, bagId);
 
   // viewBagId overrides which bag's health stats are shown; null = use panel's assigned bag.
   const [viewBagId, setViewBagId] = useState<string | null>(null);
@@ -56,6 +62,9 @@ export function BagHealth({ panelId, topicName, type, bagId }: Props) {
 
   useEffect(() => {
     if (!entry || entry.kind === 'live' || !entry.source) return;
+    // Ignore a scan that finishes after the user has switched bags (or the
+    // panel has unmounted), so stale stats can't overwrite the new entry's.
+    let cancelled = false;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setError(null);
@@ -63,9 +72,18 @@ export function BagHealth({ panelId, topicName, type, bagId }: Props) {
     const client = getParserClient(entry.id);
     client
       .readAllMessageStats(entry.source, entry.summary.format)
-      .then(setStats)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setLoading(false));
+      .then((s) => {
+        if (!cancelled) setStats(s);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveBagId]);
 
@@ -138,21 +156,20 @@ export function BagHealth({ panelId, topicName, type, bagId }: Props) {
           </div>
         )}
 
-        {!entry && (
+        {!entry && <PanelEmptyState message="No bag loaded." />}
+        {entry && entry.kind === 'live' && (
           <div className="flex-1 flex items-center justify-center text-text-muted text-sm">
-            No bag loaded.
+            Health stats are not available for live connections.
           </div>
         )}
         {entry && loading && (
-          <div className="flex-1 flex items-center justify-center gap-3 text-text-muted text-sm">
-            <Spinner />
-            Scanning message timestamps...
-          </div>
+          <PanelLoadingState message="Scanning message timestamps..." />
         )}
         {entry && error && (
-          <div className="flex-1 flex items-center justify-center text-accent-rose text-sm p-4 text-center">
-            {error}
-          </div>
+          <PanelErrorState
+            title="Failed to scan message timestamps"
+            message={error}
+          />
         )}
         {entry && !loading && !error && stats && (
           <div className="flex-1 flex flex-col min-h-0">
@@ -215,11 +232,19 @@ function Th({
   const active = current === sortKey;
   return (
     <th
-      className={`py-2 px-3 text-text-muted font-medium cursor-pointer hover:text-text-primary select-none whitespace-nowrap ${left ? 'text-left' : 'text-right'}`}
-      onClick={() => onSort(sortKey)}
+      aria-sort={active ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+      className={`py-2 px-3 text-text-muted font-medium whitespace-nowrap ${left ? 'text-left' : 'text-right'}`}
     >
-      {label}
-      {active && <SortArrow dir={dir} />}
+      {/* Real button inside the header cell: clickable for mouse users,
+          keyboard-focusable, and announced as a sort control. */}
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className="font-medium cursor-pointer hover:text-text-primary select-none transition-colors"
+      >
+        {label}
+        {active && <SortArrow dir={dir} />}
+      </button>
     </th>
   );
 }
@@ -288,15 +313,6 @@ function Sparkline({ t, hz }: { t: Float64Array; hz: Float64Array }) {
         strokeWidth="1.2"
         className="text-accent-blue/70"
       />
-    </svg>
-  );
-}
-
-function Spinner() {
-  return (
-    <svg className="w-4 h-4 animate-spin text-accent-blue" fill="none" viewBox="0 0 24 24">
-      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
     </svg>
   );
 }

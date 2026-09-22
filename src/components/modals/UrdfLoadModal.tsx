@@ -107,6 +107,22 @@ export function UrdfLoadModal() {
     }
   };
 
+  // Draft anchor-link choice. The picker edits this local state only;
+  // nothing is written to robotModelStore until "Load robot" commits, so
+  // re-opening the modal or browsing links can't mutate the anchor of the
+  // previously loaded model as a side effect. Reset whenever a new model is
+  // parsed so a stale draft from another URDF never commits.
+  const [anchorLink, setAnchorLink] = useState('');
+  useEffect(() => {
+    if (!parsed) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset the draft whenever the parsed model changes
+      setAnchorLink('');
+      return;
+    }
+    const links = Array.from(parsed.model.links.keys());
+    setAnchorLink(parsed.model.rootLinks[0] ?? links[0] ?? '');
+  }, [parsed]);
+
   const onCommit = () => {
     if (!parsed) return;
     const setLoaded = useRobotModelStore.getState().setLoaded;
@@ -114,7 +130,9 @@ export function UrdfLoadModal() {
       model: parsed.model,
       sourceName: parsed.sourceName,
       sourceText: parsed.text,
-      anchorLink: parsed.model.rootLinks[0] ?? '',
+      // Commit the picker's draft (falling back to the first root link if
+      // the model somehow has no links to pick).
+      anchorLink: anchorLink || parsed.model.rootLinks[0] || '',
       warnings: parsed.warnings,
     });
     close();
@@ -264,7 +282,11 @@ export function UrdfLoadModal() {
 
             <section>
               <SectionHeader title="Anchor link" hint="World-frame anchor for the robot base." />
-              <AnchorLinkPicker model={parsed.model} />
+              <AnchorLinkPicker
+                model={parsed.model}
+                value={anchorLink}
+                onChange={setAnchorLink}
+              />
             </section>
           </>
         )}
@@ -303,19 +325,29 @@ export function UrdfLoadModal() {
   );
 }
 
-function AnchorLinkPicker({ model }: { model: UrdfModel }) {
-  const loaded = useRobotModelStore((s) => s.loaded);
-  const setAnchorLink = useRobotModelStore((s) => s.setAnchorLink);
+function AnchorLinkPicker({
+  model,
+  value,
+  onChange,
+}: {
+  model: UrdfModel;
+  value: string;
+  onChange: (link: string) => void;
+}) {
   const allLinks = useMemo(() => Array.from(model.links.keys()).sort(), [model]);
-  // Use the URDF's first root link by default; the picker only matters for
-  // tree topologies where the user wants a non-root anchor.
-  const current = loaded?.anchorLink ?? model.rootLinks[0] ?? allLinks[0] ?? '';
+  // Fall back so the select always renders a valid option: the draft may be
+  // empty (model with no pickable links) or, in principle, name a link that
+  // isn't in this model's list.
+  const shown = value || model.rootLinks[0] || allLinks[0] || '';
   return (
     <select
-      value={current}
-      onChange={(e) => setAnchorLink(e.target.value)}
+      value={shown}
+      onChange={(e) => onChange(e.target.value)}
       className="w-full mt-2 px-2 py-1 rounded-md bg-bg-primary border border-border focus:border-accent-blue/60 focus:ring-1 focus:ring-accent-blue/30 focus:outline-none mono text-xs text-text-primary"
     >
+      {shown && !allLinks.includes(shown) && (
+        <option value={shown}>{shown}</option>
+      )}
       {allLinks.map((link) => (
         <option key={link} value={link}>
           {link} {model.rootLinks.includes(link) ? '(URDF root)' : ''}

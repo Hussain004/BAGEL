@@ -51,7 +51,8 @@ export function BagEditModal() {
     return (
       <ModalShell title="Edit bag" onClose={close} width="md">
         <div className="px-6 py-6 text-sm text-text-secondary">
-          Clip export is not available for live connections.
+          Bag editing is not available for live connections. Record to an
+          MCAP first, then edit the saved file.
         </div>
       </ModalShell>
     );
@@ -553,6 +554,13 @@ interface NumericFieldProps {
   onChange: (v: number) => void;
 }
 function NumericField({ label, value, min, max, max_, step, onChange }: NumericFieldProps) {
+  // Local draft of the raw input text: rendering value.toFixed(2) straight
+  // back into the controlled input rewrote it mid-typing (typing "1.5"
+  // collapsed to "1.00" after the first keystroke), making precise entry
+  // impossible. The draft wins while the user is editing; blur (or any
+  // external change such as a RangeBar drag, when not focused) falls back to
+  // the prop, reformatted.
+  const [draft, setDraft] = useState<string | null>(null);
   return (
     <label className="flex flex-col gap-1">
       <span className="text-[10px] text-text-tertiary uppercase tracking-wide">
@@ -560,14 +568,17 @@ function NumericField({ label, value, min, max, max_, step, onChange }: NumericF
       </span>
       <input
         type="number"
-        value={value.toFixed(2)}
+        value={draft ?? value.toFixed(2)}
         min={min}
         max={max_}
         step={step}
         onChange={(e) => {
-          const v = parseFloat(e.target.value);
+          const raw = e.target.value;
+          setDraft(raw);
+          const v = parseFloat(raw);
           if (Number.isFinite(v)) onChange(Math.max(min, Math.min(max, v)));
         }}
+        onBlur={() => setDraft(null)}
         className="px-2 py-1 rounded-md bg-bg-primary border border-border focus:border-accent-blue/60 focus:ring-1 focus:ring-accent-blue/30 focus:outline-none text-sm mono tabular-nums text-text-primary"
       />
     </label>
@@ -581,9 +592,10 @@ interface RangeBarProps {
   onChange: (start: number, end: number) => void;
 }
 /**
- * Mini-timeline showing the bag duration with two draggable handles. Click on
- * the track snaps the nearer handle; dragging a handle past the other one
- * swaps them (matches the v0.5 timeline behaviour).
+ * Mini-timeline showing the bag duration with two draggable handles.
+ * Handles clamp against each other while dragging (start stays at least
+ * 0.01s before end); they do not swap past one another, and clicking the
+ * track alone does not move a handle.
  */
 function RangeBar({ full, start, end, onChange }: RangeBarProps) {
   const trackRef = useRef<HTMLDivElement>(null);

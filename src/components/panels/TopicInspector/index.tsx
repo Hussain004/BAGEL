@@ -113,6 +113,7 @@ export function TopicInspector() {
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
+              aria-label="Clear topic filter"
               className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary transition-colors"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -232,7 +233,7 @@ function SortButton({
 
 /**
  * OnboardingHint — one-time coach line shown after the sample bag lands on
- * its curated layout (see applyCuratedSampleLayout in DropZone.tsx). The
+ * its curated layout (see applyCuratedSampleLayout in LandingPage.tsx). The
  * cockpit itself is the wow moment; this is the one sentence that says
  * "the rest of the sidebar is yours too."
  */

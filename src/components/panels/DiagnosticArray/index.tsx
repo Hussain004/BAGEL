@@ -44,6 +44,7 @@ import { PanelShell } from '../PanelShell';
 import { PanelLoadingState, PanelErrorState, PanelEmptyState } from '../shared/PanelStates';
 import { getTopicColor } from '../../../utils/color';
 import { nearestMessageIndex } from '../../../utils/messages';
+import { useThemeStore } from '../../../store/themeStore';
 
 interface DiagnosticArrayPanelProps {
   panelId: string;
@@ -229,8 +230,10 @@ export function DiagnosticArray({
             totalComponents={tracks.length}
           />
 
-          {/* Swimlane timeline (top half) */}
-          <div className="flex-1 min-h-0 overflow-hidden">
+          {/* Swimlane timeline (top half). Scrolls when there are more
+              rows than fit the panel; the canvas itself extends to cover
+              every track. */}
+          <div className="flex-1 min-h-0 overflow-y-auto">
             <Swimlane
               tracks={filteredTracks}
               messages={messages}
@@ -367,18 +370,23 @@ function Swimlane({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState<{ w: number; h: number }>({ w: 600, h: 200 });
+  // Theme flip re-runs the render effect so the CSS-variable colours below
+  // are re-read (their computed values change with data-theme).
+  const theme = useThemeStore((s) => s.theme);
+  // Canvas height: viewport height, but never shorter than every row, so
+  // tracks beyond the fold live on a scrollable canvas instead of being
+  // silently clipped (see the wrapper's overflow-y-auto).
+  const drawH = Math.max(size.h, tracks.length * (ROW_HEIGHT + ROW_GAP));
 
   // Measure container.
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
     const observer = new ResizeObserver(() => {
-      const r = el.getBoundingClientRect();
-      setSize({ w: Math.max(60, r.width), h: Math.max(60, r.height) });
+      setSize({ w: Math.max(60, el.clientWidth), h: Math.max(60, el.clientHeight) });
     });
     observer.observe(el);
-    const r0 = el.getBoundingClientRect();
-    setSize({ w: Math.max(60, r0.width), h: Math.max(60, r0.height) });
+    setSize({ w: Math.max(60, el.clientWidth), h: Math.max(60, el.clientHeight) });
     return () => observer.disconnect();
   }, []);
 
@@ -389,11 +397,11 @@ function Swimlane({
     if (!canvas) return;
     const dpr = window.devicePixelRatio || 1;
     canvas.width = Math.max(1, Math.floor(size.w * dpr));
-    canvas.height = Math.max(1, Math.floor(size.h * dpr));
+    canvas.height = Math.max(1, Math.floor(drawH * dpr));
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.scale(dpr, dpr);
-    ctx.clearRect(0, 0, size.w, size.h);
+    ctx.clearRect(0, 0, size.w, drawH);
 
     if (tracks.length === 0 || messages.length === 0) return;
 
@@ -402,20 +410,29 @@ function Swimlane({
     const rangeNs = Number(endNs - startNs);
     if (rangeNs <= 0) return;
 
+    // Canvas code can't read Tailwind classes; pull the two theme tokens it
+    // needs straight off the root element (values differ between the dark
+    // base and [data-theme="light"] overrides, hence `theme` in deps).
+    const rootStyles = getComputedStyle(document.documentElement);
+    const laneFill =
+      rootStyles.getPropertyValue('--color-overlay').trim() ||
+      'rgba(255, 255, 255, 0.03)';
+    const labelFill =
+      rootStyles.getPropertyValue('--color-text-secondary').trim() ||
+      '#94a3b8';
+
     // Per-row rendering: walk events left→right, fill spans up to the next event.
     // For the last event, extend to the bag end. Outside hiddenLevels.
-    const visibleTracks = tracks.slice(0, Math.floor(size.h / (ROW_HEIGHT + ROW_GAP)));
-
-    for (let row = 0; row < visibleTracks.length; row++) {
-      const track = visibleTracks[row];
+    for (let row = 0; row < tracks.length; row++) {
+      const track = tracks[row];
       const y = row * (ROW_HEIGHT + ROW_GAP);
 
       // Background lane
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+      ctx.fillStyle = laneFill;
       ctx.fillRect(labelW, y, plotW, ROW_HEIGHT);
 
       // Label
-      ctx.fillStyle = '#cbd5e1'; // text-secondary
+      ctx.fillStyle = labelFill; // --color-text-secondary
       ctx.font =
         '12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
       ctx.textBaseline = 'middle';
@@ -450,9 +467,9 @@ function Swimlane({
       const x =
         labelW + ((Number(playheadTs - startNs) / rangeNs) * plotW);
       ctx.fillStyle = 'rgba(59, 130, 246, 0.85)'; // accent-blue
-      ctx.fillRect(x - 0.5, 0, 1.5, size.h);
+      ctx.fillRect(x - 0.5, 0, 1.5, drawH);
     }
-  }, [size, tracks, messages, hiddenLevels, startNs, endNs, currentMsgIdx]);
+  }, [size, drawH, tracks, messages, hiddenLevels, startNs, endNs, currentMsgIdx, theme]);
 
   // Click-to-seek on the lane area
   const onClick = useCallback(
@@ -474,10 +491,13 @@ function Swimlane({
   );
 
   return (
+    // h-full (not min-h-full): the wrapper's box is the viewport we measure
+    // for `size`; the taller canvas overflows it visibly and the parent
+    // (overflow-y-auto) scrolls.
     <div ref={wrapRef} className="w-full h-full relative">
       <canvas
         ref={canvasRef}
-        style={{ width: size.w, height: size.h, display: 'block', cursor: 'pointer' }}
+        style={{ width: size.w, height: drawH, display: 'block', cursor: 'pointer' }}
         onClick={onClick}
         aria-label="Diagnostic status timeline — click to seek"
       />

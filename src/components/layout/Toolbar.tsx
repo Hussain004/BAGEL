@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   useBagStore,
   bagLocalTimeFor,
@@ -249,7 +249,7 @@ export function Toolbar() {
           aria-label="Load robot model"
         >
           <RobotIcon />
-          <span className="hidden xl:inline">{robotModel ? 'Robot' : 'Robot'}</span>
+          <span className="hidden xl:inline">Robot</span>
         </button>
         {robotModel && (
           <button
@@ -490,7 +490,7 @@ function RecordButton({ bagId, liveConn, status }: RecordButtonProps) {
 
   const allTopics = liveConn?.summary.topics.map((t) => t.name) ?? [];
 
-  const onStop = async () => {
+  const onStop = useCallback(async () => {
     if (!liveConn || finishing) return;
     setFinishing(true);
     try {
@@ -500,15 +500,26 @@ function RecordButton({ bagId, liveConn, status }: RecordButtonProps) {
     } finally {
       setFinishing(false);
     }
-  };
+  }, [liveConn, finishing]);
 
-  // Auto-stop when the buffer hits the 500 MB limit.
+  // Auto-stop when the buffer hits the 500 MB limit. Runs in an effect
+  // rather than during render: onStop starts an async download and flips
+  // state, neither of which belongs in the render path, and calling it on
+  // every qualifying render could invoke liveConn.stopRecording() more than
+  // once (it throws "Not recording" after the first successful call).
+  // autoStoppedRef limits it to one attempt per recording session so a
+  // failed stop cannot loop.
   const isFull = recordingStats?.isFull ?? false;
-  const finishingRef = { current: finishing };
-  finishingRef.current = finishing;
-  if (isFull && isRecording && !finishing) {
+  const autoStoppedRef = useRef(false);
+  useEffect(() => {
+    if (!isRecording) {
+      autoStoppedRef.current = false;
+      return;
+    }
+    if (!isFull || finishing || autoStoppedRef.current) return;
+    autoStoppedRef.current = true;
     void onStop();
-  }
+  }, [isFull, isRecording, finishing, onStop]);
 
   if (finishing) {
     return (
@@ -631,16 +642,19 @@ function TopicFilterPicker({
   const effectiveSet = selected ?? new Set(topics);
 
   const toggleAll = () => {
-    onChange(allSelected ? null : null);
-    if (!allSelected) onChange(null);
+    // null = record every topic (no filter); a Set records only those
+    // listed. Unchecking "All" clears the selection (an empty set records
+    // nothing), checking it drops back to null.
+    onChange(allSelected ? new Set<string>() : null);
   };
 
   const toggleTopic = (topic: string) => {
     const next = new Set(effectiveSet);
     if (next.has(topic)) next.delete(topic);
     else next.add(topic);
-    // If all topics selected, revert to null (all)
-    onChange(next.size === topics.length ? null : next.size === 0 ? new Set([topic]) : next);
+    // If all topics are selected again, revert to null (all). An empty set
+    // is a legal "record nothing" state, so it passes through unchanged.
+    onChange(next.size === topics.length ? null : next);
   };
 
   return (

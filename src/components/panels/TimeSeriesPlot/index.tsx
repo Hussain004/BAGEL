@@ -197,8 +197,8 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
   // only way a non-visual user can get min/max/last values.
   const seriesSummary = useMemo(() => {
     if (!series) return [];
-    const rows: { label: string; min: number | null; max: number | null; last: number | null }[] = [];
-    const summarize = (label: string, values: (number | null)[]) => {
+    const rows: { key: string; label: string; min: number | null; max: number | null; last: number | null }[] = [];
+    const summarize = (key: string, label: string, values: (number | null)[]) => {
       let min: number | null = null;
       let max: number | null = null;
       let last: number | null = null;
@@ -208,15 +208,15 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
         if (max === null || v > max) max = v;
         last = v;
       }
-      rows.push({ label, min, max, last });
+      rows.push({ key, label, min, max, last });
     };
     for (const f of series.fieldNames) {
       if (visibility[f] === false) continue;
-      summarize(f, series.values[f]);
+      summarize(`field:${f}`, f, series.values[f]);
     }
     for (const e of expressions) {
       if (visibility[e.id] === false) continue;
-      summarize(e.label, expressionResults[e.id] ?? []);
+      summarize(`expr:${e.id}`, e.label, expressionResults[e.id] ?? []);
     }
     return rows;
   }, [series, visibility, expressions, expressionResults]);
@@ -498,7 +498,7 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
               </thead>
               <tbody>
                 {seriesSummary.map((row) => (
-                  <tr key={row.label}>
+                  <tr key={row.key}>
                     <td>{row.label}</td>
                     <td>{row.min ?? 'n/a'}</td>
                     <td>{row.max ?? 'n/a'}</td>
@@ -526,7 +526,7 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
                   >
                     <span
                       className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: visible ? color : '#475569' }}
+                      style={{ backgroundColor: visible ? color : 'var(--color-text-muted)' }}
                     />
                     {f}
                   </button>
@@ -550,8 +550,8 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
                       title={`Toggle visibility of: ${e.expr}`}
                     >
                       {/* dashed swatch to distinguish from raw field chips */}
-                      <svg width="10" height="10" viewBox="0 0 10 10">
-                        <line x1="0" y1="5" x2="10" y2="5" stroke={visible ? color : '#475569'} strokeWidth="2" strokeDasharray="3 2" />
+                      <svg width="10" height="10" viewBox="0 0 10 10" className="text-text-muted">
+                        <line x1="0" y1="5" x2="10" y2="5" stroke={visible ? color : 'currentColor'} strokeWidth="2" strokeDasharray="3 2" />
                       </svg>
                       <span className="max-w-[160px] truncate">{e.label}</span>
                     </button>

@@ -135,10 +135,7 @@ function CustomSchemasSection() {
             </button>
             <button
               onClick={() => {
-                if (
-                  typeof window === 'undefined' ||
-                  window.confirm(`Delete the custom schema for ${typeName}?`)
-                ) {
+                if (window.confirm(`Delete the custom schema for ${typeName}?`)) {
                   deleteSchema(typeName);
                 }
               }}
@@ -195,10 +192,7 @@ function SavedDefaultsSection() {
           </span>
           <button
             onClick={() => {
-              if (
-                typeof window === 'undefined' ||
-                window.confirm('Clear all saved Display defaults?')
-              ) {
+              if (window.confirm('Clear all saved Display defaults?')) {
                 clearAll();
               }
             }}
@@ -227,10 +221,7 @@ function SavedDefaultsSection() {
             </span>
             <button
               onClick={() => {
-                if (
-                  typeof window === 'undefined' ||
-                  window.confirm(`Clear saved default for ${SCENE_KIND_LABELS[kind]}?`)
-                ) {
+                if (window.confirm(`Clear saved default for ${SCENE_KIND_LABELS[kind]}?`)) {
                   clearDefault(kind);
                 }
               }}

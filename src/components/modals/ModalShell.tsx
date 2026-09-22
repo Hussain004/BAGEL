@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type ReactNode } from 'react';
 
 interface ModalShellProps {
   title: string;
@@ -37,6 +37,9 @@ export function ModalShell({
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeBtnRef = useRef<HTMLButtonElement>(null);
   const lastFocusedRef = useRef<HTMLElement | null>(null);
+  // Unique per instance so stacked ModalShell dialogs never produce
+  // duplicate element ids for their title.
+  const titleId = useId();
 
   // Stash the previously focused element so we can restore focus on close.
   useEffect(() => {
@@ -49,11 +52,28 @@ export function ModalShell({
 
   // Esc-to-close, and Tab/Shift+Tab wraps focus at the dialog's edges so
   // keyboard focus can't leave into the (visually hidden, but still in the
-  // DOM) app behind the backdrop.
+  // DOM) app behind the backdrop. Escape is fully consumed (mirroring
+  // useEscapeToClose) so one press closes exactly one layer instead of also
+  // reaching other window-level handlers; when focus is inside a text
+  // field, Escape only blurs it first so typed input isn't lost to a
+  // stray key press.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        const target = e.target;
+        const isTypingField =
+          target instanceof HTMLElement &&
+          (target.isContentEditable ||
+            target.tagName === 'INPUT' ||
+            target.tagName === 'TEXTAREA' ||
+            target.tagName === 'SELECT');
+        if (isTypingField) {
+          target.blur();
+          return;
+        }
         onClose();
         return;
       }
@@ -92,12 +112,12 @@ export function ModalShell({
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="modal-title"
+        aria-labelledby={titleId}
         className={`w-full ${WIDTH_CLASS[width]} rounded-2xl border border-border bg-bg-secondary shadow-panel overflow-hidden animate-fade-in-scale flex flex-col max-h-[85vh]`}
       >
         <header className="flex items-start gap-3 px-6 py-4 border-b border-border bg-surface/40 flex-shrink-0">
           <div className="flex-1 min-w-0">
-            <h2 id="modal-title" className="text-base font-semibold text-text-primary">
+            <h2 id={titleId} className="text-base font-semibold text-text-primary">
               {title}
             </h2>
             {subtitle && (
