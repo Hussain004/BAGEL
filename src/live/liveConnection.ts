@@ -3,6 +3,8 @@
  *
  * Responsibilities:
  *   - Creates and owns a FoxgloveClient, reconnects on drop.
+ *   - Subscribes each channel exactly once per connection: the `open`
+ *     resubscribe and the `advertise` handler share a per-connection set.
  *   - Decodes incoming messages and pushes them into a LiveRingBuffer.
  *   - Throttles liveStore revision bumps to one per animation frame so
  *     React re-renders cap at ~60 Hz regardless of message rate.
@@ -37,7 +39,10 @@ export class LiveConnection {
 
   private client: FoxgloveClient | null = null;
   private channels = new Map<number, FoxgloveChannel>();
-  private subIdToChannelId = new Map<number, number>();
+  // Channel ids already subscribed on the CURRENT connection. Cleared on open
+  // and close so both subscription paths (open resubscribe and advertise) can
+  // consult it without ever sending a duplicate subscribe on one connection.
+  private subscribedChannelIds = new Set<number>();
 
   private destroyed = false;
   private reconnectAttempt = 0;
@@ -48,6 +53,7 @@ export class LiveConnection {
   private cachedSummary: BagSummary;
 
   private pendingRevBump = false;
+  private revBumpHandle: ReturnType<typeof requestAnimationFrame> | null = null;
   private recorder: LiveRecorder | null = null;
 
   // Sim clock: channel ID of the /clock topic (null when not advertised), and
@@ -99,7 +105,9 @@ export class LiveConnection {
       case 'open':
         this.reconnectAttempt = 0;
         this.setStatus('connected', event.serverName);
-        // Re-subscribe to all known channels on reconnect.
+        // Fresh connection: nothing has been subscribed on it yet, then
+        // re-subscribe to all channels known from before the reconnect.
+        this.subscribedChannelIds.clear();
         if (this.channels.size > 0) {
           this.subscribeToChannels(Array.from(this.channels.values()));
         }
@@ -122,13 +130,17 @@ export class LiveConnection {
             useLiveStore.getState().setSimTime(this.bagId, false);
           }
           this.channels.delete(id);
+          // So a channel that is re-advertised later gets subscribed again.
+          this.subscribedChannelIds.delete(id);
         }
         this.pushSummaryTopics();
         break;
 
       case 'message': {
-        const channelId = event.channelId || this.subIdToChannelId.get(event.subscriptionId) || 0;
-        const ch = this.channels.get(channelId);
+        // Messages whose channel id is unknown (or missing) are dropped
+        // rather than folded into channel 0, which would mis-attribute data
+        // to whichever topic happens to own channel 0.
+        const ch = this.channels.get(event.channelId);
         if (!ch) break;
 
         const value = decodeLiveMessage(ch.encoding, ch.schemaEncoding, ch.schema, event.data);
@@ -136,7 +148,7 @@ export class LiveConnection {
 
         // Track sim time from /clock so messages with no logTimeNs header
         // get a consistent sim timestamp rather than jumping to wall time.
-        if (channelId === this.clockChannelId) {
+        if (event.channelId === this.clockChannelId) {
           const ns = extractClockNs(value);
           if (ns !== null) {
             const wasSimTime = this.simClockNs !== null;
@@ -159,7 +171,7 @@ export class LiveConnection {
 
       case 'close':
         this.client = null;
-        this.subIdToChannelId.clear();
+        this.subscribedChannelIds.clear();
         if (!this.destroyed) {
           // scheduleReconnect sets its own 'reconnecting' status with the
           // attempt count + delay, so the UI can show more than a dot.
@@ -181,11 +193,23 @@ export class LiveConnection {
 
   // ── Subscription helpers ─────────────────────────────────────────────────
 
+  /**
+   * Subscribe to any of `channels` that have not already been subscribed on
+   * the current connection. Both the `open` resubscribe path and the
+   * `advertise` path go through here, so a channel that is both known at open
+   * and re-advertised afterwards is subscribed exactly once per connection,
+   * while channels advertised later (genuinely new ones) still get subscribed.
+   */
   private subscribeToChannels(channels: FoxgloveChannel[]): void {
-    if (!this.client || channels.length === 0) return;
-    const ids = this.client.subscribe(channels.map((c) => c.id));
-    for (let i = 0; i < ids.length; i++) {
-      this.subIdToChannelId.set(ids[i], channels[i].id);
+    if (!this.client) return;
+    const pending = channels.filter((c) => !this.subscribedChannelIds.has(c.id));
+    if (pending.length === 0) return;
+    // subscribe() returns one subscription id per channel, or [] when the
+    // socket is not open. Only mark as subscribed when the client accepted
+    // the full request.
+    const ids = this.client.subscribe(pending.map((c) => c.id));
+    if (ids.length === pending.length) {
+      for (const c of pending) this.subscribedChannelIds.add(c.id);
     }
   }
 
@@ -241,16 +265,30 @@ export class LiveConnection {
 
     const doIt = () => {
       this.pendingRevBump = false;
+      this.revBumpHandle = null;
+      // Guard the non-cancellable microtask path (and any rAF that raced the
+      // cancel): a bump after disconnect()/removeEntry() would re-materialize
+      // store entries that were just deleted.
+      if (this.destroyed) return;
       const range = this.ringBuffer.getTimeRange();
       useLiveStore.getState().bumpRevision(this.bagId, range?.endNs ?? timeNs);
     };
 
     if (typeof requestAnimationFrame !== 'undefined') {
-      requestAnimationFrame(doIt);
+      this.revBumpHandle = requestAnimationFrame(doIt);
     } else {
       // Node / test environments: fire synchronously after a microtask.
       Promise.resolve().then(doIt);
     }
+  }
+
+  /** Cancel any pending revision bump so it cannot fire after teardown. */
+  private cancelPendingBump(): void {
+    if (this.revBumpHandle !== null) {
+      cancelAnimationFrame(this.revBumpHandle);
+      this.revBumpHandle = null;
+    }
+    this.pendingRevBump = false;
   }
 
   // ── Status helper ─────────────────────────────────────────────────────────
@@ -301,6 +339,9 @@ export class LiveConnection {
     this.recorder = null;
     this.simClockNs = null;
     this.clockChannelId = null;
+    // A pending rAF bump would otherwise fire after removeEntry and
+    // re-materialize the bag's revision/status entries.
+    this.cancelPendingBump();
     if (this.reconnectTimer !== null) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -311,8 +352,11 @@ export class LiveConnection {
     }
     this.client?.dispose();
     this.client = null;
-    this.setStatus('disconnected');
+    // Remove first, then record the final status. setStatus before
+    // removeEntry would be wiped immediately by removeEntry's cleanup,
+    // leaving the getter to fall back to 'connecting' for a dead socket.
     useLiveStore.getState().removeEntry(this.bagId);
+    this.setStatus('disconnected');
   }
 }
 

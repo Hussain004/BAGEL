@@ -79,6 +79,95 @@ describe('LiveRingBuffer', () => {
     expect(range!.startNs).toBe(10n); // index 0 (t=0) was evicted
   });
 
+  it('keeps messages sorted when pushed out of order', () => {
+    buf.push(T, 300n, { x: 3 });
+    buf.push(T, 100n, { x: 1 });
+    buf.push(T, 250n, { x: 2 });
+    buf.push(T, 200n, { x: 4 });
+    const msgs = buf.getMessages(T);
+    expect(msgs.map((m) => m.timeNs)).toEqual([100n, 200n, 250n, 300n]);
+  });
+
+  it('getMessageAtTime resolves correctly after out-of-order pushes', () => {
+    buf.push(T, 300n, { v: 3 });
+    buf.push(T, 100n, { v: 1 });
+    buf.push(T, 200n, { v: 2 });
+    expect(buf.getMessageAtTime(T, 200n)?.value).toEqual({ v: 2 });
+    expect(buf.getMessageAtTime(T, 140n)?.value).toEqual({ v: 1 }); // |40| vs |60|
+    expect(buf.getMessageAtTime(T, 260n)?.value).toEqual({ v: 3 }); // |60| vs |40|
+    expect(buf.getMessageAtTime(T, 50n)?.value).toEqual({ v: 1 });
+    expect(buf.getMessageAtTime(T, 9999n)?.value).toEqual({ v: 3 });
+  });
+
+  it('stays sorted across a clock wrap (wall time to sim time)', () => {
+    // Clock source switches mid-stream: later pushes have much smaller
+    // timestamps than earlier ones.
+    buf.push(T, 1_700_000_000_000_000_000n, { v: 'wall-1' });
+    buf.push(T, 1_700_000_000_000_000_100n, { v: 'wall-2' });
+    buf.push(T, 50n, { v: 'sim-1' });
+    buf.push(T, 150n, { v: 'sim-2' });
+    buf.push(T, 100n, { v: 'sim-3' });
+
+    const msgs = buf.getMessages(T);
+    expect(msgs.map((m) => m.timeNs)).toEqual([
+      50n,
+      100n,
+      150n,
+      1_700_000_000_000_000_000n,
+      1_700_000_000_000_000_100n,
+    ]);
+    expect(buf.getMessageAtTime(T, 110n)?.value).toEqual({ v: 'sim-3' });
+    // Nearest to 1e9 is the closest sim entry, not a wall-clock one.
+    expect(buf.getMessageAtTime(T, 1_000_000_000n)?.value).toEqual({ v: 'sim-2' });
+
+    const range = buf.getTimeRange();
+    expect(range!.startNs).toBe(50n);
+    expect(range!.endNs).toBe(1_700_000_000_000_000_100n);
+  });
+
+  it('evicts the lowest timestamp when capacity is exceeded out of order', () => {
+    // Fill to capacity with descending pushes (fully out-of-order arrival).
+    for (let i = CAPACITY_PER_TOPIC; i >= 1; i--) {
+      buf.push(T, BigInt(i * 10), { i });
+    }
+    const filled = buf.getMessages(T);
+    expect(filled).toHaveLength(CAPACITY_PER_TOPIC);
+    // Sorted despite descending pushes: the lowest timestamp sits at the front.
+    expect(filled[0].timeNs).toBe(10n);
+
+    // Push an entry that lands in the middle: the lowest timestamp (10n)
+    // is evicted from the front, not whichever entry was pushed last.
+    buf.push(T, 15n, { i: 'mid' });
+    const msgs = buf.getMessages(T);
+    expect(msgs).toHaveLength(CAPACITY_PER_TOPIC);
+    expect(msgs[0].timeNs).toBe(15n);
+    expect(msgs[1].timeNs).toBe(20n);
+
+    // A straggler older than everything is inserted at the front and
+    // evicted immediately; current entries stay intact.
+    buf.push(T, 5n, { i: 'stale' });
+    const after = buf.getMessages(T);
+    expect(after).toHaveLength(CAPACITY_PER_TOPIC);
+    expect(after[0].timeNs).toBe(15n);
+    expect(buf.totalPushed).toBe(CAPACITY_PER_TOPIC + 2);
+  });
+
+  it('getTimeRange startNs reflects the oldest out-of-order entry', () => {
+    buf.push(T, 500n, {});
+    buf.push(T, 100n, {});
+    buf.push(T, 300n, {});
+    const range = buf.getTimeRange();
+    expect(range!.startNs).toBe(100n);
+    expect(range!.endNs).toBe(500n);
+  });
+
+  it('on exact duplicate timestamps, the latest pushed message wins', () => {
+    buf.push(T, 100n, { v: 'old' });
+    buf.push(T, 100n, { v: 'new' });
+    expect(buf.getMessageAtTime(T, 100n)?.value).toEqual({ v: 'new' });
+    expect(buf.getMessages(T)).toHaveLength(2);
+  });
+
   describe('getMessageAtTime', () => {
     it('returns null when no messages', () => {
       expect(buf.getMessageAtTime(T, 100n)).toBeNull();

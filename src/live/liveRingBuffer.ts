@@ -2,8 +2,10 @@
  * Per-topic ring buffer for live message streams.
  *
  * Messages are stored sorted by timeNs (ascending) per topic, with a fixed
- * capacity. When capacity is hit the oldest messages are evicted from the
- * front. Binary search makes getMessageAtTime O(log n).
+ * capacity. push() binary-searches the insertion point, so out-of-order or
+ * mixed-clock timestamps (log time, sim time, wall clock) keep every lookup
+ * correct. When capacity is hit the oldest message (lowest timeNs) is evicted
+ * from the front. Binary search makes getMessageAtTime O(log n).
  *
  * The buffer does NOT copy message values - callers must not mutate them
  * after push. This is safe for CDR-decoded objects from the live decoder.
@@ -22,9 +24,12 @@ export class LiveRingBuffer {
   private _endNs: bigint | null = null;
 
   /**
-   * Push a decoded message. If the topic's buffer is at capacity the oldest
-   * message is dropped. Messages with duplicate timeNs are allowed (the
-   * latest pushed wins for getMessageAtTime purposes).
+   * Push a decoded message at its sorted position (binary search + splice),
+   * so out-of-order arrivals cannot corrupt later lookups. If the topic's
+   * buffer is at capacity the oldest message (lowest timeNs) is dropped.
+   * Messages with duplicate timeNs are allowed; the latest pushed wins for
+   * getMessageAtTime purposes (equal timestamps are inserted before existing
+   * ones).
    */
   push(topic: string, timeNs: bigint, value: Record<string, unknown>): void {
     let arr = this.msgs.get(topic);
@@ -32,8 +37,18 @@ export class LiveRingBuffer {
       arr = [];
       this.msgs.set(topic, arr);
     }
-    arr.push({ timeNs, value });
+    // Find the first index whose timeNs is >= the new timestamp and insert
+    // there, keeping the array sorted ascending regardless of push order.
+    let lo = 0;
+    let hi = arr.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (arr[mid].timeNs < timeNs) lo = mid + 1;
+      else hi = mid;
+    }
+    arr.splice(lo, 0, { timeNs, value });
     if (arr.length > CAPACITY_PER_TOPIC) {
+      // Sorted ascending, so the front always holds the lowest timestamp.
       arr.shift();
     }
     this._totalPushed++;

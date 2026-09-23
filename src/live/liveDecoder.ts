@@ -12,7 +12,7 @@
  *   ros1 + ros1msg  (ROS1 CDR without RTPS header - standard ROS1 bridge)
  *   json + *        (raw JSON.parse)
  *
- * Protobuf is deferred to v1.6.
+ * Protobuf is not supported; it would need a generated codec per schema.
  */
 
 import { parse as parseRosMsgDefinition } from '@foxglove/rosmsg';

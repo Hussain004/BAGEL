@@ -120,17 +120,32 @@ describe('FoxgloveClient', () => {
   it('parses MESSAGE_DATA binary frame correctly', () => {
     const events: FoxgloveEvent[] = [];
     const client = makeClient((e) => events.push(e));
-    // Subscribe first so subIdToChannelId mapping exists
+    // Subscribe first so the subId -> channelId mapping exists; the frame
+    // must carry a subscription id the client handed out.
     mockWs.readyState = 1;
-    // Manually wire subId->channelId by calling subscribe
-    // (we bypass it by checking channelId=0 default for unknown subId)
+    const [subId] = client.subscribe([7]);
     const timeNs = 1_700_000_000_000_000_000n;
     const payload = new Uint8Array([0xde, 0xad, 0xbe, 0xef]);
-    const frame = buildMessageDataFrame(42, timeNs, payload);
+    const frame = buildMessageDataFrame(subId, timeNs, payload);
     mockWs.emit('message', { data: frame });
-    expect(events[0]).toMatchObject({ type: 'message', subscriptionId: 42, logTimeNs: timeNs });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: 'message',
+      subscriptionId: subId,
+      channelId: 7,
+      logTimeNs: timeNs,
+    });
     expect((events[0] as Extract<FoxgloveEvent, { type: 'message' }>).data).toEqual(payload);
-    void client; // silence unused var
+  });
+
+  it('drops MESSAGE_DATA frames for unknown subscription ids', () => {
+    const events: FoxgloveEvent[] = [];
+    makeClient((e) => events.push(e));
+    // No subscribe happened, so subId 42 cannot be attributed to a channel;
+    // it must be dropped rather than reported as channel 0.
+    const frame = buildMessageDataFrame(42, 1_700_000_000_000_000_000n, new Uint8Array([1, 2]));
+    mockWs.emit('message', { data: frame });
+    expect(events).toHaveLength(0);
   });
 
   it('parses TIME binary frame correctly', () => {

@@ -134,7 +134,11 @@ export class FoxgloveClient {
       const hi = BigInt(view.getUint32(9, true));
       const logTimeNs = (hi << 32n) | lo;
       const data = new Uint8Array(buf, 13);
-      const channelId = this.subIdToChannelId.get(subId) ?? 0;
+      const channelId = this.subIdToChannelId.get(subId);
+      // Frames for unknown/expired subscription ids cannot be attributed to
+      // a channel. Drop them instead of reporting channel 0, which would
+      // mis-attribute the data to whichever topic owns channel 0.
+      if (channelId === undefined) return;
       this.onEvent({ type: 'message', subscriptionId: subId, channelId, logTimeNs, data });
       return;
     }
