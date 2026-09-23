@@ -6,7 +6,7 @@
  * the handler consumes (single source of truth).
  *
  * All bindings ignore events that originate in <input>, <textarea>, or
- * contentEditable elements — the Topic search box would otherwise eat every
+ * contentEditable elements - the Topic search box would otherwise eat every
  * keystroke as a global action.
  */
 
@@ -42,7 +42,7 @@ export const SHORTCUTS: ShortcutDescription[] = [
 /**
  * Should a key event be ignored because the user is typing in a field?
  *
- * We allow Esc to escape — most users expect Esc to unfocus an input, and the
+ * We allow Esc to escape - most users expect Esc to unfocus an input, and the
  * caller can decide whether to close a panel after that.
  */
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -59,7 +59,7 @@ export function useKeyboardShortcuts(): void {
       if (!bag) return;
       const typing = isTypingTarget(e.target);
 
-      // Esc always works — even when typing — but unblurs first if you're
+      // Esc always works - even when typing - but unblurs first if you're
       // in an input. With a modal or the schema-paste dialog open, stand
       // down entirely and let the overlay's own Escape handler close it
       // (closing here too raced it, and the schema-paste slot wasn't
@@ -81,7 +81,7 @@ export function useKeyboardShortcuts(): void {
           layout.closeAllPanels();
         } else if (layout.openOrder.length > 0) {
           // Close most-recently-opened panel. `openOrder` is the tree-aware
-          // replacement for the v0.5 flat `panels` array — it tracks insert
+          // replacement for the v0.5 flat `panels` array - it tracks insert
           // order independently of where the panel ended up in the tree
           // after docking.
           layout.closePanel(layout.openOrder[layout.openOrder.length - 1]);
@@ -139,7 +139,7 @@ export function useKeyboardShortcuts(): void {
         return;
       }
 
-      // Playback bindings — operate against the playhead store.
+      // Playback bindings - operate against the playhead store.
       const playhead = usePlayheadStore.getState();
       const range = playhead.endNs - playhead.startNs;
       if (range <= 0n) return;

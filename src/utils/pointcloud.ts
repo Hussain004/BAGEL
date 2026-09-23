@@ -9,7 +9,7 @@
  * PointCloud2 topics. Key optimizations:
  *   - Pre-computed Turbo colormap LUT (lookup + interp, no per-point
  *     polynomial expansion).
- *   - Fast-path when x/y/z are all FLOAT32 — read directly through a
+ *   - Fast-path when x/y/z are all FLOAT32 - read directly through a
  *     Float32Array view into the message buffer (no DataView dispatch).
  *   - Optional caller-supplied output buffers so we can reuse Float32Arrays
  *     across frames when the point count is stable.
@@ -55,7 +55,7 @@ export type ColorMode = 'intensity' | 'height' | 'rgb' | 'single';
  *
  * Defaults to `+z` (ROS standard). The 3D panel's up-axis selector picks
  * one of these so the Turbo gradient tracks whatever the user has chosen
- * as "up" — e.g. `-x` for a drone NED rig means the most negative source X
+ * as "up" - e.g. `-x` for a drone NED rig means the most negative source X
  * paints reddest, the most positive paints bluest.
  */
 export type HeightAxis = '+x' | '-x' | '+y' | '-y' | '+z' | '-z';
@@ -258,7 +258,7 @@ export function heightRangeForAxis(
  * Decode a PointCloud2 binary blob into Float32Array positions + colors.
  *
  * Returns null if the message is malformed or doesn't carry x/y/z fields.
- * Output Float32Array buffers are transferable — the worker can ship them
+ * Output Float32Array buffers are transferable - the worker can ship them
  * to the main thread with zero copy.
  */
 export function decodePointCloud2(
@@ -516,7 +516,7 @@ export function decodePointCloud2(
     } else if (rings && Number.isFinite(minRing) && maxRing > minRing) {
       fillColorsByScalar(finalColors, validCount, (i) => rings[i], minRing, maxRing);
     } else {
-      // No intensity / ring field — fall back to height, which also needs to
+      // No intensity / ring field - fall back to height, which also needs to
       // track the user's up-axis.
       fillColorsByScalar(finalColors, validCount, readHeight, heightRange.min, heightRange.max);
     }
@@ -545,7 +545,7 @@ export function decodePointCloud2(
 
 /**
  * Run a Turbo colormap over `pointCount` entries by indexing a scalar field
- * into the LUT directly. The hot inner loop is just LUT reads + writes —
+ * into the LUT directly. The hot inner loop is just LUT reads + writes -
  * no per-point function calls, no math beyond one subtract + divide.
  */
 export function fillColorsByScalar(

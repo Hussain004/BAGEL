@@ -3,7 +3,7 @@
  *
  * Parses legacy ROS1 bag files (rosbag v2.0) using `@foxglove/rosbag`. The
  * library exposes a streaming `Bag` reader that owns an indexed view of the
- * file — connection records (per-topic schemas), chunk infos (time ranges +
+ * file - connection records (per-topic schemas), chunk infos (time ranges +
  * per-connection message counts), and a `messageIterator` that does range
  * reads against the underlying `Filelike`.
  *
@@ -27,7 +27,7 @@
  *     `bigint`. We convert at the boundary so the rest of BAGEL stays on
  *     bigint nanoseconds.
  *   - Chunks can be `none`, `bz2`, or `lz4` compressed. The library doesn't
- *     bundle the decoders — we register pure-JS handlers (`seek-bzip` and
+ *     bundle the decoders - we register pure-JS handlers (`seek-bzip` and
  *     `lz4js`) inside the parser worker so even the slower bz2 path doesn't
  *     block the UI. Uncompressed bags never hit the decoders at all.
  */
@@ -64,7 +64,7 @@ interface ConnectionMeta {
   type: string;
   /** Raw type from the connection record, preserved for debugging only. */
   rawType: string;
-  /** Concatenated `.msg` text — the deserializer's input. */
+  /** Concatenated `.msg` text - the deserializer's input. */
   messageDefinition: string;
 }
 
@@ -77,7 +77,7 @@ interface CachedBag {
    *  per (topic, publisher) pair so a topic may have multiple connections;
    *  we treat them as interchangeable since the schema is the same. */
   connectionsById: Map<number, ConnectionMeta>;
-  /** Display + dispatch metadata per topic — first connection wins. */
+  /** Display + dispatch metadata per topic - first connection wins. */
   topicMeta: Map<string, { type: string; messageDefinition: string }>;
   /** Per-topic decoded-message LRU keyed by message log time. */
   messageCache: Map<string, Map<bigint, Record<string, unknown> | null>>;
@@ -165,10 +165,10 @@ async function loadBag(source: BagSource): Promise<CachedBag> {
     return cached;
   }
 
-  // BlobReader for file sources, HttpFilelike for URLs — same Filelike
+  // BlobReader for file sources, HttpFilelike for URLs - same Filelike
   // interface either way.
   const reader = filelikeFor(source);
-  // `decompress` is consulted lazily during message iteration — only chunks
+  // `decompress` is consulted lazily during message iteration - only chunks
   // that are actually read pay the lookup. Uncompressed bags never hit the
   // map at all.
   const bag = new Bag(reader, { decompress });
@@ -185,7 +185,7 @@ async function loadBag(source: BagSource): Promise<CachedBag> {
       rawType: conn.type ?? 'unknown',
       messageDefinition: conn.messageDefinition,
     });
-    // First connection per topic wins for metadata — duplicates carry the
+    // First connection per topic wins for metadata - duplicates carry the
     // same schema in any well-formed bag.
     if (!topicMeta.has(conn.topic)) {
       topicMeta.set(conn.topic, {
@@ -224,7 +224,7 @@ export async function parseBagFile(source: BagSource): Promise<BagSummary> {
     }
   }
 
-  // Aggregate by topic — multiple connections per topic share the same
+  // Aggregate by topic - multiple connections per topic share the same
   // message stream from the panel's perspective.
   const countByTopic = new Map<string, number>();
   for (const [connId, conn] of meta.connectionsById) {
@@ -337,7 +337,7 @@ export async function readDeserializedMessagesBag(
   return out;
 }
 
-/** Per-topic decoded LRU bound — same shape as the MCAP cache. */
+/** Per-topic decoded LRU bound - same shape as the MCAP cache. */
 const MESSAGE_CACHE_MAX_PER_TOPIC = 6;
 
 function rememberDecoded(
@@ -386,7 +386,7 @@ export async function readMessageAtTimeBag(
     }
   };
 
-  // Forward scan starting at the playhead — picks the first message at-or-after.
+  // Forward scan starting at the playhead - picks the first message at-or-after.
   const startTime = nsToTime(timeNs);
   const forward = meta.bag.messageIterator({ topics: [topicName], start: startTime });
   for await (const event of forward as AsyncIterable<{
@@ -400,7 +400,7 @@ export async function readMessageAtTimeBag(
     return { timestamp: ts, value };
   }
 
-  // Nothing at-or-after — fall back to the most recent message at-or-before.
+  // Nothing at-or-after - fall back to the most recent message at-or-before.
   // Reverse iteration starts from the latest message and walks back; without
   // an end-time filter we have to scan to find the first one whose timestamp
   // is <= timeNs. Topics with sparse messages near the end of the bag will be

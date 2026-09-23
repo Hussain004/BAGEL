@@ -19,7 +19,7 @@ import type { AllTopicStats, MessageStats } from '../../types/bag';
 const EMPTY_TOPIC_LIST: string[] = [];
 
 /**
- * Timeline — Global playhead control at the bottom of the main view.
+ * Timeline - Global playhead control at the bottom of the main view.
  * Click or drag along the bar to seek; the playhead syncs across all
  * open visualization panels.
  *
@@ -546,7 +546,7 @@ export function Timeline() {
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 /**
- * DensityStrip — thin heatmap above the seek track showing where in the bag
+ * DensityStrip - thin heatmap above the seek track showing where in the bag
  * messages are dense vs. sparse, so a gap or a burst is visible without
  * scrubbing to find it. One <canvas>, not DENSITY_BUCKETS divs.
  *
@@ -600,7 +600,7 @@ function DensityStrip({
 }
 
 /**
- * PinnedTopicLanes — one density lane per pinned topic (v1.7), so a
+ * PinnedTopicLanes - one density lane per pinned topic (v1.7), so a
  * SLAM-debug session can tell "TF went quiet" from "camera dropped out"
  * at a glance instead of just "something happened around here". Capped at
  * MAX_PINNED_TOPICS by the store, so this never has to scroll internally.

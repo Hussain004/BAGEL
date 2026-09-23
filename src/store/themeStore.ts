@@ -3,7 +3,7 @@
  *
  * Persists the user's choice (dark | light) to localStorage under
  * `bagel:theme:v1`. The first-render default honours `prefers-color-scheme`
- * only when no explicit choice has been saved — subsequent visits respect
+ * only when no explicit choice has been saved - subsequent visits respect
  * the user's manual toggle even if their OS switches to a different theme.
  *
  * Theme drives CSS variables (via an attribute on the <html> element).

@@ -4,7 +4,7 @@ import { SHORTCUTS, type ShortcutDescription } from '../../hooks/useKeyboardShor
 import { ModalShell } from './ModalShell';
 
 /**
- * ShortcutsModal — Lists every global keyboard shortcut, grouped by purpose.
+ * ShortcutsModal - Lists every global keyboard shortcut, grouped by purpose.
  *
  * Source of truth is `SHORTCUTS` in `useKeyboardShortcuts.ts`, so adding a
  * new binding there shows up here automatically.

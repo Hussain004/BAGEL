@@ -13,7 +13,7 @@
  *   - the inFlight in `useTopicMessages` keys cleanly by (sourceKey, topic).
  *
  * Workers are spun up on first use and kept alive for the lifetime of the bag
- * — disposal happens in `releaseBagWorker(bagId)` which both terminates the
+ * - disposal happens in `releaseBagWorker(bagId)` which both terminates the
  * worker and drops the singleton entry.
  *
  * For non-bag-tied operations (validate a pasted schema, list supported
@@ -97,7 +97,7 @@ class ParserClient {
       // Forward to the user-supplied streaming callback first so consumers
       // that want incremental rendering get the batch on the same tick it
       // arrives. The accumulator then preserves the data for the eventual
-      // promise resolution — needed even when no onBatch is provided.
+      // promise resolution - needed even when no onBatch is provided.
       pending.onBatch?.(data.batch);
       pending.accumulator?.push(...data.batch);
       return;
@@ -301,7 +301,7 @@ class ParserClient {
    * invalidates both the CDR reader cache and the .db3 decoded-message LRU
    * so a topic whose type just became decodable produces fresh values on
    * the next read. Sending the whole map (not a delta) keeps the protocol
-   * idempotent — the worker doesn't have to track ordering or partial state.
+   * idempotent - the worker doesn't have to track ordering or partial state.
    */
   setCustomSchemas(schemas: Record<string, string>): Promise<void> {
     return this.request<void>('setCustomSchemas', { schemas });
@@ -395,7 +395,7 @@ const clients = new Map<string, ParserClient>();
  * Resolve the worker for a given bagId (or `SHARED` for non-bag operations).
  *
  * The shared worker handles `setCustomSchemas`, `validateSchema`, and
- * `getSupportedTypes` — none of which depend on a particular bag's caches.
+ * `getSupportedTypes` - none of which depend on a particular bag's caches.
  * Bag-tied operations route through per-bag workers so they don't queue
  * behind each other.
  */
@@ -420,7 +420,7 @@ export function releaseBagWorker(bagId: string): void {
 }
 
 /**
- * For the shared (non-bag) worker — used by `useCustomSchemaSync` on app boot
+ * For the shared (non-bag) worker - used by `useCustomSchemaSync` on app boot
  * before any bag is loaded. The shared worker also broadcasts custom-schema
  * updates to every per-bag worker since they need the same schemas.
  */

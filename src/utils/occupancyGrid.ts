@@ -203,13 +203,13 @@ export function decodeOccupancyGrid(
     // says int8; `(v << 24) >> 24` sign-extends so -1 stays -1.
     const v = (raw << 24) >> 24;
     if (v < 0) {
-      // Unknown — fully transparent so the ground grid shows through.
+      // Unknown - fully transparent so the ground grid shows through.
       rgba[o] = 0;
       rgba[o + 1] = 0;
       rgba[o + 2] = 0;
       rgba[o + 3] = 0;
     } else if (v === 0) {
-      // Free — light grey at 60% alpha. Pure white made the colour blend
+      // Free - light grey at 60% alpha. Pure white made the colour blend
       // too aggressively with the dark backdrop, washing out the occupied
       // pixels right next to it.
       rgba[o] = 240;
@@ -217,13 +217,13 @@ export function decodeOccupancyGrid(
       rgba[o + 2] = 240;
       rgba[o + 3] = 153; // ~60%
     } else if (v >= 100) {
-      // Occupied — near-black at 95% alpha.
+      // Occupied - near-black at 95% alpha.
       rgba[o] = 10;
       rgba[o + 1] = 10;
       rgba[o + 2] = 10;
       rgba[o + 3] = 242;
     } else {
-      // Partial — linear ramp from white (1) to dark grey (99). Cost-map
+      // Partial - linear ramp from white (1) to dark grey (99). Cost-map
       // publishers fill the whole 1…99 range, so the ramp is meaningful.
       const t = v / 100;
       const g = Math.round(240 - 200 * t);

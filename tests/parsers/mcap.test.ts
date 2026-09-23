@@ -108,7 +108,7 @@ async function ros1ChatterBag(): Promise<Uint8Array> {
   return writable.getBytes();
 }
 
-describe('mcap/parseMcap — synthetic bags', () => {
+describe('mcap/parseMcap - synthetic bags', () => {
   it('reports correct topic list + counts for a tiny chatter bag', async () => {
     const bytes = await chatterBag();
     const source = fileSource(bytesToFile(bytes, 'chatter.mcap'));
@@ -141,7 +141,7 @@ describe('mcap/parseMcap — synthetic bags', () => {
   });
 
   it('computes per-topic frequency from messageCount / duration', async () => {
-    // 100 messages at 100 ms intervals — duration is (count-1) * interval so
+    // 100 messages at 100 ms intervals - duration is (count-1) * interval so
     // the apparent rate is slightly above the publish rate, matching the
     // `ros2 bag info` convention. We assert against the computed value.
     const bytes = await writeSyntheticMcap([

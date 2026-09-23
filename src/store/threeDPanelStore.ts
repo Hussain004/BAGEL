@@ -6,7 +6,7 @@
  * `PanelGrid` puts a `key` on the resizable `<Group>` that includes every
  * open panel id, so adding or closing any sibling panel changes the key and
  * forces React to unmount + remount the entire tree underneath. That throws
- * away any `useState` held by the panels — and the 3D panel has a *lot*
+ * away any `useState` held by the panels - and the 3D panel has a *lot*
  * (point size, color mode, range filter, accumulator, up-axis, world frame,
  * pivot, grid + axes toggles, …) that the user is expected to set once and
  * keep using as they open more panels alongside.
@@ -15,7 +15,7 @@
  * in the multi-bag era; legacy `3d:topicName` ids still resolve)
  * solves it categorically: a remount re-reads from the store on first paint
  * and the user's choices stick. As a bonus, closing and re-opening the same
- * 3D panel also restores its settings — same id, same row in the store.
+ * 3D panel also restores its settings - same id, same row in the store.
  *
  * We don't clean the store on panel close. The keying makes the working set
  * bounded by panel count (and panel count is bounded by the user's
@@ -200,7 +200,7 @@ export interface ThreeDPanelSettings {
 
 /**
  * Module-level constant so `useThreeDPanelStore(s => s.byId[id] ?? DEFAULTS)`
- * returns a stable reference on the first read — otherwise React would see
+ * returns a stable reference on the first read - otherwise React would see
  * a new object on every render and tear the panel re-render loop apart.
  */
 export const DEFAULT_THREE_D_SETTINGS: ThreeDPanelSettings = {

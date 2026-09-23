@@ -9,14 +9,14 @@
  * subtree the panel rehydrates from the store and the user's choices stick.
  *
  * The 3D panel got its own dedicated store first because it carries the
- * most settings. This file does the same trick for the smaller panels —
+ * most settings. This file does the same trick for the smaller panels -
  * uPlot zoom / series toggles on `TimeSeriesPlot`, pan+zoom on
  * `TrajectoryPlot`, selected frame on `TFTree`. Search filters and tree-
  * node expansion are intentionally left as `useState` because their cost
  * to re-derive is essentially zero, and persisting per-row state for the
  * raw-message inspector would mean serialising every JSON path.
  *
- * No cleanup on panel close — same logic as the 3D store: working set is
+ * No cleanup on panel close - same logic as the 3D store: working set is
  * bounded by panel count, which is bounded by user patience, so a small
  * map is fine and re-opening the same panel id picks up where it left off.
  */
@@ -88,12 +88,12 @@ export interface TrajectoryPanelSettings {
    * Current pan/zoom view, or null when the panel should auto-fit to the
    * data bounds. `null` triggers the recompute-on-data-bounds path in the
    * component, so the reset button writes `null` here instead of
-   * recomputing immediately — the data effect handles it.
+   * recomputing immediately - the data effect handles it.
    */
   view: TrajectoryView | null;
   /**
    * Toggle the OpenStreetMap tile underlay for NavSatFix trajectories.
-   * Off by default — fetching tiles breaks BAGEL's "no data leaves your
+   * Off by default - fetching tiles breaks BAGEL's "no data leaves your
    * machine" pitch, so we make the user opt in explicitly.
    *
    * Ignored on non-GPS trajectories (no anchor lat/lon to project from).

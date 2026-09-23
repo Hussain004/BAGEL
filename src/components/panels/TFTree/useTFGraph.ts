@@ -1,5 +1,5 @@
 /**
- * useTFGraph — Build the ROS2 transform graph from /tf and /tf_static, then
+ * useTFGraph - Build the ROS2 transform graph from /tf and /tf_static, then
  * expose a `lookupTransform(parent, child, timeNs)` for time-resolved queries.
  *
  * We aggregate both topics into a single graph: /tf_static contributes a
@@ -10,7 +10,7 @@
  *
  * v0.9.x: decode goes through `useTopicMessages` so the per-topic message
  * cache + shared in-flight decode protect against the panel-rearrange
- * re-decode regression — a /tf with 100k messages used to fully re-decode
+ * re-decode regression - a /tf with 100k messages used to fully re-decode
  * every time a sibling panel was added/removed because the unmount cleanup
  * threw away the worker's result before it could be cached.
  */
@@ -54,7 +54,7 @@ export interface TFGraph {
   parentOf: Map<string, string | undefined>;
   /** Every frame name seen. */
   frames: Set<string>;
-  /** Roots — frames that are referenced as parents but never as children. */
+  /** Roots - frames that are referenced as parents but never as children. */
   roots: string[];
 }
 
@@ -265,7 +265,7 @@ export function useTFGraph(
   const error = dynStream.error ?? staticStream.error ?? null;
   // We only consider the graph ready once both sides have completed (or are
   // intentionally absent). Building a partial graph mid-stream would force a
-  // full re-layout on every batch — not worth it for TF, which is typically
+  // full re-layout on every batch - not worth it for TF, which is typically
   // bounded at a few thousand edges even on a 100k-message bag.
   const dynReady = !tfTopics.dynamic || (!dynStream.loading && dynStream.messages !== null);
   const staticReady =

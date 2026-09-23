@@ -35,7 +35,7 @@ describe('trajectory/isTrajectoryType', () => {
   });
 });
 
-describe('trajectory/extractTrajectory — pose-bearing types', () => {
+describe('trajectory/extractTrajectory - pose-bearing types', () => {
   it('extracts (x, y) from Odometry messages', () => {
     const messages: Msg[] = [
       { timestamp: ts(0), value: { pose: { pose: { position: { x: 1, y: 2, z: 0 } } } } },
@@ -109,10 +109,10 @@ describe('trajectory/extractTrajectory — pose-bearing types', () => {
   });
 });
 
-describe('trajectory/extractTrajectory — NavSatFix projection', () => {
+describe('trajectory/extractTrajectory - NavSatFix projection', () => {
   it('anchors at the first valid fix and projects later samples to local metres', () => {
     const messages: Msg[] = [
-      { timestamp: ts(0), value: { latitude: 0, longitude: 0 } }, // skipped — "no fix"
+      { timestamp: ts(0), value: { latitude: 0, longitude: 0 } }, // skipped - "no fix"
       { timestamp: ts(1), value: { latitude: 52.2, longitude: 0.115 } },
       { timestamp: ts(2), value: { latitude: 52.2001, longitude: 0.1151 } },
     ];

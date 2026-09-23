@@ -4,7 +4,7 @@
  * Lives outside React so the drag source (`PanelShell`'s header) and the
  * drop targets (every `<DropZoneOverlay>` in `PanelGrid`) can communicate
  * without prop-drilling through the tree. The store holds at most one
- * active drag at a time — multi-touch / second-pointer drags are ignored.
+ * active drag at a time - multi-touch / second-pointer drags are ignored.
  *
  * The store is intentionally tiny: just the source panel id during a drag,
  * plus start/end actions. Hit-testing lives in the overlay components so we

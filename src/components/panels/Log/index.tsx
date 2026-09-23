@@ -164,7 +164,7 @@ export function Log({ panelId, topicName, type, bagId }: LogPanelProps) {
     return out;
   }, [allLogs, hiddenSeverities, search, nodeFilter]);
 
-  // Find the filtered-list index closest to the playhead — anchors auto-scroll
+  // Find the filtered-list index closest to the playhead - anchors auto-scroll
   // and the highlighted row indicator.
   const playheadIdx = useMemo(() => {
     if (filteredLogs.length === 0) return -1;
@@ -335,7 +335,7 @@ export function Log({ panelId, topicName, type, bagId }: LogPanelProps) {
                 : `${filteredLogs.length.toLocaleString()} of ${allLogs.length.toLocaleString()} entries`}
               {filteredLogs.length >= MAX_RENDERED_ROWS && (
                 <span className="ml-2 text-accent-amber">
-                  (capped at {MAX_RENDERED_ROWS.toLocaleString()} — narrow your filter to see more)
+                  (capped at {MAX_RENDERED_ROWS.toLocaleString()} - narrow your filter to see more)
                 </span>
               )}
             </span>
@@ -440,7 +440,7 @@ function FilterBar({
         title={
           autoFollow
             ? 'Stop following the playhead (manual scroll re-enabled).'
-            : 'Follow the playhead — auto-scroll so the current row stays in view.'
+            : 'Follow the playhead - auto-scroll so the current row stays in view.'
         }
         aria-pressed={autoFollow}
       >

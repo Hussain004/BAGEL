@@ -1,5 +1,5 @@
 /**
- * useScene — Own the lifetime of the Three.js renderer / scene / camera /
+ * useScene - Own the lifetime of the Three.js renderer / scene / camera /
  * orbit controls for a single 3D panel.
  *
  * - Creates a WebGLRenderer attached to a container <div> on mount, with
@@ -213,7 +213,7 @@ export function useScene(): {
       rafId = requestAnimationFrame(tick);
       const elapsed = now - lastFrame;
       // Damping needs every frame to settle, but we only paint when there's
-      // a reason — either damping is still moving or data changed.
+      // a reason - either damping is still moving or data changed.
       if (controls.update()) needsRender = true;
       if (needsRender && elapsed >= FRAME_MS) {
         renderer.render(scene, camera);

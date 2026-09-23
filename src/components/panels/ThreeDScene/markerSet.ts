@@ -1,5 +1,5 @@
 /**
- * MarkerSet — lifecycle manager for a `visualization_msgs/MarkerArray`
+ * MarkerSet - lifecycle manager for a `visualization_msgs/MarkerArray`
  * topic's rendered state.
  *
  * Responsibilities:
@@ -28,7 +28,7 @@
  * Playhead semantics:
  *   Markers persist after their ADD until DELETE or lifetime expiry. When
  *   the playhead moves *backwards* the caller (`useMarkerStream`) is
- *   expected to `clear()` and replay from the start — see the hook for
+ *   expected to `clear()` and replay from the start - see the hook for
  *   why we don't try to "undo" individual ADDs in here.
  */
 
@@ -57,7 +57,7 @@ interface Entry {
 }
 
 export class MarkerSet {
-  /** Parent group — add this to the panel's userGroup. */
+  /** Parent group - add this to the panel's userGroup. */
   readonly root: THREE.Group;
 
   private rendered = new Map<string, Entry>();
@@ -110,7 +110,7 @@ export class MarkerSet {
     }
     if (m.action !== MARKER_ACTION.ADD) {
       // ADD and MODIFY both share action=0. Anything else is from a marker
-      // dialect we don't recognise — skip rather than crash the scene.
+      // dialect we don't recognise - skip rather than crash the scene.
       console.warn(`[MarkerArray] skipping unknown action=${m.action}`);
       return;
     }
@@ -118,7 +118,7 @@ export class MarkerSet {
     const key = markerKey(m.ns, m.id);
     let entry = this.rendered.get(key);
 
-    // Type changes mid-stream are rare but legal — recreate the underlying
+    // Type changes mid-stream are rare but legal - recreate the underlying
     // object so we don't try to update e.g. a Sprite with a Mesh marker.
     if (entry && entry.data.type !== m.type) {
       this.removeMarker(m.ns, m.id);
@@ -154,7 +154,7 @@ export class MarkerSet {
    *
    * `key` is a stable identifier for (worldFrame, bucketedTime) that lets
    * us skip the whole walk when nothing has actually changed since the
-   * last refresh — useful during paused playback when the panel still
+   * last refresh - useful during paused playback when the panel still
    * re-renders for sibling reasons (display toggle, etc.).
    */
   refresh(
@@ -162,13 +162,13 @@ export class MarkerSet {
     graph: TFGraph | null,
     worldFrame: string | null,
   ): void {
-    // Bucket the playhead by 100 ms — TF samples are typically <=100 Hz and a
+    // Bucket the playhead by 100 ms - TF samples are typically <=100 Hz and a
     // 10 ms shift makes no visible difference. The bucket is included in
     // lastRefreshKey so a moving playhead still recomposes once per bucket.
     const bucket = currentTimeNs / 100_000_000n;
     const key = `${worldFrame ?? ''}|${bucket.toString()}|${this.frameGroups.size}`;
 
-    // Lifetime cull — always runs since `currentTimeNs` may move backwards
+    // Lifetime cull - always runs since `currentTimeNs` may move backwards
     // past a marker we already culled, which is fine (we just leave it gone).
     const toRemove: string[] = [];
     for (const [k, entry] of this.rendered) {
@@ -266,7 +266,7 @@ export class MarkerSet {
     let g = this.frameGroups.get(frameId);
     if (!g) {
       g = new THREE.Group();
-      // We drive the matrix ourselves on each refresh — the children apply
+      // We drive the matrix ourselves on each refresh - the children apply
       // their own local poses, this group only carries the TF chain.
       g.matrixAutoUpdate = false;
       g.frustumCulled = false;

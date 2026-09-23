@@ -35,7 +35,7 @@ interface TopicRowProps {
   index: number;
   /**
    * Which bag this row was rendered against. Drives the panel id when the
-   * user opens a visualization — multi-bag setups (>1 bag loaded) thread
+   * user opens a visualization - multi-bag setups (>1 bag loaded) thread
    * this in from the sidebar so the resulting panel reads from the right
    * bag regardless of which one is currently focused.
    */
@@ -47,9 +47,9 @@ function suggestPanelKind(topic: TopicInfo): PanelKind {
   if (isTfTopic(topic.name, topic.type)) return 'tf';
   if (isImageType(topic.type)) return 'image';
   if (isSplatType(topic.type)) return 'splat';
-  // Point cloud-ish topics default to the 3D view — that's the whole point.
+  // Point cloud-ish topics default to the 3D view - that's the whole point.
   if (isCloudType(topic.type) || isLaserScanType(topic.type)) return '3d';
-  // MarkerArrays / Markers live in 3D space — there is no useful 2D view.
+  // MarkerArrays / Markers live in 3D space - there is no useful 2D view.
   if (isMarkerArrayType(topic.type) || isMarkerType(topic.type)) return '3d';
   // OccupancyGrid maps render as a textured plane in the 3D scene.
   if (isOccupancyGridType(topic.type)) return '3d';
@@ -127,7 +127,7 @@ const KIND_BUTTON_TITLE: Record<PanelKind, string> = {
 /**
  * Per-topic label override for the panel button. OccupancyGrid topics get
  * `Map` instead of the generic `3D` since "the 3D scene" isn't what users
- * are looking for when they click /map — they want to see the SLAM output
+ * are looking for when they click /map - they want to see the SLAM output
  * rendered as a textured plane.
  */
 function buttonLabelFor(topic: TopicInfo, kind: PanelKind): string {
@@ -156,7 +156,7 @@ export function TopicRow({ topic, index, bagId }: TopicRowProps) {
     s.hasPanelForTopic(topic.name, bagId),
   );
   // Look up the format from the specific bag this row was rendered against,
-  // not the focused bag — multi-bag setups can mix mcap/db3/bag.
+  // not the focused bag - multi-bag setups can mix mcap/db3/bag.
   const format = useBagStore(
     (s) =>
       (bagId ? s.bags.get(bagId)?.summary.format : null) ?? s.bag?.format,
@@ -172,7 +172,7 @@ export function TopicRow({ topic, index, bagId }: TopicRowProps) {
   const togglePin = usePinnedTopicsStore((s) => s.togglePin);
   const pinAtCap = !isPinned && pinnedCount >= MAX_PINNED_TOPICS;
 
-  // Schema availability check — only `.db3` topics can be schema-missing.
+  // Schema availability check - only `.db3` topics can be schema-missing.
   // mcap / bag short-circuit to resolved.
   const { resolved, loading: schemaLoading } = useSchemaResolution(topic.type, format);
   const schemaMissing = !resolved && !schemaLoading;
@@ -202,7 +202,7 @@ export function TopicRow({ topic, index, bagId }: TopicRowProps) {
       id={`topic-row-${topic.name.replace(/\//g, '-')}`}
       title={
         schemaMissing
-          ? `${topic.name}\n${topic.type}\n\nSchema missing — click to paste the .msg definition.`
+          ? `${topic.name}\n${topic.type}\n\nSchema missing - click to paste the .msg definition.`
           : `${topic.name}\n${topic.type}`
       }
       onClick={() => handleOpen(defaultKind)}
@@ -261,7 +261,7 @@ export function TopicRow({ topic, index, bagId }: TopicRowProps) {
         </div>
       </div>
 
-      {/* Stats column — fixed-width slots so msgs/Hz line up vertically across
+      {/* Stats column - fixed-width slots so msgs/Hz line up vertically across
           every row and sit flush against the right edge of the sidebar. The
           Hz slot is always rendered (invisible when the topic has no rate)
           so rows without a frequency don't shift their msgs column left. */}
@@ -284,7 +284,7 @@ export function TopicRow({ topic, index, bagId }: TopicRowProps) {
       </div>
 
       {/* Hover-only panel buttons. Absolute so they never push the stats
-          column left — the data stays anchored to the right edge while the
+          column left - the data stays anchored to the right edge while the
           buttons fade in on top of it. Schema-missing topics show a single
           "Add schema" affordance instead of the panel set, since opening
           panels with no decoder is just confusing. */}

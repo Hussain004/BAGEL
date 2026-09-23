@@ -1,7 +1,7 @@
 /**
  * Vitest config for BAGEL.
  *
- * The test suite runs in Node — most of BAGEL's parsers + utils are
+ * The test suite runs in Node - most of BAGEL's parsers + utils are
  * deliberately framework-agnostic (the worker layer is the only React/DOM
  * touchpoint and we test below it). Node 20+ provides `File`, `Blob`, and
  * `fetch` natively so we can build a `BagSource` and exercise the same code
@@ -32,7 +32,7 @@ export default defineConfig({
     pool: 'forks',
     poolOptions: {
       forks: {
-        // Tests share module state inside a single fork (which is fine — our
+        // Tests share module state inside a single fork (which is fine - our
         // parsers cache their last-loaded source by key, and the cache key
         // diverges between fixtures so there's no cross-test pollution).
         singleFork: false,

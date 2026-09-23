@@ -1,9 +1,9 @@
 /**
- * `BagSource` — a uniform abstraction over local `File` handles and remote
+ * `BagSource` - a uniform abstraction over local `File` handles and remote
  * HTTP URLs, so every parser can read bytes from either without caring how
  * the bytes got there.
  *
- * Both MCAP and ROS1 already do range reads internally — they only need
+ * Both MCAP and ROS1 already do range reads internally - they only need
  * "give me bytes at offset+length". Wrapping a URL with an HTTP-Range-using
  * reader gives us URL loading nearly for free: only the chunks the user
  * actually scrubs through ever hit the network.
@@ -11,16 +11,16 @@
  * `.db3` is the exception: sql.js needs the whole file in memory. For URL
  * sources we eager-fetch via a single GET (sql.js-httpvfs would do real
  * partial reads via a custom SQLite VFS but adds ~70 KB plus a non-trivial
- * amount of glue — deferred until someone hits the practical cap of
+ * amount of glue - deferred until someone hits the practical cap of
  * ~250 MB on a `.db3`).
  *
  * The `BagSource` discriminator is what flows through every parser API
- * (and through structured-clone across the worker boundary — both `File`
+ * (and through structured-clone across the worker boundary - both `File`
  * and plain `{ url, contentLength }` clone fine).
  */
 
 // NOTE: This module is imported on the main thread (via `bagStore` →
-// `parsers/index.ts`). Keep its imports tight — only types and pure-JS HTTP
+// `parsers/index.ts`). Keep its imports tight - only types and pure-JS HTTP
 // glue. The MCAP and rosbag adapter classes (BlobReadable / BlobReader)
 // live in `mcap.ts` and `bag.ts` so they stay isolated to the worker chunk.
 import type { IReadable } from '@mcap/core';
@@ -43,7 +43,7 @@ export type BagSource =
       displayName: string;
     };
 
-/** Stable per-source cache key — file (name + size) or URL string. */
+/** Stable per-source cache key - file (name + size) or URL string. */
 export function sourceKey(source: BagSource): string {
   if (source.kind === 'file') return `file:${source.file.name}:${source.file.size}`;
   return `url:${source.url}`;
@@ -76,7 +76,7 @@ export async function sourceReadAll(source: BagSource): Promise<Uint8Array> {
 }
 
 /**
- * Read a small head slice — used by `detectFormat` to sniff magic bytes
+ * Read a small head slice - used by `detectFormat` to sniff magic bytes
  * before committing to a parser. Cheap on both backends (a 16-byte Range
  * request is one round-trip even on slow links).
  */
@@ -112,7 +112,7 @@ export async function sourceReadSlice(
  * rosbag Bag reader) to request the same chunk bytes repeatedly. Without
  * this cache every backward seek re-fetches the compressed chunk over the
  * network, even though the decompressed result may already be in the
- * ChunkCache in mcap.ts — the fingerprint can't be checked without the
+ * ChunkCache in mcap.ts - the fingerprint can't be checked without the
  * bytes, and uncompressed chunks have no ChunkCache entry at all.
  *
  * Keying by (offset, size) is exact for MCAP: the IndexedReader always
@@ -224,7 +224,7 @@ async function rangeFetch(
       headers: { Range: `bytes=${offset}-${end}` },
     });
   } catch (err) {
-    // CORS rejections surface as a TypeError without status info — relay
+    // CORS rejections surface as a TypeError without status info - relay
     // something actionable instead of `TypeError: Failed to fetch`.
     throw new Error(
       `Could not fetch from "${url}": ${err instanceof Error ? err.message : String(err)}. ` +
@@ -243,7 +243,7 @@ async function rangeFetch(
     // Some hosts ignore Range and return 200 + the full body. That works
     // but defeats the point of streaming, so flag it once. Subsequent reads
     // will refetch the entire body each time, which is brutally slow for a
-    // multi-GB bag — give the user a way to understand the symptom.
+    // multi-GB bag - give the user a way to understand the symptom.
     if (res.status === 200) {
       const buf = new Uint8Array(await res.arrayBuffer());
       if (buf.length >= offset + length) {
@@ -269,7 +269,7 @@ async function rangeFetch(
  * once so downstream Filelike consumers can read `size()` synchronously).
  *
  * Throws with specific messages for the failure modes we can detect, since
- * a clear error is the whole UX here — "URL loading is broken" with no
+ * a clear error is the whole UX here - "URL loading is broken" with no
  * context is the worst outcome.
  */
 export async function createUrlSource(url: string): Promise<BagSource> {
@@ -298,13 +298,13 @@ export async function createUrlSource(url: string): Promise<BagSource> {
   if (!Number.isFinite(contentLength) || contentLength <= 0) {
     throw new Error(`Server reported invalid Content-Length "${lenHeader}" for "${url}".`);
   }
-  // Range support — if absent, we can still fall back to reading the whole
+  // Range support - if absent, we can still fall back to reading the whole
   // body, but warn loudly via the error path so the user knows performance
   // will tank on a multi-GB bag.
   const acceptRanges = head.headers.get('accept-ranges');
   if (acceptRanges && acceptRanges.toLowerCase() === 'none') {
     throw new Error(
-      `Server for "${url}" advertises Accept-Ranges: none — BAGEL can't stream ` +
+      `Server for "${url}" advertises Accept-Ranges: none - BAGEL can't stream ` +
         'this bag in chunks. Choose a host that supports HTTP Range, or download ' +
         'and drag the file in.',
     );
@@ -331,7 +331,7 @@ function extractDisplayName(url: string): string {
 }
 
 /**
- * Build a file-backed `BagSource` — the call-site for the existing
+ * Build a file-backed `BagSource` - the call-site for the existing
  * drag-and-drop / file-picker flow. Convenience so consumers don't have to
  * type the discriminator literal everywhere.
  */

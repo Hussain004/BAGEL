@@ -195,7 +195,7 @@ function findCutoffIndex(messages: DecodedMessage[], targetNs: bigint): number {
 }
 
 /**
- * Pull the first marker's `header.frame_id` out of a MarkerArray message —
+ * Pull the first marker's `header.frame_id` out of a MarkerArray message -
  * used only to auto-pick a default world frame. Returns undefined when the
  * message has no markers, or none of them carry a frame_id.
  */
@@ -217,7 +217,7 @@ function pickMarkerFrame(
  * Compute a rough axis-aligned bounding box from every marker pose +
  * every per-point position across messages 0..cutoff. Returned in source
  * frame coordinates (TF chain is applied separately by the panel), so the
- * resulting box is "wherever the markers say they live" — good enough for
+ * resulting box is "wherever the markers say they live" - good enough for
  * the once-per-panel auto-fit.
  *
  * Returns null when there are no positions to bound.
@@ -273,7 +273,7 @@ function computeMarkerBounds(
 }
 
 /**
- * ThreeDScene — Three.js-powered 3D viewer for spatial ROS2 topics.
+ * ThreeDScene - Three.js-powered 3D viewer for spatial ROS2 topics.
  *
  * Render-flow split:
  *   - PointCloud2 / LaserScan → worker-decoded buffers (transferable
@@ -319,7 +319,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
   // Persistent display settings live in a per-panelId zustand store rather
   // than local useState. `PanelGrid` puts a `key` on its <Group> that
   // includes every open panel id, so adding or closing any sibling panel
-  // forces a remount of this panel — local useState would reset to defaults
+  // forces a remount of this panel - local useState would reset to defaults
   // every time. Lifting to the store also makes settings survive close +
   // reopen of the same 3D panel as a side benefit. `accumStats` stays as
   // local state because it's a derived view of the live accumulator object,
@@ -574,7 +574,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     frames: 0,
   });
   const upFixMatrix = useMemo(() => makeUpFix(upAxis), [upAxis]);
-  // Height colormap follows the up-axis — picking "-X up" means the most
+  // Height colormap follows the up-axis - picking "-X up" means the most
   // negative source X paints reddest (highest in render space).
   const heightAxis = useMemo(() => upAxisToHeightAxis(upAxis), [upAxis]);
 
@@ -595,7 +595,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     maxRange:
       sceneKind === 'pointcloud' && rangeLimitOn && maxRange > 0 ? maxRange : undefined,
     // LaserScan colours by range, so heightAxis is only meaningful for
-    // PointCloud2 / CustomCloud — pass it conditionally to keep scans' cache
+    // PointCloud2 / CustomCloud - pass it conditionally to keep scans' cache
     // key minimal.
     heightAxis: sceneKind === 'pointcloud' ? heightAxis : undefined,
     axisClip: sceneKind === 'pointcloud' ? axisClip : undefined,
@@ -608,7 +608,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
   const poseState = useMessageAtTime(topicName, playheadNs, bagId);
   // Marker streams are unlike clouds and poses: every marker persists in the
   // scene until DELETE or lifetime expiry, so we need the full history up to
-  // the playhead — not just the message at the playhead. The hook is gated
+  // the playhead - not just the message at the playhead. The hook is gated
   // on `isMarker` so it does nothing on cloud / pose panels.
   const markerStream = useTopicMessages(topicName, MARKER_MESSAGE_LIMIT, isMarker, bagId);
 
@@ -673,7 +673,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     mapPlane: MapPlaneObject | null;
   } | null>(null);
 
-  // Dedupe accumulator appends — the cloud-effect can fire on the same
+  // Dedupe accumulator appends - the cloud-effect can fire on the same
   // timestamp when a non-data prop changes (e.g. point size), and we don't
   // want each colour-mode flip to double-add the current frame.
   const lastAppendedTsRef = useRef<bigint | null>(null);
@@ -695,7 +695,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     if (sceneKind === 'pointcloud') {
       owned.cloud = createPointCloud(pointSize);
       refs.userGroup.add(owned.cloud.object);
-      // Accumulator only makes sense for full point clouds — laser scans
+      // Accumulator only makes sense for full point clouds - laser scans
       // already represent a single 2D ring per frame and don't benefit much
       // from running concatenation.
       owned.accumulator = new CloudAccumulator(accumBudget, pointSize);
@@ -866,7 +866,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
   }, [voxelSize, sceneRef]);
 
   // Clear the accumulator + custom pivot whenever the coordinate system the
-  // panel renders into actually *changes* — world frame, topic, or up-axis.
+  // panel renders into actually *changes* - world frame, topic, or up-axis.
   // Both the accumulator's stored points and the pivot are expressed in
   // render-space coordinates that get invalidated by any of these changes.
   //
@@ -909,7 +909,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
   //
   // We raycast against the active cloud first (with a Points.threshold tied
   // to the camera distance so the picked tolerance scales with zoom). If
-  // nothing's hit — e.g. the user clicked empty space — we fall back to the
+  // nothing's hit - e.g. the user clicked empty space - we fall back to the
   // z=0 ground plane, which is the conventional ROS world floor.
   useEffect(() => {
     const refs = sceneRef.current;
@@ -939,7 +939,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
       let hit: THREE.Vector3 | null = null;
       const cloudObj = objectsRef.current?.cloud?.object;
       const accumObj = objectsRef.current?.accumulator?.object;
-      // Try both the live frame and the accumulated cloud — either is fair
+      // Try both the live frame and the accumulated cloud - either is fair
       // game as a pivot target.
       const targets: THREE.Object3D[] = [];
       if (cloudObj) targets.push(cloudObj);
@@ -1035,7 +1035,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
 
     // Accumulator append. userGroup.matrix is now `upFix * tfChain` so using
     // it directly as the worldMatrix puts appended points in render-space
-    // coordinates — consistent with the live frame and with previously
+    // coordinates - consistent with the live frame and with previously
     // accumulated points for as long as upAxis stays the same.
     if (
       accumulating &&
@@ -1062,7 +1062,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
   }, [cloud, graph, worldFrame, sceneRef, accumulating, accumPerFrame, sceneKind, upFixMatrix]);
 
   // OccupancyGrid map update. Texture is keyed by a content fingerprint so
-  // playhead ticks that hit the same map message don't re-upload — typical
+  // playhead ticks that hit the same map message don't re-upload - typical
   // SLAM publishers tick at ≤ 1 Hz, so most ticks are no-ops here.
   useEffect(() => {
     const refs = sceneRef.current;
@@ -1149,7 +1149,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
   //      the whole history.
   //   - `lastPlayheadRef`: previous playhead time, to detect backward scrub.
   //      On scrub-back we wipe the MarkerSet and replay from message 0 up
-  //      to the new cutoff — replaying selected ranges is messier than it
+  //      to the new cutoff - replaying selected ranges is messier than it
   //      sounds because a DELETE at index 50 only "undoes" an ADD at index
   //      40 if we still know about it, which we wouldn't after partial
   //      replay.
@@ -1162,7 +1162,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
   const [markerNamespaces, setMarkerNamespaces] = useState<string[]>([]);
   const [markerCount, setMarkerCount] = useState(0);
 
-  // Clear the watermark when the topic / panel mounts — re-ingest happens
+  // Clear the watermark when the topic / panel mounts - re-ingest happens
   // automatically on the first messages effect tick. Setting React state in
   // here is intentional: the watermark refs are the source of truth for the
   // ingest loop, and the React state mirrors the MarkerSet's emitted view
@@ -1898,7 +1898,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
               </div>
             )}
             {!stats.sourceFrame && noTf && (
-              <div className="text-text-tertiary">no /tf — rendering in topic frame</div>
+              <div className="text-text-tertiary">no /tf - rendering in topic frame</div>
             )}
             {isCloud && (
               <div className="text-text-tertiary mt-0.5">
@@ -2026,7 +2026,7 @@ interface ControlsCardProps {
   accumStats: { points: number; frames: number };
   upAxis: UpAxis;
   setUpAxis: (a: UpAxis) => void;
-  /** Every namespace the marker stream has ever published — sorted. */
+  /** Every namespace the marker stream has ever published - sorted. */
   markerNamespaces: string[];
   /** Namespaces the user has hidden from the marker filter. */
   hiddenMarkerNamespaces: string[];
@@ -2598,7 +2598,7 @@ function ControlsCard({
                     </button>
                   )}
                 </label>
-                {/* Mode toggle — ring keeps the last N points, voxel deduplicates
+                {/* Mode toggle - ring keeps the last N points, voxel deduplicates
                     by grid cell for a true downsampled map. */}
                 <div className="flex gap-1">
                   {(['ring', 'voxel'] as AccumulationMode[]).map((m) => (
@@ -2609,8 +2609,8 @@ function ControlsCard({
                       aria-pressed={accumMode === m}
                       title={
                         m === 'ring'
-                          ? 'FIFO ring buffer — most recent N points'
-                          : 'Voxel grid downsample — one point per cell'
+                          ? 'FIFO ring buffer - most recent N points'
+                          : 'Voxel grid downsample - one point per cell'
                       }
                       className={`flex-1 px-2 py-0.5 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                         accumMode === m
@@ -2693,7 +2693,7 @@ function ControlsCard({
                 )}
                 {accumulating && noTf && (
                   <div className="text-accent-amber/80 text-[10px] leading-tight">
-                    no /tf — frames will overlap in the sensor frame
+                    no /tf - frames will overlap in the sensor frame
                   </div>
                 )}
               </div>
@@ -3118,7 +3118,7 @@ function ControlsCard({
 }
 
 /**
- * DisclosureSection — collapsed-by-default group inside the Display card.
+ * DisclosureSection - collapsed-by-default group inside the Display card.
  * Native <details>/<summary> so no extra state or animation code is
  * needed; open state lives in the panel's settings store (via `open`/
  * `onToggle`) so it survives remounts and can travel through "save as
@@ -3193,7 +3193,7 @@ function ClipBoundInput({
  * panel's up-axis fix) can change cheaply without invalidating the chain
  * lookup.
  *
- * If `postMul` is omitted the result is just the TF chain — preserves the
+ * If `postMul` is omitted the result is just the TF chain - preserves the
  * pre-up-axis behaviour for callers that don't need it.
  */
 /**

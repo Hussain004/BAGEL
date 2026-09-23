@@ -73,7 +73,7 @@ function extractOne(
     const lat = Number(v.latitude);
     const lon = Number(v.longitude);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-    // Treat (0, 0) as "no fix" — most GPS modules emit it before lock.
+    // Treat (0, 0) as "no fix" - most GPS modules emit it before lock.
     if (lat === 0 && lon === 0) return null;
     if (!navSatRef) return { x: 0, y: 0 };
     const dLat = ((lat - navSatRef.lat) * Math.PI) / 180;
@@ -130,7 +130,7 @@ function quaternionToYaw(q: QuatLike): number | undefined {
  * Pull a list of trajectory points out of a topic's decoded message stream.
  *
  * For NavSatFix we anchor at the first valid lat/lon so x/y comes out as
- * metres of east/north offset — handy for visualising a GPS track on a
+ * metres of east/north offset - handy for visualising a GPS track on a
  * canvas without needing a tile basemap.
  */
 export function extractTrajectory(

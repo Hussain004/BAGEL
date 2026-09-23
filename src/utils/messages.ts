@@ -147,7 +147,7 @@ export function isPointCloud2Type(type: string): boolean {
 }
 
 /**
- * True if a type is a "custom" list-of-points cloud — Livox CustomMsg and
+ * True if a type is a "custom" list-of-points cloud - Livox CustomMsg and
  * any other vendor message that carries per-point x/y/z in a `points[]`
  * array of structs instead of PointCloud2's packed binary layout.
  *
@@ -183,7 +183,7 @@ export function isCloudType(type: string): boolean {
 /**
  * True if a type is BAGEL's synthetic gaussian splat topic (see
  * `src/parsers/splat.ts`). Kept as its own check rather than folded into
- * `isCloudType` — splats need the dedicated SplatViewer panel, not the
+ * `isCloudType` - splats need the dedicated SplatViewer panel, not the
  * point-cloud decoder, which has no room for opacity/scale/rotation/SH data.
  */
 export function isSplatType(type: string): boolean {
@@ -196,7 +196,7 @@ export function isLaserScanType(type: string): boolean {
 }
 
 /**
- * True if a ROS type is `nav_msgs/OccupancyGrid` — the standard ROS map
+ * True if a ROS type is `nav_msgs/OccupancyGrid` - the standard ROS map
  * format produced by gmapping, slam_toolbox, cartographer, and every
  * navigation stack costmap publisher. We render it as a textured plane in
  * the 3D scene, posed by `info.origin` and TF-resolved to the world frame.
@@ -219,7 +219,7 @@ export function is3DCapableType(type: string): boolean {
   if (isCloudType(type) || isLaserScanType(type)) return true;
   if (isMarkerArrayType(type) || isMarkerType(type)) return true;
   if (isOccupancyGridType(type)) return true;
-  // Pose-bearing types — we'll render them as a coordinate frame triad.
+  // Pose-bearing types - we'll render them as a coordinate frame triad.
   return (
     type.endsWith('/Odometry') ||
     type.endsWith('/PoseStamped') ||
@@ -230,7 +230,7 @@ export function is3DCapableType(type: string): boolean {
 
 /**
  * True if a ROS type is a `visualization_msgs/MarkerArray`. The package
- * prefix is intentional — `MarkerArray` is rare enough as a name that an
+ * prefix is intentional - `MarkerArray` is rare enough as a name that an
  * `endsWith` alone would catch typed registries from other packages too
  * loosely, and the ROS Marker spec is what we know how to render.
  */
@@ -250,7 +250,7 @@ export function isMarkerType(type: string): boolean {
 }
 
 /**
- * True if a ROS type is `diagnostic_msgs/DiagnosticArray` — the standard
+ * True if a ROS type is `diagnostic_msgs/DiagnosticArray` - the standard
  * per-node health report every nav/perception stack publishes. v1.0 renders
  * it as a swimlane timeline (one row per component) + a "what's failing at
  * the playhead" inspector.
@@ -261,7 +261,7 @@ export function isDiagnosticArrayType(type: string): boolean {
 }
 
 /**
- * True if a ROS type is a logging message — `rcl_interfaces/Log` (ROS2) or
+ * True if a ROS type is a logging message - `rcl_interfaces/Log` (ROS2) or
  * `rosgraph_msgs/Log` (ROS1). v1.0 renders it as a virtualised, filterable
  * log list with severity + node filters.
  */

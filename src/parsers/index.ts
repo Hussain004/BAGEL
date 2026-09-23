@@ -2,12 +2,12 @@
  * Public parser API used by the rest of the app.
  *
  * Routes every call through the per-bag parser Web Worker (see
- * `workers/parserClient.ts`) so heavy lifting — MCAP chunk decompression,
- * sql.js queries, CDR deserialization — runs off the UI thread *and* in a
+ * `workers/parserClient.ts`) so heavy lifting - MCAP chunk decompression,
+ * sql.js queries, CDR deserialization - runs off the UI thread *and* in a
  * dedicated worker per bag so cross-bag reads don't queue behind each other.
  *
  * v0.9 multi-bag: each call accepts a `bagId`. Functions that exist for
- * back-compat (no bagId) route through the shared worker — that's only used
+ * back-compat (no bagId) route through the shared worker - that's only used
  * by main-thread schema management (`setCustomSchemas`, `validateSchema`,
  * `getSupportedTypes`) since those don't depend on any one bag's state.
  *
@@ -35,7 +35,7 @@ export { releaseBagWorker } from '../workers/parserClient';
 
 /**
  * Parse a bag's header / summary. The worker assigned to `bagId` owns the
- * reader cache going forward — subsequent per-topic reads against the same
+ * reader cache going forward - subsequent per-topic reads against the same
  * bagId reuse it.
  *
  * `bagId` is optional for back-compat (`bagStore.loadBag` calls this with the
@@ -189,7 +189,7 @@ export async function setCustomSchemas(schemas: Record<string, string>): Promise
   ]);
 }
 
-/** Dry-run a `.msg` text through the parser — used by the paste modal. */
+/** Dry-run a `.msg` text through the parser - used by the paste modal. */
 export async function validateSchema(
   schemaText: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {

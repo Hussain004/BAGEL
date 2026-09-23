@@ -191,7 +191,7 @@ describe('MESH_RESOURCE marker', () => {
     const rm = createMarkerObject(MARKER_TYPE.MESH_RESOURCE);
     rm.update(baseMarker({ meshResource: 'package://a/x.stl' }));
     rm.update(baseMarker({ meshResource: 'package://a/y.stl' }));
-    // Late resolve of the first URI — the marker should ignore it.
+    // Late resolve of the first URI - the marker should ignore it.
     const staleRoot = new THREE.Group();
     staleRoot.add(new THREE.Mesh(new THREE.BoxGeometry()));
     resolveFirst(staleRoot);

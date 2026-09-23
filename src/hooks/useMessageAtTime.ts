@@ -1,5 +1,5 @@
 /**
- * useMessageAtTime — Lazy-fetch the single message nearest a given playhead
+ * useMessageAtTime - Lazy-fetch the single message nearest a given playhead
  * timestamp for a topic. Used by panels (Image, Raw inspector) that only
  * need the current frame, not the whole stream.
  *
@@ -11,12 +11,12 @@
  * is fired immediately. The previous decoded message stays on-screen
  * during the in-flight window to avoid flicker.
  *
- * Cancellation is **session-scoped** — keyed on (bag, file, topic), not on
+ * Cancellation is **session-scoped** - keyed on (bag, file, topic), not on
  * timeNs. A timeNs change updates `pendingTimeRef` and triggers a new fire
  * once the in-flight settles. If cancellation followed the per-effect
  * `cancelled` flag, every in-flight request would be invalidated by the
  * next playhead tick (~16 ms), and during playback the worker would
- * happily decode frames whose results we then refused to apply — the
+ * happily decode frames whose results we then refused to apply - the
  * panel would stay frozen until the user paused, which is exactly the
  * regression we hit in v0.4.
  *
@@ -57,7 +57,7 @@ export function useMessageAtTime(
   const pendingTimeRef = useRef<bigint | null>(null);
   // Session id is bumped whenever the bag/file/topic changes. In-flight
   // requests carry the session they were issued under and bail when it
-  // no longer matches — timeNs ticks do NOT bump the session.
+  // no longer matches - timeNs ticks do NOT bump the session.
   const sessionRef = useRef(0);
   const fireRef = useRef<() => void>(() => {});
 

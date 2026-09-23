@@ -39,7 +39,7 @@ interface View {
 const MARGIN = 30;
 
 /**
- * TrajectoryPlot — Renders a topic's planar path on a canvas.
+ * TrajectoryPlot - Renders a topic's planar path on a canvas.
  *
  * Supports pose-bearing types (Odometry / PoseStamped / TransformStamped / …)
  * and NavSatFix (equirectangular projection anchored at the first GPS fix).
@@ -137,7 +137,7 @@ export function TrajectoryPlot({ panelId, topicName, type, bagId }: TrajectoryPl
     autoFitRef.current = fit;
     // Only snap to the new fit if the user has not customised the view.
     // A saved view in the store means we're rehydrating after a remount
-    // (dock, close+reopen, hash restore) — preserve what the user had.
+    // (dock, close+reopen, hash restore) - preserve what the user had.
     setView((current) => (current == null ? fit : current));
   }, [recomputeFit, setView]);
 
@@ -510,7 +510,7 @@ export function TrajectoryPlot({ panelId, topicName, type, bagId }: TrajectoryPl
  *
  * Strategy:
  *   1. The panel's view.scale is in "screen px per metre". Convert that to a
- *      slippy-map zoom level by way of metres-per-pixel — bigger zoom = more
+ *      slippy-map zoom level by way of metres-per-pixel - bigger zoom = more
  *      detail, smaller covered area per tile.
  *   2. Project the canvas corners back to lat/lon (via the local
  *      equirectangular projection around `navSatRef`), then world-pixel.
@@ -518,7 +518,7 @@ export function TrajectoryPlot({ panelId, topicName, type, bagId }: TrajectoryPl
  *      tiles into the loader (the panel will re-render when they arrive).
  *
  * Tiles drawn at the chosen zoom's *native* pixel scale, then translated +
- * scaled to fit the canvas — this avoids re-sampling when the view scale
+ * scaled to fit the canvas - this avoids re-sampling when the view scale
  * happens to match an integer zoom level, which is the common case.
  */
 function drawTileUnderlay(
@@ -548,7 +548,7 @@ function drawTileUnderlay(
   let maxTileX = -Infinity;
   let minTileY = Infinity;
   let maxTileY = -Infinity;
-  // Anchor's world-pixel position at the chosen zoom — needed to translate
+  // Anchor's world-pixel position at the chosen zoom - needed to translate
   // from "world pixels relative to anchor" back to absolute world pixels.
   const anchorWorld = latLonToWorldPx(ref.lat, ref.lon, zoom);
   for (const c of corners) {
@@ -598,7 +598,7 @@ function drawTileUnderlay(
     for (let ty = tileYStart; ty <= tileYEnd; ty++) {
       const bitmap = loader.get(zoom, tx, ty);
       if (!bitmap) {
-        // Fire and forget — re-render fires when the tile lands.
+        // Fire and forget - re-render fires when the tile lands.
         void loader.request(zoom, tx, ty);
         continue;
       }
@@ -738,7 +738,7 @@ function drawScaleBar(
 
 /**
  * Parse a `#rrggbb` colour into an {r,g,b} 0-255 tuple. Returns black on a
- * malformed input — the multi-bag path is the only caller and it always
+ * malformed input - the multi-bag path is the only caller and it always
  * passes a palette colour, so the fallback is a defence-in-depth only.
  */
 function hexToRgb(hex: string): { r: number; g: number; b: number } {

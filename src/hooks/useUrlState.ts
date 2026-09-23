@@ -5,17 +5,17 @@
  * session is shareable: dragging the same bag again on a different machine
  * with the same URL gives you the same layout and playhead position.
  *
- * The hash schema is intentionally tiny — there's no router, just a flat
+ * The hash schema is intentionally tiny - there's no router, just a flat
  * `key=value&...` form. Keys:
- *   - `t` — playhead time in seconds from bag start (3-digit precision)
- *   - `p` — the layout tree, encoded recursively:
+ *   - `t` - playhead time in seconds from bag start (3-digit precision)
+ *   - `p` - the layout tree, encoded recursively:
  *           * `P<kind>:<URL-encoded topic>` for a single-bag panel (v0.7/v0.8)
  *           * `P<kind>:<bagId>:<URL-encoded topic>` for a multi-bag panel (v0.9)
  *           * `H(<child>,<child>,...)` for a horizontal split
  *           * `V(<child>,<child>,...)` for a vertical split
  *           e.g. `H(Pplot:%2Fodom,V(Pimage:%2Fcam,Pplot:b2:%2Fimu))`.
- *   - `b` — first bag URL (v0.9) — restored on page open if no bag is loaded yet.
- *   - `a` — per-bag anchor times under `anchor` alignment (v1.0). Comma-
+ *   - `b` - first bag URL (v0.9) - restored on page open if no bag is loaded yet.
+ *   - `a` - per-bag anchor times under `anchor` alignment (v1.0). Comma-
  *           separated `bagId:bagLocalNs` pairs, e.g. `a=b1:5000000000,b2:8230000000`.
  *           Bags without explicit anchors are omitted; the parser ignores
  *           entries whose bagId isn't loaded so stale links degrade gracefully.
@@ -25,9 +25,9 @@
  * and lift it into a single horizontal split, matching the v0.5 layout
  * the user originally saw.
  *
- * The bag itself is never encoded — bag files don't live on a URL, and
+ * The bag itself is never encoded - bag files don't live on a URL, and
  * even if they did the user has to drop them in again. Restore is keyed
- * on the bag's (name, size) — it only fires if the loaded bag plausibly
+ * on the bag's (name, size) - it only fires if the loaded bag plausibly
  * matches the saved layout. Leaves whose topics no longer exist are
  * silently dropped from the tree, and resulting empty splits collapse.
  */
@@ -71,7 +71,7 @@ const PANEL_KIND_VALUES: ReadonlySet<string> = new Set(
 
 export interface ParsedHash {
   timeSec?: number;
-  /** Layout tree where leaves carry placeholder `type: ''` — caller resolves. */
+  /** Layout tree where leaves carry placeholder `type: ''` - caller resolves. */
   root: LayoutNode | null;
   /** Optional remote bag URL to load on page open (v0.9). */
   bagUrl?: string;
@@ -79,7 +79,7 @@ export interface ParsedHash {
   anchors?: Map<string, bigint>;
   /**
    * Timeline bookmarks from the `bm=` hash segment (v1.4.3).
-   * timeNs is a placeholder (0n) here — it's resolved to aligned ns in the
+   * timeNs is a placeholder (0n) here - it's resolved to aligned ns in the
    * restore effect once the bag's playhead range is known.
    */
   bookmarks?: { id: string; timeSec: number; label: string }[];
@@ -106,13 +106,13 @@ function parseTreeEncoding(input: string): LayoutNode | null {
 
   function parsePanel(): PanelLeaf | null {
     pos++; // 'P'
-    // Panel body runs until the next ',' or ')' at this depth — neither
+    // Panel body runs until the next ',' or ')' at this depth - neither
     // appears in a URL-encoded topic name, so a flat scan is safe.
     let end = pos;
     while (end < input.length && input[end] !== ',' && input[end] !== ')') end++;
     const raw = input.slice(pos, end);
     pos = end;
-    // Split on `:` — two parts means single-bag (kind:topic), three+ parts
+    // Split on `:` - two parts means single-bag (kind:topic), three+ parts
     // means multi-bag (kind:bagId:topic). URL-decoded topic names don't
     // contain literal colons; any colon in the original would be `%3A` in
     // the encoded form, so this split is unambiguous.
@@ -165,7 +165,7 @@ function parseTreeEncoding(input: string): LayoutNode | null {
     if (children.length === 1) return children[0];
     return {
       node: 'split',
-      // Synthetic ids — splits don't need stable ids across reloads since
+      // Synthetic ids - splits don't need stable ids across reloads since
       // there's no per-split state we'd want to persist.
       id: `split:r${++splitCounter}`,
       orientation,
@@ -204,7 +204,7 @@ function parseFlatEncoding(input: string): LayoutNode | null {
       kind: kind as PanelKind,
       topicName,
       type: '',
-      // No bagId in v0.5 flat encoding — resolves to the focused bag at load time.
+      // No bagId in v0.5 flat encoding - resolves to the focused bag at load time.
     });
   }
   if (leaves.length === 0) return null;
@@ -240,7 +240,7 @@ export function parseHash(hash: string): ParsedHash {
   }
   const b = params.get('b');
   if (b) {
-    // Sanity-check that it parses as a URL — anything else (typo, partial
+    // Sanity-check that it parses as a URL - anything else (typo, partial
     // hash, leftover state) just gets ignored.
     try {
       const u = new URL(b);
@@ -257,7 +257,7 @@ export function parseHash(hash: string): ParsedHash {
       if (colon < 1) continue;
       const bagId = pair.slice(0, colon);
       const nsRaw = pair.slice(colon + 1);
-      // BigInt() throws on a malformed string — guard so a bad pair doesn't
+      // BigInt() throws on a malformed string - guard so a bad pair doesn't
       // kill the whole hash restore.
       try {
         anchors.set(bagId, BigInt(nsRaw));
@@ -351,16 +351,16 @@ export function encodeHash(
   bookmarks: { timeSec: number; label: string }[] | null,
 ): string {
   const params = new URLSearchParams();
-  // 3 decimal places ≈ 1 ms — fine for human scrubbing, keeps the URL short.
+  // 3 decimal places ≈ 1 ms - fine for human scrubbing, keeps the URL short.
   params.set('t', timeSec.toFixed(3));
   if (root) params.set('p', encodeNode(root));
   // `b=` carries the bag's source URL when the bag was loaded from a remote
-  // URL (v0.9). File-loaded bags omit it — there's no way to encode a local
+  // URL (v0.9). File-loaded bags omit it - there's no way to encode a local
   // File handle. Refreshing or sharing the link re-fetches the bag and
   // restores the same layout + playhead position.
   if (bagUrl) params.set('b', bagUrl);
   // `a=` encodes per-bag anchors. Only emitted for bags that have an explicit
-  // anchor — bags using the startTime fallback omit themselves so the param
+  // anchor - bags using the startTime fallback omit themselves so the param
   // stays absent on the default single-bag flow.
   if (anchors && anchors.size > 0) {
     const pairs: string[] = [];
@@ -422,7 +422,7 @@ function attachTypesAndPrune(
 }
 
 /**
- * useUrlState — Restore layout + playhead from the URL hash on bag load, and
+ * useUrlState - Restore layout + playhead from the URL hash on bag load, and
  * write changes back to the hash as the user interacts.
  *
  * Restore rule: the incoming page-load hash is parsed ONCE into a ref on
@@ -449,14 +449,14 @@ export function useUrlState(): void {
   const snapshotRef = useRef<ParsedHash | null>(null);
   /** True once the page-load snapshot has been consumed (see rule above). */
   const snapshotConsumedRef = useRef(false);
-  /** Tracks whether we've already kicked off the page-load URL fetch — set
+  /** Tracks whether we've already kicked off the page-load URL fetch - set
    *  on first attempt so a fetch failure doesn't loop. */
   const urlAutoLoadStartedRef = useRef(false);
 
   // ── Auto-load a bag from the URL hash on first page visit ──────────────
   //
   // A `#b=<url>` parameter in the hash is the v0.9 "share a pre-loaded
-  // session" affordance — refreshing or sharing a link with a bag URL
+  // session" affordance - refreshing or sharing a link with a bag URL
   // re-fetches the bag so the recipient sees the same data. Fires once
   // per page load; user-driven loads after that are not auto-overridden.
   useEffect(() => {
@@ -572,7 +572,7 @@ export function useUrlState(): void {
       return;
     }
 
-    // Only URL-loaded bags persist their source in the hash — there's no way
+    // Only URL-loaded bags persist their source in the hash - there's no way
     // to encode a local File handle. The source ref is captured here and used
     // on every write below; it changes infrequently (only on load/clear).
     const bagUrl = source?.kind === 'url' ? source.url : null;
@@ -615,12 +615,12 @@ export function useUrlState(): void {
       );
       if (next === last) return;
       last = next;
-      // replaceState rather than pushState — the hash represents the current
+      // replaceState rather than pushState - the hash represents the current
       // view, not a navigable history.
       window.history.replaceState(null, '', `#${next}`);
     };
 
-    // Coalesce rapid updates into one rAF — playback ticks at 60 Hz and
+    // Coalesce rapid updates into one rAF - playback ticks at 60 Hz and
     // calling replaceState on every tick is wasteful.
     const schedule = () => {
       if (pendingFrame !== null) return;
@@ -630,7 +630,7 @@ export function useUrlState(): void {
     const unsubPlayhead = usePlayheadStore.subscribe(schedule);
     const unsubLayout = useLayoutStore.subscribe(schedule);
     // Subscribe to bagStore too so anchor + alignment changes flush to the
-    // hash immediately — without this, setting an anchor wouldn't show up
+    // hash immediately - without this, setting an anchor wouldn't show up
     // in the URL until the next playhead tick.
     const unsubBag = useBagStore.subscribe(schedule);
     // Subscribe to annotationStore so bookmark changes flush to the hash.

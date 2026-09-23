@@ -1,5 +1,5 @@
 /**
- * PanelStates — the loading/error/empty chrome every panel needs. Was
+ * PanelStates - the loading/error/empty chrome every panel needs. Was
  * copy-pasted into 7 panel files (13 near-identical implementations); one
  * shared version so a future tweak (icon, type scale, wording) lands
  * everywhere instead of drifting per panel.

@@ -1,5 +1,5 @@
 /**
- * useSchemaResolution — answers "does BAGEL know how to decode this topic?"
+ * useSchemaResolution - answers "does BAGEL know how to decode this topic?"
  *
  * Schema availability depends on the bag format:
  *
@@ -13,7 +13,7 @@
  *      (a localStorage map populated via the paste modal).
  *
  * The bundled supported-types list is fetched once per page session and
- * cached at module level — it's ~150 strings, never changes for the
+ * cached at module level - it's ~150 strings, never changes for the
  * session, and doesn't justify a per-mount round-trip. The hook returns
  * `{ resolved: true, loading: true }` (optimistic) while that first fetch
  * is in flight so the sidebar doesn't flash a "schema missing" badge on
@@ -106,13 +106,13 @@ export function useSchemaResolution(
     return { resolved: true, loading: false };
   }
 
-  // Custom user schemas take priority — same precedence the worker uses.
+  // Custom user schemas take priority - same precedence the worker uses.
   for (const alias of aliasesFor(typeName)) {
     if (customSchemas[alias] !== undefined) {
       return { resolved: true, loading: false };
     }
   }
-  // Still fetching the bundled list — assume resolved so we don't flash.
+  // Still fetching the bundled list - assume resolved so we don't flash.
   if (!supportedTypes) return { resolved: true, loading: true };
   for (const alias of aliasesFor(typeName)) {
     if (supportedTypes.has(alias)) return { resolved: true, loading: false };

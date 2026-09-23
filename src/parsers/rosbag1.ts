@@ -39,7 +39,7 @@ function getOrCreateReader(key: string, definitions: MessageDefinition[]): Messa
  * object inside `value`. Mutates in place and skips typed arrays.
  *
  * A time-like object is one whose first two enumerable keys are exactly
- * `sec` (number) and `nsec` (number) — matching ROS1's `time` / `duration`
+ * `sec` (number) and `nsec` (number) - matching ROS1's `time` / `duration`
  * primitives as decoded by `@foxglove/rosmsg-serialization`. We avoid
  * walking `Uint8Array` / `Float32Array` payloads, which are common in
  * sensor messages and would otherwise dominate the cost.
@@ -52,7 +52,7 @@ function normalizeRos1Timestamps(value: unknown): void {
     return;
   }
   const obj = value as Record<string, unknown>;
-  // Detect ROS1 time/duration shape — both fields present and numeric.
+  // Detect ROS1 time/duration shape - both fields present and numeric.
   if (
     typeof obj.sec === 'number' &&
     typeof obj.nsec === 'number' &&
@@ -73,7 +73,7 @@ function normalizeRos1Timestamps(value: unknown): void {
  *                     type + dependencies separated by `=====` lines).
  * @param data - Raw ROS1 wire-format bytes from the bag.
  * @param cacheKey - Stable key for caching the MessageReader. Falls back to
- *                   a slice of the schema text — collisions only happen for
+ *                   a slice of the schema text - collisions only happen for
  *                   topics whose first ~100 chars of definition match
  *                   exactly, which is unlikely in practice.
  * @returns Deserialized JavaScript object with `nanosec` aliases added on

@@ -19,11 +19,11 @@ import { downloadBytes } from '../../utils/clipEncoder';
 import { APP_VERSION } from '../../utils/version';
 
 /**
- * Toolbar — Top bar showing bag file info, stats, and controls.
+ * Toolbar - Top bar showing bag file info, stats, and controls.
  *
  * v0.9 multi-bag: shows one chip per loaded bag with a colour swatch, focus
  * indicator, close button. Adds an "Add bag" affordance (file picker) and a
- * time-alignment selector that's only visible when >1 bag is loaded — for
+ * time-alignment selector that's only visible when >1 bag is loaded - for
  * single-bag setups the chip + stats row stays simple.
  */
 export function Toolbar() {
@@ -51,7 +51,7 @@ export function Toolbar() {
   // Anchor placement: pick the focused bag's current bag-local time as the
   // anchor event, then snap aligned time to 0 so the user keeps seeing the
   // exact same content they just identified as the event. See the v1.0 plan
-  // notes for the math — without the snap, the focused bag's view shifts
+  // notes for the math - without the snap, the focused bag's view shifts
   // because the alignment offset just changed.
   const onSetAnchor = () => {
     if (!focusBagId) return;
@@ -94,7 +94,7 @@ export function Toolbar() {
         <button
           onClick={() => setModal('about')}
           className="flex items-center gap-2 rounded-md px-1 -mx-1 hover:bg-surface-hover transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60 flex-shrink-0"
-          title={`BAGEL v${APP_VERSION} — About`}
+          title={`BAGEL v${APP_VERSION} - About`}
           aria-label="About BAGEL"
         >
           <BagelIconSmall />
@@ -107,7 +107,7 @@ export function Toolbar() {
           {bagOrder.map((id) => {
             const entry = bags.get(id);
             if (!entry) return null;
-            // Only show the anchor pip when anchor mode is active — outside it
+            // Only show the anchor pip when anchor mode is active - outside it
             // the per-bag anchor is dormant and showing it would be noise.
             const anchorBagLocalNs =
               alignment === 'anchor' && entry.anchorNs !== undefined
@@ -152,8 +152,8 @@ export function Toolbar() {
         </div>
       </div>
 
-      {/* Center: Stats — focused bag (or aggregate when >1 loaded).
-          Hidden on narrow viewports — the data is still available in the
+      {/* Center: Stats - focused bag (or aggregate when >1 loaded).
+          Hidden on narrow viewports - the data is still available in the
           empty panel-grid summary card. */}
       <div className="hidden lg:flex items-center gap-6 flex-shrink-0">
         {multi ? (
@@ -270,7 +270,7 @@ export function Toolbar() {
           aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
         >
           {theme === 'dark' ? (
-            // Sun icon — switches to light
+            // Sun icon - switches to light
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}>
               <circle cx="12" cy="12" r="4" />
               <path
@@ -279,7 +279,7 @@ export function Toolbar() {
               />
             </svg>
           ) : (
-            // Moon icon — switches to dark
+            // Moon icon - switches to dark
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}>
               <path
                 strokeLinecap="round"
@@ -321,7 +321,7 @@ interface BagChipProps {
   name: string;
   format: string;
   focused: boolean;
-  /** Hide the format pill on the single-bag chip — it's still in the badge below. */
+  /** Hide the format pill on the single-bag chip - it's still in the badge below. */
   showFormat: boolean;
   /** Bag-local time the anchor points to, in nanoseconds relative to bag start.
    *  `null` when no anchor is set or anchor alignment isn't active. */
@@ -364,7 +364,7 @@ function BagChip({
     >
       <button
         onClick={onFocus}
-        title={focused ? `${name} (focused — new panels open against this bag)` : `Focus ${name}`}
+        title={focused ? `${name} (focused - new panels open against this bag)` : `Focus ${name}`}
         className="flex items-center gap-1.5 min-w-0"
       >
         {liveStatus ? (
@@ -428,7 +428,7 @@ function BagChip({
 }
 
 function AnchorIcon() {
-  // Inline SVG anchor — avoids pulling in an icon dep and matches the
+  // Inline SVG anchor - avoids pulling in an icon dep and matches the
   // toolbar's other inline SVGs.
   return (
     <svg
@@ -446,7 +446,7 @@ function AnchorIcon() {
 }
 
 /**
- * LiveStatusDot — solid fill = connected, hollow ring = anything else. Color
+ * LiveStatusDot - solid fill = connected, hollow ring = anything else. Color
  * alone (emerald/amber/rose/gray) fails for colorblind users trying to tell
  * "connecting" from "error" at a glance; the shape difference doesn't.
  */
@@ -962,7 +962,7 @@ function SetAnchorButton({ entry, onSetAnchor }: SetAnchorButtonProps) {
     <button
       onClick={onSetAnchor}
       className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-text-secondary hover:text-text-primary hover:bg-surface-hover border border-border hover:border-accent-blue/40 transition-colors"
-      title={`Set "${entry.summary.fileName}" anchor to the current playhead — every bag's aligned t=0 will line up at this event.`}
+      title={`Set "${entry.summary.fileName}" anchor to the current playhead - every bag's aligned t=0 will line up at this event.`}
       aria-label={`Set anchor for ${entry.summary.fileName} at current playhead`}
     >
       <AnchorIcon />

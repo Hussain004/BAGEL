@@ -1,5 +1,5 @@
 /**
- * In-memory bag synthesizer — generates tiny `Uint8Array`s that parse as
+ * In-memory bag synthesizer - generates tiny `Uint8Array`s that parse as
  * real MCAP files via the same `@mcap/core` writer the bundled sample bag
  * uses (see `scripts/build-sample-bag.mjs`).
  *
@@ -192,8 +192,8 @@ export interface SynthOptions {
 /**
  * Write a small in-memory MCAP file with the given topics + messages.
  *
- * The default options match the writer that produces `tour.mcap` — chunked,
- * indexed, statistics — so the indexed-reader code path is exercised.
+ * The default options match the writer that produces `tour.mcap` - chunked,
+ * indexed, statistics - so the indexed-reader code path is exercised.
  *
  * Returns the raw bytes; tests can wrap them in a `File` for `BagSource`.
  */
@@ -339,7 +339,7 @@ export function bytesToFile(bytes: Uint8Array, name: string): File {
 
 // ── Quick-build helpers for common shapes ─────────────────────────────────
 
-/** Build a 3-message `/chatter` (std_msgs/String) bag — smallest possible. */
+/** Build a 3-message `/chatter` (std_msgs/String) bag - smallest possible. */
 export async function chatterBag(library?: string): Promise<Uint8Array> {
   return writeSyntheticMcap(
     [

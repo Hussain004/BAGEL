@@ -11,7 +11,7 @@
  * to work unchanged. New multi-bag-aware consumers read from `bags` /
  * `bagOrder` directly and look up entries by `bagId`.
  *
- * Time alignment (v0.9): three modes — `wall-clock`, `bag-start`, `anchor`.
+ * Time alignment (v0.9): three modes - `wall-clock`, `bag-start`, `anchor`.
  * The playhead operates in **aligned time**, where:
  *   - aligned = bag-local under `wall-clock`,
  *   - aligned = bag-local - bag.startTime under `bag-start`,
@@ -57,7 +57,7 @@ export interface BagEntry {
   color: string;
   /**
    * Optional anchor time (bag-local ns) used under `anchor` alignment.
-   * `undefined` means "no anchor picked yet" — the bag falls back to
+   * `undefined` means "no anchor picked yet" - the bag falls back to
    * bag-start alignment until the user picks one.
    */
   anchorNs?: bigint;
@@ -65,7 +65,7 @@ export interface BagEntry {
 
 interface BagState {
   bags: Map<string, BagEntry>;
-  /** Insertion order — drives sidebar grouping + colour stability. */
+  /** Insertion order - drives sidebar grouping + colour stability. */
   bagOrder: string[];
   focusBagId: string | null;
   alignment: TimeAlignment;
@@ -109,7 +109,7 @@ function nextBagId(): string {
 }
 
 /**
- * Picking a colour for a newly-loaded bag — uses the existing topic-colour
+ * Picking a colour for a newly-loaded bag - uses the existing topic-colour
  * palette but seeded by the bag id so subsequent loads get distinct hues
  * without needing a global palette index.
  */
@@ -438,7 +438,7 @@ export const useBagStore = create<BagState>((set, get) => ({
     set({ error: null });
   },
 
-  // v0.8.x back-compat — single-bag flow replaces any existing bags.
+  // v0.8.x back-compat - single-bag flow replaces any existing bags.
   loadBag: async (file: File) => {
     get().clearAll();
     await get().addBagFromFile(file);
@@ -468,7 +468,7 @@ export function alignmentOffsetFor(entry: BagEntry, mode: TimeAlignment): bigint
     case 'bag-start':
       return entry.summary.startTime;
     case 'anchor':
-      // Fall back to bag-start when no anchor is set yet — the user hasn't
+      // Fall back to bag-start when no anchor is set yet - the user hasn't
       // picked a sync point so we just align the bag starts.
       return entry.anchorNs ?? entry.summary.startTime;
   }
@@ -497,7 +497,7 @@ function shiftAnnotationsForOffset(oldOffset: bigint, newOffset: bigint): void {
 }
 
 /**
- * Resolve a bagId — empty string / undefined / unknown ids all fall back to
+ * Resolve a bagId - empty string / undefined / unknown ids all fall back to
  * the focused bag. Returns null when no bag at all is loaded.
  *
  * The fallback path is what lets v0.7 / v0.8 panel ids (no embedded bagId)
@@ -521,7 +521,7 @@ export function resolveBagEntry(
 
 /**
  * Compute the union of every loaded bag's aligned [start, end] range. Returns
- * null when no bags are loaded — callers can use that as a "no playable
+ * null when no bags are loaded - callers can use that as a "no playable
  * timeline" sentinel.
  */
 export function alignedTimelineRange(

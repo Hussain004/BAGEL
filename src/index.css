@@ -19,9 +19,9 @@
 
 /* ── Custom Theme ──
    Base values are the dark theme. The `[data-theme="light"]` block below
-   overrides every value that needs to change for light mode — `themeStore`
+   overrides every value that needs to change for light mode - `themeStore`
    toggles the attribute on <html>. Accents (blue / cyan / violet / amber /
-   rose / emerald) stay the same across themes — they're vivid enough to
+   rose / emerald) stay the same across themes - they're vivid enough to
    read on both light and dark surfaces. */
 @theme {
   --color-bg-primary: #06080f;
@@ -65,12 +65,12 @@
 
 /* ── Light theme overrides ──
    Activated by `<html data-theme="light">`. Only the values that differ
-   from the dark base appear here — everything else inherits.
+   from the dark base appear here - everything else inherits.
 
    Accent colours are darkened to their *-700 tier (same hue, more
    saturation, less brightness). The dark mode values are deliberately
    bright so they pop against the deep navy bg; on white surfaces those
-   same values fail WCAG AA — particularly `cyan #06b6d4` and the
+   same values fail WCAG AA - particularly `cyan #06b6d4` and the
    foreground greys. Tailwind v4 generates `text-accent-cyan` / `bg-
    accent-cyan/15` etc. from these variables, so a single override
    propagates to every consumer (panels, badges, gradients) without
@@ -104,7 +104,7 @@
 }
 
 /* Badge text colours are hardcoded (the `*-light` tints work great on the
-   dark bg but disappear on white) — re-pin them to the darker shade so the
+   dark bg but disappear on white) - re-pin them to the darker shade so the
    pill text stays readable against its tinted background in light mode. */
 :root[data-theme='light'] .badge-blue {
   color: #1e40af;
@@ -143,7 +143,7 @@
 }
 
 html {
-  /* color-scheme is updated dynamically by themeStore.applyTheme — default
+  /* color-scheme is updated dynamically by themeStore.applyTheme - default
      here is dark so the first paint matches the rest of the dark theme
      before the JS runs. */
   color-scheme: dark;
@@ -170,7 +170,7 @@ body {
 }
 
 /* Native <select> popup options don't reliably pick up the page's
-   color-scheme on every browser/OS — set option colours explicitly so the
+   color-scheme on every browser/OS - set option colours explicitly so the
    dropdown list stays readable on the dark theme.
    Must be an OPAQUE dark; --color-surface is rgba white@3% which composites
    to white over the browser's default white popup background. */
@@ -522,7 +522,7 @@ select option {
   border-radius: 4px;
 }
 
-/* Inputs already render a focus border themselves — suppress the global ring
+/* Inputs already render a focus border themselves - suppress the global ring
    to avoid double-rings stacking. */
 input:focus-visible,
 textarea:focus-visible,

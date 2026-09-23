@@ -22,7 +22,7 @@ import { BagHealth } from '../panels/BagHealth';
 import { SplatViewer } from '../panels/SplatViewer';
 
 /**
- * PanelGrid — Recursive renderer for the layout tree.
+ * PanelGrid - Recursive renderer for the layout tree.
  *
  * Each `SplitNode` becomes a `<Group orientation>` with its children mapped
  * to `<Panel>` wrappers (separated by `<ResizeHandle>` between adjacent
@@ -34,7 +34,7 @@ import { SplatViewer } from '../panels/SplatViewer';
  * can reconcile across tree edits without remounting unrelated subtrees.
  * (Pre-v0.7 this file forced a remount of the whole layout via a `key` on
  * the top-level `<Group>`; that broke any local component state in the
- * panels — see commit history for the 3D-display-state-reset fix.)
+ * panels - see commit history for the 3D-display-state-reset fix.)
  */
 export function PanelGrid() {
   const root = useLayoutStore((s) => s.root);
@@ -65,11 +65,11 @@ function renderTree(node: LayoutNode) {
 function SplitGroup({ node }: { node: SplitNode }) {
   const orientation = node.orientation;
   // Equal split on creation; users can drag the handles to redistribute.
-  // Sizes don't persist across docking — that would require encoding them
+  // Sizes don't persist across docking - that would require encoding them
   // in the tree, which we skipped for v1.
   //
   // Percent-strings (not bare numbers) because react-resizable-panels v4
-  // treats unitless numbers as pixels — see App.tsx where the sidebar
+  // treats unitless numbers as pixels - see App.tsx where the sidebar
   // uses the same `defaultSize="28%"` form.
   const defaultSize = `${100 / node.children.length}%`;
   return (
@@ -99,7 +99,7 @@ function PanelLeafContent({ leaf }: { leaf: PanelLeaf }) {
   // root layout node IS this leaf (no SplitGroup wraps it, so there's
   // no react-resizable-panels <Panel> enforcing a width). Without
   // min-w-0 a canvas inside the panel (e.g. uPlot) sets the
-  // min-content width of every flex ancestor — combined with uPlot's
+  // min-content width of every flex ancestor - combined with uPlot's
   // ResizeObserver reading clientWidth and feeding it back into
   // setSize, the chart grows on every measurement and the plot
   // "keeps extending to the right" until a sibling is added (which
@@ -206,7 +206,7 @@ function ResizeHandle({ orientation }: { orientation: SplitOrientation }) {
  * a drag is in flight.
  *
  * Layout: four edge strips (top / bottom 25% × full width; left / right 25%
- * × middle 50% height). The centre ~50% is unhandled — a release there
+ * × middle 50% height). The centre ~50% is unhandled - a release there
  * falls through to the global `pointerup` handler in `PanelShell` and
  * cancels the drag, matching the Foxglove / VSCode convention that
  * dropping on the panel body itself does nothing.

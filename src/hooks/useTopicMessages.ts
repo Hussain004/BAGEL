@@ -1,12 +1,12 @@
 /**
- * useTopicMessages — Read every deserialized message for a single topic and
+ * useTopicMessages - Read every deserialized message for a single topic and
  * cache the result keyed by (bagId, source, topicName) so re-opening a panel
  * reuses the prior parse.
  *
  * v0.5.1: streaming. Instead of waiting for the worker to finish decoding the
  * whole topic before showing anything, batches are surfaced as they arrive.
  * The plot fills in left-to-right while the rest of the topic is still being
- * decoded — same UX as image / LiDAR playback, but for time-series.
+ * decoded - same UX as image / LiDAR playback, but for time-series.
  *
  * Updates are coalesced through `requestAnimationFrame` so React re-renders
  * at most once per paint regardless of how fast the worker streams batches.
@@ -15,7 +15,7 @@
  * can't be cancelled, so when a panel unmounts during a layout rearrange
  * the underlying decode keeps running. Without this sharing, the cleanup
  * would discard the partial buffer and a remount would kick off a *second*
- * decode for the same (source, topic) pair — observable on /tf with 100k
+ * decode for the same (source, topic) pair - observable on /tf with 100k
  * messages as a full re-decode every time a sibling panel is added or
  * removed. Now: an `InFlightDecode` entry is keyed by (source, topic) and
  * any new subscriber attaches to the same buffer, gets a replay of what's
@@ -79,7 +79,7 @@ export function useTopicMessages(
   enabled: boolean = true,
   bagId?: string,
 ): TopicMessagesState {
-  // Resolve the bag entry on every render — the resolveBagEntry helper picks
+  // Resolve the bag entry on every render - the resolveBagEntry helper picks
   // the explicit bagId when supplied, falling back to the focused bag.
   const entry = useBagStore((s) => resolveBagEntry(s, bagId));
 
@@ -129,7 +129,7 @@ export function useTopicMessages(
   // ── File / URL path (existing async worker decode).
   useEffect(() => {
     if (!entry || !enabled || !topicName) {
-      // Idle state — the caller has either not supplied a bag, opted out via
+      // Idle state - the caller has either not supplied a bag, opted out via
       // `enabled`, or passed an empty topic name. Suppressing the fetch here
       // is what makes it safe to install this hook conditionally on whether
       // the panel actually wants the topic stream (e.g. the 3D panel only
@@ -209,7 +209,7 @@ export function useTopicMessages(
 
     const existing = inFlight.get(cacheKey);
     if (existing) {
-      // Replay everything that's already been decoded — a new subscriber
+      // Replay everything that's already been decoded - a new subscriber
       // sees the partial buffer instantly, then matches subsequent batches
       // tick-by-tick with everyone else.
       if (existing.buffer.length > 0) {
@@ -247,7 +247,7 @@ export function useTopicMessages(
         },
       )
         .then((msgs) => {
-          // The worker's array is the source of truth — picking it (instead
+          // The worker's array is the source of truth - picking it (instead
           // of the locally-accumulated buffer) avoids any drift if a batch
           // were ever dropped on the wire. The guard skips the write when
           // the entry was invalidated (bag removed / full cache clear) so a

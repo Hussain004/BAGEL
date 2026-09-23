@@ -333,7 +333,7 @@ function parseXml(source: string): XmlElement {
         children.push(readElement());
         continue;
       }
-      // Plain character data — accumulate, decode entities on commit.
+      // Plain character data - accumulate, decode entities on commit.
       const start = i;
       while (i < len && source[i] !== '<') i++;
       text += decodeEntities(source.slice(start, i));

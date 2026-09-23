@@ -20,7 +20,7 @@ const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
- * ModalShell — Reusable dialog chrome with a backdrop, focus management,
+ * ModalShell - Reusable dialog chrome with a backdrop, focus management,
  * Escape-to-close, click-outside-to-close, and a Tab-cycle focus trap.
  *
  * Focus restores to the previously focused element on close, and initial

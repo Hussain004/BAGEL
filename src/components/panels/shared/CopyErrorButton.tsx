@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 /**
- * CopyErrorButton — small "copy the raw error text" affordance for error
+ * CopyErrorButton - small "copy the raw error text" affordance for error
  * states. Most failures here (corrupt file, worker exception, network
  * error) don't have a scripted next step, so the honest fallback is making
  * it one click to grab the exact text for a bug report instead of a

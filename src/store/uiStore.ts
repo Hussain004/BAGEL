@@ -1,5 +1,5 @@
 /**
- * UI state — modal overlays, toasts, and other view-layer flags that don't
+ * UI state - modal overlays, toasts, and other view-layer flags that don't
  * belong with bag/playhead/layout data.
  *
  * Kept deliberately small. If this grows past a handful of concerns it should
@@ -24,14 +24,14 @@ export type ModalKind = 'about' | 'shortcuts' | 'bag-edit' | 'urdf-load' | 'clip
 
 /**
  * Per-target state for the schema-paste modal. We keep this separate from
- * `ModalKind` because the modal is parameterised — clicking different
+ * `ModalKind` because the modal is parameterised - clicking different
  * unknown topics needs to populate different context (which type to add a
  * schema for, which panel to open afterwards). A flat enum can't carry that.
  */
 export interface SchemaPasteTarget {
   /** Fully qualified ROS2 type name (e.g. `px4_msgs/msg/VehicleLocalPosition`). */
   typeName: string;
-  /** Topic that triggered the paste — used in the subtitle for context. */
+  /** Topic that triggered the paste - used in the subtitle for context. */
   topicName?: string;
   /** Panel kind to open after a successful save. Omit for "manage schemas" entry. */
   followupPanelKind?: PanelKind;

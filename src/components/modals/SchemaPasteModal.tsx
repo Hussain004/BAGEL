@@ -7,13 +7,13 @@ import { useBagStore } from '../../store/bagStore';
 import { validateSchema } from '../../parsers';
 
 /**
- * SchemaPasteModal — Adds (or replaces) a custom `.msg` definition for a
+ * SchemaPasteModal - Adds (or replaces) a custom `.msg` definition for a
  * ROS2 type so a `.db3` bag carrying that type can decode.
  *
  * Flow:
  *  1. Pre-populates with the existing schema text if the user is editing.
  *  2. On Save: validates by parsing through the worker (no commit on parse
- *     failure — we'd rather the user see the underlying error than ship a
+ *     failure - we'd rather the user see the underlying error than ship a
  *     broken schema into localStorage).
  *  3. Persists via `customSchemaStore` (localStorage-backed), which the
  *     `useCustomSchemaSync` hook in App.tsx mirrors to the worker.
@@ -41,7 +41,7 @@ export function SchemaPasteModal() {
   const [error, setError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // Pre-populate once on open. We intentionally don't reset when the user
-  // types — that would erase their edit on every keystroke via state-derived
+  // types - that would erase their edit on every keystroke via state-derived
   // re-renders.
   const hydratedRef = useRef(false);
   useEffect(() => {
@@ -96,7 +96,7 @@ export function SchemaPasteModal() {
     }
   };
 
-  // Ctrl/Cmd+Enter saves — common paste-modal convention.
+  // Ctrl/Cmd+Enter saves - common paste-modal convention.
   const onTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();

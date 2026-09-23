@@ -8,7 +8,7 @@
  * every request carries a numeric `id`; the worker streams zero or more
  * `progress` messages with the same id, then exactly one `result` or `error`.
  *
- * The dispatch is intentionally thin — each method just forwards to the
+ * The dispatch is intentionally thin - each method just forwards to the
  * existing parser module so the worker doesn't grow its own behavior we'd
  * have to keep in sync.
  */
@@ -273,7 +273,7 @@ ctx.addEventListener('message', async (e: MessageEvent<WorkerRequest>) => {
         const { source, format, topicName, limit } = req.params as ReadDeserializedMessagesParams;
         // Stream batches to the client as they're decoded, then finish with
         // an empty result that just signals completion. The client builds
-        // the final array from the batches — sending `out` here too would
+        // the final array from the batches - sending `out` here too would
         // double-ship the full payload through structured clone.
         await readDeserializedMessages(
           source,
@@ -307,7 +307,7 @@ ctx.addEventListener('message', async (e: MessageEvent<WorkerRequest>) => {
           heightAxis,
           axisClip,
         );
-        // Transfer the Float32Array backing buffers — zero copy to the main
+        // Transfer the Float32Array backing buffers - zero copy to the main
         // thread. positions / colors are unique per decode, never shared.
         const transfer = result
           ? [result.positions.buffer, result.colors.buffer]

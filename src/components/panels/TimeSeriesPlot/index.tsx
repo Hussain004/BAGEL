@@ -75,12 +75,12 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
   // whole stream (see useTopicMessages.ts). We use that to detect "same
   // stream, more messages arrived" and only flatten the newly-arrived tail in
   // an effect, instead of re-flattening every message from scratch on every
-  // batch — the old approach was O(n^2) in message count (a 6k-message topic
+  // batch - the old approach was O(n^2) in message count (a 6k-message topic
   // streaming in batches of 500 did ~12x the necessary flattenNumeric calls).
   // The accumulator lives in a ref but is only ever touched inside the effect
   // below, never during render, per the rules of hooks. The one exception is
   // the final onComplete swap in useTopicMessages, which replaces `messages`
-  // with a fresh array from the worker and triggers one full rebuild here —
+  // with a fresh array from the worker and triggers one full rebuild here -
   // accepted as a safe fallback rather than adding fragile heuristics to also
   // skip that.
   const seriesAccumRef = useRef<{
@@ -146,7 +146,7 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
     setSeries({ time: acc.time, values: acc.values, fieldNames: acc.fieldNames, baseNs: acc.baseNs });
   }, [messages]);
 
-  // Per-panel UI state — visibility toggles, saved zoom, and math expressions.
+  // Per-panel UI state - visibility toggles, saved zoom, and math expressions.
   const settings = useTimeSeriesPanelStore(
     (s) => s.byId[panelId] ?? DEFAULT_TIMESERIES_SETTINGS,
   );
@@ -164,7 +164,7 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
     [settings.expressions],
   );
 
-  // Expression input form state (local — doesn't need to survive remounts).
+  // Expression input form state (local - doesn't need to survive remounts).
   const [exprInputVisible, setExprInputVisible] = useState(false);
   const [exprDraft, setExprDraft] = useState('');
   const [exprError, setExprError] = useState<string | null>(null);
@@ -350,7 +350,7 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
     // `setScale` on every data update (the streaming path is constant),
     // so naively storing on every scale change would overwrite the user's
     // zoom on the very next batch. Listening to native pointerup/dblclick
-    // on the container filters out programmatic updates — those don't
+    // on the container filters out programmatic updates - those don't
     // generate any input events.
     const container = containerRef.current;
     const handlePointerUp = () => {
@@ -379,7 +379,7 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
     // panel mount animation, or when a sibling layout change ripples
     // without actually changing this container). Without the early-out,
     // calling setSize with unchanged dims still triggers a uPlot redraw
-    // and another ResizeObserver tick — visible as a noticeable hitch
+    // and another ResizeObserver tick - visible as a noticeable hitch
     // during streaming when batches are landing every frame.
     let lastW = 0;
     let lastH = 0;
@@ -401,7 +401,7 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
       u.destroy();
       plotRef.current = null;
     };
-    // visibility / panelId / updateSettings intentionally excluded —
+    // visibility / panelId / updateSettings intentionally excluded -
     // visibility is applied via setSeries below; panelId is stable; the
     // store action ref is stable across renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -480,7 +480,7 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
           {/* min-w-0 + no horizontal padding on the uPlot host: clientWidth
               includes padding, and feeding padded clientWidth into uPlot's
               setSize was part of the single-panel "extends to the right"
-              amplification — even with min-w-0 above, each measurement
+              amplification - even with min-w-0 above, each measurement
               would still grow by the padding amount per tick. pt-2 stays
               for top breathing room; horizontal spacing comes from the
               panel border. */}

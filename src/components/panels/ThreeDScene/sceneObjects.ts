@@ -8,7 +8,7 @@
  *                  TransformStamped)
  *
  * Cloud objects accept pre-decoded Float32Array positions + colors so they
- * don't have to walk the message bytes themselves — the worker has already
+ * don't have to walk the message bytes themselves - the worker has already
  * handed them over via transferable buffers.
  */
 
@@ -40,7 +40,7 @@ function makePointsObject(pointSize: number): CloudObject {
 
   const material = new THREE.PointsMaterial({
     size: pointSize,
-    sizeAttenuation: false, // size in screen pixels — predictable across zoom levels
+    sizeAttenuation: false, // size in screen pixels - predictable across zoom levels
     vertexColors: true,
     transparent: false,
     depthWrite: true,
@@ -73,7 +73,7 @@ export function setCloudStyle(
 /**
  * Swap the BufferAttribute backing arrays in-place. We always set new
  * BufferAttributes (instead of writing into the existing array) because the
- * incoming Float32Arrays come from transferable postMessage — they're owned
+ * incoming Float32Arrays come from transferable postMessage - they're owned
  * by us now, and reusing them avoids the cost of copying into an existing
  * geometry. The previous attribute's buffer is dropped on the next
  * Three.js render once nothing references it.

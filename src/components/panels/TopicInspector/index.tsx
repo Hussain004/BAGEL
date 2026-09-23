@@ -5,11 +5,11 @@ import { TopicRow } from './TopicRow';
 import type { TopicInfo } from '../../../types/bag';
 
 /**
- * TopicInspector — Main panel showing all topics in every loaded bag.
+ * TopicInspector - Main panel showing all topics in every loaded bag.
  *
  * Features search/filter, sorting, and summary stats. v0.9 multi-bag groups
  * topics by bag with collapsible per-bag headers (one section per loaded
- * bag). Single-bag setups keep the flat list — no extra chrome.
+ * bag). Single-bag setups keep the flat list - no extra chrome.
  */
 export function TopicInspector() {
   const bag = useBagStore((s) => s.bag);
@@ -148,7 +148,7 @@ export function TopicInspector() {
                         ? 'text-text-primary'
                         : 'text-text-secondary hover:text-text-primary'
                     }`}
-                    title={`${entry.summary.fileName} — ${topics.length} topic${
+                    title={`${entry.summary.fileName} - ${topics.length} topic${
                       topics.length === 1 ? '' : 's'
                     } visible`}
                   >
@@ -232,7 +232,7 @@ function SortButton({
 }
 
 /**
- * OnboardingHint — one-time coach line shown after the sample bag lands on
+ * OnboardingHint - one-time coach line shown after the sample bag lands on
  * its curated layout (see applyCuratedSampleLayout in LandingPage.tsx). The
  * cockpit itself is the wow moment; this is the one sentence that says
  * "the rest of the sidebar is yours too."

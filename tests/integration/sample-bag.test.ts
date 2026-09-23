@@ -33,7 +33,7 @@ afterAll(() => disposeParserCaches());
 
 const describeWithSample = SAMPLE_AVAILABLE ? describe : describe.skip;
 
-describeWithSample('integration/tour.mcap — detectFormat + parseBag', () => {
+describeWithSample('integration/tour.mcap - detectFormat + parseBag', () => {
   it('detects MCAP format from the .mcap extension', async () => {
     expect(await detectFormat(sampleSource())).toBe('mcap');
   });
@@ -96,7 +96,7 @@ describeWithSample('integration/tour.mcap — detectFormat + parseBag', () => {
   });
 });
 
-describeWithSample('integration/tour.mcap — message reads', () => {
+describeWithSample('integration/tour.mcap - message reads', () => {
   it('decodes Odometry messages with the expected pose shape', async () => {
     const source = sampleSource();
     const summary = await parseBag(source);
@@ -176,7 +176,7 @@ describeWithSample('integration/tour.mcap — message reads', () => {
   });
 });
 
-describeWithSample('integration/tour.mcap — error handling', () => {
+describeWithSample('integration/tour.mcap - error handling', () => {
   it('rejects unsupported formats with a specific message', async () => {
     // Build a tiny "fake" source whose magic bytes don't match anything we know.
     const garbage = new Uint8Array(64);

@@ -40,7 +40,7 @@ export function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
 
 /**
  * Zip a sequence of PNG blobs as `frame_00001.png` … using STORED (level 0)
- * since PNGs are already deflated — additional compression only wastes CPU.
+ * since PNGs are already deflated - additional compression only wastes CPU.
  */
 export async function encodePngZip(frames: Blob[]): Promise<Uint8Array> {
   const files: Record<string, Uint8Array> = {};

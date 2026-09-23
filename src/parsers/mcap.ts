@@ -74,12 +74,12 @@ function readableFor(source: BagSource): IReadable {
  * Chunk caching: every call to `readMessages({ startTime })` from the
  * IndexedReader causes the chunk containing that timestamp to be
  * re-decompressed from scratch. That's catastrophic during image-topic
- * playback — at 30 Hz scrubbing through a topic whose frames all live in
+ * playback - at 30 Hz scrubbing through a topic whose frames all live in
  * the same 30-second chunk, we'd decompress the same multi-megabyte
  * chunk thirty times a second. The cache below keys decompressed
  * buffers by a fingerprint of the compressed bytes (length + sampled
  * FNV-1a from head/middle/tail) and is bounded by total decompressed
- * size, evicting LRU. The cache is per-bag — disposing the cached
+ * size, evicting LRU. The cache is per-bag - disposing the cached
  * MCAP releases the chunks alongside the reader.
  */
 
@@ -170,12 +170,12 @@ function makeDecompressHandlers(chunkCache: ChunkCache): DecompressHandlers {
       const hit = chunkCache.get(key);
       if (hit) return hit;
       const out = fzstdDecompress(
-        // fzstd accepts a typed array and an optional output buffer of the
-        // expected size; pre-allocating avoids resize overhead. Unlike the
-        // zstd-wasm attempt this replaced, fzstd doesn't trust this as
-        // authoritative, it measures the real decompressed length itself
-        // and returns a correctly-sized result regardless of whether the
-        // hint (MCAP's chunk-record decompressedSize) is accurate.
+        // fzstd accepts an optional pre-sized output buffer; we pass MCAP's
+        // declared decompressedSize to avoid resize overhead. The hint is
+        // not validated against the real output: a too-small or zero hint
+        // throws 'invalid zstd data' only at read time, and a too-large
+        // hint yields a declared-length buffer with a zero tail. See
+        // tests/parsers/robustness.test.ts for pinned behavior.
         buffer,
         new Uint8Array(Number(decompressedSize)),
       );
@@ -201,7 +201,7 @@ interface CachedMcap {
   decompressHandlers: DecompressHandlers;
   chunkCache: ChunkCache;
   /** Per-topic LRU of the most recently returned decoded messages. Keyed
-   *  by topic and indexed by message logTime — lets scrubbing inside a
+   *  by topic and indexed by message logTime - lets scrubbing inside a
    *  single frame's validity range short-circuit the entire read pipeline. */
   messageCache: Map<string, Map<bigint, Record<string, unknown> | null>>;
   /** Per-video-topic keyframe timestamp index. Built lazily on first seek. */
@@ -1164,7 +1164,7 @@ export async function readAllMessageStatsMcap(source: BagSource): Promise<AllTop
 /**
  * Fast path: read MCAP MessageIndex records directly from file without
  * decompressing any chunk data. MessageIndex records contain (logTime, offset)
- * pairs for every message in a chunk — exactly the timestamps we need.
+ * pairs for every message in a chunk - exactly the timestamps we need.
  *
  * For a typical 1 GB compressed bag this reads ~N*16 bytes of index data
  * instead of gigabytes of compressed chunks, making it orders of magnitude
@@ -1290,7 +1290,7 @@ function rememberDecoded(
     perTopic = new Map();
     meta.messageCache.set(topicName, perTopic);
   } else if (perTopic.has(logTime)) {
-    // Cache hit — skip the (potentially expensive) CDR decode entirely.
+    // Cache hit - skip the (potentially expensive) CDR decode entirely.
     // Re-insert to bump it to the most-recently-used end of the map.
     const cached = perTopic.get(logTime)!;
     perTopic.delete(logTime);
@@ -1311,7 +1311,7 @@ function rememberDecoded(
  * Read and deserialize a single message near `timeNs` for a topic.
  *
  * Used by the Image and Raw inspector panels which only ever need the
- * one frame at the current playhead — not every message on the topic
+ * one frame at the current playhead - not every message on the topic
  * (which can be gigabytes for image streams in compressed bags).
  *
  * Strategy: ask the IndexedReader for messages starting at `timeNs` and
@@ -1353,7 +1353,7 @@ export async function readMessageAtTimeMcap(
       const value = rememberDecoded(meta, topicName, msg.logTime, msg.data, decode);
       return { timestamp: msg.logTime, value };
     }
-    // Nothing at or after — fall back to the latest message at or before.
+    // Nothing at or after - fall back to the latest message at or before.
     for await (const msg of meta.reader.readMessages({
       topics: [topicName],
       endTime: timeNs,

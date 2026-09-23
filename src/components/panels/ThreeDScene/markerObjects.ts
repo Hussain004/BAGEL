@@ -3,8 +3,8 @@
  *
  * One factory per marker type the spec defines. Each factory returns a
  * `RenderedMarker` record with a stable `object: Object3D` and an `update`
- * function that takes the latest marker payload and reshapes the object —
- * pose, scale, colour, geometry — without recreating the Object3D.
+ * function that takes the latest marker payload and reshapes the object -
+ * pose, scale, colour, geometry - without recreating the Object3D.
  *
  * Keeping the object stable matters because `MarkerSet` swaps markers
  * in/out of the scene by reference; recreating on every update would
@@ -36,7 +36,7 @@
  *   - SPHERE: scale = ellipsoid diameter on each axis
  *   - CYLINDER: scale.x/y = base diameter, scale.z = height
  *   - LINE_*: scale.x = line width in metres (WebGL caps at 1 px in most
- *             browsers — see the LINE_* notes for context)
+ *             browsers - see the LINE_* notes for context)
  *   - POINTS: scale.x = point width in metres (rendered as size in pixels)
  *   - TEXT_VIEW_FACING: scale.z = font height in metres
  *   - ARROW (pose form): scale.x = length, scale.y = shaft diameter,
@@ -188,7 +188,7 @@ function packColors(
   count: number,
 ): Float32Array {
   const out = new Float32Array(count * 3);
-  // perPoint overrides only when it matches the point count — the spec is
+  // perPoint overrides only when it matches the point count - the spec is
   // explicit that mismatched lengths fall back to the per-marker colour.
   const usePer = perPoint.length === count;
   for (let i = 0; i < count; i++) {
@@ -338,7 +338,7 @@ function createArrowMarker(): RenderedMarker {
  * differs (`Line` for connected segments, `LineSegments` for disjoint pairs).
  *
  * NOTE on width: `LineBasicMaterial.linewidth` is ignored on every modern
- * browser due to OpenGL ES caps — lines render at 1 px regardless of
+ * browser due to OpenGL ES caps - lines render at 1 px regardless of
  * `marker.scale.x`. Fat lines need `LineMaterial` from `three/examples`,
  * which would add a few kB; defer to a follow-up if real-world bags need
  * width-faithful rendering. The geometry is still correct.
@@ -364,7 +364,7 @@ function createLineMarker(isList: boolean): RenderedMarker {
     object: line,
     update: (m) => {
       applyPose(line, m.pose);
-      // LINE_LIST consumes pairs of points — drop any orphaned trailing point.
+      // LINE_LIST consumes pairs of points - drop any orphaned trailing point.
       const count = isList ? m.points.length & ~1 : m.points.length;
       if (count < 2) {
         line.visible = false;
@@ -437,7 +437,7 @@ function createPointsMarker(): RenderedMarker {
 /**
  * CUBE_LIST / SPHERE_LIST render the same primitive at every point in
  * `marker.points[]`. InstancedMesh is the obvious fit, but its instance
- * count is baked in at construction — to grow it we'd have to recreate.
+ * count is baked in at construction - to grow it we'd have to recreate.
  * Recreation per update is fine in practice: list markers are rare enough
  * (planner debug, region highlights) that update frequency is well under
  * 30 Hz, and the existing single-flight playhead-driven readout coalesces
@@ -541,7 +541,7 @@ function createSphereListMarker(): RenderedMarker {
 // ── text ──────────────────────────────────────────────────────────────────
 
 /**
- * TEXT_VIEW_FACING renders as a billboarded Sprite — sprites always face the
+ * TEXT_VIEW_FACING renders as a billboarded Sprite - sprites always face the
  * camera, which is the whole point. We rasterise the text to a canvas (cached
  * across updates that don't change text + colour) and use the canvas as the
  * sprite's texture. The sprite's world-space scale is set so the rendered
@@ -582,7 +582,7 @@ function createTextMarker(): RenderedMarker {
         const h = fontPx + 16;
         canvas.width = w;
         canvas.height = h;
-        // Resetting width clears + resets font state — re-apply.
+        // Resetting width clears + resets font state - re-apply.
         ctx.font = `${fontPx}px sans-serif`;
         ctx.textBaseline = 'middle';
         ctx.fillStyle = `rgba(${Math.round(clamp01(m.color.r) * 255)}, ${Math.round(
@@ -1017,7 +1017,7 @@ function normaliseMarker(
   };
 }
 
-/** Extract every Marker out of a deserialized message — works for both
+/** Extract every Marker out of a deserialized message - works for both
  *  `visualization_msgs/Marker` (single) and `MarkerArray` (`markers[]`). */
 export function extractMarkers(
   value: Record<string, unknown>,
@@ -1033,7 +1033,7 @@ export function extractMarkers(
     }
     return out;
   }
-  // Single Marker case — detect by presence of marker-shaped fields.
+  // Single Marker case - detect by presence of marker-shaped fields.
   if ('type' in value && 'action' in value && 'pose' in value) {
     return [normaliseMarker(value, fallbackStampNs)];
   }

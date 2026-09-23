@@ -6,7 +6,7 @@ import { usePanelDefaultsStore, type PanelDefaults } from '../../store/panelDefa
 import { SCENE_KINDS, SCENE_KIND_LABELS, type SceneKind } from '../panels/ThreeDScene/sceneKind';
 
 /**
- * AboutModal — Project description, version, links.
+ * AboutModal - Project description, version, links.
  *
  * Reachable from the toolbar info button or the `A` keyboard shortcut.
  */

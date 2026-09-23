@@ -3,21 +3,21 @@
  *
  * The layout is a tree of two node kinds:
  *
- *   - `PanelLeaf`  — an open visualisation panel (kind + topic + ROS type +
- *                    optional bagId for multi-bag — see below).
- *   - `SplitNode`  — a horizontal or vertical container with N children.
+ *   - `PanelLeaf`  - an open visualisation panel (kind + topic + ROS type +
+ *                    optional bagId for multi-bag - see below).
+ *   - `SplitNode`  - a horizontal or vertical container with N children.
  *                    Each child is itself a leaf or another split.
  *
  * Trees stay normalised:
  *   - splits with one child collapse into that child;
  *   - splits with zero children disappear;
- *   - we don't nest same-orientation splits — `openPanel` and `dockPanel`
+ *   - we don't nest same-orientation splits - `openPanel` and `dockPanel`
  *     append to an existing horizontal/vertical container when the dock
  *     direction matches it.
  *
  * v0.9 multi-bag: `PanelLeaf.bagId` records which bag the panel reads from.
  * Panel ids embed the bagId (`kind:bagId:topicName`) so the same topic
- * across two bags maps to two distinct panel ids — you can open `/odom` from
+ * across two bags maps to two distinct panel ids - you can open `/odom` from
  * bag A and `/odom` from bag B side-by-side. The URL hash carries the bagId
  * via the same scheme. v0.7 / v0.8 hashes (no bagId) are still accepted and
  * resolve to the focused bag at load time.
@@ -98,7 +98,7 @@ interface LayoutState {
   movePanel: (id: string, direction: 'left' | 'right' | 'up' | 'down') => void;
   /**
    * Replace the entire layout tree wholesale. Used by `useUrlState` on bag
-   * load to restore the saved layout in one shot — going through
+   * load to restore the saved layout in one shot - going through
    * `openPanel`/`dockPanel` would work but synthesises a less faithful
    * tree and churns the URL hash with intermediate states.
    *
@@ -119,8 +119,8 @@ interface LayoutState {
 
 /**
  * Panel-leaf id format:
- *   - `kind:topicName`            — v0.7 / v0.8 single-bag (back-compat).
- *   - `kind:bagId:topicName`      — v0.9 multi-bag.
+ *   - `kind:topicName`            - v0.7 / v0.8 single-bag (back-compat).
+ *   - `kind:bagId:topicName`      - v0.9 multi-bag.
  *
  * The bagId is always included when known so two bags with the same topic
  * have distinct ids. Leaves restored from old hashes lack a bagId; those
@@ -131,7 +131,7 @@ export function panelLeafId(kind: PanelKind, topicName: string, bagId?: string):
   return `${kind}:${topicName}`;
 }
 
-// Split-node ids are opaque to consumers — they just need to be unique within
+// Split-node ids are opaque to consumers - they just need to be unique within
 // the lifetime of the page so React's reconciler can tell two splits apart.
 let splitIdCounter = 0;
 function makeSplitId(): string {
@@ -224,7 +224,7 @@ function wrapLeafWithSource(
  * Find the target leaf in `tree` and place `source` adjacent to it on `edge`.
  *
  * When the target's direct parent split already matches the requested
- * orientation, the source is added as a sibling at the right position — this
+ * orientation, the source is added as a sibling at the right position - this
  * avoids growing nested same-orientation splits, which would render the same
  * way but bloat the tree.
  */
@@ -238,7 +238,7 @@ function insertAt(
     if (tree.id !== targetId) return tree;
     return wrapLeafWithSource(tree, source, edge);
   }
-  // tree is a split — check whether one of its direct children is the target
+  // tree is a split - check whether one of its direct children is the target
   // and we can flatten by inserting source as a sibling.
   const desiredOrientation = orientationFromEdge(edge);
   const sourceFirst = edge === 'top' || edge === 'left';
@@ -252,7 +252,7 @@ function insertAt(
       }
     }
   }
-  // Otherwise recurse — only one child can contain the target.
+  // Otherwise recurse - only one child can contain the target.
   let touched = false;
   const newChildren = tree.children.map((c) => {
     if (touched) return c;
@@ -268,7 +268,7 @@ function insertAt(
  * Append `leaf` to the right edge of the existing tree.
  *
  * Used by `openPanel` so the first-opened panel lives at the left and each
- * subsequent open appears to its right — matching the v0.5 behaviour and
+ * subsequent open appears to its right - matching the v0.5 behaviour and
  * keeping the empty-tree case trivial. Users can drag-dock to reorganise.
  */
 function appendLeafRight(root: LayoutNode, leaf: PanelLeaf): LayoutNode {
@@ -315,7 +315,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     if (!state.root) return;
     const newRoot = removeLeavesWhere(state.root, (leaf) => leaf.bagId === bagId);
     if (newRoot === state.root) return;
-    // Rebuild openOrder by walking the surviving tree — easier than tracking
+    // Rebuild openOrder by walking the surviving tree - easier than tracking
     // every dropped id since we just removed an unbounded number of leaves.
     const survivingIds = new Set(getAllPanels(newRoot).map((p) => p.id));
     set({
@@ -335,7 +335,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     const withoutSource = removeLeafById(state.root, sourceId);
     if (!withoutSource || !findPanel(withoutSource, targetId)) return;
     const newRoot = insertAt(withoutSource, targetId, source, edge);
-    // openOrder unchanged — docking is a move, not an open/close.
+    // openOrder unchanged - docking is a move, not an open/close.
     set({ root: newRoot });
   },
 

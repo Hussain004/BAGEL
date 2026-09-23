@@ -1,5 +1,5 @@
 /**
- * Cloud accumulator — a world-frame point cache wrapped as THREE.Points so
+ * Cloud accumulator - a world-frame point cache wrapped as THREE.Points so
  * the 3D panel can render the running "map" built up over many frames.
  *
  * Two modes:
@@ -14,7 +14,7 @@
  *      (floor(x/v), floor(y/v), floor(z/v)). Only one point per bucket is
  *      kept (the most recent), so a long flight that revisits the same
  *      ground produces a single down-sampled map of that ground rather
- *      than ten ring-buffer copies of it. Capacity is still bounded — when
+ *      than ten ring-buffer copies of it. Capacity is still bounded - when
  *      the voxel set hits the budget we evict by insertion order, but in
  *      practice a 0.2 m voxel over a hectare comfortably fits in the
  *      defaults.
@@ -115,7 +115,7 @@ export class CloudAccumulator {
   setMode(mode: AccumulationMode): void {
     if (mode === this.mode) return;
     this.mode = mode;
-    // Storage layouts diverge — easiest to start fresh on mode change.
+    // Storage layouts diverge - easiest to start fresh on mode change.
     this.clear();
   }
 
@@ -230,14 +230,14 @@ export class CloudAccumulator {
       const entry = this.voxels.get(key);
       let slot: number;
       if (entry) {
-        // Existing voxel — refresh in-place. Most recent point wins, which
+        // Existing voxel - refresh in-place. Most recent point wins, which
         // tracks moving targets (a robot revisiting the same area) without
         // bloating the set.
         slot = entry.slot;
         entry.inserted = this.voxelInsertCounter++;
       } else {
         if (this.voxels.size >= cap) {
-          // Evict the oldest voxel by insertion order — single linear pass
+          // Evict the oldest voxel by insertion order - single linear pass
           // is fine because evictions only happen once we hit capacity, and
           // the map size never exceeds it.
           let oldestKey: string | null = null;
@@ -285,7 +285,7 @@ export class CloudAccumulator {
   }
 
   /**
-   * Reallocate to a new capacity. Drops existing data — the assumption is the
+   * Reallocate to a new capacity. Drops existing data - the assumption is the
    * user moves the budget slider only when they're OK starting fresh.
    */
   resize(capacity: number): void {

@@ -1,5 +1,5 @@
 /**
- * useBagLocalPlayhead — Translate the global aligned-time playhead into a
+ * useBagLocalPlayhead - Translate the global aligned-time playhead into a
  * specific bag's local time so per-bag readers (useMessageAtTime,
  * useDecodedCloud, lookupTransform) can seek to the right sample.
  *
@@ -8,7 +8,7 @@
  * `anchor` modes, the result is offset by the entry's alignment offset.
  *
  * Most panels call this once and pass the result to every time-using hook.
- * The translation is bigint math — cheap enough that we don't memoize.
+ * The translation is bigint math - cheap enough that we don't memoize.
  */
 import {
   alignmentOffsetFor,

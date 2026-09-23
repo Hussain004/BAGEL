@@ -12,7 +12,7 @@
  * name search.
  *
  * Data path: `useTopicMessages` for the full history (DiagnosticArray is
- * persistent — we need every status report to draw the swimlane). Per-message
+ * persistent - we need every status report to draw the swimlane). Per-message
  * cost is small (each frame has ~10s of statuses, not 100k points), so the
  * memory cost is bounded.
  *
@@ -70,10 +70,10 @@ const LEVEL_NAMES: Record<Level, string> = {
   3: 'STALE',
 };
 const LEVEL_COLORS: Record<Level, string> = {
-  0: '#10b981', // emerald — OK
-  1: '#eab308', // amber — WARN
-  2: '#ef4444', // red — ERROR
-  3: '#94a3b8', // slate — STALE
+  0: '#10b981', // emerald - OK
+  1: '#eab308', // amber - WARN
+  2: '#ef4444', // red - ERROR
+  3: '#94a3b8', // slate - STALE
 };
 
 interface ComponentTrack {
@@ -86,7 +86,7 @@ interface ComponentTrack {
 
 /**
  * Build per-component event tracks from a stream of DiagnosticArray messages.
- * Component key = `${hardware_id}::${name}` — the canonical identity per the
+ * Component key = `${hardware_id}::${name}` - the canonical identity per the
  * diagnostic_msgs spec.
  */
 function buildTracks(
@@ -182,7 +182,7 @@ export function DiagnosticArray({
     );
   }, [tracks, search]);
 
-  // Find the message index nearest the playhead — anchors the swimlane
+  // Find the message index nearest the playhead - anchors the swimlane
   // playhead line + the inspector list.
   const currentMsgIdx = useMemo(() => {
     if (!messages || messages.length === 0) return -1;
@@ -461,7 +461,7 @@ function Swimlane({
       }
     }
 
-    // Playhead vertical line — drawn last so it sits on top of every lane.
+    // Playhead vertical line - drawn last so it sits on top of every lane.
     if (currentMsgIdx >= 0) {
       const playheadTs = messages[currentMsgIdx].timestamp;
       const x =
@@ -499,7 +499,7 @@ function Swimlane({
         ref={canvasRef}
         style={{ width: size.w, height: drawH, display: 'block', cursor: 'pointer' }}
         onClick={onClick}
-        aria-label="Diagnostic status timeline — click to seek"
+        aria-label="Diagnostic status timeline - click to seek"
       />
     </div>
   );
@@ -527,7 +527,7 @@ function Inspector({
   }
   // Resolve the latest status for every visible component as of currentMsgIdx.
   // Walking the per-message statuses is O(N*S); a single playhead tick is
-  // cheap enough that we don't precompute — the swimlane already covers
+  // cheap enough that we don't precompute - the swimlane already covers
   // visual density.
   const rows: Array<{
     track: ComponentTrack;

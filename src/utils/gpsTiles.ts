@@ -18,7 +18,7 @@
  *
  * Why opt-in
  * ----------
- * BAGEL's pitch is "no data leaves your machine" — tile fetches break that.
+ * BAGEL's pitch is "no data leaves your machine" - tile fetches break that.
  * The toggle defaults off; turning it on hits the configured OSM endpoint.
  * Fetches carry no custom User-Agent header: JavaScript cannot override the
  * browser's UA, so requests go out with the browser's default headers only
@@ -32,7 +32,7 @@ const TILE_SIZE = 256;
  * set warm as the user pans.
  */
 const MAX_CACHED_TILES = 200;
-/** Wider zoom clamp than typical web maps — Roboticists may want streets or city overview. */
+/** Wider zoom clamp than typical web maps - Roboticists may want streets or city overview. */
 const MIN_ZOOM = 2;
 const MAX_ZOOM = 19;
 /**
@@ -189,7 +189,7 @@ class TileLRU {
   }
 }
 
-/** Singleton per URL pattern — re-creating on every panel mount would lose the cache. */
+/** Singleton per URL pattern - re-creating on every panel mount would lose the cache. */
 const loaders = new Map<string, TileLRU>();
 export function getTileLoader(urlPattern: string): TileLRU {
   let loader = loaders.get(urlPattern);

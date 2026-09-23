@@ -1,11 +1,11 @@
 /**
- * Topic data export — CSV (flat numeric) and JSON (full deserialized) writers.
+ * Topic data export - CSV (flat numeric) and JSON (full deserialized) writers.
  *
  * Both formats stream through an in-memory string then a Blob; for huge
  * topics that's fine on modern browsers (a 50k-row CSV with 20 columns
  * weighs in around 20 MB, well under the Blob limit). If we ever need to
  * support multi-million-row exports we'd switch to a streamed File System
- * Access write — for now keep it simple.
+ * Access write - for now keep it simple.
  *
  * Bigints in deserialized messages serialise as `"123n"` strings in JSON so
  * the file is still valid JSON and the precision survives round-trips. The
@@ -30,8 +30,8 @@ export const BLOB_URL_REVOKE_DELAY_MS = 5000;
  *
  * Columns are the union of every numeric leaf field across all messages,
  * sorted alphabetically. Missing values render as empty cells. Time is
- * provided in two columns — absolute (`time_ns`) and relative seconds from
- * the first message (`t_s`) — because both are useful in different tools.
+ * provided in two columns - absolute (`time_ns`) and relative seconds from
+ * the first message (`t_s`) - because both are useful in different tools.
  */
 export function toCsv(messages: DecodedMessage[]): string {
   if (messages.length === 0) return 'time_ns,t_s\n';
@@ -63,7 +63,7 @@ export function toCsv(messages: DecodedMessage[]): string {
   return lines.join('\n') + '\n';
 }
 
-/** RFC 4180-ish CSV escape — wraps values containing commas/quotes/newlines. */
+/** RFC 4180-ish CSV escape - wraps values containing commas/quotes/newlines. */
 function csvEscape(value: string): string {
   if (value === '') return '';
   if (/[",\n\r]/.test(value)) {

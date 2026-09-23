@@ -62,14 +62,14 @@ const ODOM_HZ = 10;
 const IMU_HZ = 50;
 const SCAN_HZ = 10;
 const TF_HZ = 10;
-// Markers tick slowly — they're persistent in the scene and the renderer just
+// Markers tick slowly - they're persistent in the scene and the renderer just
 // MODIFYs the existing entries each tick, so 1 Hz is plenty for the demo while
 // keeping the bag tiny.
 const MARKER_HZ = 1;
-// Maps publish even slower — SLAM toolboxes typically emit at 0.5-1 Hz and the
+// Maps publish even slower - SLAM toolboxes typically emit at 0.5-1 Hz and the
 // renderer only uploads to GPU when the content fingerprint changes.
 const MAP_HZ = 0.5;
-// GPS receivers are usually 1 Hz commodity units — match that.
+// GPS receivers are usually 1 Hz commodity units - match that.
 const GPS_HZ = 1;
 // Camera image stream: 2 Hz keeps the bag size reasonable (~1.3 MB total)
 // while giving the ImageViewer panel enough frames to scrub through.
@@ -107,7 +107,7 @@ const MAP_ORIGIN_X = -5.0;
 const MAP_ORIGIN_Y = -5.0;
 
 // Anchor the GPS trace somewhere recognisable so the OSM tile underlay shows
-// familiar streets when toggled on. King's Parade, Cambridge UK — close enough
+// familiar streets when toggled on. King's Parade, Cambridge UK - close enough
 // to King's College that the figure-eight straddles a couple of city blocks at
 // the demo zoom level.
 const GPS_ORIGIN_LAT = 52.2043;
@@ -195,7 +195,7 @@ function loadWriter(typeName) {
 function flattenSchemaText(defs) {
   // Emit a concatenated .msg schema in the canonical MCAP-for-ROS2 form:
   // root definition first, then each dependency separated by `=====...=====
-  // MSG: pkg/Type`. Fields stay in declaration order — splitting simple
+  // MSG: pkg/Type`. Fields stay in declaration order - splitting simple
   // from complex would change the wire-format order and produce garbage on
   // deserialize.
   const SEP = '================================================================================';
@@ -242,7 +242,7 @@ function quatFromYaw(yaw) {
 }
 
 function figureEightPose(t) {
-  // Lemniscate of Bernoulli — a friendly closed loop the trajectory panel
+  // Lemniscate of Bernoulli - a friendly closed loop the trajectory panel
   // can render at a glance.
   const a = 5.0;
   const k = 0.4; // angular velocity along the curve
@@ -261,7 +261,7 @@ function figureEightPose(t) {
 
 /**
  * Generate an ideal (undistorted) grid / checkerboard in RGB8.
- * White grid lines on alternating blue/orange squares — easy to see
+ * White grid lines on alternating blue/orange squares - easy to see
  * distortion at a glance because straight lines become obviously curved.
  */
 function buildIdealGridRgb(width, height, spacing = 12) {
@@ -352,7 +352,7 @@ function buildDistortedRgb(ideal, width, height, fx, fy, cx, cy, k1, k2, p1, p2,
   return out;
 }
 
-// Precompute the distorted image once — every frame is the same static
+// Precompute the distorted image once - every frame is the same static
 // checkerboard so the ImageViewer demo works at any playhead position.
 const IDEAL_GRID = buildIdealGridRgb(CAM_W, CAM_H, 12);
 const DISTORTED_GRID = buildDistortedRgb(
@@ -412,7 +412,7 @@ function buildScanMessage(timeNs) {
   const ranges = new Array(N);
   for (let i = 0; i < N; i++) {
     const angle = (i / N) * Math.PI * 2;
-    // A pulsing rectangular "room" plus a moving dot — gives the 3D panel
+    // A pulsing rectangular "room" plus a moving dot - gives the 3D panel
     // something visually obvious to look at while scrubbing.
     const baseRoom = 3.0 + 0.5 * Math.cos(2 * angle);
     const wobble = 0.1 * Math.sin(t * 1.5 + angle * 3);
@@ -498,7 +498,7 @@ function buildTfMessage(timeNs) {
  * Marker types covered: CUBE(1), SPHERE(2), CYLINDER(3), ARROW(0),
  * LINE_STRIP(4), CUBE_LIST(6), POINTS(8), TEXT_VIEW_FACING(9).
  *
- * The same (ns, id) pairs are emitted on every tick — every message is an
+ * The same (ns, id) pairs are emitted on every tick - every message is an
  * ADD/MODIFY so the renderer just updates positions in place. No DELETE
  * is exercised here (lifetime expiry is fine for that on a real bag).
  */
@@ -578,7 +578,7 @@ function buildMarkerArrayMessage(timeNs) {
   };
 
   // ── planning: world-frame path + waypoints ─────────────────────────────
-  // Path runs through the entire 30-second lemniscate — sampled at 0.5s.
+  // Path runs through the entire 30-second lemniscate - sampled at 0.5s.
   const pathPoints = [];
   for (let s = 0; s <= 30; s += 0.5) {
     const p = figureEightPose(s);
@@ -651,7 +651,7 @@ function buildMarkerArrayMessage(timeNs) {
  * The map is a square room (outer walls = occupied, interior = free) with a
  * couple of obstacles. Cells outside an exploration radius around the robot's
  * current position are flagged unknown (-1). The exploration radius grows
- * linearly with bag time so scrubbing forwards reveals more of the map — the
+ * linearly with bag time so scrubbing forwards reveals more of the map - the
  * classic "watching slam_toolbox build the map" experience that map rendering
  * in v0.9 exists to make legible.
  */
@@ -684,7 +684,7 @@ function buildOccupancyGridMessage(timeNs) {
         col >= 30 && col < 38 && row >= 30 && row < 38;
       const inPillarB =
         col >= 65 && col < 72 && row >= 60 && row < 68;
-      // A diagonal corridor wall — exercises the linear-cost ramp.
+      // A diagonal corridor wall - exercises the linear-cost ramp.
       const corridorDist = Math.abs((col - 50) + (row - 50));
       const onCorridorWall = corridorDist === 25 && col > 50 && row > 30 && row < 70;
 
@@ -724,7 +724,7 @@ function buildNavSatFixMessage(timeNs) {
   const t = Number(timeNs - START_TIME_NS) / 1e9;
   const { x, y } = figureEightPose(t);
   // The figure-eight has radius ~5 m; scale it up so it spans a few blocks on
-  // the OSM underlay (~120 m peak-to-peak) — large enough to actually see the
+  // the OSM underlay (~120 m peak-to-peak) - large enough to actually see the
   // shape against streets at the demo zoom level.
   const scale = 12.0;
   const dxMeters = x * scale;
@@ -893,7 +893,7 @@ async function main() {
 
   // Interleave messages in time order so the bag plays back naturally.
   // Hz can be fractional (e.g. 0.5 Hz for the map), so compute the period as
-  // a float then round to integer ns — BigInt(0.5) throws.
+  // a float then round to integer ns - BigInt(0.5) throws.
   const events = [];
   for (const ch of channels) {
     const periodNs = BigInt(Math.round(1_000_000_000 / ch.hz));

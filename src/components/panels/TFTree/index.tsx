@@ -44,7 +44,7 @@ const LEFT_PAD = 40;
 const TOP_PAD = 32;
 
 /**
- * TFTree — Interactive view of the ROS2 transform graph.
+ * TFTree - Interactive view of the ROS2 transform graph.
  *
  * Pulls every /tf and /tf_static sample, builds the parent→child graph,
  * lays it out top-down with a subtree-width algorithm so siblings never
@@ -353,7 +353,7 @@ function FrameSidebar({
             </>
           ) : (
             <div className="text-text-muted">
-              No transform recorded for this frame — it's a root in the graph.
+              No transform recorded for this frame - it's a root in the graph.
             </div>
           )}
         </div>
@@ -367,7 +367,7 @@ function Vec3Row({ label, value }: { label: string; value: number }) {
     <div className="flex justify-between gap-2">
       <span className="text-text-tertiary w-12">{label}</span>
       <span className="text-text-primary tabular-nums">
-        {Number.isFinite(value) ? value.toFixed(4) : '—'}
+        {Number.isFinite(value) ? value.toFixed(4) : '-'}
       </span>
     </div>
   );

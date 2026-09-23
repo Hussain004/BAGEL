@@ -55,7 +55,7 @@ const KIND_LABELS: Record<PanelKind, string> = {
 const EXPORT_MESSAGE_LIMIT = 250_000;
 
 /**
- * PanelShell — Chrome shared by every panel. Provides a header with the topic
+ * PanelShell - Chrome shared by every panel. Provides a header with the topic
  * name, type, panel-kind label, an export menu, and a close button, plus a
  * flex content area for the panel-specific UI.
  */
@@ -107,7 +107,7 @@ export function PanelShell({
 
   /**
    * The whole header is a drag handle. We opt out when the pointer-down
-   * lands on an interactive descendant (close button, export menu) — those
+   * lands on an interactive descendant (close button, export menu) - those
    * have their own click behaviour, and the user almost certainly didn't
    * mean to start a drag.
    *
@@ -260,7 +260,7 @@ export function PanelShell({
 }
 
 /**
- * GripIcon — always-visible (low-opacity) drag affordance. The whole header
+ * GripIcon - always-visible (low-opacity) drag affordance. The whole header
  * has always been a drag handle, but nothing about it *looked* draggable -
  * this is the one visual cue, styled like a standard 6-dot grip.
  */
@@ -283,7 +283,7 @@ function GripIcon() {
 }
 
 /**
- * ExportMenu — Compact dropdown that decodes the panel's topic and offers
+ * ExportMenu - Compact dropdown that decodes the panel's topic and offers
  * CSV / NDJSON downloads. Image panels skip CSV (no numeric leaves of
  * interest), TF panels skip both because the raw `transforms[]` array
  * shape is meaningless without TF-graph context.

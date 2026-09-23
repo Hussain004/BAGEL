@@ -7,7 +7,7 @@ import { UrdfLoadModal } from './UrdfLoadModal';
 import { ClipExportModal } from './ClipExportModal';
 
 /**
- * ModalHost — Renders whichever modal the UI store has selected. Mounted once
+ * ModalHost - Renders whichever modal the UI store has selected. Mounted once
  * at the root so keyboard shortcuts can show modals from anywhere without
  * each page needing to wire them up.
  *

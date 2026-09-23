@@ -87,7 +87,7 @@ export function disposeDb3Cache(): void {
  * decodable would otherwise keep returning the stale `value: null` cached
  * from the pre-schema decode attempt. Wiping the decoded cache forces a
  * fresh CDR pass against the new MessageReader on next read. The underlying
- * raw bytes don't need to be re-fetched — sql.js stays cached, so this is
+ * raw bytes don't need to be re-fetched - sql.js stays cached, so this is
  * cheap.
  */
 export function clearDb3DecodedCache(): void {
@@ -103,7 +103,7 @@ async function loadDb(source: BagSource): Promise<CachedDb> {
   disposeCachedDb();
 
   const SQL = await getSqlJs();
-  // sql.js needs the whole file in memory either way — for URL sources we
+  // sql.js needs the whole file in memory either way - for URL sources we
   // pay a single eager GET. Practical cap is ~250 MB before the browser UX
   // degrades; sql.js-httpvfs would do real partial reads via a custom
   // SQLite VFS but adds ~70 KB plus a non-trivial amount of glue.
@@ -255,7 +255,7 @@ function queryMessageStats(db: SqlDatabase): {
  * Read raw (still CDR-encoded) messages for a single topic.
  *
  * Messages are returned in chronological order. The optional `limit` caps
- * how many messages are loaded — useful for very large bags where loading
+ * how many messages are loaded - useful for very large bags where loading
  * every message would exhaust memory.
  */
 export async function readRawMessagesDb3(
@@ -357,7 +357,7 @@ export async function readMessageAtTimeDb3(
   const msgType = topicTypeByName.get(topicName);
   if (!msgType) return null;
 
-  // The closest row by abs(ts - target) — use a UNION ordered pattern so
+  // The closest row by abs(ts - target) - use a UNION ordered pattern so
   // SQLite can use the timestamp index in both directions. Two positional
   // binds per side: (topic name, target ts).
   const sql = `

@@ -3,7 +3,7 @@
  *
  * Mirrors the single-flight pattern of `useMessageAtTime` but delegates all
  * decoding to the parser worker, which returns Float32Array positions +
- * colors via transferable buffers — zero-copy back to the main thread.
+ * colors via transferable buffers - zero-copy back to the main thread.
  *
  * This keeps two big costs off the UI thread on every playhead tick:
  *  - Cloning a 1-12 MB `data: Uint8Array` across the worker boundary
@@ -15,7 +15,7 @@
  * Cancellation is **session-scoped** (see useMessageAtTime for the full
  * rationale). Per-tick effect cleanup is fatal here: when the playhead
  * is moving, every in-flight request would be invalidated by the next
- * 16 ms tick and its decoded cloud would never reach state — the scene
+ * 16 ms tick and its decoded cloud would never reach state - the scene
  * froze until the user paused.
  *
  * v0.9 multi-bag: accepts an optional `bagId` to read from a specific bag.
@@ -71,7 +71,7 @@ interface Options {
   /**
    * Source-frame axis the height colormap samples. Tied to the panel's
    * up-axis selector so flipping up redirects the gradient too.
-   * (PointCloud2 / CustomCloud only — LaserScan is colored by range.)
+   * (PointCloud2 / CustomCloud only - LaserScan is colored by range.)
    */
   heightAxis?: HeightAxis;
   /** Per-axis clip box. Drop points outside any active bound (PointCloud2 only). */
@@ -114,7 +114,7 @@ export function useDecodedCloud({
   } | null>(null);
   const fireRef = useRef<() => void>(() => {});
   // Session id keyed on (bag, file, topic, kind). Bumped only when one of
-  // these changes — never on timeNs ticks, so playback doesn't cancel its
+  // these changes - never on timeNs ticks, so playback doesn't cancel its
   // own decodes.
   const sessionRef = useRef(0);
   // Dedupe: don't re-decode the same (topic, timestamp, colorMode) we already
@@ -124,7 +124,7 @@ export function useDecodedCloud({
 
   // Each (bag, file, topic, kind) tuple is a session. Bump on entry and exit
   // so any in-flight decode from the previous session bails before it calls
-  // setState (which would either land on the wrong topic or — on unmount —
+  // setState (which would either land on the wrong topic or - on unmount -
   // poke an already-torn-down component).
   useEffect(() => {
     sessionRef.current++;

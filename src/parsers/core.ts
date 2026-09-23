@@ -66,7 +66,7 @@ import { clearDefinitionCaches } from './typeRegistry';
 
 const MCAP_MAGIC = [0x89, 0x4d, 0x43, 0x41, 0x50, 0x30, 0x0d, 0x0a];
 const SQLITE_MAGIC = [0x53, 0x51, 0x4c, 0x69, 0x74, 0x65];
-// `#ROSBAG V2.0\n` — the rosbag v2.0 header. v1.x files start with `#ROSBAG V1.x`
+// `#ROSBAG V2.0\n` - the rosbag v2.0 header. v1.x files start with `#ROSBAG V1.x`
 // and aren't supported by `@foxglove/rosbag`; we still detect them by extension
 // and surface a clearer error during parse instead of a misleading "unknown format".
 const ROSBAG_V2_MAGIC = [
@@ -257,7 +257,7 @@ export async function readPointCloudAtTime(
   const opts = { colorMode, maxPoints, maxRange, heightAxis, axisClip };
   // Try the PointCloud2 path first when the shape matches, otherwise the
   // list-of-points path (Livox CustomMsg and similar). Fall back to the
-  // other decoder if the preferred one returns null — a few converted bags
+  // other decoder if the preferred one returns null - a few converted bags
   // carry both shapes side-by-side, and one of them will succeed.
   const decoded = hasPointCloud2Fields
     ? (decodePointCloud2(value as PointCloud2Message, opts) ??

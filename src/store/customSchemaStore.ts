@@ -1,18 +1,18 @@
 /**
  * Custom message-definition store.
  *
- * `.db3` ROS2 bags don't embed schemas — they only carry a string type name
+ * `.db3` ROS2 bags don't embed schemas - they only carry a string type name
  * per topic, and the deserializer has to look the type up in a bundled
  * registry to know how many bytes each field occupies and how to lay them
  * out. The registry ships with the common packages (std_msgs, geometry_msgs,
  * sensor_msgs, nav_msgs, tf2_msgs, visualization_msgs, …) but custom or
- * vendor-specific types — `px4_msgs`, `autoware_msgs`, in-house planners —
+ * vendor-specific types - `px4_msgs`, `autoware_msgs`, in-house planners -
  * aren't there, and dropping a `.db3` containing those topics today shows
  * an empty plot / inspector with no obvious way to fix it.
  *
  * This store lets the user paste the `.msg` text once per type. We persist
  * to `localStorage` keyed by the fully-qualified type name so the entry
- * survives a refresh and applies to every future bag the user opens —
+ * survives a refresh and applies to every future bag the user opens -
  * roboticists tend to work with a stable set of message packages across
  * many bags. `.mcap` and `.bag` topics are unaffected: their schemas come
  * from the file itself and never miss.
@@ -56,7 +56,7 @@ function loadFromStorage(): Record<string, string> {
       return out;
     }
   } catch {
-    // Corrupt JSON — drop it; we'd rather start empty than crash on load.
+    // Corrupt JSON - drop it; we'd rather start empty than crash on load.
   }
   return {};
 }
@@ -66,7 +66,7 @@ function saveToStorage(schemas: Record<string, string>): void {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(schemas));
   } catch {
-    // Likely QuotaExceededError — the user has hit the ~5 MB cap. We can't
+    // Likely QuotaExceededError - the user has hit the ~5 MB cap. We can't
     // do much beyond keeping the in-memory copy; surfacing a UI toast is
     // a follow-up if anyone actually runs into this. .msg text is small
     // (a few KB per type) so the practical bound is a few hundred types.

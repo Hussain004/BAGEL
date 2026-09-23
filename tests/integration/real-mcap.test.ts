@@ -1,8 +1,8 @@
 /**
  * Integration test against the real MCAP fixture in test_files/mcap/.
  *
- * Verifies that the parser handles a real ROS2 recorder output — chunked,
- * possibly compressed, multi-megabyte — through the unified entry, not
+ * Verifies that the parser handles a real ROS2 recorder output - chunked,
+ * possibly compressed, multi-megabyte - through the unified entry, not
  * just the synthetic in-memory bags. Skips automatically when the fixture
  * is missing or larger than what `readFileSync` + `File` can hold.
  */
@@ -40,7 +40,7 @@ if (FIXTURE_AVAILABLE && !FIXTURE_LOADABLE) {
   );
 }
 
-describeWithFixture('integration/real-mcap — parseBag against a real ROS2 recording', () => {
+describeWithFixture('integration/real-mcap - parseBag against a real ROS2 recording', () => {
   function fixtureSource() {
     const bytes = readFileSync(FIXTURE_PATH);
     return createFileSource(new File([new Uint8Array(bytes)], 'pose_topics.mcap'));

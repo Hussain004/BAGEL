@@ -16,10 +16,10 @@ interface RawMessageInspectorProps {
 }
 
 /**
- * RawMessageInspector — Shows the deserialized message at the current
+ * RawMessageInspector - Shows the deserialized message at the current
  * playhead time as a JSON tree. Falls back to hex when the type isn't in
  * the registry. Reads just the message at the playhead via
- * useMessageAtTime — never preloads the whole topic.
+ * useMessageAtTime - never preloads the whole topic.
  */
 export function RawMessageInspector({ panelId, topicName, type, bagId }: RawMessageInspectorProps) {
   const entry = useBagStore((s) => resolveBagEntry(s, bagId));
@@ -57,7 +57,7 @@ export function RawMessageInspector({ panelId, topicName, type, bagId }: RawMess
             ) : (
               <div className="text-text-muted whitespace-pre">
                 <div className="mb-2 text-accent-amber">
-                  Could not deserialize this message — type not in the built-in registry.
+                  Could not deserialize this message - type not in the built-in registry.
                 </div>
                 <pre className="text-text-secondary">{placeholder}</pre>
               </div>

@@ -3,20 +3,20 @@
  *
  * Two-layer lookup keyed by type name:
  *
- *   1. **Custom overrides** — user-supplied `.msg` schemas the main thread
+ *   1. **Custom overrides** - user-supplied `.msg` schemas the main thread
  *      has pushed into the worker via `setCustomSchemas`. These take
  *      priority so a user can override even a bundled definition (e.g. to
  *      shim a vendor fork of a stock package). Persisted in localStorage
  *      on the main thread; the worker only holds the parsed form.
  *
- *   2. **Bundled `ros2galactic`** — pre-built `MessageDefinition[]`s for the
+ *   2. **Bundled `ros2galactic`** - pre-built `MessageDefinition[]`s for the
  *      standard ROS2 packages (std_msgs, geometry_msgs, sensor_msgs,
  *      nav_msgs, tf2_msgs, visualization_msgs, builtin_interfaces,
  *      rcl_interfaces, …). Lazily imported on first lookup so the worker
  *      chunk doesn't pay for it on a pure-MCAP session.
  *
  * `.mcap` and ROS1 `.bag` files supply their own schemas inside the file,
- * so this registry only matters for `.db3` bags — but the override layer
+ * so this registry only matters for `.db3` bags - but the override layer
  * works for any format, so a user can paste a corrected schema if a bag
  * is mis-tagged.
  */
@@ -26,12 +26,12 @@ import { parse as parseMessageDefinition } from '@foxglove/rosmsg';
 import { clearReaderCache } from './cdr';
 
 /**
- * Bundled definitions — laid down on first lookup.
+ * Bundled definitions - laid down on first lookup.
  *
  * NOTE on shape: `@foxglove/rosmsg-msgs-common` stores ONE `MessageDefinition`
  * per type (the entry's `name` field matches the key, and its `definitions`
  * field lists the type's *own* fields). The `MessageReader` we feed it to,
- * on the other hand, wants `MessageDefinition[]` — root first, then every
+ * on the other hand, wants `MessageDefinition[]` - root first, then every
  * complex dependency. We build that closure in `getMessageDefinition` below
  * and cache it; the registry itself stays in its native single-entry form.
  *
@@ -52,7 +52,7 @@ let ros2Definitions: Record<string, MessageDefinition> | null = null;
 const customDefinitions = new Map<string, MessageDefinition[]>();
 
 /**
- * Built-closure cache for bundled types — key is the lookup name, value is
+ * Built-closure cache for bundled types - key is the lookup name, value is
  * the root + every transitively-referenced complex type collected from
  * `ros2Definitions`. Avoids re-walking the dep tree on every decode.
  *
@@ -90,7 +90,7 @@ function aliasesFor(typeName: string): string[] {
  * calls hit a ready MessageDefinition[] rather than re-parsing. Invalid
  * entries are skipped with a console warning and don't poison the rest.
  *
- * Also invalidates the CDR reader cache and the bundled-closure cache —
+ * Also invalidates the CDR reader cache and the bundled-closure cache -
  * entries cached against the previous registry state are potentially
  * stale (a user might have just overridden a transitive dependency of
  * a bundled type), and we'd rather rebuild lazily than keep serving
@@ -141,13 +141,13 @@ export function validateSchemaText(text: string): { ok: true } | { ok: false; er
 }
 
 /**
- * Get the message definitions needed to decode `typeName` — root first,
+ * Get the message definitions needed to decode `typeName` - root first,
  * then every transitively-referenced complex type. Suitable for handing
  * straight to `new MessageReader(...)`.
  *
  * Lookup precedence:
  *   1. Custom user schema (already a full closure from `parseMessageDefinition`).
- *   2. Bundled `ros2galactic` — we walk the root's complex fields and pull
+ *   2. Bundled `ros2galactic` - we walk the root's complex fields and pull
  *      each dependency from the same registry, falling back to custom
  *      overrides for individual fields when a user has shimmed one.
  *
@@ -159,14 +159,14 @@ export function validateSchemaText(text: string): { ok: true } | { ok: false; er
 export async function getMessageDefinition(
   typeName: string,
 ): Promise<MessageDefinition[] | undefined> {
-  // Custom schemas first — these are full closures parsed from the user's
+  // Custom schemas first - these are full closures parsed from the user's
   // `.msg` text and can be handed straight to MessageReader.
   for (const alias of aliasesFor(typeName)) {
     const hit = customDefinitions.get(alias);
     if (hit) return hit;
   }
 
-  // Bundled — look the root up, then build the closure.
+  // Bundled - look the root up, then build the closure.
   const cached = bundledClosureCache.get(typeName);
   if (cached) return cached;
 
@@ -192,7 +192,7 @@ export async function getMessageDefinition(
  * decoding a bundled `geometry_msgs/TwistStamped`).
  *
  * Cycles and repeats are de-duped via `visited`. Missing deps are skipped
- * — the resulting closure will be incomplete and `MessageReader` will
+ * - the resulting closure will be incomplete and `MessageReader` will
  * throw a clear "Unrecognized complex type X" when it tries to descend.
  */
 function buildClosure(
@@ -247,7 +247,7 @@ function buildClosure(
  * this on app load (one round-trip) to decide which `.db3` topics need a
  * "schema missing" affordance without having to round-trip per-topic.
  *
- * Custom-schema names aren't included here — the main thread already knows
+ * Custom-schema names aren't included here - the main thread already knows
  * them (it owns the localStorage source of truth).
  */
 export async function getSupportedTypes(): Promise<string[]> {

@@ -74,7 +74,7 @@ describe('computeTopicHealth / gap detection', () => {
   });
 
   it('does not flag a 2x gap (below threshold)', () => {
-    // 100 ms nominal, then 200 ms (2x) — below 3x threshold
+    // 100 ms nominal, then 200 ms (2x) - below 3x threshold
     const times = [0, 100_000_000, 300_000_000, 400_000_000, 500_000_000];
     const h = computeTopicHealth('/odom', makeStats(times));
     expect(h.gapCount).toBe(0);

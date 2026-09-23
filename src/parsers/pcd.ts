@@ -225,7 +225,7 @@ function buildAsciiCloud(
   text: string,
   header: PcdHeader,
 ): PointCloud2Message {
-  // Normalize to FLOAT32 for all fields — ASCII PCD values are parsed as floats anyway.
+  // Normalize to FLOAT32 for all fields - ASCII PCD values are parsed as floats anyway.
   const fields: PointField[] = [];
   let totalFields = 0;
   for (let i = 0; i < header.fields.length; i++) {

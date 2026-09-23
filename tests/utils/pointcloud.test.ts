@@ -72,7 +72,7 @@ function buildFloat64Cloud(points: number[][]): PointCloud2Message {
   };
 }
 
-describe('pointcloud/decodePointCloud2 — FLOAT32 fast path', () => {
+describe('pointcloud/decodePointCloud2 - FLOAT32 fast path', () => {
   it('decodes positions exactly for a small known cloud', () => {
     const msg = buildFloat32Cloud([
       [0, 0, 0],
@@ -111,7 +111,7 @@ describe('pointcloud/decodePointCloud2 — FLOAT32 fast path', () => {
     expect(Array.from(decoded!.positions)).toEqual([0, 0, 0, 2, 2, 2]);
   });
 
-  it('drops returns with absurd magnitudes (>1e4) — Velodyne sentinel guard', () => {
+  it('drops returns with absurd magnitudes (>1e4) - Velodyne sentinel guard', () => {
     const decoded = decodePointCloud2(
       buildFloat32Cloud([
         [0, 0, 0],
@@ -185,7 +185,7 @@ describe('pointcloud/decodePointCloud2 — FLOAT32 fast path', () => {
   });
 });
 
-describe('pointcloud/decodePointCloud2 — slow path (FLOAT64)', () => {
+describe('pointcloud/decodePointCloud2 - slow path (FLOAT64)', () => {
   it('produces identical positions to the fast path for the same inputs', () => {
     const inputs = [
       [0, 0, 0],
@@ -336,7 +336,7 @@ describe('pointcloud/Turbo colormap helpers', () => {
     const lo = turboColor(0);
     const hi = turboColor(1);
     // The exact start-of-LUT colour comes from the polynomial's constant
-    // terms (R≈0.14, G≈0.09, B≈0.11) — close to dark muddy purple, not the
+    // terms (R≈0.14, G≈0.09, B≈0.11) - close to dark muddy purple, not the
     // pure deep blue the Turbo paper poster shows. Don't lock in the start
     // colour; just assert the two ends are clearly distinct and the high
     // end is the red-dominant one a user expects from a Turbo gradient.
@@ -344,7 +344,7 @@ describe('pointcloud/Turbo colormap helpers', () => {
     expect(hi.r).toBeGreaterThan(hi.g);
     const dist = Math.hypot(hi.r - lo.r, hi.g - lo.g, hi.b - lo.b);
     // The Turbo polynomial evaluated at t=1 stops around (0.57, 0.06, 0)
-    // — distance from t=0 (≈0.14, 0.09, 0.11) is ~0.44. Use a loose
+    // - distance from t=0 (≈0.14, 0.09, 0.11) is ~0.44. Use a loose
     // floor to assert "they're clearly different" without locking the LUT.
     expect(dist).toBeGreaterThan(0.3);
   });

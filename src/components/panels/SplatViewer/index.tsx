@@ -1,5 +1,5 @@
 /**
- * SplatViewer — renders `.ply` (splat-flavored), `.splat`, and `.ksplat`
+ * SplatViewer - renders `.ply` (splat-flavored), `.splat`, and `.ksplat`
  * gaussian splat files.
  *
  * Splats are a fundamentally different render path from point clouds: each

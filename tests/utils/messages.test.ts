@@ -238,7 +238,7 @@ describe('messages/type sniffing', () => {
     expect(isLogType('rcl_interfaces/msg/Log')).toBe(true);
     expect(isLogType('rosgraph_msgs/Log')).toBe(true);
     expect(isLogType('rosgraph_msgs/msg/Log')).toBe(true);
-    // Different `Log` types in unrelated packages don't match — our decoder
+    // Different `Log` types in unrelated packages don't match - our decoder
     // expects the specific level/name/msg shape.
     expect(isLogType('my_pkg/Log')).toBe(false);
     expect(isLogType('')).toBe(false);

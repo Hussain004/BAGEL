@@ -1,5 +1,5 @@
 /**
- * Decode "custom" point cloud messages — types that aren't sensor_msgs/PointCloud2
+ * Decode "custom" point cloud messages - types that aren't sensor_msgs/PointCloud2
  * but carry per-point x/y/z in a `points: []` array of structs.
  *
  * Most common case: `livox_ros_driver2/msg/CustomMsg` (Livox MID/HAP/AVIA family),

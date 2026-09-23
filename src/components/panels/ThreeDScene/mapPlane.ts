@@ -8,7 +8,7 @@
  * or less, so we get this nearly for free).
  *
  * The PlaneGeometry is built once at unit size and scaled to fit the actual
- * map dimensions on each update — saves disposing/recreating geometry when
+ * map dimensions on each update - saves disposing/recreating geometry when
  * a SLAM publisher slowly grows the map as the robot explores.
  */
 
@@ -27,7 +27,7 @@ export interface MapPlaneObject {
   material: THREE.MeshBasicMaterial;
   /** Backing texture; recreated whenever the cell buffer changes. */
   texture: THREE.DataTexture | null;
-  /** Last decoded content key — short-circuit identical-data updates. */
+  /** Last decoded content key - short-circuit identical-data updates. */
   lastContentKey: string | null;
   /**
    * Color scheme the current texture was built with. `contentKey` only
@@ -98,7 +98,7 @@ export function createMapPlane(renderOrder: number = MAP_PLANE_RENDER_ORDER.map)
 
 /**
  * Push a freshly-decoded grid into the plane. No-ops when the content key
- * matches the previous update — saves the GPU-side texture upload and the
+ * matches the previous update - saves the GPU-side texture upload and the
  * matrix recompute on every playhead tick.
  *
  * `scheme` is the resolved color scheme the `decoded` buffer was coloured
@@ -118,7 +118,7 @@ export function updateMapPlane(
   const heightM = height * resolution;
 
   if (obj.lastContentKey !== contentKey || obj.lastScheme !== scheme) {
-    // Dispose the previous texture before swapping — DataTexture allocates
+    // Dispose the previous texture before swapping - DataTexture allocates
     // GPU memory that won't be reclaimed by JS GC alone.
     if (obj.texture) obj.texture.dispose();
     const tex = new THREE.DataTexture(
@@ -128,14 +128,14 @@ export function updateMapPlane(
       THREE.RGBAFormat,
       THREE.UnsignedByteType,
     );
-    // NearestFilter keeps cell edges crisp — bilinear would smear free-space
+    // NearestFilter keeps cell edges crisp - bilinear would smear free-space
     // pixels into occupied ones and the user wouldn't be able to tell where
     // the wall is. Mipmaps off for the same reason.
     tex.magFilter = THREE.NearestFilter;
     tex.minFilter = THREE.NearestFilter;
     tex.generateMipmaps = false;
     // ROS row 0 is the bottom of the map; Three.js textures sample (0,0) at
-    // the bottom-left by default — so we DON'T flip-Y. (Default is flipY=true,
+    // the bottom-left by default - so we DON'T flip-Y. (Default is flipY=true,
     // which would put the map upside-down.)
     tex.flipY = false;
     tex.needsUpdate = true;

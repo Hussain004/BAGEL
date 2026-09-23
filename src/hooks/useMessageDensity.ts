@@ -1,5 +1,5 @@
 /**
- * useMessageDensity — aggregate message-count-per-time-bucket across every
+ * useMessageDensity - aggregate message-count-per-time-bucket across every
  * topic in a bag, for the timeline's density strip.
  *
  * Reuses `readAllMessageStats` (already built for the Bag Health panel and

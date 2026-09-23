@@ -1,5 +1,5 @@
 /**
- * useTrajectory — Pull every message for a pose-like topic, extract the
+ * useTrajectory - Pull every message for a pose-like topic, extract the
  * planar (x, y) path, and memoize the result so re-renders during scrubbing
  * don't redo the per-message field walk.
  *
@@ -22,7 +22,7 @@ export interface UseTrajectoryResult {
   source: string;
   projected: boolean;
   /**
-   * Anchor lat/lon for NavSatFix trajectories — null otherwise. The map
+   * Anchor lat/lon for NavSatFix trajectories - null otherwise. The map
    * tile underlay uses it to back-project canvas-pixel coords to lat/lon
    * when figuring out which tile range covers the viewport.
    */
