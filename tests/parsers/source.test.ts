@@ -232,6 +232,40 @@ describe('source/HttpReadable', () => {
     expect(Array.from(third)).toEqual([3, 4, 5, 6, 7, 8]);
   });
 
+  it('never caches a short 206 body as the requested range', async () => {
+    const full = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    let serveShort = true;
+    handlers.set('https://example.com/flaky206.mcap', (_, init) => {
+      const headers = init?.headers as Record<string, string> | undefined;
+      const m = /^bytes=(\d+)-(\d+)$/.exec(headers?.Range ?? '');
+      if (!m) return new Response(null, { status: 416 });
+      const start = Number(m[1]);
+      const end = Number(m[2]);
+      // Acknowledge the range (206) but send fewer bytes than asked.
+      const stop = serveShort ? Math.min(end, start + 2) : end;
+      return new Response(full.subarray(start, stop + 1), {
+        status: 206,
+        headers: { 'content-range': `bytes ${start}-${stop}/${full.length}` },
+      });
+    });
+
+    const r = new HttpReadable('https://example.com/flaky206.mcap', BigInt(full.length));
+    // Request bytes 2..7 (6 bytes); the short body only covers 2..4 and must
+    // not be cached as if it satisfied the window.
+    const first = await r.read(2n, 6n);
+    expect(Array.from(first)).toEqual([3, 4, 5]);
+
+    serveShort = false;
+    const second = await r.read(2n, 6n);
+    expect(Array.from(second)).toEqual([3, 4, 5, 6, 7, 8]);
+
+    // The satisfied window is now cached, so it survives the server going
+    // back to sending short bodies.
+    serveShort = true;
+    const third = await r.read(2n, 6n);
+    expect(Array.from(third)).toEqual([3, 4, 5, 6, 7, 8]);
+  });
+
   it('surfaces a CORS hint when fetch throws a TypeError', async () => {
     handlers.set('https://nope.example/x.mcap', () => {
       throw new TypeError('Failed to fetch');

@@ -312,6 +312,58 @@ describe('parsePcd - truncated payloads', () => {
   });
 });
 
+describe('parsePcd - binary_compressed success', () => {
+  function binaryCompressedHeader(points: number): Uint8Array {
+    const header = [
+      '# .PCD v0.7',
+      'FIELDS x y z',
+      'SIZE 4 4 4',
+      'TYPE F F F',
+      'COUNT 1 1 1',
+      `WIDTH ${points}`,
+      'HEIGHT 1',
+      `POINTS ${points}`,
+      'DATA binary_compressed',
+      '',
+    ].join('\n');
+    return encode(header);
+  }
+
+  it('decodes an LZF payload built from literal runs', async () => {
+    // Two xyz points (24 bytes) compressed as two 12-byte LZF literal runs:
+    // each run is ctrl = count - 1 (< 32) followed by count raw bytes.
+    const raw = new Uint8Array(24);
+    const rdv = new DataView(raw.buffer);
+    const points = [[1, 2, 3], [4, 5, 6]];
+    for (let pi = 0; pi < points.length; pi++) {
+      for (let f = 0; f < 3; f++) {
+        rdv.setFloat32(pi * 12 + f * 4, points[pi][f], true);
+      }
+    }
+    const blob = new Uint8Array(1 + 12 + 1 + 12);
+    blob.set([11], 0);
+    blob.set(raw.subarray(0, 12), 1);
+    blob.set([11], 13);
+    blob.set(raw.subarray(12, 24), 14);
+
+    // Payload layout: u32 compressedSize, u32 uncompressedSize, LZF blob.
+    const payload = new Uint8Array(8 + blob.length);
+    const pdv = new DataView(payload.buffer);
+    pdv.setUint32(0, blob.length, true);
+    pdv.setUint32(4, raw.length, true);
+    payload.set(blob, 8);
+
+    const header = binaryCompressedHeader(2);
+    const bytes = new Uint8Array(header.length + payload.length);
+    bytes.set(header);
+    bytes.set(payload, header.length);
+
+    const result = await readPointCloudAtTimePcd(fileSource(bytes));
+    expect(result).not.toBeNull();
+    expect(Array.from(result!.positions)).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+});
+
 describe('parsePcd - caching', () => {
   it('returns the same summary instance on second call', async () => {
     const bytes = asciiPcd(['x', 'y', 'z'], [4, 4, 4], ['F', 'F', 'F'], ['0 0 0']);

@@ -13,7 +13,7 @@ export interface ActionableError {
 const REMOTE_SERVER_PATTERN =
   /cross-origin|cors|content-length|accept-ranges|range request|partial content|failed to fetch/i;
 const INCOMPLETE_FILE_PATTERN =
-  /truncated|corrupt|invalid (?:mcap|bag)|does not appear to be a valid|range not satisfiable|header does not match/i;
+  /truncated|corrupt|invalid (?:mcap|bag|pcd|ply)|(?:pcd|ply):|(?:pcd|ply) file|does not appear to be a valid|range not satisfiable|header does not match/i;
 const UNSUPPORTED_FORMAT_PATTERN = /unsupported file format/i;
 const SCHEMA_PATTERN =
   /schema (?:is )?(?:missing|not found|unavailable)|no (?:message )?(?:definition|schema)|unknown message type|cannot decode.*schema/i;

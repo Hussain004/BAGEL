@@ -131,13 +131,13 @@ export function coalesceAnnexBVideoChunks(chunks: VideoChunk[], format: string):
   for (const aud of audOffsets) {
     if (aud > start && hasH264VclNal(joined, start, aud)) {
       const data = joined.slice(start, aud);
-      out.push({ data, timestamp: timestampForOffset(chunks, start), isKeyframe: hasH264IdrSlice(data) });
+      out.push({ data, timestamp: timestampForOffset(chunks, start), isKeyframe: isVideoKeyframe(data, format) });
       start = aud;
     }
   }
   if (start < joined.length && hasH264VclNal(joined, start, joined.length)) {
     const data = joined.slice(start);
-    out.push({ data, timestamp: timestampForOffset(chunks, start), isKeyframe: hasH264IdrSlice(data) });
+    out.push({ data, timestamp: timestampForOffset(chunks, start), isKeyframe: isVideoKeyframe(data, format) });
   }
 
   return out;

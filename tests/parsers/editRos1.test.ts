@@ -85,6 +85,30 @@ describe('editRos1/editRos1Bag', () => {
     expect(summary.topics[0].name).toBe('/ints');
   });
 
+  it('numbers sequences per channel instead of one global counter', async () => {
+    // multiTopicRos1Bag interleaves: /ints @1s, /chatter @1.5s, /ints @2s.
+    // A global counter would give /ints [0, 2] and /chatter [1]; each output
+    // channel must count from 0 independently, matching MCAP semantics.
+    const input = bytesToFile(await multiTopicRos1Bag(), 'multi.bag');
+    const result = await editRos1Bag(createFileSource(input), {
+      startNs: 0n,
+      endNs: 10_000_000_000n,
+    });
+
+    const reader = await McapIndexedReader.Initialize({
+      readable: makeReadable(result.bytes),
+    });
+    const sequences = new Map<string, number[]>();
+    for await (const msg of reader.readMessages()) {
+      const topic = reader.channelsById.get(msg.channelId)?.topic ?? '<unknown>';
+      const list = sequences.get(topic) ?? [];
+      list.push(msg.sequence);
+      sequences.set(topic, list);
+    }
+    expect(sequences.get('/chatter')).toEqual([0]);
+    expect(sequences.get('/ints')).toEqual([0, 1]);
+  });
+
   it('writes ros1 messageEncoding and ros1msg schemaEncoding on every channel', async () => {
     const input = bytesToFile(await multiTopicRos1Bag(), 'multi.bag');
     const result = await editRos1Bag(createFileSource(input), {

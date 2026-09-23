@@ -6,8 +6,11 @@
  * cross-format invariants (`schemaEncoding: 'ros2msg'`, `messageEncoding:
  * 'cdr'`) and the round-trip decode are checked together.
  */
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { McapIndexedReader } from '@mcap/core';
+import { MessageWriter } from '@foxglove/rosmsg2-serialization';
 import {
   editDb3Bag,
   estimateMessageCountDb3,
@@ -24,6 +27,7 @@ import { createFileSource } from '../../src/parsers/source';
 import {
   bytesToFile,
   chatterDb3Bag,
+  collectMessageDefinitions,
   multiTopicDb3Bag,
 } from '../fixtures/synth';
 
@@ -43,6 +47,77 @@ function makeReadable(bytes: Uint8Array) {
       return bytes.subarray(start, end);
     },
   };
+}
+
+/**
+ * Build a .db3 whose messages table has no `id` column (some third-party
+ * writers omit it). synth.ts's writer always emits the full rosbag2 schema,
+ * so this test owns its own tiny sql.js fixture.
+ */
+async function writeIdlessDb3(): Promise<Uint8Array> {
+  const sqlJsModule = await import('sql.js');
+  const initSqlJs =
+    (sqlJsModule as { default?: unknown }).default ?? sqlJsModule;
+  const SQL = await (
+    initSqlJs as (config: { locateFile: () => string }) => Promise<{
+      Database: new () => {
+        run: (sql: string) => void;
+        prepare: (sql: string) => {
+          bind: (params: unknown[]) => boolean;
+          step: () => boolean;
+          free: () => boolean;
+          run: (params: unknown[]) => void;
+        };
+        export: () => Uint8Array;
+        close: () => void;
+      };
+    }>
+  )({
+    // Node test environment: resolve the WASM bundled with sql.js itself
+    // rather than the browser path db3.ts hard-codes (same workaround as
+    // synth.ts).
+    locateFile: () => {
+      const here = dirname(fileURLToPath(import.meta.url));
+      return resolve(here, '../../node_modules/sql.js/dist/sql-wasm.wasm');
+    },
+  });
+
+  const db = new SQL.Database();
+  db.run(`CREATE TABLE topics (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,
+    serialization_format TEXT NOT NULL,
+    offered_qos_profiles TEXT
+  )`);
+  // Deliberately no id column: editDb3 must probe with PRAGMA table_info
+  // instead of assuming the rosbag2 schema.
+  db.run(`CREATE TABLE messages (
+    topic_id INTEGER NOT NULL,
+    timestamp INTEGER NOT NULL,
+    data BLOB NOT NULL
+  )`);
+  db.run(
+    `INSERT INTO topics (id, name, type, serialization_format)
+     VALUES (1, '/ints', 'std_msgs/msg/Int32', 'cdr')`,
+  );
+
+  const intWriter = new MessageWriter(
+    collectMessageDefinitions('std_msgs/msg/Int32'),
+  );
+  const insert = db.prepare(
+    'INSERT INTO messages (topic_id, timestamp, data) VALUES (?, ?, ?)',
+  );
+  try {
+    for (let i = 0; i < 3; i++) {
+      insert.run([1, (i + 1) * 1_000_000_000, intWriter.writeMessage({ data: i })]);
+    }
+  } finally {
+    insert.free();
+  }
+  const bytes = db.export();
+  db.close();
+  return bytes;
 }
 
 describe('editDb3/editDb3Bag', () => {
@@ -229,6 +304,26 @@ describe('editDb3/editDb3Bag', () => {
     // The source .db3 row ids are 1, 2, 3 and must survive the export
     // instead of being renumbered by a global counter.
     expect(sequences).toEqual([1, 2, 3]);
+  });
+
+  it('falls back to generated sequences when messages has no id column', async () => {
+    const bytes = await writeIdlessDb3();
+    const result = await editDb3Bag(createFileSource(bytesToFile(bytes, 'idless.db3')), {
+      startNs: 0n,
+      endNs: 10_000_000_000n,
+    });
+    expect(result.messageCount).toBe(3);
+
+    const reader = await McapIndexedReader.Initialize({
+      readable: makeReadable(result.bytes),
+    });
+    const sequences: number[] = [];
+    for await (const msg of reader.readMessages({ topics: ['/ints'] })) {
+      sequences.push(msg.sequence);
+    }
+    // No source ids exist, so a per-edit counter keeps the output valid and
+    // monotonic instead of failing on the missing column.
+    expect(sequences).toEqual([0, 1, 2]);
   });
 
   it('rejects an empty time window with a specific error', async () => {

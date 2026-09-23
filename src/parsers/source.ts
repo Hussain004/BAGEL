@@ -258,7 +258,10 @@ async function rangeFetch(
         'Expected 206 Partial Content. The host may not support HTTP Range.',
     );
   }
-  return { data: new Uint8Array(await res.arrayBuffer()), complete: true };
+  const data = new Uint8Array(await res.arrayBuffer());
+  // A host can acknowledge the range but send fewer bytes than asked; only
+  // a full-size body is safe to cache as the requested window.
+  return { data, complete: data.byteLength === length };
 }
 
 /**

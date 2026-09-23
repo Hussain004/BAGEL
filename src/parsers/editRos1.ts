@@ -191,7 +191,10 @@ export async function editRos1Bag(
   let written = 0;
   let firstNs: bigint | null = null;
   let lastNs: bigint | null = null;
-  let sequence = 0;
+  // MCAP sequence numbers are per-channel. ROS1 MessageEvents carry no
+  // source sequence (header.seq lives in the payload and is passed through
+  // untouched), so count each output channel separately.
+  const sequenceByChannel = new Map<number, number>();
 
   type Ros1MessageEvent = {
     topic: string;
@@ -213,9 +216,11 @@ export async function editRos1Bag(
     if (outChannelId === null) continue;
     const data =
       event.data instanceof Uint8Array ? event.data : new Uint8Array(event.data);
+    const sequence = sequenceByChannel.get(outChannelId) ?? 0;
+    sequenceByChannel.set(outChannelId, sequence + 1);
     await writer.addMessage({
       channelId: outChannelId,
-      sequence: sequence++,
+      sequence,
       logTime: ts,
       publishTime: ts,
       data,

@@ -268,8 +268,15 @@ export async function editDb3Bag(
     };
   }
 
+  // Not every rosbag2-compatible schema declares messages.id. Probe the
+  // table so id-less databases fall back to a generated sequence instead of
+  // failing when the SELECT references a missing column.
+  const hasRowId = meta.db
+    .exec('PRAGMA table_info(messages)')
+    .some((table) => table.values.some((row) => row[1] === 'id'));
+  const idColumn = hasRowId ? 'id, ' : '';
   const sql = `
-    SELECT id, topic_id, timestamp, data FROM messages
+    SELECT ${idColumn}topic_id, timestamp, data FROM messages
     WHERE timestamp >= ? AND timestamp <= ?
       AND topic_id IN (${includedTopicIds.map(() => '?').join(',')})
     ORDER BY timestamp ASC
@@ -278,16 +285,18 @@ export async function editDb3Bag(
   stmt.bind([options.startNs, options.endNs, ...includedTopicIds]);
 
   let written = 0;
+  let fallbackSequence = 0;
   let firstNs: bigint | null = null;
   let lastNs: bigint | null = null;
   try {
     while (stmt.step()) {
       const row = stmt.get();
-      const id = row[0] as number | bigint;
-      const topicId = row[1] as number;
-      const tsRaw = row[2] as number | bigint;
+      const base = hasRowId ? 1 : 0;
+      const id = hasRowId ? (row[0] as number | bigint) : null;
+      const topicId = row[base] as number;
+      const tsRaw = row[base + 1] as number | bigint;
       const ts = typeof tsRaw === 'bigint' ? tsRaw : BigInt(tsRaw);
-      const data = row[3] as Uint8Array;
+      const data = row[base + 2] as Uint8Array;
 
       const outChannelId = await registerChannelOnce(topicId);
       if (outChannelId === null) continue;
@@ -297,8 +306,12 @@ export async function editDb3Bag(
         channelId: outChannelId,
         // Preserve the source row id as the sequence (matches the MCAP edit
         // path passing msg.sequence through unchanged). MCAP sequence is
-        // uint32, so mask to 32 bits.
-        sequence: Number(BigInt(id) & 0xffffffffn),
+        // uint32, so mask to 32 bits; schemas without an id column get a
+        // generated per-edit counter instead.
+        sequence:
+          id !== null
+            ? Number(BigInt(id) & 0xffffffffn)
+            : fallbackSequence++,
         logTime: ts,
         publishTime: ts,
         data: messageBytes,
