@@ -213,6 +213,24 @@ describe('editDb3/editDb3Bag', () => {
     expect(reader.header.profile).toBe('ros2');
   });
 
+  it('preserves source message ids as the MCAP sequence numbers', async () => {
+    const input = bytesToFile(await chatterDb3Bag(), 'chatter.db3');
+    const result = await editDb3Bag(createFileSource(input), {
+      startNs: 0n,
+      endNs: 10_000_000_000n,
+    });
+    const reader = await McapIndexedReader.Initialize({
+      readable: makeReadable(result.bytes),
+    });
+    const sequences: number[] = [];
+    for await (const msg of reader.readMessages({ topics: ['/chatter'] })) {
+      sequences.push(msg.sequence);
+    }
+    // The source .db3 row ids are 1, 2, 3 and must survive the export
+    // instead of being renumbered by a global counter.
+    expect(sequences).toEqual([1, 2, 3]);
+  });
+
   it('rejects an empty time window with a specific error', async () => {
     const input = bytesToFile(await chatterDb3Bag(), 'chatter.db3');
     await expect(

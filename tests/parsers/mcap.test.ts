@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { McapWriter } from '@mcap/core';
 import {
   parseMcap,
   readRawMessagesMcap,
@@ -12,6 +13,7 @@ import {
   bytesToFile,
   chatterBag,
   compressedChatterBag,
+  encodeRos1String,
   multiTopicBag,
   writeSyntheticMcap,
 } from '../fixtures/synth';
@@ -40,6 +42,71 @@ function withoutMcapSummary(bytes: Uint8Array, trailing = new Uint8Array(0)): Ui
 }
 
 beforeEach(() => disposeMcapCache());
+
+// ── ROS1-encoded MCAP fixture (synth only writes cdr channels) ────────────
+
+/** In-memory IWritable, same shape as the (unexported) helper in synth.ts. */
+function makeMemoryWritable() {
+  let buffer = new Uint8Array(16 * 1024);
+  let size = 0;
+  return {
+    async write(data: Uint8Array): Promise<void> {
+      const next = size + data.byteLength;
+      if (next > buffer.byteLength) {
+        let cap = buffer.byteLength;
+        while (cap < next) cap *= 2;
+        const grown = new Uint8Array(cap);
+        grown.set(buffer.subarray(0, size));
+        buffer = grown;
+      }
+      buffer.set(data, size);
+      size = next;
+    },
+    position(): bigint {
+      return BigInt(size);
+    },
+    getBytes(): Uint8Array {
+      return buffer.subarray(0, size);
+    },
+  };
+}
+
+/** ROS1 wire encoding of std_msgs/String (synth's length-prefixed helper). */
+async function ros1ChatterBag(): Promise<Uint8Array> {
+  const writable = makeMemoryWritable();
+  const writer = new McapWriter({
+    writable,
+    useChunks: true,
+    useStatistics: true,
+    useChunkIndex: true,
+    useMessageIndex: true,
+    useSummaryOffsets: true,
+  });
+  await writer.start({ profile: 'ros1', library: 'bagel-test-ros1' });
+  const schemaId = await writer.registerSchema({
+    name: 'std_msgs/String',
+    encoding: 'ros1msg',
+    data: new TextEncoder().encode('string data\n'),
+  });
+  const channelId = await writer.registerChannel({
+    schemaId,
+    topic: '/chatter',
+    messageEncoding: 'ros1',
+    metadata: new Map(),
+  });
+  const values = ['hello', 'world', 'bagel'];
+  for (let i = 0; i < values.length; i++) {
+    await writer.addMessage({
+      channelId,
+      sequence: i,
+      logTime: BigInt(i + 1) * 1_000_000_000n,
+      publishTime: BigInt(i + 1) * 1_000_000_000n,
+      data: encodeRos1String(values[i]),
+    });
+  }
+  await writer.end();
+  return writable.getBytes();
+}
 
 describe('mcap/parseMcap — synthetic bags', () => {
   it('reports correct topic list + counts for a tiny chatter bag', async () => {
@@ -384,5 +451,55 @@ describe('mcap/cache invalidation', () => {
     expect(sb.fileName).toBe('b.mcap');
     expect(sa.topics).toHaveLength(1);
     expect(sb.topics).toHaveLength(2);
+  });
+});
+
+describe('mcap/messageEncoding dispatch', () => {
+  it('reports serializationFormat ros1 and decodes ROS1-encoded messages', async () => {
+    const source = fileSource(bytesToFile(await ros1ChatterBag(), 'ros1.mcap'));
+    const summary = await parseMcap(source);
+    expect(summary.topics).toHaveLength(1);
+    expect(summary.topics[0]).toMatchObject({
+      name: '/chatter',
+      type: 'std_msgs/String',
+      messageCount: 3,
+      serializationFormat: 'ros1',
+    });
+
+    const decoded = await readDeserializedMessagesMcap(source, '/chatter');
+    expect(decoded).toHaveLength(3);
+    expect(decoded.map((m) => m.value)).toEqual([
+      { data: 'hello' },
+      { data: 'world' },
+      { data: 'bagel' },
+    ]);
+  });
+
+  it('range-indexes an unfinalized ros1 bag and still reports + decodes ros1', async () => {
+    const interrupted = withoutMcapSummary(await ros1ChatterBag());
+    const source = fileSource(bytesToFile(interrupted, 'ros1-interrupted.mcap'));
+    const summary = await parseMcap(source);
+    expect(summary.totalMessageCount).toBe(3);
+    expect(summary.topics[0].serializationFormat).toBe('ros1');
+
+    const decoded = await readDeserializedMessagesMcap(source, '/chatter');
+    expect(decoded.map((m) => m.value)).toEqual([
+      { data: 'hello' },
+      { data: 'world' },
+      { data: 'bagel' },
+    ]);
+  });
+
+  it('reads a single ros1 message at a timestamp', async () => {
+    const source = fileSource(bytesToFile(await ros1ChatterBag(), 'ros1.mcap'));
+    const message = await readMessageAtTimeMcap(source, '/chatter', 1_500_000_000n);
+    expect(message).not.toBeNull();
+    expect(message!.value).toEqual({ data: 'world' });
+  });
+
+  it('keeps reporting cdr for cdr channels', async () => {
+    const source = fileSource(bytesToFile(await chatterBag(), 'chatter.mcap'));
+    const summary = await parseMcap(source);
+    expect(summary.topics[0].serializationFormat).toBe('cdr');
   });
 });

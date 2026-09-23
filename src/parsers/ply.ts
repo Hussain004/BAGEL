@@ -224,6 +224,7 @@ function buildPlyCloud(bytes: Uint8Array, header: PlyHeader): PointCloud2Message
       const line = lines[li].trim();
       if (!line || line.startsWith('#')) continue;
       const tokens = line.split(/\s+/);
+      if (tokens.length < props.length) continue;
       const base = ptIdx * pointStep;
 
       const xTok = propIdx.get('x') ?? -1;
@@ -242,11 +243,16 @@ function buildPlyCloud(bytes: Uint8Array, header: PlyHeader): PointCloud2Message
           const r = rIdx >= 0 ? parseFloat(tokens[rIdx]) : 0;
           const g = gIdx >= 0 ? parseFloat(tokens[gIdx]) : 0;
           const b = bIdx >= 0 ? parseFloat(tokens[bIdx]) : 0;
-          // Normalize to 0-255 if already float in 0-1 range (some PLY exporters).
-          const ri = r <= 1.0 && r >= 0.0 && r !== Math.floor(r) ? Math.round(r * 255) : Math.round(r);
-          const gi = g <= 1.0 && g >= 0.0 && g !== Math.floor(g) ? Math.round(g * 255) : Math.round(g);
-          const bi = b <= 1.0 && b >= 0.0 && b !== Math.floor(b) ? Math.round(b * 255) : Math.round(b);
-          outView.setFloat32(base + rgbOff, packRgb(ri, gi, bi), true);
+          // Normalize to 0-255. Integer color props are already 0-255; float
+          // props are usually 0-1 (scale 255) but some exporters use 0-255
+          // floats, so only scale when no channel exceeds 1.
+          const redProp = props.find((p) => p.name === 'red');
+          const scale = redProp && !redProp.isFloat ? 1 : Math.max(r, g, b) > 1 ? 1 : 255;
+          outView.setFloat32(base + rgbOff, packRgb(
+            Math.round(r * scale),
+            Math.round(g * scale),
+            Math.round(b * scale),
+          ), true);
         } else if (hasRgbFloat) {
           const rIdx = propIdx.get('rgb') ?? propIdx.get('rgba') ?? -1;
           if (rIdx >= 0) {
@@ -276,6 +282,12 @@ function buildPlyCloud(bytes: Uint8Array, header: PlyHeader): PointCloud2Message
       return off;
     });
     const binaryPointStep = propBinOff;
+
+    if (binData.byteLength < vertexCount * binaryPointStep) {
+      throw new Error(
+        `PLY: truncated vertex data (need ${vertexCount * binaryPointStep} bytes for ${vertexCount} points, have ${binData.byteLength}).`,
+      );
+    }
 
     const getPropVal = (ptBase: number, propName: string): number => {
       const idx = props.findIndex((p) => p.name === propName);
@@ -347,8 +359,7 @@ export async function parsePly(source: BagSource): Promise<BagSummary> {
   const cached = plySummaryCache.get(key);
   if (cached) return cached;
 
-  const cloud = await loadPlyCloud(source);
-  const pointCount = cloud.width ?? 0;
+  await loadPlyCloud(source);
 
   const summary: BagSummary = {
     format: 'ply',
@@ -365,7 +376,6 @@ export async function parsePly(source: BagSource): Promise<BagSummary> {
         messageCount: 1,
         serializationFormat: 'ply',
         frequency: undefined,
-        ...(pointCount > 0 ? {} : {}),
       },
     ],
   };

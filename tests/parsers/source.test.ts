@@ -206,6 +206,32 @@ describe('source/HttpReadable', () => {
     expect(Array.from(slice)).toEqual([10, 12, 14, 16]);
   });
 
+  it('never caches a short 200 body as the requested range', async () => {
+    const shortBody = new Uint8Array([1, 2, 3, 4, 5]);
+    const fullBody = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    let serveShort = true;
+    handlers.set('https://example.com/flaky.mcap', () => {
+      const body = serveShort ? shortBody : fullBody;
+      return new Response(body, { status: 200 });
+    });
+
+    const r = new HttpReadable('https://example.com/flaky.mcap', BigInt(fullBody.length));
+    // Request bytes 2..7. The short body only covers 2..4 and must not be
+    // cached as if it satisfied the window.
+    const first = await r.read(2n, 6n);
+    expect(Array.from(first)).toEqual([3, 4, 5]);
+
+    serveShort = false;
+    const second = await r.read(2n, 6n);
+    expect(Array.from(second)).toEqual([3, 4, 5, 6, 7, 8]);
+
+    // The satisfied window is now cached, so it survives the server going
+    // back to serving the short body.
+    serveShort = true;
+    const third = await r.read(2n, 6n);
+    expect(Array.from(third)).toEqual([3, 4, 5, 6, 7, 8]);
+  });
+
   it('surfaces a CORS hint when fetch throws a TypeError', async () => {
     handlers.set('https://nope.example/x.mcap', () => {
       throw new TypeError('Failed to fetch');

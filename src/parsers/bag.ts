@@ -92,10 +92,12 @@ let cached: CachedBag | null = null;
  * uncompressed bags never hit it. Both decoders run inside the parser worker,
  * so even a 4 MB bz2 chunk (~500 ms on a modern laptop) doesn't block the UI.
  *
- *   - `bz2` uses `seek-bzip` (pure-JS, MIT, ~5–10 MB/s). The library's
- *     `Bunzip.decode` returns the full decompressed buffer; we re-slice when
- *     the upstream reported size disagrees, which shouldn't happen on a
- *     well-formed bag but trips trivially on a truncated chunk.
+ *   - `bz2` uses `seek-bzip` (pure-JS, MIT, ~5-10 MB/s). The library's
+ *     `Bunzip.decode` returns the full decompressed buffer. The upstream
+ *     reported size is only a hint: we trim when the decode is longer and
+ *     keep the actual produced length when it is shorter, never padding
+ *     with zeros (padding would fabricate bytes and mask a truncated chunk
+ *     as a successful decode).
  *
  *   - `lz4` uses `lz4js`. ROS1 bags emit LZ4 *frame* format (not raw
  *     blocks), which is exactly what `lz4js.decompress` reads. We could
@@ -103,27 +105,24 @@ let cached: CachedBag | null = null;
  *     pure-JS path keeps the worker bundle small and is fast enough for
  *     typical 1–5 GB SLAM bags.
  *
- * Errors from either decoder propagate as `Bag.open()` / iteration errors
- * — the panel surfaces them in its load-error state.
+ * Errors from either decoder propagate as `Bag.open()` / iteration errors,
+ * and the panel surfaces them in its load error state.
  */
 function decompressBz2(buffer: Uint8Array, size: number): Uint8Array {
   const decoded = Bunzip.decode(buffer);
-  // Trim or expand to the upstream's expected size when they disagree —
-  // matches the contract @foxglove/rosbag relies on for chunk parsing.
-  if (decoded.length === size) return decoded;
+  // The declared size is a hint, not authoritative: trim an over-long
+  // decode, but keep the actual produced length when it is shorter instead
+  // of zero-padding (never fabricate bytes; consumers bound their reads by
+  // the buffer length, so a short chunk surfaces as a clear parse error).
   if (decoded.length > size) return decoded.subarray(0, size);
-  const padded = new Uint8Array(size);
-  padded.set(decoded);
-  return padded;
+  return decoded;
 }
 
 function decompressLz4(buffer: Uint8Array, size: number): Uint8Array {
   const decoded = lz4.decompress(buffer, size);
-  if (decoded.length === size) return decoded;
+  // Same policy as bz2: the actual produced length is authoritative.
   if (decoded.length > size) return decoded.subarray(0, size);
-  const padded = new Uint8Array(size);
-  padded.set(decoded);
-  return padded;
+  return decoded;
 }
 
 const decompress = {

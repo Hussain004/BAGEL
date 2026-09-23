@@ -156,7 +156,14 @@ class ParserClient {
         onBatch: callbacks?.onBatch,
         accumulator: callbacks?.streamed ? [] : undefined,
       });
-      worker.postMessage({ id, method, params });
+      try {
+        worker.postMessage({ id, method, params });
+      } catch (err) {
+        // postMessage can throw (e.g. DataCloneError); drop the pending entry
+        // before rejecting so the map doesn't leak a never-settled request.
+        this.pending.delete(id);
+        reject(err instanceof Error ? err : new Error(String(err)));
+      }
     });
   }
 

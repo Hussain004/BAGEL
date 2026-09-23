@@ -62,6 +62,7 @@ import {
 } from '../utils/pointcloud';
 import { decodeLaserScan, type LaserScanExtraction, type LaserScanMessage } from '../utils/laserscan';
 import { decodeCustomCloud, looksLikeCustomCloud } from '../utils/customCloud';
+import { clearDefinitionCaches } from './typeRegistry';
 
 const MCAP_MAGIC = [0x89, 0x4d, 0x43, 0x41, 0x50, 0x30, 0x0d, 0x0a];
 const SQLITE_MAGIC = [0x53, 0x51, 0x4c, 0x69, 0x74, 0x65];
@@ -197,6 +198,7 @@ export function disposeParserCaches(): void {
   disposePcdCache();
   disposePlyCache();
   disposeSplatCache();
+  clearDefinitionCaches();
 }
 
 export async function readAllMessageStats(
@@ -278,6 +280,7 @@ export async function readLaserScanAtTime(
   topicName: string,
   timeNs: bigint,
 ): Promise<(LaserScanExtraction & { timestamp: bigint }) | null> {
+  if (format === 'pcd' || format === 'ply' || format === 'splat') return null;
   const message =
     format === 'mcap'
       ? await readMessageAtTimeMcap(source, topicName, timeNs)

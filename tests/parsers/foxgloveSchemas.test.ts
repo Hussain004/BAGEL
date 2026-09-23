@@ -18,6 +18,7 @@ describe('isFoxgloveSchema', () => {
     expect(isFoxgloveSchema('foxglove.PointCloud')).toBe(true);
     expect(isFoxgloveSchema('foxglove.LaserScan')).toBe(true);
     expect(isFoxgloveSchema('foxglove.FrameTransform')).toBe(true);
+    expect(isFoxgloveSchema('foxglove.TFMessage')).toBe(true);
   });
 
   it('returns true for foxglove.CompressedVideo', () => {
@@ -52,7 +53,7 @@ describe('translateFoxgloveMessage - foxglove.CompressedImage', () => {
   it('maps to sensor_msgs/CompressedImage shape', () => {
     const result = translateFoxgloveMessage('foxglove.CompressedImage', msg);
     expect(result['format']).toBe('jpeg');
-    expect(result['header']).toEqual({ stamp: { sec: 1, nsec: 500 }, frame_id: 'camera' });
+    expect(result['header']).toEqual({ stamp: { sec: 1, nsec: 500, nanosec: 500 }, frame_id: 'camera' });
   });
 
   it('decodes base64 data to Uint8Array', () => {
@@ -221,6 +222,63 @@ describe('translateFoxgloveMessage - foxglove.FrameTransform', () => {
   });
 });
 
+describe('translateFoxgloveMessage - foxglove.TFMessage', () => {
+  const msg = {
+    transforms: [
+      {
+        timestamp: { sec: 4, nsec: 250 },
+        parent_frame_id: 'world',
+        child_frame_id: 'base_link',
+        translation: { x: 1, y: 2, z: 3 },
+        rotation: { x: 0, y: 0, z: 0, w: 1 },
+      },
+      {
+        timestamp: { sec: 5, nsec: 0 },
+        parent_frame_id: 'base_link',
+        child_frame_id: 'wheel',
+        translation: { x: 0.5, y: 0, z: 0 },
+        rotation: { x: 0, y: 0, z: 0, w: 1 },
+      },
+    ],
+  };
+
+  it('maps to the ROS TransformStamped shape the TF graph expects', () => {
+    const result = translateFoxgloveMessage('foxglove.TFMessage', msg);
+    const transforms = result['transforms'] as Record<string, unknown>[];
+    expect(transforms).toHaveLength(2);
+
+    const header = transforms[0]['header'] as Record<string, unknown>;
+    expect(header['frame_id']).toBe('world'); // parent_frame_id -> frame we express in
+    expect(transforms[0]['child_frame_id']).toBe('base_link');
+    const transform = transforms[0]['transform'] as Record<string, unknown>;
+    expect(transform['translation']).toEqual({ x: 1, y: 2, z: 3 });
+    expect(transform['rotation']).toEqual({ x: 0, y: 0, z: 0, w: 1 });
+
+    const secondHeader = transforms[1]['header'] as Record<string, unknown>;
+    expect(secondHeader['frame_id']).toBe('base_link');
+    expect(transforms[1]['child_frame_id']).toBe('wheel');
+  });
+
+  it('emits both nsec and nanosec on each transform stamp', () => {
+    const result = translateFoxgloveMessage('foxglove.TFMessage', msg);
+    const transforms = result['transforms'] as Record<string, unknown>[];
+    const header = transforms[0]['header'] as { stamp: Record<string, number> };
+    expect(header.stamp).toEqual({ sec: 4, nsec: 250, nanosec: 250 });
+    const secondHeader = transforms[1]['header'] as { stamp: Record<string, number> };
+    expect(secondHeader.stamp).toEqual({ sec: 5, nsec: 0, nanosec: 0 });
+  });
+
+  it('handles an empty transforms list', () => {
+    expect(translateFoxgloveMessage('foxglove.TFMessage', { transforms: [] })).toEqual({
+      transforms: [],
+    });
+  });
+
+  it('is recognized by isFoxgloveSchema', () => {
+    expect(isFoxgloveSchema('foxglove.TFMessage')).toBe(true);
+  });
+});
+
 describe('translateFoxgloveMessage - foxglove.CompressedVideo', () => {
   const nalBytes = new Uint8Array([0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0xC0, 0x1F]);
   const msg = {
@@ -233,7 +291,7 @@ describe('translateFoxgloveMessage - foxglove.CompressedVideo', () => {
   it('maps to header + format + data shape', () => {
     const result = translateFoxgloveMessage('foxglove.CompressedVideo', msg);
     expect(result['format']).toBe('h264');
-    expect(result['header']).toEqual({ stamp: { sec: 3, nsec: 0 }, frame_id: 'camera' });
+    expect(result['header']).toEqual({ stamp: { sec: 3, nsec: 0, nanosec: 0 }, frame_id: 'camera' });
   });
 
   it('decodes base64 NAL data to Uint8Array', () => {

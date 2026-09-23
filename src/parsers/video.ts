@@ -148,7 +148,7 @@ export function coalesceAnnexBVideoChunks(chunks: VideoChunk[], format: string):
  * Either indicates the start of a keyframe access unit.
  */
 export function isH264Keyframe(data: Uint8Array): boolean {
-  const limit = Math.min(data.length, 512);
+  const limit = data.length;
   let i = 0;
   while (i < limit) {
     let nalOffset = -1;
@@ -180,7 +180,7 @@ export function isH264Keyframe(data: Uint8Array): boolean {
  * or VPS (32) NAL units - all of which appear at the start of a keyframe.
  */
 export function isH265Keyframe(data: Uint8Array): boolean {
-  const limit = Math.min(data.length, 512);
+  const limit = data.length;
   let i = 0;
   while (i < limit) {
     let nalOffset = -1;
@@ -261,102 +261,6 @@ function getH264CodecString(keyframeData: Uint8Array): string {
     }
   }
   return 'avc1.42E01F'; // H264 Baseline Level 3.1 fallback
-}
-
-/**
- * Decode a sequence of video chunks using the browser WebCodecs VideoDecoder.
- *
- * `chunks` must begin with a keyframe. Returns an ImageBitmap of the last
- * decoded frame (the one at or closest to the requested timestamp).
- *
- * Returns null if WebCodecs is unavailable or decoding fails.
- */
-export async function decodeVideoFrames(
-  chunks: VideoChunk[],
-  format: string,
-): Promise<ImageBitmap | null> {
-  if (chunks.length === 0) return null;
-
-  const VD = (globalThis as unknown as Record<string, unknown>)['VideoDecoder'] as (new (
-    init: {
-      output: (frame: { close(): void }) => void;
-      error: (err: Error) => void;
-    },
-  ) => {
-    configure(config: { codec: string }): void;
-    decode(chunk: { type: string; timestamp: number; data: ArrayBufferView }): void;
-    flush(): Promise<void>;
-    close(): void;
-    readonly state: string;
-  }) | undefined;
-
-  if (!VD) return null;
-
-  const EVC = (globalThis as unknown as Record<string, unknown>)['EncodedVideoChunk'] as (new (
-    init: { type: 'key' | 'delta'; timestamp: number; data: ArrayBufferView },
-  ) => { type: string; timestamp: number; data: ArrayBufferView }) | undefined;
-
-  if (!EVC) return null;
-
-  const firstKeyIndex = chunks.findIndex((chunk) => chunk.isKeyframe);
-  if (firstKeyIndex < 0) return null;
-  const decodeChunks = firstKeyIndex === 0 ? chunks : chunks.slice(firstKeyIndex);
-
-  const keyframeData = decodeChunks[0].data;
-  const codec = getVideoCodecString(format, keyframeData);
-
-  const frames: Array<{ close(): void }> = [];
-  let decodeError: Error | null = null;
-
-  const decoder = new VD({
-    output: (frame) => frames.push(frame),
-    error: (err) => { decodeError = err; },
-  });
-
-  try {
-    decoder.configure({ codec });
-  } catch {
-    return null;
-  }
-
-  for (const chunk of decodeChunks) {
-    if (decodeError) break;
-    try {
-      decoder.decode(
-        new EVC({
-          type: chunk.isKeyframe ? 'key' : 'delta',
-          // VideoDecoder timestamps are microseconds; MCAP is nanoseconds
-          timestamp: Number(chunk.timestamp / 1000n),
-          data: chunk.data,
-        }),
-      );
-    } catch {
-      // Stop feeding chunks; whatever frames already decoded are still
-      // returned below (frames.length === 0 is the only failure signal
-      // this function's return value carries).
-      break;
-    }
-  }
-
-  try {
-    await decoder.flush();
-  } catch {
-    // flush may throw when decoding failed
-  }
-  safeCloseCodec(decoder);
-
-  if (frames.length === 0) {
-    return null;
-  }
-
-  const lastFrame = frames[frames.length - 1];
-  try {
-    return await createImageBitmap(lastFrame as unknown as ImageBitmapSource);
-  } catch {
-    return null;
-  } finally {
-    for (const f of frames) f.close();
-  }
 }
 
 

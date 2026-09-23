@@ -51,66 +51,94 @@ function pcdTypeToPc2Datatype(type: string, size: number): number {
 }
 
 function parsePcdHeader(bytes: Uint8Array): { header: PcdHeader; dataByteOffset: number } {
-  // Decode just the header portion (up to 4 KB is plenty for any real PCD header)
-  const headSlice = bytes.subarray(0, Math.min(4096, bytes.length));
-  const text = new TextDecoder('ascii').decode(headSlice);
+  // Decode the header portion, doubling the window until the DATA line is
+  // fully visible. The ascii decoder maps every byte to exactly one char, so
+  // char indexes inside the window equal byte indexes.
+  let windowSize = Math.min(4096, bytes.length);
+  const decoder = new TextDecoder('ascii');
 
-  const header: Partial<PcdHeader> = {};
-  let dataByteOffset = 0;
-  let lineStart = 0;
+  for (;;) {
+    const text = decoder.decode(bytes.subarray(0, windowSize));
+    const atEof = windowSize >= bytes.length;
 
-  for (let i = 0; i <= text.length; i++) {
-    const ch = i === text.length ? '\n' : text[i];
-    if (ch !== '\n' && ch !== '\r') continue;
+    const header: Partial<PcdHeader> = {};
+    let dataByteOffset = 0;
+    let dataFound = false;
+    let grow = false;
+    let lineStart = 0;
 
-    const rawLine = text.slice(lineStart, i);
-    lineStart = i + 1;
-    // skip Windows CRLF second byte
-    if (rawLine === '') continue;
+    for (let i = 0; i <= text.length; i++) {
+      const atSyntheticEnd = i === text.length;
+      const ch = atSyntheticEnd ? '\n' : text[i];
+      if (ch !== '\n' && ch !== '\r') continue;
 
-    const line = rawLine.trim();
-    if (!line || line.startsWith('#')) continue;
+      const rawLine = text.slice(lineStart, i);
+      lineStart = i + 1;
+      // skip Windows CRLF second byte
+      if (rawLine === '') continue;
 
-    const parts = line.split(/\s+/);
-    const keyword = parts[0].toUpperCase();
-    const values = parts.slice(1);
+      const line = rawLine.trim();
+      if (!line || line.startsWith('#')) continue;
 
-    switch (keyword) {
-      case 'FIELDS': header.fields = values.map((v) => v.toLowerCase()); break;
-      case 'SIZE':   header.sizes  = values.map(Number); break;
-      case 'TYPE':   header.types  = values; break;
-      case 'COUNT':  header.counts = values.map(Number); break;
-      case 'WIDTH':  header.width  = Number(values[0]); break;
-      case 'HEIGHT': header.height = Number(values[0]); break;
-      case 'POINTS': header.points = Number(values[0]); break;
-      case 'DATA': {
-        const enc = (values[0] ?? 'ascii').toLowerCase();
-        header.dataEncoding =
-          enc === 'binary_compressed' ? 'binary_compressed' :
-          enc === 'binary' ? 'binary' :
-          'ascii';
-        // The data section starts at the byte immediately after this line's newline.
-        // Count the byte position of the newline we just found.
-        dataByteOffset = i + 1;
-        // Ensure we break out of the scan
-        i = text.length + 1;
-        break;
+      const parts = line.split(/\s+/);
+      const keyword = parts[0].toUpperCase();
+      const values = parts.slice(1);
+
+      switch (keyword) {
+        case 'FIELDS': header.fields = values.map((v) => v.toLowerCase()); break;
+        case 'SIZE':   header.sizes  = values.map(Number); break;
+        case 'TYPE':   header.types  = values; break;
+        case 'COUNT':  header.counts = values.map(Number); break;
+        case 'WIDTH':  header.width  = Number(values[0]); break;
+        case 'HEIGHT': header.height = Number(values[0]); break;
+        case 'POINTS': header.points = Number(values[0]); break;
+        case 'DATA': {
+          const crAtWindowEdge = ch === '\r' && i + 1 >= text.length;
+          if ((atSyntheticEnd || crAtWindowEdge) && !atEof) {
+            // The DATA line is cut off by the window (or ends on a CR that may
+            // be a CRLF split across the window edge). Widen and reparse.
+            grow = true;
+            break;
+          }
+          const enc = (values[0] ?? 'ascii').toLowerCase();
+          header.dataEncoding =
+            enc === 'binary_compressed' ? 'binary_compressed' :
+            enc === 'binary' ? 'binary' :
+            'ascii';
+          // The data section starts immediately after this line's terminator:
+          // LF, CRLF, a lone CR, or nothing when DATA is the final line at EOF.
+          if (atSyntheticEnd)   dataByteOffset = text.length;
+          else if (ch === '\n') dataByteOffset = i + 1;
+          else if (i + 1 < text.length && text[i + 1] === '\n') dataByteOffset = i + 2;
+          else                  dataByteOffset = i + 1;
+          dataFound = true;
+          // Ensure we break out of the scan
+          i = text.length + 1;
+          break;
+        }
       }
+      if (grow) break;
     }
+
+    if (grow || (!dataFound && !atEof)) {
+      // Header cut off by the window; widen it and reparse.
+      windowSize = Math.min(windowSize * 2, bytes.length);
+      continue;
+    }
+
+    if (
+      !header.fields || !header.sizes || !header.types || !header.counts ||
+      header.points === undefined || header.dataEncoding === undefined
+    ) {
+      throw new Error('PCD file has an incomplete header (missing FIELDS / SIZE / TYPE / POINTS / DATA).');
+    }
+
+    const completeHeader = header as PcdHeader;
+    if (!completeHeader.width) completeHeader.width = completeHeader.points;
+    if (!completeHeader.height) completeHeader.height = 1;
+
+    return { header: completeHeader, dataByteOffset };
   }
-
-  if (
-    !header.fields || !header.sizes || !header.types || !header.counts ||
-    header.points === undefined || header.dataEncoding === undefined
-  ) {
-    throw new Error('PCD file has an incomplete header (missing FIELDS / SIZE / TYPE / POINTS / DATA).');
-  }
-
-  const completeHeader = header as PcdHeader;
-  if (!completeHeader.width) completeHeader.width = completeHeader.points;
-  if (!completeHeader.height) completeHeader.height = 1;
-
-  return { header: completeHeader, dataByteOffset };
 }
 
 /**
@@ -242,6 +270,15 @@ function buildAsciiCloud(
   };
 }
 
+/** Bytes per point implied by the header (same layout buildBinaryCloud produces). */
+function pcdPointStep(header: PcdHeader): number {
+  let step = 0;
+  for (let i = 0; i < header.fields.length; i++) {
+    step += (header.sizes[i] ?? 4) * (header.counts[i] ?? 1);
+  }
+  return step;
+}
+
 async function loadPcdCloud(source: BagSource): Promise<PointCloud2Message> {
   const key = sourceKey(source);
   const cached = pcdCloudCache.get(key);
@@ -249,19 +286,33 @@ async function loadPcdCloud(source: BagSource): Promise<PointCloud2Message> {
 
   const bytes = await sourceReadAll(source);
   const { header, dataByteOffset } = parsePcdHeader(bytes);
+  const expectedBytes = header.points * pcdPointStep(header);
 
   let cloud: PointCloud2Message;
 
   if (header.dataEncoding === 'binary_compressed') {
     // PCD binary_compressed: 4-byte compressed size + 4-byte uncompressed size + LZF blob
+    const remaining = bytes.length - dataByteOffset;
+    if (remaining < 8) {
+      throw new Error(`PCD: truncated binary_compressed payload (missing 8-byte size header, have ${remaining} bytes).`);
+    }
     const dv = new DataView(bytes.buffer, bytes.byteOffset + dataByteOffset);
     const compressedSize   = dv.getUint32(0, true);
     const uncompressedSize = dv.getUint32(4, true);
+    if (remaining - 8 < compressedSize) {
+      throw new Error(`PCD: truncated binary_compressed payload (declares ${compressedSize} compressed bytes, have ${remaining - 8}).`);
+    }
     const compressed = bytes.subarray(dataByteOffset + 8, dataByteOffset + 8 + compressedSize);
     const uncompressed = lzfDecompress(compressed, uncompressedSize);
+    if (uncompressed.length < expectedBytes) {
+      throw new Error(`PCD: truncated binary_compressed payload (declares ${uncompressedSize} uncompressed bytes, need ${expectedBytes} for ${header.points} points).`);
+    }
     cloud = buildBinaryCloud(uncompressed, header);
   } else if (header.dataEncoding === 'binary') {
     const rawData = bytes.subarray(dataByteOffset);
+    if (rawData.length < expectedBytes) {
+      throw new Error(`PCD: truncated binary payload (need ${expectedBytes} bytes for ${header.points} points, have ${rawData.length}).`);
+    }
     cloud = buildBinaryCloud(rawData, header);
   } else {
     // ascii
@@ -278,8 +329,7 @@ export async function parsePcd(source: BagSource): Promise<BagSummary> {
   const cached = pcdSummaryCache.get(key);
   if (cached) return cached;
 
-  const cloud = await loadPcdCloud(source);
-  const pointCount = cloud.width ?? 0;
+  await loadPcdCloud(source);
 
   const summary: BagSummary = {
     format: 'pcd',
@@ -296,7 +346,6 @@ export async function parsePcd(source: BagSource): Promise<BagSummary> {
         messageCount: 1,
         serializationFormat: 'pcd',
         frequency: undefined,
-        ...(pointCount > 0 ? {} : {}),
       },
     ],
   };

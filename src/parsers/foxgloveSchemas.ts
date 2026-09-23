@@ -34,20 +34,25 @@ function base64ToUint8Array(b64: string): Uint8Array {
   return out;
 }
 
-function toStamp(ts: unknown): { sec: number; nsec: number } {
+function toStamp(ts: unknown): { sec: number; nsec: number; nanosec: number } {
   if (ts && typeof ts === 'object') {
     const t = ts as Record<string, unknown>;
-    return {
-      sec: typeof t['sec'] === 'number' ? t['sec'] : 0,
-      nsec: typeof t['nsec'] === 'number' ? t['nsec'] : 0,
-    };
+    const nsec =
+      typeof t['nsec'] === 'number'
+        ? t['nsec']
+        : typeof t['nanosec'] === 'number'
+          ? t['nanosec']
+          : 0;
+    // `nanosec` is the ROS1 spelling; emit both aliases so consumers such as
+    // the TF graph (which reads `nanosec`) work on foxglove JSON too.
+    return { sec: typeof t['sec'] === 'number' ? t['sec'] : 0, nsec, nanosec: nsec };
   }
-  return { sec: 0, nsec: 0 };
+  return { sec: 0, nsec: 0, nanosec: 0 };
 }
 
 function toHeader(
   msg: Record<string, unknown>,
-): { stamp: { sec: number; nsec: number }; frame_id: string } {
+): { stamp: { sec: number; nsec: number; nanosec: number }; frame_id: string } {
   return {
     stamp: toStamp(msg['timestamp']),
     frame_id: typeof msg['frame_id'] === 'string' ? msg['frame_id'] : '',
@@ -167,6 +172,14 @@ function translateFrameTransform(
   };
 }
 
+/** foxglove.TFMessage: a list of FrameTransforms, one per TF edge. */
+function translateTfMessage(msg: Record<string, unknown>): Record<string, unknown> {
+  const transforms = Array.isArray(msg['transforms'])
+    ? (msg['transforms'] as Record<string, unknown>[])
+    : [];
+  return { transforms: transforms.map(translateFrameTransform) };
+}
+
 type Translator = (msg: Record<string, unknown>) => Record<string, unknown>;
 
 const TRANSLATORS: Record<string, Translator> = {
@@ -176,6 +189,7 @@ const TRANSLATORS: Record<string, Translator> = {
   'foxglove.PointCloud': translatePointCloud,
   'foxglove.LaserScan': translateLaserScan,
   'foxglove.FrameTransform': translateFrameTransform,
+  'foxglove.TFMessage': translateTfMessage,
 };
 
 /** True if we have a translation registered for this Foxglove schema name. */

@@ -154,13 +154,17 @@ export async function getTopicType(
 export function disposeParserCaches(): void {
   // Fire-and-forget: cache disposal doesn't need to block the caller.
   for (const id of activeBagWorkerIds()) {
-    void getParserClient(id).disposeParserCaches();
+    void getParserClient(id).disposeParserCaches().catch(() => {
+      // The worker may already be tearing down; disposal is best-effort.
+    });
   }
 }
 
 /** Dispose a single bag worker's caches without terminating the worker. */
 export function disposeParserCachesFor(bagId: string): void {
-  void getParserClient(bagId).disposeParserCaches();
+  void getParserClient(bagId).disposeParserCaches().catch(() => {
+    // The worker may already be tearing down; disposal is best-effort.
+  });
 }
 
 /** Every type name the bundled `ros2galactic` registry knows about. */

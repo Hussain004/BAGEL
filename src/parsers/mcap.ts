@@ -22,8 +22,9 @@ import { BlobReadable } from '@mcap/browser';
 import { decompress as fzstdDecompress } from 'fzstd';
 import type { AllTopicStats, BagSummary, RawMessage, TopicInfo } from '../types/bag';
 import { deserializeWithSchema } from './cdr';
+import { deserializeRos1Message } from './rosbag1';
 import { translateFoxgloveMessage } from './foxgloveSchemas';
-import { coalesceAnnexBVideoChunks, hasH264AccessUnitDelimiter, hasH264IdrSlice, hasH264SequenceParameterSet, isH264VideoFormat, isVideoFormat, isVideoKeyframe, type VideoChunk, type VideoChunksResult } from './video';
+import { coalesceAnnexBVideoChunks, hasH264AccessUnitDelimiter, hasH264SequenceParameterSet, isH264VideoFormat, isVideoFormat, isVideoKeyframe, type VideoChunk, type VideoChunksResult } from './video';
 import {
   HttpReadable,
   sourceDisplayName,
@@ -235,7 +236,6 @@ interface UnindexedMcap {
   endTime: bigint;
   totalMessageCount: number;
   preamble: Uint8Array;
-  trailingBytes: number;
 }
 
 let cached: CachedMcap | null = null;
@@ -269,6 +269,7 @@ class ReadAheadWindow {
   }
 
   async read(offset: number, length: number): Promise<Uint8Array> {
+    if (length <= 0 || offset >= this.fileSize) return new Uint8Array(0);
     if (
       offset >= this.start &&
       offset + length <= this.start + this.data.byteLength
@@ -278,10 +279,10 @@ class ReadAheadWindow {
     }
 
     const available = this.fileSize - offset;
-    const fetchLength = Math.min(
+    const fetchLength = Math.max(0, Math.min(
       available,
       Math.max(length, UNINDEXED_SCAN_WINDOW_BYTES),
-    );
+    ));
     this.start = offset;
     this.data = await this.readable.read(BigInt(offset), BigInt(fetchLength));
     if (this.data.byteLength < length) {
@@ -463,7 +464,6 @@ async function scanUnindexedMcap(
     endTime: time.endTime,
     totalMessageCount: time.total,
     preamble: builder.buffer.slice(0, builder.length),
-    trailingBytes: size - offset,
   };
 }
 
@@ -670,6 +670,7 @@ async function loadMcap(source: BagSource): Promise<CachedMcap> {
   const readable = readableFor(source);
 
   let reader: McapIndexedReader | null = null;
+  // Intentionally null: no whole-file-in-memory load path exists anymore.
   const buffer: Uint8Array | null = null;
   let unindexed: UnindexedMcap | null = null;
   const channelById = new Map<number, { topic: string; schemaId: number; messageEncoding: string }>();
@@ -789,7 +790,7 @@ function extractSummaryFromIndexed(meta: CachedMcap): BagSummary {
       name: ch.topic,
       type: schema?.name ?? 'unknown',
       messageCount: messageCounts.get(channelId) ?? 0,
-      serializationFormat: 'cdr',
+      serializationFormat: ch.messageEncoding || 'cdr',
     });
   }
 
@@ -830,7 +831,7 @@ function extractSummaryFromUnindexed(meta: CachedMcap): BagSummary {
       name: channel.topic,
       type: schema?.name ?? 'unknown',
       messageCount,
-      serializationFormat: 'cdr',
+      serializationFormat: channel.messageEncoding || 'cdr',
       frequency:
         duration > 0
           ? Math.round((messageCount / duration) * 10) / 10
@@ -878,7 +879,7 @@ function extractSummaryFromStream(meta: CachedMcap): BagSummary {
       name: ch.topic,
       type: schema?.name ?? 'unknown',
       messageCount: count,
-      serializationFormat: 'cdr',
+      serializationFormat: ch.messageEncoding || 'cdr',
       frequency: duration > 0 ? Math.round((count / duration) * 10) / 10 : undefined,
     });
   }
@@ -949,6 +950,37 @@ export async function readRawMessagesMcap(
  */
 const YIELD_EVERY = 500;
 
+/**
+ * Build the raw-bytes decoder for a topic from its MCAP channel encoding.
+ *
+ * JSON channels are parsed and foxglove-translated; ROS1 channels go through
+ * the ROS1 reader; CDR, ROS2, and empty encodings use the shared CDR
+ * deserializer. Returns null when the encoding is unrecognized or a
+ * schema-backed encoding has no schema text, so callers can bail before
+ * touching any decode cache.
+ */
+function makeMessageDecoder(
+  topicInfo: { schemaName: string; schemaText: string | null; messageEncoding: string },
+): ((raw: Uint8Array) => Record<string, unknown> | null) | null {
+  const encoding = topicInfo.messageEncoding.toLowerCase();
+  const schemaText = topicInfo.schemaText;
+
+  if (encoding === 'json') {
+    return (raw) => {
+      const parsed = JSON.parse(new TextDecoder().decode(raw)) as Record<string, unknown>;
+      return translateFoxgloveMessage(topicInfo.schemaName, parsed);
+    };
+  }
+  if (!schemaText) return null;
+  if (encoding === 'ros1') {
+    return (raw) => deserializeRos1Message(schemaText, raw);
+  }
+  if (encoding === '' || encoding === 'cdr' || encoding === 'ros2') {
+    return (raw) => deserializeWithSchema(schemaText, raw);
+  }
+  return null;
+}
+
 export async function readDeserializedMessagesMcap(
   source: BagSource,
   topicName: string,
@@ -958,9 +990,8 @@ export async function readDeserializedMessagesMcap(
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null }[]> {
   const meta = await loadMcap(source);
   const topicInfo = meta.topicMeta.get(topicName);
-  if (!topicInfo || (!topicInfo.schemaText && topicInfo.messageEncoding !== 'json')) return [];
-  const schemaText = topicInfo.schemaText;
-  const isJson = topicInfo.messageEncoding === 'json';
+  const decodeRaw = topicInfo ? makeMessageDecoder(topicInfo) : null;
+  if (!decodeRaw) return [];
 
   const out: { timestamp: bigint; value: Record<string, unknown> | null }[] = [];
   // Tracks the boundary between "already streamed via onBatch" and the
@@ -971,11 +1002,7 @@ export async function readDeserializedMessagesMcap(
 
   const decodeOne = (raw: Uint8Array): Record<string, unknown> | null => {
     try {
-      if (isJson) {
-        const parsed = JSON.parse(new TextDecoder().decode(raw)) as Record<string, unknown>;
-        return translateFoxgloveMessage(topicInfo.schemaName, parsed);
-      }
-      return deserializeWithSchema(schemaText!, raw);
+      return decodeRaw(raw);
     } catch {
       return null;
     }
@@ -1307,17 +1334,12 @@ export async function readMessageAtTimeMcap(
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null } | null> {
   const meta = await loadMcap(source);
   const topicInfo = meta.topicMeta.get(topicName);
-  if (!topicInfo || (!topicInfo.schemaText && topicInfo.messageEncoding !== 'json')) return null;
+  const decodeRaw = topicInfo ? makeMessageDecoder(topicInfo) : null;
+  if (!decodeRaw) return null;
 
-  const schemaText = topicInfo.schemaText;
-  const isJson = topicInfo.messageEncoding === 'json';
   const decode = (raw: Uint8Array): Record<string, unknown> | null => {
     try {
-      if (isJson) {
-        const parsed = JSON.parse(new TextDecoder().decode(raw)) as Record<string, unknown>;
-        return translateFoxgloveMessage(topicInfo.schemaName, parsed);
-      }
-      return deserializeWithSchema(schemaText!, raw);
+      return decodeRaw(raw);
     } catch {
       return null;
     }
@@ -1343,36 +1365,8 @@ export async function readMessageAtTimeMcap(
     return null;
   }
 
-  // Stream-reader fallback: scan and keep the message closest to timeNs.
-  if (meta.buffer) {
-    const reader = new McapStreamReader({ decompressHandlers: meta.decompressHandlers });
-    reader.append(meta.buffer);
-    const channelIdsForTopic = new Set<number>();
-    for (const [id, ch] of meta.channelById) {
-      if (ch.topic === topicName) channelIdsForTopic.add(id);
-    }
-    let bestTs: bigint | null = null;
-    let bestData: Uint8Array | null = null;
-    for (let record; (record = reader.nextRecord()); ) {
-      if (record.type !== 'Message' || !channelIdsForTopic.has(record.channelId)) continue;
-      const dist =
-        record.logTime > timeNs ? record.logTime - timeNs : timeNs - record.logTime;
-      const bestDist =
-        bestTs === null
-          ? null
-          : bestTs > timeNs
-            ? bestTs - timeNs
-            : timeNs - bestTs;
-      if (bestDist === null || dist < bestDist) {
-        bestTs = record.logTime;
-        bestData = record.data instanceof Uint8Array ? record.data : new Uint8Array(record.data);
-      }
-    }
-    if (bestTs !== null && bestData) {
-      const value = rememberDecoded(meta, topicName, bestTs, bestData, decode);
-      return { timestamp: bestTs, value };
-    }
-  }
+  // Stream summary buffer is always null (see loadMcap); fall through to the
+  // unindexed range scan.
   if (meta.unindexed) {
     const raw = await readClosestRawMessageUnindexed(source, meta, topicName, timeNs);
     if (raw) {
@@ -1632,7 +1626,6 @@ async function getOrBuildVideoIndex(
   if (!topicInfo) return null;
 
   const isJson = topicInfo.messageEncoding === 'json';
-  const isRosCompressedImage = isCompressedImageSchema(topicInfo.schemaName);
   let format = 'h264';
   const keyframeTimes: bigint[] = [];
 
@@ -1663,10 +1656,7 @@ async function getOrBuildVideoIndex(
       format = decoded.format;
       if (!isVideoFormat(format)) return;
     }
-    const isKeyframe = isRosCompressedImage && isH264VideoFormat(format)
-      ? hasH264SequenceParameterSet(decoded.data)
-      : isVideoKeyframe(decoded.data, format);
-    if (isKeyframe) keyframeTimes.push(logTime);
+    if (isVideoKeyframe(decoded.data, format)) keyframeTimes.push(logTime);
   };
 
   if (meta.reader) {
@@ -1689,7 +1679,9 @@ async function getOrBuildVideoIndex(
   }
 
   const index = { format, keyframeTimes };
-  meta.videoIndex.set(topicName, index);
+  // Only cache non-empty indexes: an empty pass can be a false negative
+  // (this scan cannot walk unindexed files), so don't pin it.
+  if (keyframeTimes.length > 0) meta.videoIndex.set(topicName, index);
   return index;
 }
 
@@ -1715,12 +1707,12 @@ async function readVideoChunkRangeMcapImpl(
     chunks.push({
       data: decoded.data,
       timestamp: logTime,
-      isKeyframe: isH264VideoFormat(format) ? hasH264IdrSlice(decoded.data) : isVideoKeyframe(decoded.data, format),
+      isKeyframe: isVideoKeyframe(decoded.data, format),
     });
   };
 
   const hasCompleteFrameAfterEnd = (): boolean => (
-    coalesceAnnexBVideoChunks(chunks, format).some((chunk) => chunk.timestamp >= startNs)
+    coalesceAnnexBVideoChunks(chunks, format).some((chunk) => chunk.timestamp >= endNs)
   );
 
   const shouldStopAfter = (logTime: bigint, raw: Uint8Array): boolean => {

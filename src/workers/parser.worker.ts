@@ -65,9 +65,9 @@ type Method =
   | 'getResolvableTopicsDb3'
   | 'readAllMessageStats';
 
-interface BaseRequest<P> {
+interface BaseRequest<M extends Method, P> {
   id: number;
-  method: Method;
+  method: M;
   params: P;
 }
 
@@ -158,20 +158,23 @@ interface ReadAllMessageStatsParams {
 }
 
 type WorkerRequest =
-  | BaseRequest<ParseBagParams>
-  | BaseRequest<ReadRawMessagesParams>
-  | BaseRequest<ReadDeserializedMessagesParams>
-  | BaseRequest<ReadMessageAtTimeParams>
-  | BaseRequest<ReadPointCloudAtTimeParams>
-  | BaseRequest<ReadLaserScanAtTimeParams>
-  | BaseRequest<GetTopicTypeParams>
-  | BaseRequest<SetCustomSchemasParams>
-  | BaseRequest<ValidateSchemaParams>
-  | BaseRequest<EstimateEditCountParams>
-  | BaseRequest<EditBagParams>
-  | BaseRequest<GetResolvableTopicsDb3Params>
-  | BaseRequest<ReadAllMessageStatsParams>
-  | BaseRequest<undefined>;
+  | BaseRequest<'parseBag', ParseBagParams>
+  | BaseRequest<'readRawMessages', ReadRawMessagesParams>
+  | BaseRequest<'readDeserializedMessages', ReadDeserializedMessagesParams>
+  | BaseRequest<'readMessageAtTime', ReadMessageAtTimeParams>
+  | BaseRequest<'readPointCloudAtTime', ReadPointCloudAtTimeParams>
+  | BaseRequest<'readLaserScanAtTime', ReadLaserScanAtTimeParams>
+  | BaseRequest<'readVideoChunkRange', ReadVideoChunkRangeParams>
+  | BaseRequest<'readVideoChunksAtTime', ReadVideoChunksAtTimeParams>
+  | BaseRequest<'getTopicType', GetTopicTypeParams>
+  | BaseRequest<'disposeParserCaches', undefined>
+  | BaseRequest<'getSupportedTypes', undefined>
+  | BaseRequest<'setCustomSchemas', SetCustomSchemasParams>
+  | BaseRequest<'validateSchema', ValidateSchemaParams>
+  | BaseRequest<'estimateEditCount', EstimateEditCountParams>
+  | BaseRequest<'editBag', EditBagParams>
+  | BaseRequest<'getResolvableTopicsDb3', GetResolvableTopicsDb3Params>
+  | BaseRequest<'readAllMessageStats', ReadAllMessageStatsParams>;
 
 interface ProgressResponse {
   id: number;
@@ -231,6 +234,11 @@ export type WorkerResponse =
   | ResultResponse<AllTopicStats>
   | ResultResponse<void>
   | ErrorResponse;
+
+/** Exhaustiveness guard for the dispatch switch: every Method must be handled. */
+function assertNever(req: never): never {
+  throw new Error(`Unknown worker method: ${(req as { method: string }).method}`);
+}
 
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
 
@@ -414,7 +422,7 @@ ctx.addEventListener('message', async (e: MessageEvent<WorkerRequest>) => {
         return;
       }
       default:
-        throw new Error(`Unknown worker method: ${(req as { method: string }).method}`);
+        return assertNever(req);
     }
   } catch (err) {
     fail(err);

@@ -269,7 +269,7 @@ export async function editDb3Bag(
   }
 
   const sql = `
-    SELECT topic_id, timestamp, data FROM messages
+    SELECT id, topic_id, timestamp, data FROM messages
     WHERE timestamp >= ? AND timestamp <= ?
       AND topic_id IN (${includedTopicIds.map(() => '?').join(',')})
     ORDER BY timestamp ASC
@@ -280,14 +280,14 @@ export async function editDb3Bag(
   let written = 0;
   let firstNs: bigint | null = null;
   let lastNs: bigint | null = null;
-  let sequence = 0;
   try {
     while (stmt.step()) {
       const row = stmt.get();
-      const topicId = row[0] as number;
-      const tsRaw = row[1] as number | bigint;
+      const id = row[0] as number | bigint;
+      const topicId = row[1] as number;
+      const tsRaw = row[2] as number | bigint;
       const ts = typeof tsRaw === 'bigint' ? tsRaw : BigInt(tsRaw);
-      const data = row[2] as Uint8Array;
+      const data = row[3] as Uint8Array;
 
       const outChannelId = await registerChannelOnce(topicId);
       if (outChannelId === null) continue;
@@ -295,7 +295,10 @@ export async function editDb3Bag(
       const messageBytes = data instanceof Uint8Array ? data : new Uint8Array(data);
       await writer.addMessage({
         channelId: outChannelId,
-        sequence: sequence++,
+        // Preserve the source row id as the sequence (matches the MCAP edit
+        // path passing msg.sequence through unchanged). MCAP sequence is
+        // uint32, so mask to 32 bits.
+        sequence: Number(BigInt(id) & 0xffffffffn),
         logTime: ts,
         publishTime: ts,
         data: messageBytes,

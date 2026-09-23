@@ -113,6 +113,15 @@ export function setCustomSchemas(schemas: Record<string, string>): void {
       console.warn(`[typeRegistry] failed to parse custom schema for ${typeName}: ${message}`);
     }
   }
+  clearDefinitionCaches();
+}
+
+/**
+ * Drop every decode cache that can go stale when schemas change: the bundled
+ * closure cache and the shared CDR reader cache. Called from `setCustomSchemas`
+ * and from `disposeParserCaches` when the worker tears down between files.
+ */
+export function clearDefinitionCaches(): void {
   bundledClosureCache.clear();
   clearReaderCache();
 }
@@ -231,15 +240,6 @@ function buildClosure(
     }
   }
   return out;
-}
-
-/**
- * Check if a message type is supported by either the bundled registry or
- * the current custom-schema overrides.
- */
-export async function isTypeSupported(typeName: string): Promise<boolean> {
-  const def = await getMessageDefinition(typeName);
-  return def !== undefined;
 }
 
 /**

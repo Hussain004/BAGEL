@@ -177,8 +177,8 @@ export class HttpReadable implements IReadable {
     const key = `${offset}:${size}`;
     const hit = this.rangeCache.get(key);
     if (hit) return hit;
-    const data = await rangeFetch(this.url, Number(offset), Number(size));
-    this.rangeCache.set(key, data);
+    const { data, complete } = await rangeFetch(this.url, Number(offset), Number(size));
+    if (complete) this.rangeCache.set(key, data);
     return data;
   }
 }
@@ -199,17 +199,23 @@ export class HttpFilelike implements Filelike {
     const key = `${offset}:${length}`;
     const hit = this.rangeCache.get(key);
     if (hit) return hit;
-    const data = await rangeFetch(this.url, offset, length);
-    this.rangeCache.set(key, data);
+    const { data, complete } = await rangeFetch(this.url, offset, length);
+    if (complete) this.rangeCache.set(key, data);
     return data;
   }
 }
 
 /**
- * Issue a single HTTP Range request. Returns exactly `length` bytes (or
- * throws with a specific message on the most common failure modes).
+ * Issue a single HTTP Range request. Returns the requested slice plus a
+ * `complete` flag: false when a Range-ignoring 200 response didn't cover
+ * the whole window (callers must not cache partial results). Throws with a
+ * specific message on the most common failure modes.
  */
-async function rangeFetch(url: string, offset: number, length: number): Promise<Uint8Array> {
+async function rangeFetch(
+  url: string,
+  offset: number,
+  length: number,
+): Promise<{ data: Uint8Array; complete: boolean }> {
   const end = offset + length - 1;
   let res: Response;
   try {
@@ -240,16 +246,19 @@ async function rangeFetch(url: string, offset: number, length: number): Promise<
     // multi-GB bag — give the user a way to understand the symptom.
     if (res.status === 200) {
       const buf = new Uint8Array(await res.arrayBuffer());
-      if (buf.length === length) return buf;
-      if (offset === 0 && length <= buf.length) return buf.subarray(0, length);
-      return buf.subarray(offset, offset + length);
+      if (buf.length >= offset + length) {
+        return { data: buf.subarray(offset, offset + length), complete: true };
+      }
+      // Body ended before the requested window; hand back what exists and
+      // mark it incomplete so it never gets cached as the full slice.
+      return { data: buf.subarray(offset), complete: false };
     }
     throw new Error(
       `Server returned ${res.status} for range request to "${url}". ` +
         'Expected 206 Partial Content. The host may not support HTTP Range.',
     );
   }
-  return new Uint8Array(await res.arrayBuffer());
+  return { data: new Uint8Array(await res.arrayBuffer()), complete: true };
 }
 
 /**

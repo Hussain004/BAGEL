@@ -34,6 +34,7 @@ function binaryPcd(
   sizes: number[],
   types: string[],
   points: number[][],
+  eol = '\n',
 ): Uint8Array {
   const pointCount = points.length;
   const header = [
@@ -47,7 +48,7 @@ function binaryPcd(
     `POINTS ${pointCount}`,
     'DATA binary',
     '',
-  ].join('\n');
+  ].join(eol);
   const headerBytes = encode(header);
   const pointStep = sizes.reduce((a, b) => a + b, 0);
   const dataBytes = new Uint8Array(pointCount * pointStep);
@@ -195,6 +196,54 @@ describe('parsePcd - binary', () => {
     expect(result!.positions[2]).toBeCloseTo(30);
   });
 
+  it('reads a CRLF-terminated header at the exact data offset', async () => {
+    const points = [[10, 20, 30], [-5, -10, -15]];
+    const bytes = binaryPcd(['x', 'y', 'z'], [4, 4, 4], ['F', 'F', 'F'], points, '\r\n');
+    const result = await readPointCloudAtTimePcd(fileSource(bytes));
+    expect(result).not.toBeNull();
+    expect(result!.positions.length).toBe(6);
+    // Exact float32 values: an offset that landed on the LF would shift every
+    // point by one byte and decode garbage instead of these numbers.
+    expect(result!.positions[0]).toBe(10);
+    expect(result!.positions[1]).toBe(20);
+    expect(result!.positions[2]).toBe(30);
+    expect(result!.positions[3]).toBe(-5);
+    expect(result!.positions[4]).toBe(-10);
+    expect(result!.positions[5]).toBe(-15);
+  });
+
+  it('parses a header whose DATA line sits past the initial 4096-byte window', async () => {
+    const headerLines = [
+      '# .PCD v0.7',
+      `# ${'p'.repeat(6000)}`,
+      'FIELDS x y z',
+      'SIZE 4 4 4',
+      'TYPE F F F',
+      'COUNT 1 1 1',
+      'WIDTH 1',
+      'HEIGHT 1',
+      'POINTS 1',
+      'DATA binary',
+      '',
+    ];
+    const headerBytes = encode(headerLines.join('\n'));
+    expect(headerBytes.length).toBeGreaterThan(4096);
+    const payload = new Uint8Array(12);
+    const dv = new DataView(payload.buffer);
+    dv.setFloat32(0, 1.5, true);
+    dv.setFloat32(4, 2.5, true);
+    dv.setFloat32(8, 3.5, true);
+    const bytes = new Uint8Array(headerBytes.length + payload.length);
+    bytes.set(headerBytes);
+    bytes.set(payload, headerBytes.length);
+
+    const summary = await parsePcd(fileSource(bytes));
+    expect(summary.totalMessageCount).toBe(1);
+    const result = await readPointCloudAtTimePcd(fileSource(bytes));
+    expect(result).not.toBeNull();
+    expect(Array.from(result!.positions)).toEqual([1.5, 2.5, 3.5]);
+  });
+
   it('handles intensity field in binary data', async () => {
     const points = [[1, 2, 3, 0.75], [4, 5, 6, 0.25]];
     const bytes = binaryPcd(
@@ -207,6 +256,59 @@ describe('parsePcd - binary', () => {
     expect(result).not.toBeNull();
     expect(result!.colors).toBeInstanceOf(Float32Array);
     expect(result!.colors.length).toBe(6); // 2 points * 3 rgb channels
+  });
+});
+
+describe('parsePcd - truncated payloads', () => {
+  function binaryCompressedHeader(points: number): Uint8Array {
+    const header = [
+      '# .PCD v0.7',
+      'FIELDS x y z',
+      'SIZE 4 4 4',
+      'TYPE F F F',
+      'COUNT 1 1 1',
+      `WIDTH ${points}`,
+      'HEIGHT 1',
+      `POINTS ${points}`,
+      'DATA binary_compressed',
+      '',
+    ].join('\n');
+    return encode(header);
+  }
+
+  it('throws a PCD: prefixed error instead of RangeError on a short binary payload', async () => {
+    const bytes = binaryPcd(
+      ['x', 'y', 'z'],
+      [4, 4, 4],
+      ['F', 'F', 'F'],
+      [[1, 2, 3], [4, 5, 6], [7, 8, 9]],
+    );
+    // Chop a partial point off the end: 3 points declare 36 bytes, have 28.
+    const truncated = bytes.subarray(0, bytes.length - 8);
+    await expect(readPointCloudAtTimePcd(fileSource(truncated))).rejects.toThrow(
+      /^PCD: truncated binary payload/,
+    );
+  });
+
+  it('throws a PCD: prefixed error when the compressed size header is missing', async () => {
+    const bytes = binaryCompressedHeader(1);
+    await expect(readPointCloudAtTimePcd(fileSource(bytes))).rejects.toThrow(
+      /^PCD: truncated binary_compressed payload \(missing 8-byte size header/,
+    );
+  });
+
+  it('throws a PCD: prefixed error when the declared compressed size overruns the payload', async () => {
+    const header = binaryCompressedHeader(1);
+    const payload = new Uint8Array(12);
+    const dv = new DataView(payload.buffer);
+    dv.setUint32(0, 100, true); // declares 100 compressed bytes
+    dv.setUint32(4, 12, true);  // declares 12 uncompressed bytes
+    const bytes = new Uint8Array(header.length + payload.length);
+    bytes.set(header);
+    bytes.set(payload, header.length);
+    await expect(readPointCloudAtTimePcd(fileSource(bytes))).rejects.toThrow(
+      /^PCD: truncated binary_compressed payload \(declares 100 compressed bytes, have 4\)/,
+    );
   });
 });
 

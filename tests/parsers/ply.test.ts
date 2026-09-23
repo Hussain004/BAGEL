@@ -237,6 +237,57 @@ describe('readPointCloudAtTimePly - binary big endian', () => {
   });
 });
 
+describe('readPointCloudAtTimePly - robustness guards', () => {
+  it('throws a PLY: prefixed error on a short binary payload', async () => {
+    const props = [
+      { name: 'x', type: 'float' as const },
+      { name: 'y', type: 'float' as const },
+      { name: 'z', type: 'float' as const },
+    ];
+    const bytes = binaryLePly(props, [[1, 2, 3], [4, 5, 6], [7, 8, 9]]);
+    // 3 points declare 36 bytes; drop 6 so only 30 remain.
+    const truncated = bytes.subarray(0, bytes.length - 6);
+    await expect(readPointCloudAtTimePly(fileSource(truncated))).rejects.toThrow(
+      /^PLY: truncated vertex data/,
+    );
+  });
+
+  it('skips ASCII rows with too few tokens instead of emitting NaN', async () => {
+    const props = [
+      { name: 'x', type: 'float' },
+      { name: 'y', type: 'float' },
+      { name: 'z', type: 'float' },
+    ];
+    // Row 2 ("4 5") is short one token and must be dropped, so the point
+    // after it lands at index 1 rather than producing a NaN component.
+    const bytes = asciiPly(props, ['1 2 3', '4 5', '6 7 8', '9 10 11']);
+    const result = await readPointCloudAtTimePly(fileSource(bytes));
+    expect(result).not.toBeNull();
+    expect(result!.positions[0]).toBeCloseTo(1);
+    expect(result!.positions[3]).toBeCloseTo(6);
+    expect(result!.positions[6]).toBeCloseTo(9);
+    expect(Array.from(result!.positions).every((v) => Number.isFinite(v))).toBe(true);
+  });
+
+  it('treats float 1.0 color components as white, not near-black', async () => {
+    const props = [
+      { name: 'x', type: 'float' },
+      { name: 'y', type: 'float' },
+      { name: 'z', type: 'float' },
+      { name: 'red', type: 'float' },
+      { name: 'green', type: 'float' },
+      { name: 'blue', type: 'float' },
+    ];
+    const bytes = asciiPly(props, ['0 0 0 1 1 1']);
+    const result = await readPointCloudAtTimePly(fileSource(bytes), 'rgb');
+    expect(result).not.toBeNull();
+    expect(result!.colors).toBeInstanceOf(Float32Array);
+    expect(result!.colors![0]).toBeCloseTo(1, 2);
+    expect(result!.colors![1]).toBeCloseTo(1, 2);
+    expect(result!.colors![2]).toBeCloseTo(1, 2);
+  });
+});
+
 describe('parsePly - caching', () => {
   it('returns the same summary instance on second call', async () => {
     const bytes = asciiPly(
