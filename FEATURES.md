@@ -70,7 +70,7 @@ The first two implementations of that cycle both passed build/lint/tests and *lo
 **Test coverage** (`tests/parsers/splat.test.ts`): 13 new tests covering `isSplatPly` detection (splat-flavored header, regular colored-PLY header as a regression check, bare xyz PLY, garbage input, and keying off a single distinguishing property alone), `detectFormat` routing for all three extensions plus the splat-vs-plain-PLY disambiguation, and `parseSplat`'s summary shape, vertex-count-from-header, `.splat` size-based count estimate, and cache/dispose behavior. **526 total tests.** The camera-fit outlier-robustness, pan-feel, pivot-picking, fly-controls, and reference-geometry work is UI/interaction behavior verified through direct browser testing (Playwright) rather than unit tests: format detection is the part with a stable, testable contract, the rest is "does it feel right when you actually use it."
 
 Explicitly out of scope for v1.7.0:
-- **`.spz` (Niantic's compressed format).** The underlying library supports it; BAGEL's detection and DropZone copy only cover `.ply`/`.splat`/`.ksplat`. Small addition if a `.spz` file shows up in the wild.
+- **`.spz` (Niantic's compressed format).** The underlying library supports it; BAGEL's detection and loader copy only cover `.ply`/`.splat`/`.ksplat`. Small addition if a `.spz` file shows up in the wild.
 - **True per-splat raycasting for pivot picking.** Would need either reimplementing the library's internal (unexported) splat-tree raycaster against its own undocumented data structures, or a released version of the library that exports it. The camera-facing-plane approximation is a deliberate, lower-risk substitute.
 - **Multi-scene composition** (loading more than one splat file into a single panel, or splats alongside a ROS point cloud in the same view). The library supports it internally; BAGEL only ever loads one scene per panel.
 - **GPU-accelerated sort.** `sharedMemoryForWorkers` is enabled (conditionally, see above), but `gpuAcceleratedSort` stays off after it produced a blank panel with no error in this project's own test environment - not confirmed safe enough to ship. Worth revisiting with real-hardware testing if CPU-bound sort performance on very large scenes becomes the bottleneck.
@@ -114,7 +114,7 @@ Drop a `.pcd` or `.ply` file straight into BAGEL. No bag wrapping required. The 
 - `getTopicType` returns `'sensor_msgs/PointCloud2'` for both.
 - `disposeParserCaches` calls `disposePcdCache()` and `disposePlyCache()`.
 
-**DropZone** (`src/components/layout/DropZone.tsx`):
+**Landing file loader** (`src/components/landing/FileIngestPanel.tsx`):
 
 - File input `accept` extended to `.db3,.mcap,.bag,.pcd,.ply`.
 - Idle state subtitle updated to list `.pcd, .ply`.
@@ -167,19 +167,19 @@ Explicitly out of scope for v1.6.1:
 **`foxglove.CompressedVideo` translator** (added to `foxgloveSchemas.ts`). Decodes base64 `data` to `Uint8Array` and passes `format` through. The translated shape carries `{ header, format, data }` used by the video chunk extraction path.
 
 **Keyframe detection** (`src/parsers/video.ts`):
-- `isH264Keyframe(data)`: scans up to 512 bytes of Annex B NAL units (start codes `00 00 00 01` or `00 00 01`), extracting `nal_unit_type = byte & 0x1F`. Returns true for type 5 (IDR) or type 7 (SPS).
+- `isH264Keyframe(data)`: scans the Annex B NAL units in the whole payload (start codes `00 00 00 01` or `00 00 01`), extracting `nal_unit_type = byte & 0x1F`. Returns true for type 5 (IDR) or type 7 (SPS).
 - `isH265Keyframe(data)`: reads the 2-byte H265 NAL header, extracts `nal_unit_type = (byte0 >> 1) & 0x3F`. Returns true for types 19/20 (IDR) or 32 (VPS).
 - `isVideoKeyframe(data, format)`: routes to the correct detector based on format string (`'h264'` / `'avc'` -> H264; `'h265'` / `'hevc'` -> H265).
 
-**Fast keyframe index** (`readVideoChunksMcap` in `src/parsers/mcap.ts`). A per-topic `keyframeTimes: bigint[]` array is built lazily on first seek. To avoid decoding full video frames just to classify them, each message is scanned using only the first 24 base64 characters (~18 decoded bytes) - enough to reach the start code and NAL type byte. The full keyframe index for a typical 30 Hz / 1-hour recording builds in under 100 ms.
+**Fast keyframe index** (`readVideoChunksMcap` in `src/parsers/mcap.ts`). A per-topic `keyframeTimes: bigint[]` array is built lazily on first seek. To avoid decoding full video frames just to classify them, each JSON-encoded message is classified from only the first 24 base64 characters (~18 decoded bytes), enough to reach the start code and NAL type byte; ros2-encoded chunks are fully decoded before the same full-payload NAL scan. The full keyframe index for a typical 30 Hz / 1-hour recording builds in under 100 ms.
 
 **Seeking strategy.** Binary search the `keyframeTimes` array for the last keyframe at or before the target `timeNs`. Read all messages from that keyframe forward to `timeNs`. The parser returns them as `VideoChunksResult { chunks: VideoChunk[]; format: string }`.
 
-**`decodeVideoFrames`** (`src/parsers/video.ts`). Called on the main thread (WebCodecs runs on the window). Creates a `VideoDecoder` with the appropriate codec string; feeds each chunk as an `EncodedVideoChunk` with the correct `type` (`'key'` or `'delta'`) and timestamp converted from nanoseconds to microseconds. Converts each output `VideoFrame` to `ImageBitmap` via `createImageBitmap` and closes the frame immediately to avoid GPU memory leaks. Returns the last decoded `ImageBitmap`, representing the frame at the target time.
+**`VideoFrameDecoder`** (`src/parsers/video.ts`). A stateful decoder held per viewer and called on the main thread (WebCodecs runs on the window). Creates a `VideoDecoder` with the appropriate codec string; feeds each chunk as an `EncodedVideoChunk` with the correct `type` (`'key'` or `'delta'`) and timestamp converted from nanoseconds to microseconds. Converts each output `VideoFrame` to `ImageBitmap` via `createImageBitmap` and closes the frame immediately to avoid GPU memory leaks. `reset()` tears the decoder down between non-contiguous seeks.
 
 **Worker chain.** `readVideoChunksAtTime` propagates through the standard RPC chain (`parsers/core.ts` -> `parsers/index.ts` -> `workers/parserClient.ts` -> `workers/parser.worker.ts`). The worker dispatches with ArrayBuffer transfer so multi-MB video payloads cross the worker boundary with zero copy; the main thread reconstructs `Uint8Array` views from the transferred buffers.
 
-**`useVideoFrame` hook** (`src/components/panels/ImageViewer/index.tsx`). Calls `readVideoChunksAtTime` then `decodeVideoFrames` in an async effect. Tracks the previous `ImageBitmap` in a ref and calls `.close()` before replacing, preventing GPU memory accumulation across seeks. Returns `{ bitmap, loading, error }`. Always called unconditionally (React hook rules); internally short-circuits when `enabled` is false.
+**`useVideoFrame` hook** (`src/components/panels/ImageViewer/index.tsx`). Fetches chunks with `readVideoChunksAtTime` (or `readVideoChunkRange` when the last decoded frame is close enough to decode forward) and decodes them with `VideoFrameDecoder` in an async effect. Tracks the previous `ImageBitmap` in a ref and calls `.close()` before replacing, preventing GPU memory accumulation across seeks. Returns `{ bitmap, loading, error }`. Always called unconditionally (React hook rules); internally short-circuits when `enabled` is false.
 
 **`utils/messages.ts`**: added `isVideoType(type) -> type === 'foxglove.CompressedVideo'`. `isImageType` extended to include `foxglove.CompressedVideo` so the TopicInspector routes video topics to the ImageViewer panel automatically.
 

@@ -280,7 +280,7 @@ User's Browser
 │
 ├── Main thread (React render loop)
 │   │
-│   ├── DropZone / Toolbar / Timeline / Sidebar / PanelGrid
+│   ├── Toolbar / Timeline / Sidebar / PanelGrid
 │   │
 │   ├── Zustand stores
 │   │     ├── bagStore       (Map<bagId, BagEntry> + focusBagId + alignment)
@@ -401,7 +401,6 @@ src/
 │
 ├── components/
 │   ├── layout/
-│   │   ├── DropZone.tsx    # Drag & drop landing page + sample bag loader
 │   │   ├── Toolbar.tsx     # Top info bar + help / close
 │   │   ├── Timeline.tsx    # Global playhead scrubber
 │   │   └── PanelGrid.tsx   # Resizable visualization grid
@@ -494,12 +493,18 @@ tests/
 ├── parsers/                    # Parser unit tests
 │   ├── cdr.test.ts             # CDR round-trips (String, Twist, Odometry w/ covariance)
 │   ├── mcap.test.ts            # Parse + read + at-time + cache invalidation against synth bags
-│   ├── db3.test.ts             # .db3 dispatch via mocked sql.js locateFile
+│   ├── db3.test.ts             # .db3 read paths on synthetic fixtures (sql.js mocked)
 │   ├── bag.test.ts             # ROS1 .bag read paths against the synthetic writer
 │   ├── edit.test.ts            # v1.1 trim + topic filter round-trips (synth + tour.mcap)
 │   ├── editDb3.test.ts         # v1.2 .db3-in / MCAP-out + missing-schema opt-in path
 │   ├── editRos1.test.ts        # v1.2 .bag-in / MCAP-out + connection-record schema flow
 │   ├── source.test.ts          # HTTP Range reader: CORS / 416 / no-Content-Length / Range-ignored
+│   ├── pcd.test.ts             # PCD ascii/binary/compressed: headers (LF+CRLF), truncation guards
+│   ├── ply.test.ts             # PLY binary truncation, ASCII row tolerance, color heuristics
+│   ├── foxgloveSchemas.test.ts # Foxglove translators incl. TFMessage to ROS shape
+│   ├── db3Stress.test.ts       # Many sequential reads on one reused Database + LRU bounds
+│   ├── rosbag1.test.ts         # ROS1 definition parsing + sequential deserializer reuse
+│   ├── robustness.test.ts      # Truncation/corruption of MCAP, .bag, .db3; zstd size hints
 │   ├── urdf.test.ts            # v1.3 URDF parser: primitives, meshes, joints, xacro detection
 │   └── packageResolver.test.ts # v1.3 package:// resolver: URL + file bindings, persistence
 │
@@ -507,20 +512,50 @@ tests/
 │   ├── time.test.ts            # BigInt ns math + alignment offsets
 │   ├── bytes.test.ts           # Size formatting + magic-byte detection
 │   ├── messages.test.ts        # flattenNumeric + type sniffing across every panel kind
-│   ├── pointcloud.test.ts      # FLOAT32 fast path + DataView path + packed RGB + Turbo gradient
+│   ├── pointcloud.test.ts      # FLOAT32 fast path + DataView path + packed RGB + Turbo gradient + big-endian
 │   ├── trajectory.test.ts      # Pose extraction across all 7 supported types + NavSatFix projection
-│   └── occupancyGrid.test.ts   # int8 → RGBA mapping + content-fingerprint stability
+│   ├── occupancyGrid.test.ts   # int8 → RGBA mapping + content-fingerprint stability
+│   ├── customCloud.test.ts     # Livox/list-of-struct decode + maxPoints clamping
+│   ├── gpsTiles.test.ts        # Mercator projection zoom picking incl. polar clamps
+│   ├── mathExpr.test.ts        # Sandboxed expression parsing/evaluation
+│   ├── png16.test.ts           # 16-bit PNG scanline decode + truncation guards
+│   ├── topicStats.test.ts      # Hz, jitter, gap, and bandwidth stats
+│   ├── compressedDepth.test.ts # compressed_depth_image_transport dequantization
+│   ├── imageRectify.test.ts    # CameraInfo undistortion remap
+│   ├── anomalies.test.ts       # Timeline anomaly detection
+│   ├── messageDensity.test.ts  # Message-density bucketing
+│   ├── actionableError.test.ts # User-facing error classification
+│   └── clipEncoder.test.ts     # Clip recording pipeline
 │
 ├── components/                 # ThreeDScene panel unit tests
 │   ├── markerObjects.test.ts   # v1.3.1 MESH_RESOURCE + TRIANGLE_LIST factories (mocked loader)
-│   └── cameraFrustum.test.ts   # v1.3.2 frustum geometry math (centred + offset principal points)
+│   ├── cameraFrustum.test.ts   # v1.3.2 frustum geometry math (centred + offset principal points)
+│   ├── clipBox.test.ts         # Pure axis-clip key building for the decode memo
+│   ├── mapPlane.test.ts        # Occupancy texture rebuild incl. color-scheme changes
+│   ├── sceneObjects.test.ts    # pickFrameId + camera-fit math
+│   └── useDecodedPointCloud.test.ts # Settle-state bailout behavior
 │
 ├── store/                      # Zustand store tests (pure logic, no React renderer)
-│   ├── playheadLoop.test.ts    # v1.3.3 loop playback wrap-around + localStorage persistence
-│   └── panelDefaults.test.ts   # v1.3.3 per-data-type defaults: portable subset + save/clear flow
+│   ├── playheadLoop.test.ts    # Loop playback wrap-around + non-discrete advanceTo
+│   ├── panelDefaults.test.ts   # Per-data-type defaults: portable subset + save/clear flow
+│   ├── annotations.test.ts     # Bookmarks incl. re-basing on alignment/anchor switches
+│   ├── presetStore.test.ts     # Preset persistence with corrupt-payload validation
+│   ├── layoutStore.test.ts     # Split layout moves and panel lifecycle
+│   ├── frustumHide.test.ts     # Frustum visibility toggling
+│   ├── spatialOverlays.test.ts # Overlay topic selection persistence
+│   ├── liveStore.test.ts       # Live connection entry/status bookkeeping
+│   └── pinnedTopicsStore.test.ts # Pinned topic rows
 │
 ├── hooks/                      # React hook helpers (pure functions covered without renderer)
-│   └── useCameraInfo.test.ts   # v1.3.2 auto-pair convention + parseCameraInfo + per-panel persistence
+│   ├── useCameraInfo.test.ts   # v1.3.2 auto-pair convention + parseCameraInfo + per-panel persistence
+│   └── useUrlState.test.ts     # Shared-link hash round-trip, splat kind, corrupt-hash robustness
+│
+├── live/                       # Foxglove live-connection tests
+│   ├── liveRingBuffer.test.ts  # Sorted out-of-order inserts, eviction, clock-wrap ranges
+│   ├── liveDecoder.test.ts     # Message decoding across supported encodings
+│   ├── liveRecorder.test.ts    # finish() output parsed back through the MCAP reader
+│   ├── foxgloveClient.test.ts  # Websocket frame handling incl. unknown-subscription drops
+│   └── simClock.test.ts        # /clock simulation time handling
 │
 └── integration/                # Real-bag end-to-end through the unified parseBag entry
     ├── sample-bag.test.ts      # Committed public/sample-bags/tour.mcap (ships with the repo)
