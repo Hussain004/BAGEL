@@ -43,13 +43,7 @@ BAGEL eliminates this friction.
 
 ## Demo
 
-### Quick tour with the bundled sample bag
-
-<video src="https://github.com/user-attachments/assets/63e448fd-7272-4dee-86a2-a6dc3c3df846" controls width="100%"></video>
-
-### Stress test with a real-world SLAM dataset
-
-<video src="https://github.com/user-attachments/assets/d7ae858e-5e8e-40c2-90bd-a296c3991d06" controls width="100%"></video>
+<video src="https://github.com/user-attachments/assets/6d1a8d9e-f2cb-4927-b908-a7806101cf69" controls width="100%"></video>
 
 > Data featured in this demo is from the excellent open-access **M2DGR dataset** provided by the **SJTU-ViSYS team**, which was instrumental in stress-testing this visualizer's spatial rendering capabilities.
 
