@@ -43,7 +43,9 @@ BAGEL eliminates this friction.
 
 ## Demo
 
-[![BAGEL quick tour with the bundled sample bag](https://bagel-ros2.vercel.app/demo_videos/quick_tour_demo_poster.jpg)](https://bagel-ros2.vercel.app/demo_videos/quick_tour_demo.mp4)
+### Quick tour with the bundled sample bag
+
+https://github.com/user-attachments/assets/a6078f92-e461-4a90-8af3-f3cedb521621
 
 > Data featured in this demo is from the excellent open-access **M2DGR dataset** provided by the **SJTU-ViSYS team**, which was instrumental in stress-testing this visualizer's spatial rendering capabilities.
 
