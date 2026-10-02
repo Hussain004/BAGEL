@@ -43,7 +43,7 @@ BAGEL eliminates this friction.
 
 ## Demo
 
-<video src="https://github.com/user-attachments/assets/6d1a8d9e-f2cb-4927-b908-a7806101cf69" controls width="100%"></video>
+<video src="https://github.com/user-attachments/assets/a6078f92-e461-4a90-8af3-f3cedb521621" controls width="100%"></video>
 
 > Data featured in this demo is from the excellent open-access **M2DGR dataset** provided by the **SJTU-ViSYS team**, which was instrumental in stress-testing this visualizer's spatial rendering capabilities.
 
