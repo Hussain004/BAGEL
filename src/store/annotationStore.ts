@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { AutoMark } from '../utils/anomalies';
 
 export interface Annotation {
   id: string;
@@ -65,6 +66,15 @@ function sorted(arr: Annotation[]): Annotation[] {
 interface AnnotationState {
   annotations: Annotation[];
   currentBagKey: string | null;
+  /**
+   * Derived "something happened here" marks (Health gaps, out-of-order
+   * stamps), keyed by bag id. Deliberately never persisted and never written
+   * to the URL hash, so a shared link does not fill with noise. Pinning one
+   * (see Timeline) copies it into `annotations`, which does persist.
+   */
+  autoMarks: Record<string, AutoMark[]>;
+  setAutoMarks: (bagId: string, marks: AutoMark[]) => void;
+  clearAutoMarks: (bagId?: string) => void;
 
   /** Add an annotation at aligned timeNs. Returns the new id for callers that want to enter edit mode. */
   addAnnotation: (timeNs: bigint, label: string) => string;
@@ -91,6 +101,24 @@ interface AnnotationState {
 export const useAnnotationStore = create<AnnotationState>((set, get) => ({
   annotations: [],
   currentBagKey: null,
+  autoMarks: {},
+
+  setAutoMarks: (bagId, marks) => {
+    set((state) => ({ autoMarks: { ...state.autoMarks, [bagId]: marks } }));
+  },
+
+  clearAutoMarks: (bagId) => {
+    if (bagId === undefined) {
+      set({ autoMarks: {} });
+      return;
+    }
+    set((state) => {
+      if (!(bagId in state.autoMarks)) return state;
+      const { [bagId]: _removed, ...rest } = state.autoMarks;
+      void _removed;
+      return { autoMarks: rest };
+    });
+  },
 
   addAnnotation: (timeNs, label) => {
     const id = nextId();

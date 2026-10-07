@@ -9,6 +9,10 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- The Health panel can put its findings on the timeline. "Mark on timeline"
+  adds a rose tick for each topic gap and out-of-order timestamp (bursts merge,
+  capped at 200). Ticks follow the bag through alignment changes, are never
+  saved or written to shared links, and can be pinned into real bookmarks.
 - Depth images get colormaps. Raw `16UC1` and `32FC1` image topics, which
   previously failed with "Unsupported image encoding", now decode, and together
   with `compressedDepth` they share a colormap select (gray, turbo, inverted

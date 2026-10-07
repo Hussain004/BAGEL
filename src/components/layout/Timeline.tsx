@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useCallback, useState } from 'react';
-import { useBagStore } from '../../store/bagStore';
+import { alignedTimeFor, useBagStore } from '../../store/bagStore';
 import { useLiveStore } from '../../store/liveStore';
 import { usePlayheadStore } from '../../store/playheadStore';
 import { useAnnotationStore, type Annotation } from '../../store/annotationStore';
@@ -53,6 +53,22 @@ export function Timeline() {
     discreteSeekId,
   } = usePlayheadStore();
   const { annotations, addAnnotation, removeAnnotation, updateLabel } = useAnnotationStore();
+  const autoMarks = useAnnotationStore((s) => s.autoMarks);
+  const bagsMap = useBagStore((s) => s.bags);
+  const alignmentMode = useBagStore((s) => s.alignment);
+  // Auto marks hold bag-local time; align them here so a change of alignment
+  // mode moves them with the bag instead of leaving them stranded.
+  const autoTicks = useMemo(() => {
+    const out: Array<{ id: string; timeNs: bigint; label: string }> = [];
+    for (const [bagId, marks] of Object.entries(autoMarks)) {
+      const entry = bagsMap.get(bagId);
+      if (!entry) continue;
+      for (const m of marks) {
+        out.push({ id: m.id, label: m.label, timeNs: alignedTimeFor(entry, m.localNs, alignmentMode) });
+      }
+    }
+    return out;
+  }, [autoMarks, bagsMap, alignmentMode]);
   // useMessageDensity already skips live bags internally (no fixed
   // [start, end] window to bucket into).
   const { density, stats, durationNs } = useMessageDensity(focusBagId ?? undefined);
@@ -385,6 +401,25 @@ export function Timeline() {
           );
         })}
 
+        {/* Auto marks from the Health panel (gaps, out-of-order stamps) */}
+        {autoTicks.map((tick) => {
+          if (tick.timeNs < startNs || tick.timeNs > endNs) return null;
+          const f = endNs > startNs ? Number(tick.timeNs - startNs) / Number(endNs - startNs) : 0;
+          return (
+            <AnnotationTick
+              key={tick.id}
+              annotation={{ id: tick.id, timeNs: tick.timeNs, label: tick.label }}
+              fraction={f}
+              isEditing={false}
+              auto
+              onSeek={() => usePlayheadStore.getState().seek(tick.timeNs)}
+              onRemove={() => addAnnotation(tick.timeNs, tick.label)}
+              onRename={() => {}}
+              onHoverChange={() => {}}
+            />
+          );
+        })}
+
         {/* Inline label editor - positioned near the new annotation tick */}
         {editingId && (
           <div
@@ -709,9 +744,15 @@ interface AnnotationTickProps {
   onRemove: () => void;
   onRename: () => void;
   onHoverChange: (id: string | null) => void;
+  /**
+   * Derived mark from the Health panel. Rendered in rose and shorter than a
+   * bookmark; its action button pins it as a real bookmark rather than
+   * deleting it (use "Clear marks" in Health to remove them).
+   */
+  auto?: boolean;
 }
 
-function AnnotationTick({ annotation, fraction, isEditing, onSeek, onRemove, onRename, onHoverChange }: AnnotationTickProps) {
+function AnnotationTick({ annotation, fraction, isEditing, onSeek, onRemove, onRename, onHoverChange, auto }: AnnotationTickProps) {
   const [hovered, setHovered] = useState(false);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -744,10 +785,14 @@ function AnnotationTick({ annotation, fraction, isEditing, onSeek, onRemove, onR
       {/* Tick bar - centered in the hit area */}
       <div
         className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-sm cursor-pointer transition-[width,height,background-color] ${
-          isEditing
-            ? 'w-1.5 h-5 bg-accent-amber'
-            : 'w-1 h-4 bg-accent-amber/70 group-hover:bg-accent-amber'
-        } ${hovered && !isEditing ? 'w-1.5 h-5 bg-accent-amber' : ''}`}
+          auto
+            ? hovered
+              ? 'w-1 h-4 bg-accent-rose'
+              : 'w-0.5 h-3 bg-accent-rose/70'
+            : isEditing
+              ? 'w-1.5 h-5 bg-accent-amber'
+              : 'w-1 h-4 bg-accent-amber/70 group-hover:bg-accent-amber'
+        } ${!auto && hovered && !isEditing ? 'w-1.5 h-5 bg-accent-amber' : ''}`}
       />
 
       {/* Tooltip + delete - floats above; has its own enter/leave so the
@@ -768,11 +813,15 @@ function AnnotationTick({ annotation, fraction, isEditing, onSeek, onRemove, onR
             <button
               onClick={(e) => { e.stopPropagation(); onRemove(); }}
               onPointerDown={(e) => e.stopPropagation()}
-              className="text-sm leading-none text-text-muted hover:text-accent-rose transition-colors flex-shrink-0 cursor-pointer"
-              title="Remove bookmark"
-              aria-label="Remove bookmark"
+              className={
+                auto
+                  ? 'text-xs leading-none text-text-muted hover:text-accent-amber transition-colors flex-shrink-0 cursor-pointer'
+                  : 'text-sm leading-none text-text-muted hover:text-accent-rose transition-colors flex-shrink-0 cursor-pointer'
+              }
+              title={auto ? 'Pin as a bookmark' : 'Remove bookmark'}
+              aria-label={auto ? 'Pin as a bookmark' : 'Remove bookmark'}
             >
-              ×
+              {auto ? 'pin' : '×'}
             </button>
           </div>
         </div>

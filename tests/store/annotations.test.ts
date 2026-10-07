@@ -233,3 +233,50 @@ describe('annotationStore', () => {
     expect(relativePositions('anchor')).toEqual(before);
   });
 });
+
+describe('annotationStore auto marks', () => {
+  beforeEach(() => {
+    freshStore();
+    useAnnotationStore.setState({ autoMarks: {} });
+  });
+
+  const mark = (id: string) => ({
+    id,
+    localNs: 5n,
+    label: 'Gap',
+    kind: 'gap' as const,
+    weight: 1,
+  });
+
+  it('holds marks per bag without touching bookmarks or storage', () => {
+    useAnnotationStore.getState().loadForBag('bag-key');
+    useAnnotationStore.getState().setAutoMarks('b1', [mark('a1')]);
+    useAnnotationStore.getState().setAutoMarks('b2', [mark('a2')]);
+    const s = useAnnotationStore.getState();
+    expect(Object.keys(s.autoMarks).sort()).toEqual(['b1', 'b2']);
+    expect(s.annotations).toHaveLength(0);
+    // Not persisted: a shared hash and localStorage only ever see real bookmarks.
+    expect(Object.keys(store)).toHaveLength(0);
+  });
+
+  it('clears one bag or all', () => {
+    const s = useAnnotationStore.getState();
+    s.setAutoMarks('b1', [mark('a1')]);
+    s.setAutoMarks('b2', [mark('a2')]);
+    s.clearAutoMarks('b1');
+    expect(Object.keys(useAnnotationStore.getState().autoMarks)).toEqual(['b2']);
+    s.clearAutoMarks('missing');
+    expect(Object.keys(useAnnotationStore.getState().autoMarks)).toEqual(['b2']);
+    s.clearAutoMarks();
+    expect(useAnnotationStore.getState().autoMarks).toEqual({});
+  });
+
+  it('pinning (addAnnotation) persists while the auto mark stays derived', () => {
+    const s = useAnnotationStore.getState();
+    s.loadForBag('bag-key');
+    s.setAutoMarks('b1', [mark('a1')]);
+    s.addAnnotation(9n, 'Gap 1.00 s on /scan');
+    expect(useAnnotationStore.getState().annotations).toHaveLength(1);
+    expect(store['bagel:annotations:v1:bag-key']).toContain('Gap 1.00 s on /scan');
+  });
+});
