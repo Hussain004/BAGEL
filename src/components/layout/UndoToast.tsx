@@ -93,6 +93,7 @@ function labelFor(kind: string): string {
     log: 'Log',
     health: 'Bag Health',
     splat: 'Gaussian Splat',
+    state: 'State',
   };
   return labels[kind] ?? kind;
 }

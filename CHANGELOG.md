@@ -9,6 +9,14 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- New State panel for booleans, strings and integer enums. A control mode, an
+  e-stop flag or a behaviour-tree node name is drawn as lanes of coloured runs
+  with the value written on each, the current value beside the lane, and a
+  hover tooltip with the run's start, end and message count. Click a run to seek
+  to the moment that state began. `std_msgs` `Bool` and `String` topics now open
+  here by default (a `String` previously landed on a plot with nothing to plot);
+  integers offer it alongside the plot. Any scalar field of a message can be
+  toggled on as a lane.
 - Plots offer roll / pitch / yaw for any quaternion. When the plotted message has
   a complete `x/y/z/w` set (an `Imu`'s orientation, an `Odometry` pose, a bare
   `Quaternion`), a "+ roll/pitch/yaw" button adds three degree series, using the

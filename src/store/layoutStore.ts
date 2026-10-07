@@ -35,7 +35,8 @@ export type PanelKind =
   | 'diagnostic'
   | 'log'
   | 'health'
-  | 'splat';
+  | 'splat'
+  | 'state';
 
 export interface PanelLeaf {
   node: 'panel';

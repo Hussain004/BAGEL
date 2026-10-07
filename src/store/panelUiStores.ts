@@ -97,6 +97,32 @@ export const useTimeSeriesPanelStore = create<TimeSeriesPanelState>((set) => ({
   },
 }));
 
+// ── StateTransitions ───────────────────────────────────────────────────
+
+export interface StatePanelSettings {
+  /** Field paths drawn as lanes; null means "pick sensible defaults for this message". */
+  fields: string[] | null;
+}
+
+export const DEFAULT_STATE_SETTINGS: StatePanelSettings = { fields: null };
+
+interface StatePanelState {
+  byId: Record<string, StatePanelSettings>;
+  update: (panelId: string, partial: Partial<StatePanelSettings>) => void;
+}
+
+export const useStatePanelStore = create<StatePanelState>((set) => ({
+  byId: {},
+  update: (panelId, partial) => {
+    set((state) => ({
+      byId: {
+        ...state.byId,
+        [panelId]: { ...(state.byId[panelId] ?? DEFAULT_STATE_SETTINGS), ...partial },
+      },
+    }));
+  },
+}));
+
 // ── TrajectoryPlot ─────────────────────────────────────────────────────
 
 export interface TrajectoryView {
