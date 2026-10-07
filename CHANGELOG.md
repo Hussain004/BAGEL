@@ -9,6 +9,14 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Two bags can be compared. With two or more bags loaded, the Health panel has a
+  "Compare" view that lists, against a bag you choose: topics only in one bag,
+  topics whose type changed (ROS 1 and ROS 2 spellings of one type are not
+  flagged), and topics whose publish rate differs by more than 10%, including a
+  topic that all but stopped publishing. Each row can open the topic from
+  either bag, matching topics are an opt-in list, and "Copy report" puts a
+  Markdown summary on the clipboard for a bug report. It works from the bag
+  summaries alone, so it is instant.
 - Plots have a "stats" toggle and CSV / SVG / PNG export of the range you are
   looking at. Zoom into a region (drag on the chart) and the table shows the
   sample count, min, max, mean, standard deviation and RMS of every visible

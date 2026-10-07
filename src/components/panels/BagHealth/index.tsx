@@ -6,6 +6,7 @@ import { buildAutoMarks, detectNonMonotonicStamps } from '../../../utils/anomali
 import { useAnnotationStore } from '../../../store/annotationStore';
 import type { AllTopicStats } from '../../../types/bag';
 import { PanelShell } from '../PanelShell';
+import { BagDiff } from './BagDiff';
 import {
   PanelLoadingState,
   PanelErrorState,
@@ -31,6 +32,10 @@ export function BagHealth({ panelId, topicName, type, bagId }: Props) {
 
   // viewBagId overrides which bag's health stats are shown; null = use panel's assigned bag.
   const [viewBagId, setViewBagId] = useState<string | null>(null);
+
+  // 'diff' compares the viewed bag against another loaded bag, by summary only.
+  const [view, setView] = useState<'health' | 'diff'>('health');
+  const [diffOtherId, setDiffOtherId] = useState<string | null>(null);
 
   const [stats, setStats] = useState<AllTopicStats | null>(null);
   const [loading, setLoading] = useState(false);
@@ -60,6 +65,12 @@ export function BagHealth({ panelId, topicName, type, bagId }: Props) {
   }, [bags, viewBagId]);
 
   const effectiveBagId = entry?.id ?? null;
+  const diffOther = useMemo(() => {
+    const others = nonLiveBags.filter((e) => e.id !== entry?.id);
+    return others.find((e) => e.id === diffOtherId) ?? others[0] ?? null;
+  }, [nonLiveBags, entry, diffOtherId]);
+  // Falls back to the health view if the bag being compared against is closed.
+  const diffActive = view === 'diff' && !!entry && !!diffOther;
 
   useEffect(() => {
     if (!entry || entry.kind === 'live' || !entry.source) return;
@@ -170,22 +181,63 @@ export function BagHealth({ panelId, topicName, type, bagId }: Props) {
           </div>
         )}
 
+        {nonLiveBags.length > 1 && entry && (
+          <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border flex-shrink-0 text-xs">
+            <div role="group" aria-label="Health view" className="inline-flex rounded-md border border-border overflow-hidden">
+              {(['health', 'diff'] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  aria-pressed={view === v}
+                  onClick={() => setView(v)}
+                  className={`px-2.5 py-0.5 transition-colors ${
+                    view === v ? 'bg-surface-hover text-text-primary' : 'text-text-muted hover:text-text-primary'
+                  }`}
+                >
+                  {v === 'health' ? 'Health' : 'Compare'}
+                </button>
+              ))}
+            </div>
+            {view === 'diff' && (
+              <label className="flex items-center gap-1.5 text-text-muted">
+                vs
+                <select
+                  value={diffOther?.id ?? ''}
+                  onChange={(e) => setDiffOtherId(e.target.value)}
+                  aria-label="Bag to compare against"
+                  className="bg-bg-secondary border border-border rounded px-1.5 py-0.5 text-text-primary mono"
+                >
+                  {nonLiveBags
+                    .filter((e) => e.id !== entry.id)
+                    .map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.summary.fileName}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            )}
+          </div>
+        )}
+
+        {diffActive && <BagDiff a={entry!} b={diffOther!} />}
+
         {!entry && <PanelEmptyState message="No bag loaded." />}
-        {entry && entry.kind === 'live' && (
+        {!diffActive && entry && entry.kind === 'live' && (
           <div className="flex-1 flex items-center justify-center text-text-muted text-sm">
             Health stats are not available for live connections.
           </div>
         )}
-        {entry && loading && (
+        {!diffActive && entry && loading && (
           <PanelLoadingState message="Scanning message timestamps..." />
         )}
-        {entry && error && (
+        {!diffActive && entry && error && (
           <PanelErrorState
             title="Failed to scan message timestamps"
             message={error}
           />
         )}
-        {entry && !loading && !error && stats && (
+        {!diffActive && entry && !loading && !error && stats && (
           <div className="flex-1 flex flex-col min-h-0">
             {nonMonotonic.length > 0 && (
               <div className="px-3 py-2 bg-accent-amber/10 border-b border-accent-amber/30 flex items-center gap-2 text-xs text-accent-amber flex-shrink-0">
