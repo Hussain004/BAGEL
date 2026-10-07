@@ -6,7 +6,10 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  // .claude/worktrees holds full nested checkouts (agent worktrees). They are
+  // excluded via .git/info/exclude, which is local-only, so without this a
+  // fresh clone that creates one would lint a second copy of the codebase.
+  globalIgnores(['dist', '.claude/worktrees']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
