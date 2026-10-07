@@ -204,6 +204,23 @@ what the tests expect. Issues labelled
 [`good first issue`](https://github.com/Hussain004/BAGEL/labels/good%20first%20issue)
 are scoped small on purpose.
 
+### Sharing a view
+
+The **Share** button in the toolbar builds a permalink for whatever you have
+open, plus a markdown badge you can paste into a dataset README:
+
+```markdown
+[![Open in BAGEL](https://bagel-ros2.vercel.app/badge.svg)](https://bagel-ros2.vercel.app/#b=https://data.example.com/run.mcap)
+```
+
+The link carries the layout, playhead, and bookmarks, so it opens the exact
+cockpit you were looking at. That requires the bag to live at a URL with CORS
+headers and HTTP Range support configured on the host;
+[`docs/DATASET_HOSTING.md`](docs/DATASET_HOSTING.md) has the header list,
+copy-paste configs for S3, GCS, R2, nginx, and Apache, and a note on which
+public hosts work. The Share modal also has a probe that tells you which
+specific header a given host is missing.
+
 ### Keyboard Shortcuts
 
 | Key | Action |

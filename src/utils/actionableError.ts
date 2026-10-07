@@ -1,4 +1,11 @@
-export type ErrorActionKind = 'choose-file' | 'paste-schema' | 'retry';
+/**
+ * Public docs URL. Exported so the error surfaces and the Share modal point at
+ * the same place, and so a doc move is a one-line change.
+ */
+export const DATASET_HOSTING_DOC_URL =
+  'https://github.com/Hussain004/BAGEL/blob/main/docs/DATASET_HOSTING.md';
+
+export type ErrorActionKind = 'choose-file' | 'paste-schema' | 'retry' | 'hosting-doc';
 
 export interface ActionableError {
   title: string;
@@ -23,11 +30,14 @@ export function classifyBagError(
   source: 'file' | 'url',
 ): ActionableError {
   if (REMOTE_SERVER_PATTERN.test(raw)) {
+    // A CORS or Range failure on a remote bag has one real fix, and it is not
+    // "try a different file": the host needs headers configured. So point at the
+    // doc instead of only offering to open a local copy.
     return {
       title: 'Remote server cannot stream this bag',
       detail: raw,
       raw,
-      action: { kind: 'choose-file', label: 'Open a local copy' },
+      action: { kind: 'hosting-doc', label: 'How to fix host CORS / Range headers' },
     };
   }
   if (INCOMPLETE_FILE_PATTERN.test(raw)) {

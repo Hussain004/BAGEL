@@ -6,6 +6,7 @@ import { useLayoutStore, panelLeafId } from '../../store/layoutStore';
 import { usePlayheadStore } from '../../store/playheadStore';
 import { useUiStore } from '../../store/uiStore';
 import { CopyErrorButton } from '../panels/shared/CopyErrorButton';
+import { DATASET_HOSTING_DOC_URL } from '../../utils/actionableError';
 import { BrandLockup } from './Brand';
 import { FileIngestPanel } from './FileIngestPanel';
 import { TelemetryScene } from './TelemetryScene';
@@ -184,7 +185,19 @@ function ErrorCard({ error, onDismiss, onChooseFile }: { error: NonNullable<Retu
       <span className="landing-error__code">ERR</span>
       <div><strong>{error.title}</strong><p>{error.detail}</p></div>
       <div className="landing-error__actions">
-        {error.action && <button type="button" onClick={error.action.kind === 'choose-file' ? onChooseFile : onDismiss}>{error.action.label}</button>}
+        {error.action?.kind === 'choose-file' && (
+          <button type="button" onClick={onChooseFile}>{error.action.label}</button>
+        )}
+        {error.action?.kind === 'hosting-doc' && (
+          // The fix for a remote-host CORS or Range failure is a server
+          // config, so this opens the doc rather than doing anything in-app.
+          <a href={DATASET_HOSTING_DOC_URL} target="_blank" rel="noreferrer">
+            {error.action.label}
+          </a>
+        )}
+        {error.action?.kind === 'retry' && (
+          <button type="button" onClick={onDismiss}>{error.action.label}</button>
+        )}
         <CopyErrorButton text={error.raw} />
         <button type="button" onClick={onDismiss} aria-label="Dismiss error">CLOSE</button>
       </div>
