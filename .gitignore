@@ -34,6 +34,11 @@ walkthrough.md
 # Vitest output
 coverage/
 
+# Playwright output (traces on failure are uploaded by CI, not committed)
+/test-results/
+/playwright-report/
+/blob-report/
+
 # Improvements docs
 IMPROVEMENTS.md
 IMPROVEMENTS_PROGRESS.md

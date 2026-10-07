@@ -16,6 +16,9 @@ pnpm install
 pnpm dev          # http://localhost:5173
 ```
 
+`pnpm test:e2e` additionally needs a Chromium download (`pnpm exec playwright
+install chromium`) on a fresh machine.
+
 Requirements:
 
 | Tool | Version | Notes |
@@ -35,6 +38,7 @@ mismatch that CI rejects.
 | `pnpm lint` | ESLint over the whole repo. Must exit 0 |
 | `pnpm test` | The full Vitest suite. Run this before you push |
 | `pnpm test:watch` | The same suite in watch mode |
+| `pnpm test:e2e` | Playwright browser smoke test against a real build |
 | `pnpm preview` | Serve the production build locally |
 
 `pnpm build` runs `tsc -b` first, so **type errors fail the build**. There is
@@ -87,7 +91,9 @@ tests will not catch:
 - **Zustand selectors must return a stable reference.** A selector that builds
   a fresh `[]` or `{}` on every call causes an infinite render loop. This has
   shipped as a real crash before: it passed the build and the whole test suite,
-  and only appeared in a browser. When deriving a collection, memoize it.
+  and only appeared in a browser. When deriving a collection, memoize it, or use
+  a module-level constant for empty results (see `EMPTY_TOPIC_LIST` in
+  `Timeline.tsx`). `pnpm test:e2e` is the check for this class of bug.
 
 The 3D scene is Z-up, not Y-up. Raw `THREE.Spherical` math is wrong for it,
 which is why the keyboard orbit code mirrors OrbitControls' quaternion approach.
@@ -111,6 +117,27 @@ instance rather than a handful of one-shot cases.
 (`tests/integration/real-db3.test.ts`, `real-mcap.test.ts`) skip themselves in CI.
 The synthetic fixtures in `tests/fixtures/synth.ts` and the committed
 `public/sample-bags/tour.mcap` carry the coverage.
+
+`tests/e2e/` is Playwright, not Vitest, and is excluded from `pnpm test` so the
+two runners cannot collect each other's specs.
+
+## The browser smoke test
+
+`pnpm test` runs in Node and never mounts React, so it structurally cannot see
+a render-time failure. `pnpm test:e2e` closes that gap: it builds the app, serves
+it, loads the bundled `tour.mcap` in Chromium, and fails on any console error or
+page exception.
+
+This exists because of a real bug that reached `main` through a fully green CI.
+A Zustand selector returned a fresh `[]` on every call, which React reads as a
+changed value forever. `tsc -b` passed (the types were correct), all 749 Vitest
+tests passed, lint passed, and the app froze the instant you clicked "Try a
+sample bag". Only mounting it caught that.
+
+If you are touching render-time state, run `pnpm test:e2e`. There are
+deliberately no pixel assertions in it, so a failure means something real: read
+the trace (`npx playwright show-trace test-results/.../trace.zip`) before you
+assume the test is wrong.
 
 ## How to add support for a new message type
 
