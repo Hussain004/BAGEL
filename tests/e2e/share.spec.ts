@@ -146,6 +146,12 @@ test.describe('share modal', () => {
     await expect(panelKindBadge(fresh, headerText)).toBeVisible({ timeout: 60_000 });
     await fresh.close();
 
+    // The stubbed route keeps serving the worker's Range reads until the bag
+    // is fully parsed. Ending the test with a fetch still in flight fails the
+    // *next* test with "route.fetch: Test ended", which is the flake this
+    // suite hit. Drain the routes instead of letting them die with the page.
+    await context.unrouteAll({ behavior: 'ignoreErrors' });
+
     expect(problems).toEqual([]);
   });
 
@@ -163,14 +169,16 @@ test.describe('share modal', () => {
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
 
-    const markdown = (await dialog.locator('pre').first().textContent()) ?? '';
-    expect(markdown.startsWith('[![Open in BAGEL](')).toBe(true);
-    expect(markdown).toContain('bagel-ros2.vercel.app/badge.svg');
+    // Assert with auto-retrying matchers rather than reading textContent once:
+    // the modal paints the heading before the snippets render, and a one-shot
+    // read there is exactly the flake this test hit on CI.
+    const markdown = dialog.locator('pre').first();
+    await expect(markdown).toContainText('[![Open in BAGEL](https://bagel-ros2.vercel.app/badge.svg)]');
 
     // The iframe snippet must be a real iframe tag, not a bare URL.
-    const iframe = (await dialog.locator('pre').nth(2).textContent()) ?? '';
-    expect(iframe.startsWith('<iframe')).toBe(true);
-    expect(iframe).toContain('src="');
+    const iframe = dialog.locator('pre').nth(2);
+    await expect(iframe).toContainText('<iframe');
+    await expect(iframe).toContainText('src="');
 
     expect(problems).toEqual([]);
   });
