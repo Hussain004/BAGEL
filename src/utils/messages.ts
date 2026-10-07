@@ -217,6 +217,7 @@ export function isOccupancyGridType(type: string): boolean {
  */
 export function is3DCapableType(type: string): boolean {
   if (isCloudType(type) || isLaserScanType(type)) return true;
+  if (isPathLikeType(type)) return true;
   if (isMarkerArrayType(type) || isMarkerType(type)) return true;
   if (isOccupancyGridType(type)) return true;
   // Pose-bearing types - we'll render them as a coordinate frame triad.
@@ -226,6 +227,31 @@ export function is3DCapableType(type: string): boolean {
     type.endsWith('/PoseWithCovarianceStamped') ||
     type.endsWith('/TransformStamped')
   );
+}
+
+/** `nav_msgs/Path`, ROS 1 or ROS 2 spelling. */
+export function isPathType(type: string): boolean {
+  return type === 'nav_msgs/Path' || type === 'nav_msgs/msg/Path';
+}
+
+/** `geometry_msgs/PoseArray` (Nav2 particle clouds and AMCL poses use this). */
+export function isPoseArrayType(type: string): boolean {
+  return type === 'geometry_msgs/PoseArray' || type === 'geometry_msgs/msg/PoseArray';
+}
+
+/** `geometry_msgs/PolygonStamped` or `Polygon` (footprints, zones). */
+export function isPolygonType(type: string): boolean {
+  return (
+    type === 'geometry_msgs/PolygonStamped' ||
+    type === 'geometry_msgs/msg/PolygonStamped' ||
+    type === 'geometry_msgs/Polygon' ||
+    type === 'geometry_msgs/msg/Polygon'
+  );
+}
+
+/** Anything the Path overlay draws: a path, an array of poses, or a polygon outline. */
+export function isPathLikeType(type: string): boolean {
+  return isPathType(type) || isPoseArrayType(type) || isPolygonType(type);
 }
 
 /**

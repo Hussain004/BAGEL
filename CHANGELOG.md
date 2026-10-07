@@ -9,6 +9,13 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- The 3D scene draws `nav_msgs/Path`, `geometry_msgs/PoseArray` and
+  `PolygonStamped` / `Polygon` topics. Previously these had no 3D view (a path
+  opened as a blank pose scene). A path is a line, a polygon a closed outline,
+  and a pose array one instanced mesh of arrows (up to 20,000 poses, enough
+  for a Nav2 particle cloud). They open as a panel of their own and also join
+  the "Overlays" list, so a map, LiDAR scan, odometry and global and local
+  plans can share one TF-aligned scene, each with its own colour.
 - Time-series plots can show fields from other topics. "+ series" in a plot's
   footer picks any topic (from any loaded bag) and one of its numeric fields and
   draws it on the same axes, aligned on the union of both topics' timestamps.
