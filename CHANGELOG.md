@@ -9,6 +9,14 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Image panels can draw 2D detection boxes. A "boxes" picker in the image
+  header lists the bag's `vision_msgs/Detection2DArray` topics; boxes are drawn
+  with their class and score in a stable per-class colour. Both `vision_msgs`
+  layouts are read (the newer `center.position` / `hypothesis.class_id` form
+  and the older `Pose2D` / `id` form). Boxes follow the image through zoom and
+  pan and through "undistort". A detection is matched to an image by header
+  stamp and hidden, with the offset shown in the footer, if it is more than
+  200 ms away, so a slow detector never paints boxes on the wrong frame.
 - The 3D scene draws `nav_msgs/Path`, `geometry_msgs/PoseArray` and
   `PolygonStamped` / `Polygon` topics. Previously these had no 3D view (a path
   opened as a blank pose scene). A path is a line, a polygon a closed outline,

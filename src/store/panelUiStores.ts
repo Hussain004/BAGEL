@@ -176,6 +176,8 @@ export interface ImagePanelSettings {
   /** Explicit depth range ends in the encoding's unit; null means auto (1st/99th percentile). */
   depthMin: number | null;
   depthMax: number | null;
+  /** `vision_msgs/Detection2DArray` topic drawn over the image; '' means off. */
+  detectionTopic: string;
 }
 
 export const DEFAULT_IMAGE_SETTINGS: ImagePanelSettings = {
@@ -185,6 +187,7 @@ export const DEFAULT_IMAGE_SETTINGS: ImagePanelSettings = {
   depthColormap: 'turbo',
   depthMin: null,
   depthMax: null,
+  detectionTopic: '',
 };
 
 interface ImagePanelState {
