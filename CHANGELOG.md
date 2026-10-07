@@ -9,6 +9,11 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Plots offer roll / pitch / yaw for any quaternion. When the plotted message has
+  a complete `x/y/z/w` set (an `Imu`'s orientation, an `Odometry` pose, a bare
+  `Quaternion`), a "+ roll/pitch/yaw" button adds three degree series, using the
+  ZYX convention ROS uses for rpy. They are ordinary expressions, so they can be
+  exported and combined like any other series. Not covered: a 3D IMU view.
 - Image panels can draw 2D detection boxes. A "boxes" picker in the image
   header lists the bag's `vision_msgs/Detection2DArray` topics; boxes are drawn
   with their class and score in a stable per-class colour. Both `vision_msgs`
