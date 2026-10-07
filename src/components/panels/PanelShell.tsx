@@ -44,6 +44,7 @@ const KIND_LABELS: Record<PanelKind, string> = {
   health: 'Bag Health',
   splat: 'Gaussian Splat',
   state: 'State',
+  search: 'Find',
 };
 
 /**

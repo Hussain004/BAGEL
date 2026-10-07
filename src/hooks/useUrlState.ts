@@ -65,6 +65,7 @@ const PANEL_KIND_COVERAGE: Record<PanelKind, true> = {
   health: true,
   splat: true,
   state: true,
+  search: true,
 };
 
 const PANEL_KIND_VALUES: ReadonlySet<string> = new Set(

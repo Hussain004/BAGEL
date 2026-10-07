@@ -12,10 +12,10 @@ describe('state timeline routing', () => {
   });
 
   it('offers a plot for Bool and integers but not for String, which has nothing numeric', () => {
-    expect(panelOptionsFor(t('std_msgs/msg/Bool'))).toEqual(['state', 'plot', 'raw']);
-    expect(panelOptionsFor(t('std_msgs/msg/UInt8'))).toEqual(['state', 'plot', 'raw']);
-    expect(panelOptionsFor(t('std_msgs/msg/Int32'))).toEqual(['state', 'plot', 'raw']);
-    expect(panelOptionsFor(t('std_msgs/msg/String'))).toEqual(['state', 'raw']);
+    expect(panelOptionsFor(t('std_msgs/msg/Bool'))).toEqual(['state', 'plot', 'raw', 'search']);
+    expect(panelOptionsFor(t('std_msgs/msg/UInt8'))).toEqual(['state', 'plot', 'raw', 'search']);
+    expect(panelOptionsFor(t('std_msgs/msg/Int32'))).toEqual(['state', 'plot', 'raw', 'search']);
+    expect(panelOptionsFor(t('std_msgs/msg/String'))).toEqual(['state', 'raw', 'search']);
   });
 
   it('keeps integers defaulting to the plot, as before', () => {
@@ -23,8 +23,17 @@ describe('state timeline routing', () => {
   });
 
   it('does not touch floats or unrelated types', () => {
-    expect(panelOptionsFor(t('std_msgs/msg/Float64'))).toEqual(['plot', 'raw']);
+    expect(panelOptionsFor(t('std_msgs/msg/Float64'))).toEqual(['plot', 'raw', 'search']);
     expect(panelOptionsFor(t('sensor_msgs/msg/Image'))).toEqual(['image', 'raw']);
-    expect(panelOptionsFor(t('custom_msgs/msg/Bool'))).toEqual(['plot', 'raw']);
+    expect(panelOptionsFor(t('custom_msgs/msg/Bool'))).toEqual(['plot', 'raw', 'search']);
+    // Heavy or specialised types never get a message scan.
+    for (const [type, name] of [
+      ['sensor_msgs/msg/PointCloud2', '/t'],
+      ['sensor_msgs/msg/Image', '/t'],
+      ['nav_msgs/msg/Odometry', '/t'],
+      ['tf2_msgs/msg/TFMessage', '/tf'], // a TF topic is recognised by name as well as type
+    ] as const) {
+      expect(panelOptionsFor(t(type, name))).not.toContain('search');
+    }
   });
 });

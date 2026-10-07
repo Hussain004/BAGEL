@@ -94,6 +94,7 @@ function labelFor(kind: string): string {
     health: 'Bag Health',
     splat: 'Gaussian Splat',
     state: 'State',
+    search: 'Find',
   };
   return labels[kind] ?? kind;
 }

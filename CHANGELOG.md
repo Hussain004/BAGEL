@@ -9,6 +9,16 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- New Find panel: "when did this field meet a condition?". Open it from a topic
+  (scalar messages such as a battery, a float or a mode string get a Find
+  button), pick a field, a condition (is below / at most / above / at least /
+  equals / does not equal / contains text / changes) and a value, and it scans
+  the recording while showing progress, with a Cancel. Each hit is a timestamp
+  and value; click one to seek there. By default a threshold reports where the
+  condition starts (so a noisy signal around the line is one hit per crossing,
+  not thousands), with a switch for every matching sample. "Mark on timeline"
+  puts a tick on the scrubber for each hit, and those ticks can be pinned into
+  bookmarks. Not available for live connections.
 - Embed mode. Add `embed=1` to any BAGEL link and it renders only the panels and
   a compact timeline, for an iframe on a paper, dataset page or course. There is
   no toolbar, sidebar, modal or landing page, panels cannot be closed and the

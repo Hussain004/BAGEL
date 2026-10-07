@@ -54,7 +54,7 @@ test('add a series from another topic, use it in an expression, then remove it',
 
   await page.getByRole('button', { name: '+ series' }).click();
   await page.getByLabel('Topic', { exact: true }).fill('/slow');
-  await expect(page.getByLabel('Field')).toHaveValue('data', { timeout: 15_000 });
+  await expect(page.getByLabel('Field', { exact: true })).toHaveValue('data', { timeout: 15_000 });
   // The default name is derived from the topic, so it cannot collide with the primary `data`.
   await expect(page.getByLabel('Name in expressions')).toHaveValue('slow_data');
   await page.getByRole('button', { name: 'Add', exact: true }).click();

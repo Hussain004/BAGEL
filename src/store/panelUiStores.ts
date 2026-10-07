@@ -23,6 +23,7 @@
 
 import { create } from 'zustand';
 import type { DepthColormap } from '../utils/depthColor';
+import type { PredicateOp } from '../utils/predicate';
 
 // ── TimeSeriesPlot ─────────────────────────────────────────────────────
 
@@ -118,6 +119,37 @@ export const useStatePanelStore = create<StatePanelState>((set) => ({
       byId: {
         ...state.byId,
         [panelId]: { ...(state.byId[panelId] ?? DEFAULT_STATE_SETTINGS), ...partial },
+      },
+    }));
+  },
+}));
+
+// ── Search ─────────────────────────────────────────────────────────────
+
+export interface SearchPanelSettings {
+  /** Dot-path of the field the predicate reads; '' until the user (or a default) picks one. */
+  field: string;
+  op: PredicateOp;
+  /** Raw text the user typed; converted by `parsePredicateValue` when a scan starts. */
+  valueText: string;
+  /** Report only where the condition becomes true, not every matching sample. */
+  edge: boolean;
+}
+
+export const DEFAULT_SEARCH_SETTINGS: SearchPanelSettings = { field: '', op: '<', valueText: '', edge: true };
+
+interface SearchPanelState {
+  byId: Record<string, SearchPanelSettings>;
+  update: (panelId: string, partial: Partial<SearchPanelSettings>) => void;
+}
+
+export const useSearchPanelStore = create<SearchPanelState>((set) => ({
+  byId: {},
+  update: (panelId, partial) => {
+    set((state) => ({
+      byId: {
+        ...state.byId,
+        [panelId]: { ...(state.byId[panelId] ?? DEFAULT_SEARCH_SETTINGS), ...partial },
       },
     }));
   },
