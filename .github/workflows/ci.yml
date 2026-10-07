@@ -52,6 +52,8 @@ jobs:
   e2e:
     name: Browser smoke test
     runs-on: ubuntu-latest
+    # Normal runs take about 3 minutes; anything near this is a hang.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -70,8 +72,19 @@ jobs:
       # Chromium only. WebGL under SwiftShader is enough for a "does not crash"
       # check, and the smoke test makes no pixel assertions, so there is no
       # reason to pay for the other browsers.
+      #
+      # The apt step inside `--with-deps` has been seen to stall on hosted
+      # runners for 20+ minutes with no output, before a single test runs.
+      # Bound each attempt and retry once, so a stall costs 5 minutes and a
+      # re-run instead of an hour-long hung job.
       - name: Install Playwright browsers
-        run: pnpm exec playwright install --with-deps chromium
+        timeout-minutes: 12
+        run: |
+          for attempt in 1 2; do
+            if timeout 300 pnpm exec playwright install --with-deps chromium; then exit 0; fi
+            echo "Playwright install attempt $attempt failed or timed out"
+          done
+          exit 1
 
       # `playwright.config.ts` starts `pnpm build && pnpm preview` itself as
       # the webServer, so this step only has to run the spec.
