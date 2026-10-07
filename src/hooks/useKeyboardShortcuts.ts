@@ -35,6 +35,7 @@ export const SHORTCUTS: ShortcutDescription[] = [
   { keys: 'T', description: 'Focus the topic search box', group: 'Navigation' },
   { keys: 'Esc', description: 'Restore a maximized panel, or close the most recently opened one', group: 'Panels' },
   { keys: 'Shift + Esc', description: 'Close every open panel', group: 'Panels' },
+  { keys: 'Cmd / Ctrl + Z', description: 'Reopen the last closed panel', group: 'Panels' },
   { keys: 'O', description: 'Clear bags and return to the loader', group: 'Navigation' },
   { keys: '?', description: 'Show this shortcuts list', group: 'Help' },
 ];
@@ -90,6 +91,17 @@ export function useKeyboardShortcuts(): void {
       }
 
       if (typing) return;
+
+      // Cmd/Ctrl+Z reopens the last closed panel. Checked before the plain-key
+      // bindings so the modifier is never read as a bare 'z'. Returns early
+      // even when there is nothing to undo, which keeps the browser's native
+      // undo available outside the workspace (there is no editable text state
+      // to protect here, but a future input could rely on it).
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'z' || e.key === 'Z')) {
+        e.preventDefault();
+        useLayoutStore.getState().reopenLastClosed();
+        return;
+      }
 
       // No global bindings while an overlay is up: O/M/L/arrows must not
       // mutate bags, bookmarks, or the playhead behind a dialog.

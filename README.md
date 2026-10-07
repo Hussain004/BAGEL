@@ -134,7 +134,7 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 - **Saved Display defaults**: per-data-type defaults for the 3D panel's Display card (colour mode, accumulator, point size, range filter, up axis, camera-frustum master toggle), persisted across sessions. Manageable from the About modal. *(v1.3.3 / v1.3.4)*
 - **Accessibility pass**: ARIA roles + focus management on every modal, `prefers-reduced-motion` respected, focus-visible rings throughout.
 - **Bundled `tour.mcap` sample bag** exercises every panel type. Drop in zero seconds with the "Try a sample bag" button.
-- **600+-test Vitest suite** + GitHub Actions CI runs `tsc -b` + `pnpm test` on every PR. *(v1.0, expanded each release)*
+- **780-test Vitest suite** plus a Playwright browser smoke test, with GitHub Actions CI running `tsc -b`, lint, `pnpm test`, and the e2e job on every PR. *(v1.0, expanded each release)*
 - **Bags well over 2 GB work in the browser**: range reads + lazy decoding throughout the parser stack.
 
 > Looking for the long version with implementation notes and design tradeoffs for each release? See **[FEATURES.md](FEATURES.md)**. Per-version summaries are in **[CHANGELOG.md](CHANGELOG.md)**.
@@ -233,8 +233,9 @@ specific header a given host is missing.
 | `M` | Add timeline bookmark at playhead *(v1.4.3)* |
 | `T` | Focus the topic search box |
 | `O` | Open a different bag file |
-| `Esc` | Close the most recent panel |
+| `Esc` | Close the most recent panel (undoable with `Cmd/Ctrl + Z`) |
 | `Shift + Esc` | Close every panel |
+| `Cmd / Ctrl + Z` | Reopen the last closed panel |
 | `?` | Show the shortcuts cheat-sheet |
 
 The shortcuts modal (`?`) lists everything at runtime (adding a binding in `src/hooks/useKeyboardShortcuts.ts` auto-populates the modal). The About modal moved to a toolbar button only *(v1.7.0)* to free up `A` for the SplatViewer panel's fly controls, which are panel-scoped (active while hovering that panel) rather than global, so they're not in this table - see the SplatViewer entry above.
@@ -383,17 +384,18 @@ add support for a new message type, and what the tests expect.
 
 ### Tests
 
-`pnpm test` runs a **logic-only** Vitest suite (749 tests, 61 files, a few
+`pnpm test` runs a **logic-only** Vitest suite (780 tests, 62 files, a few
 seconds). Pure helpers are tested in `tests/utils/`, parser and codec paths in
 `tests/parsers/`, store logic in `tests/store/`, live-connection code in
 `tests/live/`, and there is an integration pass over the committed
 `public/sample-bags/tour.mcap`.
 
-There is no React component-test harness, so panel components are verified by
-building and by hand. The synthetic fixtures in `tests/fixtures/synth.ts` mean a
-fresh checkout needs nothing downloaded to run the suite. The two real-bag
-suites (`real-mcap`, `real-db3`) skip themselves because `test_files/` is
-gitignored; the committed sample bag carries that coverage in CI instead.
+There is no React component-test harness, so panel components are covered by
+`pnpm test:e2e` instead (see CONTRIBUTING.md) rather than by hand. The synthetic
+fixtures in `tests/fixtures/synth.ts` mean a fresh checkout needs nothing
+downloaded to run the suite. The two real-bag suites (`real-mcap`, `real-db3`)
+skip themselves because `test_files/` is gitignored; the committed sample bag
+carries that coverage in CI instead.
 
 ---
 

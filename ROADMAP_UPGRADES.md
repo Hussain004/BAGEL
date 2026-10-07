@@ -154,6 +154,8 @@ Add a short "How to add support for a new message type" walkthrough (detector in
 3. Per-panel settings survive automatically: `threeDPanelStore` and `panelUiStores` key by panel id and aren't purged synchronously on close. Check this; if they are purged, delay the purge until the toast expires.
 4. Toast: a small fixed element (`role="status"`, `aria-live="polite"`) shown for 6 s. `Ctrl/Cmd+Z` triggers undo while it's visible (wire it in `useKeyboardShortcuts.ts`).
 
+**Status: done** (`lastClosed` + `reopenLastClosed` in `layoutStore`, `UndoToast`, `Cmd/Ctrl+Z`, 13 store tests and 6 browser tests). The record stores the sibling and the side the panel sat on, so undo restores the panel to its original grid slot via `dockPanel` rather than appending it to the end. Deliberately **no** Escape-to-undo: a second window keydown listener would race the global Escape handler and one keypress would both reopen the closed panel and close the next.
+
 **Files:** `layoutStore.ts`, new `components/layout/UndoToast.tsx`, `App.tsx`, `useKeyboardShortcuts.ts`.
 **Tests:** `tests/store/layoutStore.test.ts`: close then reopen restores the same tree shape (deep-equal the serialized tree); reopen after the sibling was also closed falls back to `openPanel`; `closeAll` clears `lastClosed`.
 **Effort:** S
