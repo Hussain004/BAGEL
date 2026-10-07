@@ -134,7 +134,7 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 - **Saved Display defaults**: per-data-type defaults for the 3D panel's Display card (colour mode, accumulator, point size, range filter, up axis, camera-frustum master toggle), persisted across sessions. Manageable from the About modal. *(v1.3.3 / v1.3.4)*
 - **Accessibility pass**: ARIA roles + focus management on every modal, `prefers-reduced-motion` respected, focus-visible rings throughout.
 - **Bundled `tour.mcap` sample bag** exercises every panel type. Drop in zero seconds with the "Try a sample bag" button.
-- **780-test Vitest suite** plus a Playwright browser smoke test, with GitHub Actions CI running `tsc -b`, lint, `pnpm test`, and the e2e job on every PR. *(v1.0, expanded each release)*
+- **820-test Vitest suite** plus Playwright browser tests, with GitHub Actions CI running `tsc -b`, lint, `pnpm test`, and the e2e job on every PR. *(v1.0, expanded each release)*
 - **Bags well over 2 GB work in the browser**: range reads + lazy decoding throughout the parser stack.
 
 > Looking for the long version with implementation notes and design tradeoffs for each release? See **[FEATURES.md](FEATURES.md)**. Per-version summaries are in **[CHANGELOG.md](CHANGELOG.md)**.
@@ -221,6 +221,17 @@ copy-paste configs for S3, GCS, R2, nginx, and Apache, and a note on which
 public hosts work. The Share modal also has a probe that tells you which
 specific header a given host is missing.
 
+### Command palette
+
+`Cmd/Ctrl + K` opens a searchable list of everything BAGEL can do: every topic
+in the openable panel views, the workspace actions (theme, export, bag edit, URDF,
+share, presets), and go-to targets including bookmarks and any time typed in
+seconds. Typing `imgraw` finds `/camera/image_raw`; typing `20` offers to jump
+the playhead to 20 s.
+
+Everything it lists calls an action the UI already had. The palette adds
+discovery, not behaviour.
+
 ### Keyboard Shortcuts
 
 | Key | Action |
@@ -236,6 +247,7 @@ specific header a given host is missing.
 | `Esc` | Close the most recent panel (undoable with `Cmd/Ctrl + Z`) |
 | `Shift + Esc` | Close every panel |
 | `Cmd / Ctrl + Z` | Reopen the last closed panel |
+| `Cmd / Ctrl + K` | Open the command palette (search topics, actions, times) |
 | `?` | Show the shortcuts cheat-sheet |
 
 The shortcuts modal (`?`) lists everything at runtime (adding a binding in `src/hooks/useKeyboardShortcuts.ts` auto-populates the modal). The About modal moved to a toolbar button only *(v1.7.0)* to free up `A` for the SplatViewer panel's fly controls, which are panel-scoped (active while hovering that panel) rather than global, so they're not in this table - see the SplatViewer entry above.
@@ -384,7 +396,7 @@ add support for a new message type, and what the tests expect.
 
 ### Tests
 
-`pnpm test` runs a **logic-only** Vitest suite (780 tests, 62 files, a few
+`pnpm test` runs a **logic-only** Vitest suite (820 tests, 64 files, a few
 seconds). Pure helpers are tested in `tests/utils/`, parser and codec paths in
 `tests/parsers/`, store logic in `tests/store/`, live-connection code in
 `tests/live/`, and there is an integration pass over the committed

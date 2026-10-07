@@ -36,6 +36,7 @@ export const SHORTCUTS: ShortcutDescription[] = [
   { keys: 'Esc', description: 'Restore a maximized panel, or close the most recently opened one', group: 'Panels' },
   { keys: 'Shift + Esc', description: 'Close every open panel', group: 'Panels' },
   { keys: 'Cmd / Ctrl + Z', description: 'Reopen the last closed panel', group: 'Panels' },
+  { keys: 'Cmd / Ctrl + K', description: 'Open the command palette (search topics, actions, times)', group: 'Navigation' },
   { keys: 'O', description: 'Clear bags and return to the loader', group: 'Navigation' },
   { keys: '?', description: 'Show this shortcuts list', group: 'Help' },
 ];
@@ -87,6 +88,21 @@ export function useKeyboardShortcuts(): void {
           // after docking.
           layout.closePanel(layout.openOrder[layout.openOrder.length - 1]);
         }
+        return;
+      }
+
+      // Cmd/Ctrl+K toggles the command palette.
+      //
+      // Deliberately above the `typing` guard, alongside Escape. The palette's
+      // own search field holds focus for the whole interaction, so a binding
+      // placed after that guard would be dead exactly when the user is most
+      // likely to reach for it, and the palette could only ever be closed by
+      // Escape. Same rationale as the Escape ordering: a modal toggle has to
+      // work from inside the thing it toggles.
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        const ui = useUiStore.getState();
+        ui.setModal(ui.modal === 'command-palette' ? null : 'command-palette');
         return;
       }
 

@@ -79,6 +79,8 @@ src/components/
   panels/shared/      PanelStates, OverlayCard, CopyErrorButton: shared chrome.
   modals/             ModalShell plus the dialogs built on it.
 src/utils/            pure helpers. Anything testable without React goes here.
+                      panelOptions.ts maps a topic to the panel kinds it can
+                      open in (shared by the sidebar buttons and the palette).
 src/hooks/            cross-cutting React hooks.
 tests/                mirrors src/. tests/fixtures/synth.ts builds in-memory bags.
 ```
