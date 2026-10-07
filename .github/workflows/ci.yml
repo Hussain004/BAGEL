@@ -25,13 +25,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Lint is non-blocking for now. `eslint-plugin-react-hooks` v7 added
-      # stricter rules (`react-hooks/refs`, `react-hooks/set-state-in-effect`)
-      # that several existing panels trip; the code works fine, the cleanup
-      # is its own task. Re-enable as a hard gate once those are resolved.
-      - name: Lint (non-blocking)
+      # Hard gate. This was non-blocking while the `eslint-plugin-react-hooks`
+      # v7 rule cleanup was outstanding; that cleanup landed in #109 and lint is
+      # clean on main, so the exception is gone.
+      - name: Lint
         run: pnpm lint
-        continue-on-error: true
 
       # `tsc -b` (no emit) catches all type errors across the project. Faster
       # than the full `pnpm build` and skips the bundle step.
@@ -44,3 +42,45 @@ jobs:
       # coverage on CI. 600+ active tests; under 30 s wall time.
       - name: Run tests
         run: pnpm test
+
+  # The logic suite above runs in Node and never mounts React, so it cannot see
+  # render-time failures. That is not hypothetical: a Zustand selector
+  # returning a fresh `[]` on every call caused an infinite render loop that
+  # passed type-check, lint, and all 749 tests, and only froze the app when
+  # someone clicked "Try a sample bag". This job mounts the real built bundle
+  # in a browser and fails on console/page errors.
+  e2e:
+    name: Browser smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Chromium only. WebGL under SwiftShader is enough for a "does not crash"
+      # check, and the smoke test makes no pixel assertions, so there is no
+      # reason to pay for the other browsers.
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      # `playwright.config.ts` starts `pnpm build && pnpm preview` itself as
+      # the webServer, so this step only has to run the spec.
+      - name: Run smoke test
+        run: pnpm test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7

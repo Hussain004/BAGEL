@@ -22,6 +22,12 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    // `tests/e2e` is Playwright, not Vitest, and runs in a real browser
+    // against a built bundle. Excluded explicitly so `pnpm test` never tries
+    // to collect a spec that needs `page`, `expect` from Playwright, and a
+    // running dev server. Both runners also match `*.test.ts`/`*.spec.ts`
+    // patterns, so the exclusion has to be by path rather than by suffix.
+    exclude: ['tests/e2e/**', 'node_modules/**', 'dist/**'],
     // Per-test timeout. Real-bag integration tests open multi-MB fixtures
     // through the same code paths as the browser, which can take a few
     // seconds when sql.js initialises its WASM blob on the first call.
