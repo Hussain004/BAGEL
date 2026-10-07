@@ -18,6 +18,8 @@ export default defineConfig({
       // Required for SharedArrayBuffer used by sql.js WASM
       'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Embedder-Policy': 'require-corp',
+      // Lets a host page that sends COEP: require-corp frame the app (embed mode).
+      'Cross-Origin-Resource-Policy': 'cross-origin',
     },
   },
 

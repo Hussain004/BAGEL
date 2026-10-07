@@ -44,6 +44,7 @@ import {
 } from '../store/layoutStore';
 import { usePlayheadStore } from '../store/playheadStore';
 import { useAnnotationStore, type Annotation } from '../store/annotationStore';
+import { embedExtras, pageEmbedConfig } from '../utils/embedConfig';
 
 /**
  * Every `PanelKind` as a compile-time exhaustiveness guard: adding a kind
@@ -350,6 +351,8 @@ export function encodeHash(
   bagUrl: string | null,
   anchors: Map<string, bigint> | null,
   bookmarks: { timeSec: number; label: string }[] | null,
+  /** Extra validated key/values appended last (embed mode params), so a rewrite does not drop them. */
+  extras: Record<string, string> = {},
 ): string {
   const params = new URLSearchParams();
   // 3 decimal places ≈ 1 ms - fine for human scrubbing, keeps the URL short.
@@ -380,6 +383,7 @@ export function encodeHash(
         .join('|'),
     );
   }
+  for (const [k, v] of Object.entries(extras)) params.set(k, v);
   return params.toString();
 }
 
@@ -613,6 +617,8 @@ export function useUrlState(): void {
         bagUrl,
         anchorMap.size > 0 ? anchorMap : null,
         bookmarks,
+        // An embed link must stay an embed after the first scrub rewrites the hash.
+        embedExtras(pageEmbedConfig()),
       );
       if (next === last) return;
       last = next;

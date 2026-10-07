@@ -6,6 +6,7 @@ import { useLayoutStore } from '../../store/layoutStore';
 import { usePlayheadStore } from '../../store/playheadStore';
 import { useAnnotationStore } from '../../store/annotationStore';
 import { encodeHash } from '../../hooks/useUrlState';
+import { withEmbed } from '../../utils/embedConfig';
 import { probeCors, type CorsProbeResult } from '../../utils/corsProbe';
 import { DATASET_HOSTING_DOC_URL } from '../../utils/actionableError';
 import { BadgePreview } from './BadgePreview';
@@ -134,7 +135,7 @@ export function ShareModal() {
         <Snippet
           kind="iframe"
           label="Embed on a page"
-          hint="Embeds the app in an iframe at a fixed height. Add ?embed=1 later for chrome-free embedding."
+          hint="Embeds just the panels and a timeline (no toolbar or sidebar). Add &theme=light or &theme=dark to match your page, and &autoplay=1&loop=1 for a looping demo."
           value={snippets.iframe}
           onCopy={onCopy}
           copied={copied === 'iframe'}
@@ -323,6 +324,7 @@ function buildSnippets(bagUrl: string | null): Snippets {
   return {
     markdown: `[![Open in BAGEL](${APP_ORIGIN}/badge.svg)](${href})`,
     link: href,
-    iframe: `<iframe src="${href}" width="100%" height="600" style="border:1px solid #334155;border-radius:8px"></iframe>`,
+    // embed=1 drops the toolbar, sidebar and landing page: just panels and a timeline.
+    iframe: `<iframe src="${APP_ORIGIN}/#${withEmbed(hash)}" width="100%" height="600" style="border:1px solid #334155;border-radius:8px" allowfullscreen loading="lazy"></iframe>`,
   };
 }

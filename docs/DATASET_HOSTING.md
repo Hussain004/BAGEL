@@ -214,3 +214,43 @@ the rest of the hash encodes the layout, so the link opens the same cockpit you
 were looking at.
 
 See `ROADMAP_UPGRADES.md` item A3 for the design behind this.
+
+## Embedding a live bag in a page
+
+A paper's project page, a dataset site or a course can show a live, scrubbable
+bag instead of a video. Open the Share modal, copy the **iframe** snippet, and
+paste it into your page:
+
+```html
+<iframe src="https://bagel-ros2.vercel.app/#b=https://data.example.com/robot-run.mcap&p=...&embed=1"
+        width="100%" height="600" allowfullscreen loading="lazy"></iframe>
+```
+
+`embed=1` drops the toolbar, sidebar and landing page, leaving the panels and a
+timeline. A small "Open in BAGEL" link in the corner opens the same view in the
+full app. These parameters can be added to any BAGEL link:
+
+| Parameter | Effect |
+|---|---|
+| `embed=1` | Panels and timeline only. Panels cannot be closed and the file cannot be swapped, so a viewer cannot get stuck. |
+| `theme=light` or `theme=dark` | Match your page. Applied for this view only; it does not change the viewer's own saved theme. |
+| `autoplay=1` | Start playing as soon as the bag is ready. |
+| `loop=1` | Loop at the end. Together with `autoplay=1` this makes a looping demo. |
+
+The bag host needs the same CORS and Range configuration described above; the
+frame is just another browser tab loading the bag.
+
+### Cross-origin isolation inside an iframe
+
+BAGEL sends `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy`
+headers so that features that need `SharedArrayBuffer` can use it. A page is
+only cross-origin isolated when its embedding parent is too, and an ordinary
+dataset or course page is not. So **an embed normally runs without isolation**.
+That is supported and tested: `.mcap`, `.bag` and `.db3` bags, the plot, image,
+3D and other panels all work. The one thing that degrades is the Gaussian splat
+viewer's shared-memory sort, which falls back to a slower copy-based path.
+
+If your own page sends `Cross-Origin-Embedder-Policy: require-corp`, BAGEL must
+also send `Cross-Origin-Resource-Policy: cross-origin` to be framed at all. The
+hosted app already does; if you self-host, add that header next to the COOP and
+COEP ones (see `vercel.json`).

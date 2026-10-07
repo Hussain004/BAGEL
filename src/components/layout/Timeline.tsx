@@ -7,6 +7,7 @@ import { usePinnedTopicsStore } from '../../store/pinnedTopicsStore';
 import { useMessageDensity } from '../../hooks/useMessageDensity';
 import { computeMessageDensity } from '../../utils/messageDensity';
 import { formatDuration } from '../../utils/time';
+import { pageEmbedConfig } from '../../utils/embedConfig';
 import { formatRelativeTime } from '../panels/shared/formatRelativeTime';
 import type { AllTopicStats, MessageStats } from '../../types/bag';
 
@@ -198,6 +199,8 @@ export function Timeline() {
   const handleTrackDoubleClick = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
+      // A viewer of an embed cannot see or manage bookmarks.
+      if (pageEmbedConfig().embed) return;
       const el = trackRef.current;
       if (!el) return;
       const rect = el.getBoundingClientRect();
@@ -469,6 +472,7 @@ export function Timeline() {
         )}
       </div>
 
+      {!pageEmbedConfig().embed && (
       <button
         onClick={addBookmarkHere}
         className="w-8 h-8 rounded-md flex items-center justify-center border border-border text-text-secondary hover:border-accent-amber/40 hover:text-accent-amber transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber/60"
@@ -478,6 +482,7 @@ export function Timeline() {
       >
         <BookmarkIcon />
       </button>
+      )}
 
       <button
         onClick={() => setLoop(!loop)}

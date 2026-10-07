@@ -9,6 +9,17 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Embed mode. Add `embed=1` to any BAGEL link and it renders only the panels and
+  a compact timeline, for an iframe on a paper, dataset page or course. There is
+  no toolbar, sidebar, modal or landing page, panels cannot be closed and the
+  file cannot be swapped (`O`, `Esc`, `?` and `Cmd+K` are inert), and an "Open in
+  BAGEL" link opens the same view in the full app. `theme=light|dark` matches the
+  host page without touching the viewer's saved theme, and `autoplay=1&loop=1`
+  makes a looping demo. The flag survives the app rewriting its own hash. The
+  Share modal's iframe snippet now uses it. Embeds run without cross-origin
+  isolation, which works for every bag format; see `docs/DATASET_HOSTING.md`.
+  The app also sends `Cross-Origin-Resource-Policy: cross-origin` so a host page
+  that itself uses COEP can frame it.
 - Two bags can be compared. With two or more bags loaded, the Health panel has a
   "Compare" view that lists, against a bag you choose: topics only in one bag,
   topics whose type changed (ROS 1 and ROS 2 spellings of one type are not
