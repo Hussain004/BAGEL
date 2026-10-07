@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
 import { getParserClient } from '../../../workers/parserClient';
 import { computeAllTopicHealth, type TopicHealth } from '../../../utils/topicStats';
-import { detectNonMonotonicStamps } from '../../../utils/anomalies';
+import { buildAutoMarks, detectNonMonotonicStamps } from '../../../utils/anomalies';
+import { useAnnotationStore } from '../../../store/annotationStore';
 import type { AllTopicStats } from '../../../types/bag';
 import { PanelShell } from '../PanelShell';
 import {
@@ -94,6 +95,19 @@ export function BagHealth({ panelId, topicName, type, bagId }: Props) {
     [stats],
   );
 
+  const marksOnTimeline = useAnnotationStore((s) => (effectiveBagId ? s.autoMarks[effectiveBagId] : undefined));
+  const setAutoMarks = useAnnotationStore((s) => s.setAutoMarks);
+  const clearAutoMarks = useAnnotationStore((s) => s.clearAutoMarks);
+  const markOnTimeline = () => {
+    if (!entry) return;
+    const gaps = healths.flatMap((h) => h.gaps.map((g) => ({ topic: h.topic, ...g })));
+    setAutoMarks(entry.id, buildAutoMarks(entry.id, entry.summary.startTime, gaps, nonMonotonic));
+  };
+  const eventCount = useMemo(
+    () => healths.reduce((n, h) => n + h.gapCount, 0) + nonMonotonic.length,
+    [healths, nonMonotonic],
+  );
+
   const sorted = useMemo(() => {
     const list = [...healths];
     list.sort((a, b) => {
@@ -181,6 +195,31 @@ export function BagHealth({ panelId, topicName, type, bagId }: Props) {
                 {nonMonotonic.length} non-monotonic timestamp{nonMonotonic.length > 1 ? 's' : ''} detected
                 {nonMonotonic.length <= 3 && (
                   <span className="text-text-muted">{' '}- {nonMonotonic.map(a => a.topic).join(', ')}</span>
+                )}
+              </div>
+            )}
+            {eventCount > 0 && effectiveBagId && (
+              <div className="px-3 py-1.5 border-b border-border flex items-center gap-2 text-xs text-text-muted flex-shrink-0">
+                <span>
+                  {eventCount} gap / out-of-order event{eventCount > 1 ? 's' : ''}
+                </span>
+                {marksOnTimeline ? (
+                  <button
+                    type="button"
+                    onClick={() => clearAutoMarks(effectiveBagId)}
+                    className="px-2 py-0.5 rounded border border-border text-text-secondary hover:text-text-primary hover:border-border-hover transition-colors"
+                  >
+                    Clear timeline marks ({marksOnTimeline.length})
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={markOnTimeline}
+                    className="px-2 py-0.5 rounded border border-accent-rose/50 text-accent-rose hover:bg-accent-rose/10 transition-colors"
+                    title="Add a tick for each gap and out-of-order stamp to the timeline. Marks are not saved or shared; pin one to keep it."
+                  >
+                    Mark on timeline
+                  </button>
                 )}
               </div>
             )}
