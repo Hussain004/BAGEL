@@ -134,7 +134,8 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 - **Saved Display defaults**: per-data-type defaults for the 3D panel's Display card (colour mode, accumulator, point size, range filter, up axis, camera-frustum master toggle), persisted across sessions. Manageable from the About modal. *(v1.3.3 / v1.3.4)*
 - **Accessibility pass**: ARIA roles + focus management on every modal, `prefers-reduced-motion` respected, focus-visible rings throughout.
 - **Bundled `tour.mcap` sample bag** exercises every panel type. Drop in zero seconds with the "Try a sample bag" button.
-- **845-test Vitest suite** plus Playwright browser tests, with GitHub Actions CI running `tsc -b`, lint, `pnpm test`, and the e2e job on every PR. *(v1.0, expanded each release)*
+- **854-test Vitest suite** plus Playwright browser tests, with GitHub Actions CI running `tsc -b`, lint, `pnpm test`, and the e2e job on every PR. *(v1.0, expanded each release)*
+- **Recent files** *(B4)*: reopen a recently opened bag in one click from the landing page. Local files reopen through a persisted file handle (one permission prompt, no picker round trip); remote URLs reopen directly. Capped at 8, dismissed entries are forgotten.
 - **Sidebar namespace tree and type chips**: switch the topic list between the flat list and a tree grouped by namespace, with single-child chains collapsed (`/robot1/sensors/lidar` is one row) and message counts and Hz rolled up so a dead namespace is obvious without expanding it. Type chips ("Images 4", "Point clouds 2", ...) filter either view.
 - **Bags well over 2 GB work in the browser**: range reads + lazy decoding throughout the parser stack.
 
@@ -397,7 +398,7 @@ add support for a new message type, and what the tests expect.
 
 ### Tests
 
-`pnpm test` runs a **logic-only** Vitest suite (845 tests, 66 files, a few
+`pnpm test` runs a **logic-only** Vitest suite (854 tests, 67 files, a few
 seconds). Pure helpers are tested in `tests/utils/`, parser and codec paths in
 `tests/parsers/`, store logic in `tests/store/`, live-connection code in
 `tests/live/`, and there is an integration pass over the committed
