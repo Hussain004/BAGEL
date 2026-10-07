@@ -17,6 +17,7 @@ import {
   type ExtraSeriesDef,
 } from '../../../store/panelUiStores';
 import { compileExpr } from '../../../utils/mathExpr';
+import { eulerExpressions, findQuaternionPrefixes } from '../../../utils/eulerExpressions';
 import { registerCapture } from '../../../utils/captureRegistry';
 import { alignColumns, extraKey, holdForward, newSeriesId, readField, type TimedColumn } from '../../../utils/alignSeries';
 import {
@@ -384,6 +385,19 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
     setExprInputVisible(false);
   };
 
+  // One-click roll/pitch/yaw for every quaternion in the message that does not
+  // already have them plotted (an Imu's orientation, an Odometry pose, ...).
+  const eulerOffers = useMemo(() => {
+    const have = new Set(expressions.map((e) => e.id));
+    return findQuaternionPrefixes(primary?.fieldNames ?? [])
+      .map((prefix) => ({ prefix, defs: eulerExpressions(prefix) }))
+      .filter(({ defs }) => defs.some((d) => !have.has(d.id)));
+  }, [primary, expressions]);
+  const handleAddEuler = (defs: ExpressionDef[]) => {
+    const have = new Set(expressions.map((e) => e.id));
+    updateSettings(panelId, { expressions: [...expressions, ...defs.filter((d) => !have.has(d.id))] });
+  };
+
   const handleRemoveExpr = (id: string) => {
     updateSettings(panelId, {
       expressions: expressions.filter(e => e.id !== id),
@@ -725,6 +739,17 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
                   <span className="text-[10px] font-semibold">+</span> series
                 </button>
               )}
+              {eulerOffers.map(({ prefix, defs }) => (
+                <button
+                  key={prefix}
+                  onClick={() => handleAddEuler(defs)}
+                  title={`Plot roll, pitch and yaw (degrees) from ${prefix ? `${prefix}.x/y/z/w` : 'x/y/z/w'}`}
+                  className="flex items-center gap-1 px-2 py-1 rounded-md text-xs mono border border-dashed border-border text-text-muted hover:border-accent-blue/60 hover:text-accent-blue transition-colors"
+                >
+                  <span className="text-[10px] font-semibold">+</span> roll/pitch/yaw
+                  {prefix && eulerOffers.length > 1 ? ` (${prefix.split('.').pop()})` : ''}
+                </button>
+              ))}
               {/* Add expression trigger */}
               {!exprInputVisible && (
                 <button
