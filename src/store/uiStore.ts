@@ -10,6 +10,9 @@ import { create } from 'zustand';
 import type { PanelKind } from './layoutStore';
 
 const HINT_DISMISSED_KEY = 'bagel:onboarding-hint-dismissed:v1';
+const TOPIC_VIEW_MODE_KEY = 'bagel:topic-view-mode:v1';
+const EXPANDED_TREE_NODES_KEY = 'bagel:expanded-tree-nodes:v1';
+
 function readHintDismissed(): boolean {
   if (typeof window === 'undefined') return false;
   try {
@@ -17,6 +20,35 @@ function readHintDismissed(): boolean {
   } catch {
     // localStorage access can throw in sandboxed iframes; treat as unseen.
     return false;
+  }
+}
+
+function readTopicViewMode(): 'flat' | 'tree' {
+  if (typeof window === 'undefined') return 'flat';
+  try {
+    return window.localStorage.getItem(TOPIC_VIEW_MODE_KEY) === 'tree' ? 'tree' : 'flat';
+  } catch {
+    return 'flat';
+  }
+}
+
+function readExpandedTreeNodes(): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = window.localStorage.getItem(EXPANDED_TREE_NODES_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return new Set(Array.isArray(parsed) ? parsed.filter((v) => typeof v === 'string') : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function writeExpandedTreeNodes(nodes: ReadonlySet<string>): void {
+  try {
+    window.localStorage.setItem(EXPANDED_TREE_NODES_KEY, JSON.stringify([...nodes]));
+  } catch {
+    // Best-effort persistence.
   }
 }
 
@@ -65,6 +97,27 @@ interface UiState {
   showOnboardingHint: boolean;
   triggerOnboardingHint: () => void;
   dismissOnboardingHint: () => void;
+
+  /**
+   * Sidebar topic list view: the v0.9 flat list, or the v1.8 namespace tree.
+   * Persisted so a power user who keeps the tree open gets it back on every
+   * bag, not just the current one.
+   */
+  topicViewMode: 'flat' | 'tree';
+  setTopicViewMode: (mode: 'flat' | 'tree') => void;
+  /**
+   * Expanded namespace groups in tree view, keyed by group path
+   * (`/robot1/sensors/lidar`). Anything absent is collapsed, which keeps a
+   * fresh bag small instead of opening 400 rows at once.
+   */
+  expandedTreeNodes: ReadonlySet<string>;
+  toggleTreeNode: (path: string) => void;
+  /**
+   * The active type-chip filter, or null for "all topics". A topic only
+   * renders when it matches, or when no filter is set.
+   */
+  topicTypeFilter: string | null;
+  setTopicTypeFilter: (id: string | null) => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -86,4 +139,27 @@ export const useUiStore = create<UiState>((set) => ({
     }
     set({ showOnboardingHint: false });
   },
+
+  topicViewMode: readTopicViewMode(),
+  setTopicViewMode: (topicViewMode) => {
+    try {
+      window.localStorage.setItem(TOPIC_VIEW_MODE_KEY, topicViewMode);
+    } catch {
+      // Best-effort persistence.
+    }
+    set({ topicViewMode });
+  },
+
+  expandedTreeNodes: readExpandedTreeNodes(),
+  toggleTreeNode: (path) =>
+    set((state) => {
+      const next = new Set(state.expandedTreeNodes);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      writeExpandedTreeNodes(next);
+      return { expandedTreeNodes: next };
+    }),
+
+  topicTypeFilter: null,
+  setTopicTypeFilter: (topicTypeFilter) => set({ topicTypeFilter }),
 }));

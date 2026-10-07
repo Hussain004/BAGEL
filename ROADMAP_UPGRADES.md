@@ -193,6 +193,8 @@ Add a short "How to add support for a new message type" walkthrough (detector in
 
 **How:** Write a pure `buildTopicTree(topics)` in `src/utils/topicTree.ts` returning nested nodes. Keep `TopicRow.tsx` unchanged as the leaf renderer. The existing `content-visibility` optimization on `.topic-row` still applies. Flatten the visible tree before rendering, so a single virtualized/flat list stays.
 
+**Status: done** (`utils/topicTree.ts` + `utils/topicCategory.ts` with 25 unit tests, tree/list toggle and 11 category chips in the sidebar, 10 browser tests). Two decisions: single-child chains collapse (`/robot1/sensors/lidar` is one row), and an active text search always renders flat, since a tree of a four-topic search result is harder to scan than the list it replaces. Also fixed a latent flake in `tests/e2e/share.spec.ts`: the URL round-trip test left its stubbed route serving worker Range reads when the test ended, and the un-drained route failed the *next* test with `route.fetch: Test ended`.
+
 **Files:** `components/panels/TopicInspector/index.tsx`, new `utils/topicTree.ts`, `store/uiStore.ts`.
 **Tests:** `topicTree.test.ts`: chain collapsing, root-level topics (`/tf`), topics that are both a leaf and a namespace prefix (`/odom` and `/odom/filtered`), multi-bag topic lists, 1,000-topic input performance (under 10 ms).
 **Effort:** M

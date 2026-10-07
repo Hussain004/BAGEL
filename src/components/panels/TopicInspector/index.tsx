@@ -2,14 +2,35 @@ import { useState, useMemo } from 'react';
 import { useBagStore, type BagEntry } from '../../../store/bagStore';
 import { useUiStore } from '../../../store/uiStore';
 import { TopicRow } from './TopicRow';
+import { TopicGroupRow } from './TopicGroupRow';
+import {
+  buildTopicTree,
+  flattenTopicTree,
+  type TopicTreeNode,
+  type TopicTreeRow,
+} from '../../../utils/topicTree';
+import {
+  countByCategory,
+  topicCategoryOf,
+  type CategoryCount,
+} from '../../../utils/topicCategory';
 import type { TopicInfo } from '../../../types/bag';
+
+type SortBy = 'name' | 'count' | 'frequency';
 
 /**
  * TopicInspector - Main panel showing all topics in every loaded bag.
  *
- * Features search/filter, sorting, and summary stats. v0.9 multi-bag groups
- * topics by bag with collapsible per-bag headers (one section per loaded
- * bag). Single-bag setups keep the flat list - no extra chrome.
+ * Features search/filter, sorting, type chips, and two views:
+ *  - **flat** (the v0.9 list): every topic in one list, sorted as chosen.
+ *  - **tree** (v1.8): topics grouped by namespace with single-child chains
+ *    collapsed (`/robot1/sensors/lidar` is one row), group counts and Hz rolled
+ *    up so a dead namespace is obvious at a glance.
+ *
+ * The view toggle and expansion state persist across sessions. A type-chip
+ * filter applies to both views, and an active text search always renders a
+ * flat list, since a tree of "the 4 topics containing 'imu'" is harder to
+ * scan than the list it replaces.
  */
 export function TopicInspector() {
   const bag = useBagStore((s) => s.bag);
@@ -17,11 +38,27 @@ export function TopicInspector() {
   const bagOrder = useBagStore((s) => s.bagOrder);
   const focusBagId = useBagStore((s) => s.focusBagId);
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<'name' | 'count' | 'frequency'>('name');
+  const [sortBy, setSortBy] = useState<SortBy>('name');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
-  // Per-bag filtered + sorted topic lists. The empty-state below counts the
-  // total across every bag for the "no matches" message.
+  const viewMode = useUiStore((s) => s.topicViewMode);
+  const setViewMode = useUiStore((s) => s.setTopicViewMode);
+  const expanded = useUiStore((s) => s.expandedTreeNodes);
+  const toggleNode = useUiStore((s) => s.toggleTreeNode);
+  const typeFilter = useUiStore((s) => s.topicTypeFilter);
+  const setTypeFilter = useUiStore((s) => s.setTopicTypeFilter);
+
+  // Type chips count against the unfiltered bag, not the current filter, so
+  // the numbers always describe the bag rather than the filter's own result.
+  const categoryCounts: CategoryCount[] = useMemo(() => {
+    const all = bagOrder
+      .map((id) => bags.get(id))
+      .filter((e): e is BagEntry => !!e)
+      .flatMap((e) => e.summary.topics);
+    return countByCategory(all);
+  }, [bags, bagOrder]);
+
+  // Per-bag filtered + sorted topic lists.
   const sections = useMemo(() => {
     if (bagOrder.length === 0) return [];
     return bagOrder
@@ -29,6 +66,9 @@ export function TopicInspector() {
       .filter((e): e is BagEntry => !!e)
       .map((entry) => {
         let topics = entry.summary.topics;
+        if (typeFilter) {
+          topics = topics.filter((t) => topicCategoryOf(t) === typeFilter);
+        }
         if (searchQuery.trim()) {
           const q = searchQuery.toLowerCase();
           topics = topics.filter(
@@ -48,11 +88,26 @@ export function TopicInspector() {
         }
         return { entry, topics };
       });
-  }, [bags, bagOrder, searchQuery, sortBy]);
+  }, [bags, bagOrder, searchQuery, sortBy, typeFilter]);
+
+  // Tree rows, one set per bag section, flattened against the persisted
+  // expansion state. Built only in tree mode, so the flat view pays nothing.
+  const treeSections = useMemo(() => {
+    if (viewMode !== 'tree') return null;
+    const compare = treeComparator(sortBy);
+    return sections.map(({ entry, topics }) => ({
+      entry,
+      rows: flattenTopicTree(buildTopicTree(topics), expanded, compare),
+    }));
+  }, [viewMode, sections, expanded, sortBy]);
 
   if (!bag || sections.length === 0) return null;
 
   const multi = bagOrder.length > 1;
+  const searching = searchQuery.trim().length > 0;
+  // Search always renders flat: grouping a filtered handful of topics by
+  // namespace makes a 4-result list harder to scan, not easier.
+  const showTree = viewMode === 'tree' && !searching;
   const totalActive = sections.reduce(
     (acc, s) => acc + s.entry.summary.topics.filter((t) => t.messageCount > 0).length,
     0,
@@ -122,6 +177,25 @@ export function TopicInspector() {
             </button>
           )}
         </div>
+
+        {/* View toggle + type chips */}
+        <div className="flex items-center gap-1.5 mt-3 flex-wrap">
+          <ViewToggle viewMode={viewMode} setViewMode={setViewMode} />
+          {categoryCounts.map((chip) => (
+            <button
+              key={chip.id}
+              onClick={() => setTypeFilter(typeFilter === chip.id ? null : chip.id)}
+              aria-pressed={typeFilter === chip.id}
+              className={`px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                typeFilter === chip.id
+                  ? 'bg-accent-blue/15 text-accent-blue border border-accent-blue/30'
+                  : 'text-text-muted hover:text-text-secondary hover:bg-surface-hover border border-transparent'
+              }`}
+            >
+              {chip.label} {chip.count}
+            </button>
+          ))}
+        </div>
       </div>
 
       <OnboardingHint />
@@ -134,8 +208,9 @@ export function TopicInspector() {
         aria-label={`${totalShown} topics`}
       >
         {totalShown > 0 ? (
-          sections.map(({ entry, topics }) => {
+          sections.map(({ entry, topics }, sectionIndex) => {
             const isCollapsed = collapsed[entry.id] === true;
+            const treeRows = showTree && treeSections ? treeSections[sectionIndex].rows : null;
             return (
               <div key={entry.id} className="mb-2">
                 {multi && (
@@ -175,14 +250,25 @@ export function TopicInspector() {
                 )}
                 {!isCollapsed && (
                   <div className="space-y-0.5 mt-1">
-                    {topics.map((topic: TopicInfo, i: number) => (
-                      <TopicRow
-                        key={`${entry.id}::${topic.name}`}
-                        topic={topic}
-                        index={i}
-                        bagId={multi ? entry.id : undefined}
-                      />
-                    ))}
+                    {treeRows
+                      ? treeRows.map((row) => (
+                          <TreeRow
+                            key={row.node.path + (row.isGroup ? ':group' : ':topic')}
+                            row={row}
+                            bagId={multi ? entry.id : undefined}
+                            index={0}
+                            onToggle={toggleNode}
+                            expanded={expanded}
+                          />
+                        ))
+                      : topics.map((topic: TopicInfo, i: number) => (
+                          <TopicRow
+                            key={`${entry.id}::${topic.name}`}
+                            topic={topic}
+                            index={i}
+                            bagId={multi ? entry.id : undefined}
+                          />
+                        ))}
                   </div>
                 )}
               </div>
@@ -192,17 +278,60 @@ export function TopicInspector() {
           <div className="flex items-center justify-center h-32 text-text-muted text-sm">
             {searchQuery
               ? `No topics matching "${searchQuery}"`
-              : 'No topics found in any loaded bag'}
+              : typeFilter
+                ? 'No topics in this category'
+                : 'No topics found in any loaded bag'}
           </div>
         )}
       </div>
 
       {/* Footer with result count */}
-      {searchQuery && totalShown > 0 && (
+      {(searchQuery || typeFilter) && totalShown > 0 && (
         <div className="px-6 py-2 border-t border-border text-text-muted text-xs">
           Showing {totalShown} of {totalAll} topics
         </div>
       )}
+    </div>
+  );
+}
+
+/** Comparator for tree levels, matching the sidebar's sort buttons. */
+function treeComparator(sortBy: SortBy) {
+  return (a: TopicTreeNode, b: TopicTreeNode): number => {
+    if (sortBy === 'count') return b.totalCount - a.totalCount;
+    if (sortBy === 'frequency') return b.maxHz - a.maxHz;
+    return a.path.localeCompare(b.path);
+  };
+}
+
+/** One row of the flattened tree, either a group header or a topic leaf. */
+function TreeRow({
+  row,
+  bagId,
+  index,
+  onToggle,
+  expanded,
+}: {
+  row: TopicTreeRow;
+  bagId?: string;
+  index: number;
+  onToggle: (path: string) => void;
+  expanded: ReadonlySet<string>;
+}) {
+  if (row.isGroup) {
+    return (
+      <TopicGroupRow
+        node={row.node}
+        expanded={expanded.has(row.node.path)}
+        onToggle={() => onToggle(row.node.path)}
+      />
+    );
+  }
+  // Indent the leaf inside its group. TopicRow renders one topic row; the
+  // padding belongs to the wrapper so the component stays untouched.
+  return (
+    <div style={{ paddingLeft: row.node.depth * 16 }}>
+      <TopicRow topic={row.node.topic!} index={index} bagId={bagId} />
     </div>
   );
 }
@@ -228,6 +357,42 @@ function SortButton({
     >
       {label}
     </button>
+  );
+}
+
+/** Flat / tree toggle, styled like the sort buttons so it reads as a peer. */
+function ViewToggle({
+  viewMode,
+  setViewMode,
+}: {
+  viewMode: 'flat' | 'tree';
+  setViewMode: (mode: 'flat' | 'tree') => void;
+}) {
+  return (
+    <div className="flex items-center gap-0.5 mr-2" role="group" aria-label="Topic view">
+      <button
+        onClick={() => setViewMode('flat')}
+        aria-pressed={viewMode === 'flat'}
+        className={`px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
+          viewMode === 'flat'
+            ? 'bg-accent-blue/15 text-accent-blue border border-accent-blue/30'
+            : 'text-text-muted hover:text-text-secondary hover:bg-surface-hover border border-transparent'
+        }`}
+      >
+        List
+      </button>
+      <button
+        onClick={() => setViewMode('tree')}
+        aria-pressed={viewMode === 'tree'}
+        className={`px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
+          viewMode === 'tree'
+            ? 'bg-accent-blue/15 text-accent-blue border border-accent-blue/30'
+            : 'text-text-muted hover:text-text-secondary hover:bg-surface-hover border border-transparent'
+        }`}
+      >
+        Tree
+      </button>
+    </div>
   );
 }
 
