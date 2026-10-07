@@ -10,6 +10,19 @@ dist/
 .idea/
 *.swp
 *.swo
+# Editor and VCS conflict leftovers. These land next to the real file when a
+# rebase, cherry-pick, or patch goes wrong, and are easy to commit by accident
+# because they sit in real source directories.
+*.orig
+*.rej
+*.bak
+
+# ESLint's incremental cache, if anyone runs `eslint --cache`.
+.eslintcache
+
+# `vercel` CLI local state. Holds your personal project/org link, so it is
+# machine-specific and not for the repo. (vercel.json IS tracked, intentionally.)
+.vercel/
 
 # OS
 .DS_Store
@@ -18,9 +31,13 @@ Thumbs.db
 .directory
 
 # Environment
+# Covers .env, .env.production, .env.staging, .env.*.local. The earlier
+# `.env` + `.env.local` + `.env.*.local` set missed `.env.production` and
+# `.env.staging`, which are exactly where a deploy secret ends up.
 .env
-.env.local
-.env.*.local
+.env.*
+# direnv (used by some ROS/docker workflows locally).
+.envrc
 
 # TypeScript
 *.tsbuildinfo
