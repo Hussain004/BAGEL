@@ -402,7 +402,7 @@ Add a short "How to add support for a new message type" walkthrough (detector in
 
 **What:** With two bags loaded, a report listing: topics only in A / only in B, type mismatches, Hz differences beyond 10%, message-count deltas, TF frames present in one only, and duration. Each row links to opening both topics side by side (or as two series in one plot via C1).
 
-**How:** Purely a function of the two `BagSummary` objects plus the cached health stats (`readAllMessageStats`). A pure `diffBags(a, b)` in `utils/bagDiff.ts` and a table panel (reuse the Health table component styling).
+**How:** Shipped as a function of the two `BagSummary` objects alone (topics, types, rates), shown as a Compare view in the Health panel. TF frames and per-topic jitter/gap comparison from the cached health stats are not included; they would need a scan of each bag. A pure `diffBags(a, b)` in `utils/bagDiff.ts` and a table panel (reuse the Health table component styling).
 
 **Files:** new `utils/bagDiff.ts`, new panel or a mode of `BagHealth/index.tsx`.
 **Tests:** `bagDiff.test.ts`: identical bags give an empty diff; renamed topics show as add + remove; ROS1 vs ROS2 type names (`sensor_msgs/Image` vs `sensor_msgs/msg/Image`) are normalized first and not reported as mismatches.
