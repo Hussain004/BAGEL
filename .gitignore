@@ -14,6 +14,8 @@ dist/
 # OS
 .DS_Store
 Thumbs.db
+# KDE/Nautilus desktop-entry marker, written into every folder you browse
+.directory
 
 # Environment
 .env
@@ -35,3 +37,10 @@ coverage/
 # Improvements docs
 IMPROVEMENTS.md
 IMPROVEMENTS_PROGRESS.md
+
+# Local video encodes and their poster frames (too large for git).
+# Anchored to the repo root on purpose: public/demo_videos/*.mp4 are tracked
+# app assets served at runtime, so a bare *.mp4 rule would block new ones.
+/BAGEL-*.mp4
+/BAGEL-*.jpg
+/videos/
