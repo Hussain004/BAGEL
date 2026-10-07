@@ -36,6 +36,20 @@ export interface ExpressionDef {
   label: string;
 }
 
+/**
+ * A single field from another topic (possibly in another loaded bag) plotted
+ * on the same axes as the panel's own topic.
+ */
+export interface ExtraSeriesDef {
+  id: string;
+  bagId: string;
+  topic: string;
+  /** flattenNumeric-style path, e.g. `twist.twist.linear.x`. */
+  field: string;
+  /** Name used in expressions and the chip, unique within the panel. */
+  alias: string;
+}
+
 export interface TimeSeriesPanelSettings {
   /** Map of `field.path` or expression `id` → visibility. Missing entries default to visible. */
   visibility: Record<string, boolean>;
@@ -48,12 +62,19 @@ export interface TimeSeriesPanelSettings {
   xRange: { min: number; max: number } | null;
   /** User-defined math expressions plotted as extra derived series. */
   expressions: ExpressionDef[];
+  /**
+   * Fields from other topics added to this plot. Like `expressions`, these live
+   * in the panel store, not the URL hash, so they survive docking but not a
+   * shared link (the hash only carries layout, playhead and bag URL).
+   */
+  extraSeries: ExtraSeriesDef[];
 }
 
 export const DEFAULT_TIMESERIES_SETTINGS: TimeSeriesPanelSettings = {
   visibility: {},
   xRange: null,
   expressions: [],
+  extraSeries: [],
 };
 
 interface TimeSeriesPanelState {

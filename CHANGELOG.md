@@ -9,6 +9,13 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Time-series plots can show fields from other topics. "+ series" in a plot's
+  footer picks any topic (from any loaded bag) and one of its numeric fields and
+  draws it on the same axes, aligned on the union of both topics' timestamps.
+  Extra series get a name usable in math expressions, so `cmd_x - x` compares a
+  command against the measured value; between samples each input is held at its
+  last value. A second bag follows the timeline's alignment mode. Extra series
+  are kept per panel (they survive docking) but are not part of shared links.
 - Split recordings open as one bag. Pick or drop the parts of a
   `ros2 bag record --max-bag-size` / `--max-bag-duration` run (`name_0.mcap`,
   `name_1.mcap`, ...), a ROS1 `--split` recording, or a whole bag folder, and

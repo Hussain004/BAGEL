@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
-import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
+import { alignmentOffsetFor, useBagStore, resolveBagEntry } from '../../../store/bagStore';
 import { useBagLocalPlayhead } from '../../../hooks/useBagLocalPlayhead';
 import { useTopicMessages, type DecodedMessage } from '../../../hooks/useTopicMessages';
 import { flattenNumeric } from '../../../utils/messages';
@@ -14,9 +14,16 @@ import {
   DEFAULT_TIMESERIES_SETTINGS,
   useTimeSeriesPanelStore,
   type ExpressionDef,
+  type ExtraSeriesDef,
 } from '../../../store/panelUiStores';
 import { compileExpr } from '../../../utils/mathExpr';
 import { registerCapture } from '../../../utils/captureRegistry';
+import { alignColumns, extraKey, holdForward, newSeriesId, readField, type TimedColumn } from '../../../utils/alignSeries';
+import {
+  ExtraSeriesLoader,
+  ExtraSeriesPicker,
+  type ExtraState,
+} from './ExtraSeries';
 
 /**
  * Series palette used when the topic doesn't fall into a known category.
@@ -34,6 +41,14 @@ const SERIES_PALETTE = [
   '#0ea5e9',
   '#a855f7',
 ];
+
+/** Everything the chart draws, on one shared x axis (seconds from `baseNs`). */
+interface PlotSeries {
+  time: number[];
+  values: Record<string, (number | null)[]>;
+  fieldNames: string[];
+  baseNs: bigint;
+}
 
 interface TimeSeriesPlotProps {
   panelId: string;
@@ -92,18 +107,13 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
     processedCount: number;
   } | null>(null);
 
-  const [series, setSeries] = useState<{
-    time: number[];
-    values: Record<string, (number | null)[]>;
-    fieldNames: string[];
-    baseNs: bigint;
-  } | null>(null);
+  const [primary, setPrimary] = useState<PlotSeries | null>(null);
 
   useEffect(() => {
     if (!messages || messages.length === 0) {
       seriesAccumRef.current = null;
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setSeries(null);
+      setPrimary(null);
       return;
     }
 
@@ -116,7 +126,7 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
       const fieldNames = Object.keys(firstFlat);
       if (fieldNames.length === 0) {
         seriesAccumRef.current = null;
-        setSeries(null);
+        setPrimary(null);
         return;
       }
       const values: Record<string, (number | null)[]> = {};
@@ -143,7 +153,7 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
     }
     acc.processedCount = messages.length;
 
-    setSeries({ time: acc.time, values: acc.values, fieldNames: acc.fieldNames, baseNs: acc.baseNs });
+    setPrimary({ time: acc.time, values: acc.values, fieldNames: acc.fieldNames, baseNs: acc.baseNs });
   }, [messages]);
 
   // Per-panel UI state - visibility toggles, saved zoom, and math expressions.
@@ -164,6 +174,101 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
     [settings.expressions],
   );
 
+  // Fields from other topics, merged onto the panel's own x axis. With none
+  // added `series` is exactly `primary`, so the single-topic path is unchanged.
+  const extraSeries: ExtraSeriesDef[] = useMemo(
+    () => settings.extraSeries ?? [],
+    [settings.extraSeries],
+  );
+  const bags = useBagStore((s) => s.bags);
+  const alignment = useBagStore((s) => s.alignment);
+  const [extraStates, setExtraStates] = useState<Record<string, ExtraState>>({});
+  const onExtraState = useCallback((key: string, st: ExtraState | null) => {
+    setExtraStates((prev) => {
+      if (st === null) {
+        if (!(key in prev)) return prev;
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      }
+      return { ...prev, [key]: st };
+    });
+  }, []);
+  // Only bags that are still loaded: useTopicMessages falls back to the
+  // focused bag for an unknown id, which would silently plot the wrong data.
+  const liveExtras = useMemo(() => extraSeries.filter((d) => bags.has(d.bagId)), [extraSeries, bags]);
+  const extraTopics = useMemo(() => {
+    const seen = new Map<string, { bagId: string; topic: string }>();
+    for (const d of liveExtras) seen.set(extraKey(d.bagId, d.topic), { bagId: d.bagId, topic: d.topic });
+    return [...seen.entries()];
+  }, [liveExtras]);
+
+  const series = useMemo<PlotSeries | null>(() => {
+    if (!primary) return null;
+    if (liveExtras.length === 0) return primary;
+
+    // The primary topic contributes ONE time input (carrying row indices) so
+    // the union sort is not repeated once per field.
+    const rowIndex = primary.time.map((_, i) => i);
+    const inputs: TimedColumn[] = [{ times: primary.time, values: rowIndex }];
+    const offPrimary = entry ? alignmentOffsetFor(entry, alignment) : 0n;
+    const baseAligned = primary.baseNs - offPrimary;
+    for (const def of liveExtras) {
+      const msgs = extraStates[extraKey(def.bagId, def.topic)]?.messages;
+      const bagEntry = bags.get(def.bagId);
+      if (!msgs || !bagEntry) {
+        inputs.push({ times: [], values: [] });
+        continue;
+      }
+      // Same alignment the timeline uses, so a second bag lines up under
+      // bag-start / anchor modes instead of sitting on its wall-clock time.
+      const offBag = alignmentOffsetFor(bagEntry, alignment);
+      const times = new Array<number>(msgs.length);
+      const values = new Array<number | null>(msgs.length);
+      for (let i = 0; i < msgs.length; i++) {
+        times[i] = Number(msgs[i]!.timestamp - offBag - baseAligned) / 1e9;
+        values[i] = readField(msgs[i]!.value, def.field);
+      }
+      inputs.push({ times, values });
+    }
+
+    const { time, columns } = alignColumns(inputs);
+    const rows = columns[0]!;
+    const values: Record<string, (number | null)[]> = {};
+    for (const f of primary.fieldNames) {
+      const src = primary.values[f]!;
+      values[f] = rows.map((r) => (r === null ? null : (src[r] ?? null)));
+    }
+    liveExtras.forEach((def, i) => {
+      values[def.alias] = columns[i + 1]!;
+    });
+    return {
+      time,
+      values,
+      fieldNames: [...primary.fieldNames, ...liveExtras.map((d) => d.alias)],
+      baseNs: primary.baseNs,
+    };
+  }, [primary, liveExtras, extraStates, bags, alignment, entry]);
+
+  const handleAddExtra = (def: Omit<ExtraSeriesDef, 'id'>) => {
+    updateSettings(panelId, {
+      extraSeries: [...extraSeries, { ...def, id: newSeriesId() }],
+    });
+    setExtraPickerVisible(false);
+  };
+  const handleRemoveExtra = (id: string) => {
+    updateSettings(panelId, { extraSeries: extraSeries.filter((d) => d.id !== id) });
+  };
+  const [extraPickerVisible, setExtraPickerVisible] = useState(false);
+  const extraByAlias = useMemo(() => new Map(liveExtras.map((d) => [d.alias, d])), [liveExtras]);
+
+  // Names an expression or a new extra series may not reuse.
+  const takenAliases = useMemo(() => {
+    const names = new Set<string>(primary?.fieldNames ?? []);
+    for (const d of extraSeries) names.add(d.alias);
+    return names;
+  }, [primary, extraSeries]);
+
   // Expression input form state (local - doesn't need to survive remounts).
   const [exprInputVisible, setExprInputVisible] = useState(false);
   const [exprDraft, setExprDraft] = useState('');
@@ -173,6 +278,14 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
   const expressionResults = useMemo<Record<string, (number | null)[]>>(() => {
     if (!series || expressions.length === 0) return {};
     const out: Record<string, (number | null)[]> = {};
+    // With several topics on one axis, a row where only one topic published
+    // has nothing to subtract from, so each input is held at its last sample.
+    // A single topic keeps its raw values so existing expressions are unchanged.
+    let source = series.values;
+    if (extraSeries.length > 0) {
+      source = {};
+      for (const f of series.fieldNames) source[f] = holdForward(series.values[f]!);
+    }
     for (const def of expressions) {
       const compiled = compileExpr(def.expr);
       const vals: (number | null)[] = new Array(series.time.length);
@@ -182,7 +295,7 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
         for (let i = 0; i < series.time.length; i++) {
           const vars: Record<string, number | null> = {};
           for (const f of series.fieldNames) {
-            vars[f] = (series.values[f][i] as number | null | undefined) ?? null;
+            vars[f] = (source[f]![i] as number | null | undefined) ?? null;
           }
           vals[i] = compiled(vars);
         }
@@ -190,7 +303,7 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
       out[def.id] = vals;
     }
     return out;
-  }, [series, expressions]);
+  }, [series, expressions, extraSeries.length]);
 
   // Screen-reader-only numeric summary of the currently visible series - the
   // canvas chart has no accessible content of its own, so this table is the
@@ -233,7 +346,10 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
   // re-running the full teardown/recreate cycle on every settings change.
   const expressionsRef = useRef(expressions);
   const expressionResultsRef = useRef(expressionResults);
+  // Sparse columns from other topics are mostly null; connect across them.
+  const spanGapsRef = useRef(false);
   useEffect(() => {
+    spanGapsRef.current = extraSeries.length > 0;
     seriesRef.current = series;
     savedXRangeRef.current = settings.xRange;
     expressionsRef.current = expressions;
@@ -330,6 +446,7 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
           width: 1.5,
           points: { show: false },
           show: visibility[f] !== false,
+          spanGaps: spanGapsRef.current,
         })),
         ...exprs.map((e, i) => ({
           label: e.label,
@@ -338,6 +455,7 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
           points: { show: false },
           show: visibility[e.id] !== false,
           dash: [4, 3],
+          spanGaps: spanGapsRef.current,
         })),
       ],
       legend: { show: false },
@@ -447,6 +565,15 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
       accentColor={getTopicColor(topicName, type)}
       bagId={bagId}
     >
+      {extraTopics.map(([key, t]) => (
+        <ExtraSeriesLoader
+          key={key}
+          bagId={t.bagId}
+          topic={t.topic}
+          limit={PLOT_MESSAGE_LIMIT}
+          onState={onExtraState}
+        />
+      ))}
       {loading && (
         <PanelLoadingState
           message={
@@ -514,10 +641,13 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
               {series.fieldNames.map((f, i) => {
                 const color = SERIES_PALETTE[i % SERIES_PALETTE.length];
                 const visible = visibility[f] !== false;
-                return (
+                const extra = extraByAlias.get(f);
+                const extraState = extra ? extraStates[extraKey(extra.bagId, extra.topic)] : undefined;
+                const chip = (
                   <button
                     key={f}
                     onClick={() => setVisibility({ ...visibility, [f]: !visible })}
+                    title={extra ? `${extra.topic}  ${extra.field}` : undefined}
                     className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs mono transition-colors border ${
                       visible
                         ? 'bg-surface border-border text-text-primary'
@@ -529,7 +659,27 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
                       style={{ backgroundColor: visible ? color : 'var(--color-text-muted)' }}
                     />
                     {f}
+                    {extra && extraState?.loading && <span className="text-text-muted">…</span>}
+                    {extra && extraState?.error && (
+                      <span className="text-accent-rose" title={extraState.error}>
+                        !
+                      </span>
+                    )}
                   </button>
+                );
+                if (!extra) return chip;
+                return (
+                  <span key={f} className="inline-flex items-center gap-0.5">
+                    {chip}
+                    <button
+                      onClick={() => handleRemoveExtra(extra.id)}
+                      className="text-text-muted hover:text-accent-rose transition-colors"
+                      title={`Remove ${f}`}
+                      aria-label={`Remove series ${f}`}
+                    >
+                      ×
+                    </button>
+                  </span>
                 );
               })}
               {expressions.map((e, i) => {
@@ -565,6 +715,16 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
                   </span>
                 );
               })}
+              {/* Add a field from another topic */}
+              {!extraPickerVisible && (
+                <button
+                  onClick={() => setExtraPickerVisible(true)}
+                  title="Plot a field from another topic on these axes"
+                  className="flex items-center gap-1 px-2 py-1 rounded-md text-xs mono border border-dashed border-border text-text-muted hover:border-accent-blue/60 hover:text-accent-blue transition-colors"
+                >
+                  <span className="text-[10px] font-semibold">+</span> series
+                </button>
+              )}
               {/* Add expression trigger */}
               {!exprInputVisible && (
                 <button
@@ -576,6 +736,15 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
                 </button>
               )}
             </div>
+
+            {extraPickerVisible && (
+              <ExtraSeriesPicker
+                takenAliases={takenAliases}
+                defaultBagId={entry?.id}
+                onAdd={handleAddExtra}
+                onCancel={() => setExtraPickerVisible(false)}
+              />
+            )}
 
             {/* Expression input row */}
             {exprInputVisible && (
