@@ -309,7 +309,8 @@ Add a short "How to add support for a new message type" walkthrough (detector in
 2. **Undistort interaction.** If `undistort` is on, the box corners must go through the same remap as the pixels (`utils/imageRectify.ts`) or they'll be off at the edges. Transform the four corners and draw the warped quad.
 3. **3D.** `Detection3DArray` boxes go into the scene as wireframe cubes (reuse the marker `CUBE` path with edges geometry), TF-placed via the header frame. Add as a spatial overlay kind.
 4. **Class colors.** Hash class id to a stable palette (`utils/color.ts` already has a private `hashString`; export it).
-5. **Foxglove schemas.** Map `foxglove.ImageAnnotations` in `foxgloveSchemas.ts` to the same internal shape, so both ecosystems work.
+5. **Not done in the first cut:** 3D `Detection3DArray` boxes in the scene, and `foxglove.ImageAnnotations`. `vision_msgs` is also not in the bundled `.db3` type registry, so a `.db3` bag with detections needs the existing paste-schema flow (`.mcap` and `.bag` carry their own schemas and work directly). Guessing a layout for `.db3` was rejected because the Humble and earlier layouts differ and a wrong guess decodes garbage.
+6. **Foxglove schemas.** Map `foxglove.ImageAnnotations` in `foxgloveSchemas.ts` to the same internal shape, so both ecosystems work.
 
 **Files:** `ImageViewer/index.tsx`, new `hooks/useDetections.ts`, `utils/messages.ts`, `parsers/foxgloveSchemas.ts`, `ThreeDScene/spatialOverlay.tsx`, `utils/imageRectify.ts` (export a point-remap function).
 **Tests:** stamp-matching test (detections at 10 Hz, images at 30 Hz: pick nearest, never a future one beyond a tolerance), corner remap round-trip, older vs newer `vision_msgs` shapes (`results[].id` vs `results[].hypothesis.class_id`; `BoundingBox2D.center` as `Pose2D` with `x` vs `center.position.x`). Check the exact version boundaries against the vision_msgs changelog and fixture both shapes.

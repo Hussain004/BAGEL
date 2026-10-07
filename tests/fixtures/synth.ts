@@ -69,15 +69,15 @@ export function collectMessageDefinitions(rootTypeName: string): RosmsgDef[] {
   return collectDefinitions(rootTypeName);
 }
 
-function pickDef(typeName: string): RosmsgDef {
+function pickDef(typeName: string, extra: RosmsgDef[] = []): RosmsgDef {
   const bare = typeName.replace('/msg/', '/');
-  const def = defs[typeName] ?? defs[bare];
+  const def = extra.find((d) => d.name === bare) ?? defs[typeName] ?? defs[bare];
   if (!def) throw new Error(`Missing message definition for ${typeName}`);
   return def;
 }
 
-function collectDefinitions(rootTypeName: string): RosmsgDef[] {
-  const root = pickDef(rootTypeName);
+function collectDefinitions(rootTypeName: string, extra: RosmsgDef[] = []): RosmsgDef[] {
+  const root = pickDef(rootTypeName, extra);
   const out: RosmsgDef[] = [root];
   const seen = new Set([root.name]);
   const queue: RosmsgDef[] = [root];
@@ -86,7 +86,7 @@ function collectDefinitions(rootTypeName: string): RosmsgDef[] {
     for (const field of current.definitions) {
       if (!field.isComplex) continue;
       if (seen.has(field.type)) continue;
-      const childDef = pickDef(field.type);
+      const childDef = pickDef(field.type, extra);
       seen.add(childDef.name);
       out.push(childDef);
       queue.push(childDef);
@@ -132,6 +132,11 @@ export function flattenSchemaText(definitions: RosmsgDef[]): string {
 export interface SynthTopic {
   topic: string;
   type: string;
+  /**
+   * Definitions for types the bundled registry lacks (e.g. vision_msgs), keyed
+   * by `name`. Looked up before the bundled ones, so they can also override.
+   */
+  extraDefinitions?: RosmsgDef[];
   /** Messages in time order; each one will be serialized via the type's CDR writer. */
   messages: Array<{ logTime: bigint; value: Record<string, unknown> }>;
 }
@@ -237,7 +242,7 @@ export async function writeSyntheticMcap(
   }> = [];
 
   for (const t of topics) {
-    const definitions = collectDefinitions(t.type);
+    const definitions = collectDefinitions(t.type, t.extraDefinitions);
     const mw = new MessageWriter(definitions);
     const schemaId = await writer.registerSchema({
       name: t.type,

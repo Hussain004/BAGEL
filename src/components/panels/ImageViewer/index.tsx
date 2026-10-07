@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMessageAtTime } from '../../../hooks/useMessageAtTime';
 import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
 import { useBagLocalPlayhead } from '../../../hooks/useBagLocalPlayhead';
@@ -19,9 +19,19 @@ import {
   isPlumbBobModel,
   buildRemapMap,
   applyRemap,
+  undistortPixel,
 } from '../../../utils/imageRectify';
 import { registerCapture } from '../../../utils/captureRegistry';
 import { decodeCompressedDepthImage } from '../../../utils/compressedDepth';
+import {
+  boxCorners,
+  classColor,
+  detectionFreshness,
+  isDetection2DArrayType,
+  parseDetection2DArray,
+  stampNs,
+  type Detection2D,
+} from '../../../utils/detections';
 import {
   DEPTH_COLORMAPS,
   colorizeDepth,
@@ -56,6 +66,9 @@ interface DecodedFrame {
   bitmap: ImageBitmap;
   depth?: DepthInfo;
 }
+
+/** How far a detection's stamp may be from the image's before its boxes are hidden. */
+const DETECTION_TOLERANCE_NS = 200_000_000n;
 
 const MAX_SEQUENTIAL_VIDEO_GAP_NS = 2_000_000_000n;
 
@@ -241,6 +254,27 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
     settings.cameraInfoManualPair || null,
   );
 
+  // Detection boxes. The query time is the displayed image's own log time (not
+  // the playhead), and the boxes are only drawn if their header stamp matches
+  // the image's, so a slow detector never paints boxes on a different frame.
+  const detectionCandidates = useMemo(
+    () =>
+      (bag?.topics ?? [])
+        .filter((t) => isDetection2DArrayType(t.type))
+        .map((t) => t.name)
+        .sort(),
+    [bag],
+  );
+  const detectionTopic = detectionCandidates.includes(settings.detectionTopic) ? settings.detectionTopic : '';
+  const detectionMsg = useMessageAtTime(detectionTopic, message?.timestamp ?? playheadNs, bagId).message;
+  const detections = useMemo(() => parseDetection2DArray(detectionMsg?.value), [detectionMsg]);
+  const imageStamp = useMemo(
+    () => stampNs(message?.value) ?? message?.timestamp ?? null,
+    [message],
+  );
+  const detectionStamp = detections.stampNs ?? detectionMsg?.timestamp ?? null;
+  const freshness = detectionFreshness(detectionStamp, imageStamp, DETECTION_TOLERANCE_NS);
+
   const [renderError, setRenderError] = useState<string | null>(null);
   const [meta, setMeta] = useState<{ width: number; height: number; encoding: string } | null>(
     null,
@@ -414,8 +448,35 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
     camera.candidates.length > 0 &&
     !camera.hasNoInfoTopic &&
     (camera.info ? isPlumbBobModel(camera.info.distortionModel) : true);
+  // Boxes are in raw image pixels; when the frame is being undistorted they
+  // must be carried through the same correction or they drift off the object.
+  const rectifyCamera =
+    settings.rectify &&
+    camera.info &&
+    meta &&
+    camera.info.width === meta.width &&
+    camera.info.height === meta.height &&
+    isPlumbBobModel(camera.info.distortionModel)
+      ? camera.info
+      : null;
   const headerExtras = (
     <>
+      {detectionCandidates.length > 0 && (
+        <select
+          value={detectionTopic}
+          onChange={(e) => updateSettings(panelId, { detectionTopic: e.target.value })}
+          aria-label="Detection boxes topic"
+          title="Draw 2D detection boxes (vision_msgs/Detection2DArray) on this image"
+          className="text-[10px] mono px-1 py-0.5 rounded border border-border bg-bg-secondary text-text-secondary max-w-[140px]"
+        >
+          <option value="">boxes: off</option>
+          {detectionCandidates.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+      )}
       <RectifyHeaderToggle
         hasCandidates={camera.candidates.length > 0}
         enabled={settings.rectify}
@@ -484,6 +545,9 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
                   canvasRef={canvasRef}
                   showOverlay={overlayOn}
                   camera={camera.info}
+                  boxes={detectionTopic && freshness.fresh ? detections.detections : []}
+                  imageSize={meta ? { width: meta.width, height: meta.height } : null}
+                  rectifyCamera={rectifyCamera}
                 />
               </div>
             )}
@@ -535,6 +599,20 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
             <span className="flex items-center gap-3">
               {view.zoom !== 1 && (
                 <span>{Math.round(view.zoom * 100)}%</span>
+              )}
+              {detectionTopic && (
+                <span
+                  className={freshness.fresh ? 'text-text-secondary' : 'text-accent-amber'}
+                  title={
+                    freshness.deltaNs === null
+                      ? 'Detection and image carry no comparable header stamp'
+                      : `Detection stamp minus image stamp: ${Number(freshness.deltaNs) / 1e6} ms`
+                  }
+                >
+                  {freshness.fresh
+                    ? `${detections.detections.length} boxes`
+                    : `boxes hidden: ${Math.abs(Number(freshness.deltaNs ?? 0n) / 1e6).toFixed(0)} ms off`}
+                </span>
               )}
               {meta && (
                 <span>
@@ -640,9 +718,90 @@ interface CanvasWithOverlayProps {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   showOverlay: boolean;
   camera: CameraIntrinsics | null;
+  boxes: Detection2D[];
+  imageSize: { width: number; height: number } | null;
+  /** When set, box corners are undistorted with these intrinsics to match a rectified frame. */
+  rectifyCamera: CameraIntrinsics | null;
 }
 
-function CanvasWithOverlay({ canvasRef, showOverlay, camera }: CanvasWithOverlayProps) {
+/** Detection boxes as SVG in image-pixel space, laid exactly over the canvas. */
+function DetectionBoxes({
+  canvasRef,
+  boxes,
+  imageSize,
+  rectifyCamera,
+}: Pick<CanvasWithOverlayProps, 'canvasRef' | 'boxes' | 'imageSize' | 'rectifyCamera'>) {
+  const [rect, setRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const parent = canvas?.parentElement;
+    if (!canvas || !parent || boxes.length === 0) return;
+    const compute = () => {
+      const c = canvas.getBoundingClientRect();
+      const p = parent.getBoundingClientRect();
+      // Positioned against the wrapper, which is not scaled by the zoom
+      // transform's own box model, so divide that scale back out.
+      const sx = parent.offsetWidth > 0 ? p.width / parent.offsetWidth : 1;
+      setRect({
+        left: (c.left - p.left) / sx,
+        top: (c.top - p.top) / sx,
+        width: c.width / sx,
+        height: c.height / sx,
+      });
+    };
+    compute();
+    const ro = new ResizeObserver(compute);
+    ro.observe(canvas);
+    ro.observe(parent);
+    return () => ro.disconnect();
+  }, [canvasRef, boxes.length, imageSize]);
+
+  if (boxes.length === 0 || !rect || !imageSize) return null;
+  const fs = Math.max(11, imageSize.height / 38);
+  return (
+    <svg
+      className="pointer-events-none absolute"
+      style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }}
+      viewBox={`0 0 ${imageSize.width} ${imageSize.height}`}
+      preserveAspectRatio="none"
+      aria-hidden
+      data-testid="detection-boxes"
+    >
+      {boxes.map((d, i) => {
+        const corners = boxCorners(d).map(([x, y]) => {
+          const p = rectifyCamera ? undistortPixel(rectifyCamera, x, y) : { x, y };
+          return [p.x, p.y] as const;
+        });
+        const color = classColor(d.classKey);
+        const tag = `${d.label}${d.score !== null ? ` ${Math.round(d.score * 100)}%` : ''}`.trim();
+        const [lx, ly] = corners[0]!;
+        const tagW = tag.length * fs * 0.58 + fs * 0.6;
+        return (
+          <g key={i}>
+            <polygon
+              points={corners.map(([x, y]) => `${x},${y}`).join(' ')}
+              fill="none"
+              stroke={color}
+              strokeWidth={2}
+              vectorEffect="non-scaling-stroke"
+            />
+            {tag && (
+              <>
+                <rect x={lx} y={ly - fs * 1.3} width={tagW} height={fs * 1.3} fill={color} opacity={0.9} />
+                <text x={lx + fs * 0.3} y={ly - fs * 0.35} fontSize={fs} fill="#0b0f19" fontFamily="monospace">
+                  {tag}
+                </text>
+              </>
+            )}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+function CanvasWithOverlay({ canvasRef, showOverlay, camera, boxes, imageSize, rectifyCamera }: CanvasWithOverlayProps) {
   // The reticle sits over the canvas in absolute coords. We compute its CSS
   // position from (cx, cy) and the rendered canvas size, kept in sync via
   // ResizeObserver so a resize from a panel drag doesn't drift it.
@@ -678,6 +837,7 @@ function CanvasWithOverlay({ canvasRef, showOverlay, camera }: CanvasWithOverlay
         ref={canvasRef}
         className="max-w-full max-h-full object-contain rounded-md border border-border"
       />
+      <DetectionBoxes canvasRef={canvasRef} boxes={boxes} imageSize={imageSize} rectifyCamera={rectifyCamera} />
       {showOverlay && reticle && (
         <div
           className="pointer-events-none absolute"

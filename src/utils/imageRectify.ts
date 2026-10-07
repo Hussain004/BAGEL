@@ -149,3 +149,34 @@ export function applyRemap(src: Uint8ClampedArray, map: RemapMap): Uint8ClampedA
   }
   return dst;
 }
+
+/**
+ * Where a pixel of the ORIGINAL (distorted) image lands in the rectified
+ * image: the inverse of the remap above, which maps rectified -> original.
+ *
+ * There is no closed form for the inverse of the plumb-bob model, so this runs
+ * the usual fixed-point iteration (the same one OpenCV's undistortPoints uses).
+ * Used to carry overlay geometry such as detection boxes, which are expressed
+ * in raw image pixels, onto an undistorted frame.
+ */
+export function undistortPixel(ci: CameraIntrinsics, u: number, v: number): { x: number; y: number } {
+  const { fx, fy, cx, cy, distortionCoefficients: d } = ci;
+  const k1 = d[0] ?? 0;
+  const k2 = d[1] ?? 0;
+  const p1 = d[2] ?? 0;
+  const p2 = d[3] ?? 0;
+  const k3 = d[4] ?? 0;
+  const xd = (u - cx) / fx;
+  const yd = (v - cy) / fy;
+  let x = xd;
+  let y = yd;
+  for (let i = 0; i < 10; i++) {
+    const r2 = x * x + y * y;
+    const radial = 1 + k1 * r2 + k2 * r2 * r2 + k3 * r2 * r2 * r2;
+    const dx = 2 * p1 * x * y + p2 * (r2 + 2 * x * x);
+    const dy = p1 * (r2 + 2 * y * y) + 2 * p2 * x * y;
+    x = (xd - dx) / radial;
+    y = (yd - dy) / radial;
+  }
+  return { x: x * fx + cx, y: y * fy + cy };
+}
