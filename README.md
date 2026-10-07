@@ -137,60 +137,31 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 - **600+-test Vitest suite** + GitHub Actions CI runs `tsc -b` + `pnpm test` on every PR. *(v1.0, expanded each release)*
 - **Bags well over 2 GB work in the browser**: range reads + lazy decoding throughout the parser stack.
 
-> Looking for the long version with implementation notes and design tradeoffs for each release? See **[FEATURES.md](FEATURES.md)**.
+> Looking for the long version with implementation notes and design tradeoffs for each release? See **[FEATURES.md](FEATURES.md)**. Per-version summaries are in **[CHANGELOG.md](CHANGELOG.md)**.
 
 ---
 
-### Earlier version highlights at a glance
+## Roadmap
 
-- **v1.7.0**: Gaussian Splat viewer. Splat-flavored `.ply` (detected by header, distinguishing it from a plain colored point cloud), `.splat`, and `.ksplat` open in a dedicated panel built on `@mkkellogg/gaussian-splats-3d`. Camera auto-fit samples splat centers directly and uses a coordinate-wise median center + median-distance radius rather than a naive bounding box, so the handful of stray "floater" splats real captures commonly have don't wreck the framing. Shift+click sets a custom orbit pivot (via a camera-facing plane, since the library's own splat raycaster isn't part of its public API). Keyboard fly-through and orbit (`W`/`S` forward-back, `A`/`D` strafe, `Q`/`E` turn, `R`/`F` up-down, `Z`/`C` orbit) active while hovering the panel, plus a scale-appropriate ground grid and axes so movement direction is easy to judge. `B`/`N`/`I`/`K`/`U`/`J` spin the splat itself around the pivot on all three axes instead of moving the camera, reusing the same `dynamicScene` transform mechanism. `V` cycles up-axis orientation presets - the viewer is constructed with `dynamicScene: true` so the shader actually re-reads the transform each cycle, after an earlier fix that only updated the camera-fit math and silently never rotated the render. Performance: `sharedMemoryForWorkers` turns on automatically when the page is cross-origin isolated (moves the sort worker off a copy-based data path), and a splat's on-screen size is capped at 256px (down from the library's 1024px default) so getting close to one doesn't balloon its fill-rate cost to cover most of the panel. 13 new tests; 526 total.
-- **v1.6.3**: Image zoom and pan in the ImageViewer panel. Scroll to zoom (centered on the cursor, `newPanX = panX * ratio + mouseX * (1 - ratio)`), drag to pan (pointer capture keeps tracking out-of-bounds), double-click to reset. Zoom percentage shown in the footer when not at 100%. View resets on topic or bag change. No new tests (pure UI state).
-- **v1.6.2**: WebCodecs H264/H265 video decoding for `foxglove.CompressedVideo` topics. The parser worker builds a per-topic keyframe index (scanning only the first 24 base64 chars per message for speed), returns all frames from the last keyframe to the target time, and transfers them zero-copy via ArrayBuffer transfer. The main thread runs the browser's `VideoDecoder` API to accumulate reference frames and produce the correct `ImageBitmap`. `isH264Keyframe` / `isH265Keyframe` helpers detect IDR/SPS/VPS NAL types in Annex B streams. 19 new tests (+3 CompressedVideo in `foxgloveSchemas.test.ts`, 16 in `tests/parsers/video.test.ts`); 491 total.
-- **v1.6.1**: Foxglove Studio MCAP schema support. Foxglove exports channels with `schemaEncoding: "jsonschema"` and `encoding: "json"`; BAGEL now decodes these with `JSON.parse` + a schema translator (`foxgloveSchemas.ts`) that maps Foxglove field names to ROS equivalents. Supported: `foxglove.CompressedImage`, `foxglove.RawImage`, `foxglove.PointCloud` (including NumericType remapping and base64 binary fields), `foxglove.LaserScan` (start/end angle to angle_min/max), `foxglove.FrameTransform`. All existing rendering panels (ImageViewer, ThreeDScene, LaserScan) work unchanged. 19 new tests in `tests/parsers/foxgloveSchemas.test.ts`; 472 total.
-- **v1.6.0**: Standalone `.pcd` / `.ply` viewer. Drop any PCD or PLY point cloud directly into BAGEL - no ROS bag required. PCD supports all three encodings (`ascii`, `binary`, `binary_compressed` with LZF). PLY supports ASCII and both binary byte orders. Both produce a synthetic `sensor_msgs/PointCloud2` that feeds the existing ThreeDScene pipeline unchanged - all color modes, range filters, and multi-file overlays work out of the box. 28 new tests in `tests/parsers/pcd.test.ts` and `tests/parsers/ply.test.ts`; 453 total.
-- **v1.5.6**: Cross-bag health comparison. The Health panel now shows a chip strip at the top when multiple non-live bags are loaded. Click a chip to switch the panel's stats view to that bag. No new tests (React-only panel logic, covered by manual verification). 425 tests total.
-- **v1.5.5**: Recording size limit + topic filter. 500 MB hard cap auto-stops recording and triggers download. Filter icon selects a per-topic subset before recording starts. Amber size warning above 400 MB. `isFull` and `topicFilter` added to `RecordingStats`. 9 new tests in `liveRecorder.test.ts`; 425 total.
-- **v1.5.4**: Sim clock (`/clock`) support. `LiveConnection` tracks the `/clock` channel; messages with `logTimeNs = 0` fall back to `simClockNs` instead of `Date.now()`. Purple `SIM` badge on the toolbar chip. `extractClockNs()` helper handles both ROS1 (`nsec`) and ROS2 (`nanosec`) clock schemas. 16 new tests in `tests/live/simClock.test.ts`; 425 total.
-- **v1.5.3**: ROS1 live connection. Added `encoding: "ros1"` (ROS1 CDR, no RTPS header) to the live decoder alongside the existing `cdr` (ROS2) and `json` paths. `@foxglove/rosmsg-serialization` was already bundled; no new dependencies. Separate reader caches for ROS1 and ROS2 (wire formats are not interchangeable). 16 new tests in `tests/live/liveDecoder.test.ts`; 425 total.
-- **v1.5.2**: Live MCAP recording. A `Record` button appears in the Toolbar while connected to a live robot. Clicking it buffers all incoming messages (raw CDR/JSON bytes + channel metadata); clicking `Stop` serialises the buffer to a fully-indexed MCAP and triggers a browser download. The recorder uses synchronous buffering during capture and dynamic-imports `McapWriter` only at stop time so the main bundle stays clean. 16 new tests (+11 `liveRecorder` + 5 `liveStore` recording state); 360 total.
-- **v1.5.0**: Live robot data via Foxglove WebSocket (`ws://host:8765`). Paste a URL into the new Connect input; all existing panels update in real time. Per-topic ring buffer (10,000 msg/topic), Follow/Pause toggle on the timeline, auto-reconnect with exponential backoff, pulsing status dot on the toolbar chip. CDR + JSON decoding in the main thread via the bundled `@foxglove/rosmsg2-serialization` - no new dependencies. 41 new tests in `tests/live/` and `tests/store/`; 344 total.
-- **v1.4.3**: Timeline bookmarks. Named amber ticks on the scrubber; double-click the bar (or press `M`, or use the `+` button) to drop a bookmark at any timestamp, click to seek, hover to see the label and delete it. Bookmarks persist to `localStorage` keyed by bag fingerprint and are encoded in the URL hash as `bm=timeSec.3f,label|...` tuples so a shared link opens the bag with the sender's annotations intact. `loadForBag` lets URL-hash bookmarks take priority over localStorage. 11 new tests in `tests/store/annotations.test.ts`; 303 total.
-- **v1.4.2**: Clip export. Export button in the Toolbar opens a modal to render any open panel (Image, 3D Scene, Plot, Trajectory) frame-by-frame to a PNG zip or WebM video. Frame-sync protocol: seek playhead, double rAF + 250 ms settle, `canvas.toBlob()`. PNG frames zipped via `fflate` (level 0 - no recompression of already-compressed PNGs); WebM encoded via a two-phase `MediaRecorder` + `captureStream(0)` + `requestFrame()` approach so video playback speed matches the requested fps regardless of how long each frame takes to capture. `preserveDrawingBuffer: true` added to `THREE.WebGLRenderer` so the 3D panel's canvas is always readable. Capture registry (`captureRegistry.ts`) lets panels register their canvas without prop drilling. New `fflate` dependency.
-- **v1.4.1**: Math expressions as derived series in TimeSeriesPlot. Add expressions like `vel * 2 + offset` or `sqrt(x*x + y*y)` as extra series in any plot panel. Tokenizer + recursive-descent evaluator with no `eval`, supports `+`, `-`, `*`, `/`, unary minus, `sqrt()`, `abs()`, `pow()`, `min()`, `max()`. 36 new tests in `tests/utils/mathExpr.test.ts`; covers all operators, precedence, error paths.
-- **v1.4.0**: Bag Health dashboard. `Health` button in the Toolbar opens a per-topic analytics table showing measured Hz, jitter (standard deviation of inter-message gaps), gap events (pauses > 3x expected period), and bandwidth. Computed once per bag in a background stats scan (first `getHealthStats` call caches the result). Supports MCAP, DB3, and ROS1 `.bag`. Renders as a sortable table with severity chips (green/amber/red) and a per-topic detail row. 12 new tests.
-- **v1.3.4**: Image rectification, per-camera frustum hide, About-modal defaults management. `ImageViewer` gains an `undistort` button (alongside the existing `CameraInfo` overlay toggle) that applies per-frame plumb-bob (Brown-Conrady) undistortion using the paired `sensor_msgs/CameraInfo`'s `D[0..4]` coefficients - forward-distortion remap table precomputed on demand and cached by intrinsics fingerprint (LRU-4 so a 4-camera rig pays only one build per unique calibration). The 3D panel's camera-frustum section grows per-camera hide checkboxes that appear when the bag has 2+ `CameraInfo` topics, parallel to the v0.8 marker-namespace filter - hidden topics are excluded from both the `CameraInfoFeed` mounts and the Three.js scene, so disabling a camera costs literally nothing at runtime. The About modal gains a "Saved Display defaults" table listing each saved kind default with a per-row `clear` and a section-level `clear all`, mirroring the existing custom-schemas section. `hiddenFrustumTopics` joins `NON_PORTABLE_FIELDS` so per-bag topic-name choices are never baked into a cross-bag default. 16 new tests; total suite now 292.
-- **v1.3.3**: Saved Display defaults + loop playback. The 3D panel's Display card grows `save as default` / `reset` / `clear saved` affordances that persist your colour mode, accumulator state, point size, range filter, up-axis, and camera-frustum knobs per data type (`PointCloud2` / `LaserScan` / `MarkerArray` / `OccupancyGrid` / `Pose`) to `localStorage`, so the next bag you open spins up new panels with your preferred settings instead of the built-in defaults. Closes issue #44. The Timeline grows a `loop` toggle (also bound to `L`) that wraps the playhead back to start instead of pausing at the end of the bag, persisted so the choice survives a reload. Closes issue #45. 20 new tests; total suite now 276.
-- **v1.3.2**: `sensor_msgs/CameraInfo` first-class support. ImageViewer grows an overlay (principal-point reticle, focal-length badge, calibration-likely-unfilled chip) with auto-pair by topic-name convention (`/camera/image_raw` -> `/camera/camera_info`) and a per-panel manual override. The 3D scene renders a wireframe camera frustum in each camera's optical frame, sized by intrinsics, with a per-panel far-plane slider; when the camera's TF chains to the robot, the frustum follows the robot through scrubs. 21 new tests; total suite now 256.
-- **v1.3.1**: `visualization_msgs/Marker` types 10 (`MESH_RESOURCE`) and 11 (`TRIANGLE_LIST`) now render correctly in the 3D panel, closing the last gap from v0.8. Mesh markers re-use the v1.3.0 `package://` resolver + `meshLoader` so one mapping per package serves both URDF visuals and marker meshes. `mesh_use_embedded_materials` is honoured. Triangle-list markers render as vertex-coloured Lambert-lit triangle soups with per-vertex colours when `marker.colors[]` matches the vertex count, otherwise solid `marker.color`. 12 new tests; total suite now 235.
-- **v1.3.0**: Robot model in the 3D scene. Drop a URDF + an optional `package://` folder/URL per referenced mesh, and BAGEL renders the robot in every 3D panel anchored to the bag's `/tf` stream. Revolute and prismatic joints animate from `sensor_msgs/JointState` when present. Zero-dependency URDF parser + LRU-cached `.stl`/`.dae`/`.obj` loader. 20 new tests; total suite now 223.
-- **v1.2**: Cross-format bag editing. The v1.1 editor now also accepts ROS1 `.bag` and ROS2 `.db3` inputs, both producing fresh indexed MCAP output. ROS1 schemas flow through from connection records as `ros1msg`; `.db3` schemas are synthesised on demand from the bundled type registry. 23 new tests; total suite now 203.
-- **v1.1**: Bag editing. Trim time range, drop topics, download a fresh indexed MCAP. Browser-native replacement for `mcap filter`. 12 new tests; total suite now 180.
-- **v1.0**: 168-test Vitest suite + CI gate, anchor UI for multi-bag, light theme, `DiagnosticArray` swimlane panel, `rcl_interfaces/Log` virtualised viewer.
-- **v0.9 / v0.9.1**: Multi-bag overlay (per-bag Web Worker + three time-alignment modes), `nav_msgs/OccupancyGrid` rendering, OpenStreetMap tile underlay for `NavSatFix`, remote URL loading via HTTP Range.
-- **v0.8 / v0.8.1**: `visualization_msgs/MarkerArray` rendering (10 of 12 primitives), per-frame TF chains, ROS1 `bz2` / `lz4` chunk decompression, paste-your-own `.msg` schema flow for `.db3` topics.
-- **v0.7 / v0.7.1**: Drag-to-dock VSCode-style panel layout, recursive split-tree URL hashes, per-panel state survives docking.
-- **v0.6**: ROS1 `.bag` parsing through the same drop zone (via `@foxglove/rosbag`), cross-version field + type-name normalization.
-- **v0.5**: Keyboard shortcuts, sharable URL state, per-topic CSV / NDJSON export, voxel-grid point accumulation, bundled sample bag, accessibility pass.
-- **v0.4**: `ThreeDScene` panel (PointCloud2 / LaserScan / pose markers), TF-aware rendering, point accumulation ring buffer, custom orbit pivot.
-- **v0.3**: `TrajectoryPlot`, `TFTree`, all parsing moved to a dedicated Web Worker.
-- **v0.2**: Global playhead, `TimeSeriesPlot`, `ImageViewer`, `RawMessageInspector`, zstd-compressed MCAP, multi-GB file handling via range reads.
-- **v0.1**: Drag & drop `.db3` and `.mcap`, format auto-detect, topic inspector with search + sort.
+BAGEL is maintained in the open. Planned work is tracked as GitHub issues
+labelled [`roadmap`](https://github.com/Hussain004/BAGEL/labels/roadmap), and
+the reasoning behind each one lives in
+[`ROADMAP_UPGRADES.md`](ROADMAP_UPGRADES.md), which sizes every item and lists
+the files and tests it would need. Issues labelled
+[`good first issue`](https://github.com/Hussain004/BAGEL/labels/good%20first%20issue)
+are the deliberately small ones.
 
-For the full detail behind each release (including design rationale and implementation notes), see **[FEATURES.md](FEATURES.md)**.
-
-### Roadmap
-
-v1.0 stabilised the surface BAGEL already covered. v1.1 / v1.2 shipped browser-native bag editing. v1.3.x built "real robotics tool" features (URDF, CameraInfo, image rectification). v1.4 added analysis and shareability: Bag Health dashboard (v1.4.0), math expressions in plots (v1.4.1), frame-by-frame clip export (v1.4.2), and timeline bookmarks shareable via URL hash (v1.4.3). **v1.5.0 shipped live robot data** via Foxglove WebSocket: connect to a running robot, view all panels in real time, scrub the ring buffer when you pause. **v1.5.2 added live MCAP recording**: hit Record while connected, hit Stop to download a fully-indexed MCAP of everything the robot published. **v1.5.3 added ROS1 live connection** via `encoding: "ros1"` CDR decoding for ROS1 Foxglove bridges. **v1.6.0 added standalone `.pcd` / `.ply` viewing** with no bag wrapper required. **v1.6.1 added Foxglove Studio MCAP support**: JSON-encoded channels from Foxglove exports now decode correctly across all existing panels. **v1.6.2 added WebCodecs H264/H265 video decoding** for `foxglove.CompressedVideo` topics. **v1.6.3 added image zoom and pan** to the ImageViewer panel. **v1.6.4 added `compressed_depth_image_transport` decoding**, fixed two real time-series loading bottlenecks, and swapped MCAP zstd decompression from pure-JS to WASM (~3x faster) after a ROS Discourse user's bug report on a real 3.5 GB bag. **v1.6.5 fixed a same-day regression** from that swap: zstd frames without an embedded content-size header (produced by some real-world encoders) failed to decompress at all. **v1.6.6 fixed a second same-day regression**: the declared decompressed size in a bag's own chunk records isn't always accurate either, the zstd decoder now measures the real output instead of trusting any size hint. **v1.6.7 reverted the WASM zstd decoder entirely**: a third real-world failure traced to a genuine memory-corruption bug in that package (a WASM export it needs for proper cleanup was never compiled in), so MCAP decompression is back to the proven pure-JS `fzstd`, the `compressed_depth_image_transport` and time-series fixes from v1.6.4 are unaffected. **v1.7.0 added a Gaussian Splat viewer**: splat-flavored `.ply` / `.splat` / `.ksplat` files open in a dedicated panel with outlier-robust camera auto-fit (real captures commonly have stray "floater" splats that wreck a naive bounding-box fit), a custom orbit pivot, and keyboard fly-through and orbit controls, plus a `V` shortcut to cycle up-axis orientation presets (no single convention every gaussian-splatting export follows). Possible future directions:
+Known limitations and ideas that are not yet scheduled:
 
 | Idea | Notes |
 |---|---|
-| Fisheye / equidistant undistortion | v1.3.4 covers plumb-bob (~95% of bags). `fisheye` (OpenCV `CALIB_CAMERA_FISHEYE`) and `equidistant` (Kalibr) need a different remap math; earmarked for a follow-up once a bag with one of these models surfaces for testing. |
-| Collada texture-dependency resolution | `.dae` files reference texture image files via relative paths; the v1.3.1 mesh loader handles top-level mesh files but not their textures. A small texture-pre-resolution pass through the same `packageResolver` would close this for moveit / nav2 bags whose mesh markers carry per-link decals. |
-| Zstd-compressed edit output | Edited bags are always uncompressed because `fzstd` is decompress-only; we don't bundle a zstd *encoder* yet. Output bags reload identically; they just weigh 2-4x the zstd equivalent. Lands once a sensible encoder is available. |
-| Plugin panels | Lets users build custom views (e.g. depth-image colorisation, vendor-specific marker overlays, OBD-II decoders) against a stable panel API. Earmarked once internal panels have stabilised so the API becomes a stability contract; shipping it half-baked is a one-way door. |
-| Cloud-hosted shareable URLs | The local hash is great for personal reuse (a tiny Vercel function + KV store would unlock real link-sharing with layouts that survive a bag move). Designed in the v1.0 plan, deferred to a follow-up so it can land with the deploy infra change. |
-| Streaming `.db3` over HTTP Range | `sql.js-httpvfs` would do real partial reads via a custom SQLite VFS; current URL loading eager-fetches the whole `.db3` because sql.js needs it in memory. Deferred until someone hits the practical ~250 MB cap in the wild. |
-| Xacro evaluator | Pure-JS xacro is ~1000 LOC of XML transform - its own project. Users pre-process with the official `xacro` once; the URDF modal explains this when an unprocessed file is detected. Earmarked for a future "tool integration" pass rather than a v1.3.x sub-version. |
+| [Fisheye / equidistant undistortion](https://github.com/Hussain004/BAGEL/issues/120) | v1.3.4 covers plumb-bob (~95% of bags). `fisheye` and `equidistant` (Kalibr) need different remap math. |
+| [Collada texture resolution](https://github.com/Hussain004/BAGEL/issues/119) | `.dae` files reference textures by relative path; the mesh loader handles the mesh but not its textures. |
+| [Zstd-compressed edit output](https://github.com/Hussain004/BAGEL/issues/121) | Edited bags are always uncompressed since `fzstd` is decompress-only, so output is 2-4x larger than the source. |
+| [Plugin panels](https://github.com/Hussain004/BAGEL/issues/122) | User-built views against a stable panel API. Gated on the panel registry landing first. |
+| [Cloud-hosted shareable URLs](https://github.com/Hussain004/BAGEL/issues/123) | The URL hash is self-contained today, so a link breaks if the bag moves. |
+| [Streaming `.db3` over HTTP Range](https://github.com/Hussain004/BAGEL/issues/124) | `.db3` eager-fetches the whole file because sql.js wants it in memory; a custom VFS would allow partial reads. |
+| [Xacro evaluator](https://github.com/Hussain004/BAGEL/issues/125) | Roughly 1000 lines of XML transform, so it is its own project. The URDF modal explains running xacro upstream meanwhile. |
 
 ---
 
@@ -220,6 +191,18 @@ pnpm dev
 ```
 
 Then open [http://localhost:5173](http://localhost:5173) in your browser.
+
+Node **22** and pnpm are required; `.nvmrc` pins the version. Use `pnpm install`,
+not npm, or CI will reject the lockfile mismatch.
+
+### Contributing
+
+Bug reports and feature requests use the [issue templates](.github/ISSUE_TEMPLATE).
+To contribute code, start with [CONTRIBUTING.md](CONTRIBUTING.md), which covers
+the architecture, the house style, how to add support for a new message type, and
+what the tests expect. Issues labelled
+[`good first issue`](https://github.com/Hussain004/BAGEL/labels/good%20first%20issue)
+are scoped small on purpose.
 
 ### Keyboard Shortcuts
 
@@ -357,209 +340,43 @@ BAGEL's built-in type registry covers all standard ROS2 packages:
 
 ```
 src/
-├── parsers/              # Core parsing (no React deps)
-│   ├── index.ts          # Thin shim: forwards every call to the parser worker
-│   ├── core.ts           # Worker-only: format detect + unified parse + read APIs
-│   ├── source.ts         # BagSource abstraction (File or URL), HTTP-Range readers
-│   ├── mcap.ts           # MCAP reader (range reads, fzstd decompress, lazy seek)
-│   ├── db3.ts            # SQLite reader (cached Database, nearest-at-time query)
-│   ├── bag.ts            # ROS1 .bag reader (cached Bag, type-name normalisation)
-│   ├── cdr.ts            # CDR deserializer (cached MessageReader per type)
-│   ├── rosbag1.ts        # ROS1 deserializer (cached reader + time-field alias pass)
-│   ├── edit.ts           # v1.1 bag editor: trim + topic filter, MCAP-in to MCAP-out
-│   ├── urdf.ts           # v1.3 URDF parser (zero-dep mini XML tokenizer + URDF semantic layer)
-│   ├── packageResolver.ts# v1.3 package:// → URL / File resolver (localStorage-backed)
-│   ├── typeRegistry.ts   # ROS2 message definitions (.db3 fallback only)
-│   ├── pcd.ts            # v1.6.0 standalone .pcd point-cloud parser
-│   ├── ply.ts            # v1.6.0 standalone .ply point-cloud parser
-│   └── splat.ts          # v1.7.0 gaussian splat format detection + summary (no decode - the SplatViewer panel hands the file straight to the rendering library)
-│
-├── workers/
-│   ├── parser.worker.ts  # Web Worker entry which owns the parser caches
-│   └── parserClient.ts   # Main-thread RPC client (promise-based)
-│
-├── store/
-│   ├── bagStore.ts        # Bag summary + source File
-│   ├── playheadStore.ts   # Time cursor, play/pause, speed, v1.3.3 loop flag
-│   ├── layoutStore.ts     # Open panels keyed by kind:topic
-│   ├── themeStore.ts      # Dark / light preference (v1.0)
-│   ├── robotModelStore.ts # v1.3 loaded URDF + per-panel visibility flags
-│   ├── panelDefaultsStore.ts # v1.3.3 per-data-type 3D Display defaults (localStorage)
-│   └── uiStore.ts         # Modal overlays (about / shortcuts)
-│
-├── hooks/
-│   ├── useTopicMessages.ts        # Eager load all messages (for plot; capped)
-│   ├── useMessageAtTime.ts        # Lazy load one message at playhead (for image/raw)
-│   ├── useJointStates.ts          # v1.3 sensor_msgs/JointState reader for URDF joints
-│   ├── useCameraInfo.ts           # v1.3.2 sensor_msgs/CameraInfo reader + auto-pair convention
-│   ├── useKeyboardShortcuts.ts    # Global keymap, single source of truth for shortcuts
-│   └── useUrlState.ts             # location.hash <-> panels + playhead sync
-│
+├── parsers/       # Format readers, no React deps (mcap, rosbag1, db3, pcd, ply, splat, urdf)
+├── workers/       # Parser Web Worker + the main-thread RPC client
+├── live/          # Foxglove WebSocket client, decoder, ring buffer, recorder
+├── store/         # zustand stores (bags, playhead, layout, per-panel settings)
 ├── components/
-│   ├── layout/
-│   │   ├── Toolbar.tsx     # Top info bar + help / close
-│   │   ├── Timeline.tsx    # Global playhead scrubber
-│   │   └── PanelGrid.tsx   # Resizable visualization grid
-│   ├── modals/
-│   │   ├── ModalHost.tsx     # Renders whichever modal uiStore selected
-│   │   ├── ModalShell.tsx    # Dialog chrome, Esc-to-close, focus restore
-│   │   ├── AboutModal.tsx    # Project info + tech stack + links
-│   │   ├── BagEditModal.tsx  # v1.1 bag editor: trim + topic filter + MCAP download
-│   │   ├── SchemaPasteModal.tsx # Custom .msg schema paste flow for .db3 (v0.8.1)
-│   │   ├── UrdfLoadModal.tsx # v1.3 URDF drop + per-package resolver prompts
-│   │   └── ShortcutsModal.tsx# Generated from SHORTCUTS table
-│   └── panels/
-│       ├── PanelShell.tsx          # Header + export menu + close chrome
-│       ├── TopicInspector/         # Sidebar topic list with search/sort
-│       ├── TimeSeriesPlot/         # uPlot-based time-series chart
-│       ├── ImageViewer/            # Raw + Compressed image decoder
-│       ├── RawMessageInspector/    # JSON tree at playhead time
-│       ├── TrajectoryPlot/         # 2D x/y path on a canvas
-│       ├── TFTree/                 # /tf + /tf_static graph view
-│       ├── ThreeDScene/            # Three.js 3D viewer (PointCloud2, LaserScan, Pose, MarkerArray)
-│       ├── SplatViewer/            # v1.7.0 Gaussian Splat viewer (@mkkellogg/gaussian-splats-3d)
-│       ├── DiagnosticArray/        # Diagnostic swimlane + at-playhead inspector (v1.0)
-│       └── Log/                    # Virtualised rosout viewer w/ severity + node filters (v1.0)
-│
-├── types/                # TypeScript interfaces
-│   ├── bag.ts            # BagSummary, TopicInfo, RawMessage
-│   ├── ros2.ts           # Common ROS2 message types
-│   └── gaussian-splats-3d.d.ts # v1.7.0 ambient types for @mkkellogg/gaussian-splats-3d (ships none of its own)
-│
-└── utils/                # Helpers
-    ├── time.ts           # Nanosecond timestamp utils
-    ├── bytes.ts          # File size, hex dump, magic bytes
-    ├── color.ts          # Topic color assignment
-    ├── messages.ts       # flattenNumeric, nearestMessageIndex, type sniffing
-    ├── trajectory.ts     # Pose / NavSatFix → x/y extraction + bounds
-    ├── pointcloud.ts     # PointCloud2 binary decode + Turbo colormap + range filter
-    ├── customCloud.ts    # Livox CustomMsg / list-of-struct cloud decoder
-    ├── laserscan.ts      # LaserScan polar-ring → 3D positions
-    ├── occupancyGrid.ts  # nav_msgs/OccupancyGrid → RGBA texture (v0.9)
-    ├── gpsTiles.ts       # OSM slippy-map projection + tile LRU loader (v0.9)
-    ├── export.ts         # CSV + NDJSON encoders + download trigger
-    ├── meshLoader.ts     # v1.3 Three.js .stl/.dae/.obj dispatcher (lazy + LRU)
-    ├── actionableError.ts # User-facing error classification for bags and panels
-    ├── anomalies.ts      # Timeline anomaly detection (gaps, rate shifts)
-    ├── captureRegistry.ts # Panel canvas registry for clip export
-    ├── chartTheme.ts     # uplot theme tokens for light and dark
-    ├── clipEncoder.ts    # PNG-zip / MP4 / WebM clip recording pipeline
-    ├── compressedDepth.ts # compressed_depth_image_transport 16-bit decode
-    ├── imageRectify.ts   # CameraInfo plumb-bob undistortion
-    ├── mathExpr.ts       # Sandboxed arithmetic expressions for plot series
-    ├── messageDensity.ts # Message-density buckets for the timeline
-    ├── png16.ts          # 16-bit PNG scanline decoder
-    ├── topicStats.ts     # Hz, jitter, gap, and bandwidth stats
-    └── version.ts        # APP_VERSION constant
+│   ├── landing/   # The no-bag landing page
+│   ├── layout/    # Toolbar, Timeline, PanelGrid: the workspace chrome
+│   ├── panels/    # One folder per panel kind, plus shared/ chrome
+│   └── modals/    # ModalShell and the dialogs built on it
+├── hooks/         # Cross-cutting React hooks
+├── utils/         # Pure helpers. Anything testable without React lives here
+└── types/         # TypeScript interfaces
+tests/             # Mirrors src/. fixtures/synth.ts builds in-memory bags
+scripts/           # Sample-bag generator and parser verification
 ```
 
-### Inside `components/panels/ThreeDScene/`
+The `ThreeDScene` panel is further split into focused modules (`sceneObjects.ts`,
+`markerObjects.ts`, `cameraFrustum.ts`, `mapPlane.ts`, `accumulator.ts`,
+`robotModel.ts`, `tfTransform.ts`, `useScene.ts`) so the 3,000-line component
+stays navigable.
 
-The 3D panel is split across a few focused modules:
-
-```
-ThreeDScene/
-├── index.tsx                 # Panel React component + ControlsCard
-├── sceneKind.ts              # v1.3.3 SceneKind enum + detectKind() shared with panelDefaultsStore
-├── useScene.ts               # Renderer / scene / camera / orbit-controls lifetime
-├── useDecodedPointCloud.ts   # Lazy worker-decoded single-frame loader
-├── sceneObjects.ts           # Factories for PointCloud / LaserScan / PoseAxes / grid
-├── markerObjects.ts          # Per-type factories for visualization_msgs/Marker (all 12 primitives as of v1.3.1)
-├── cameraFrustum.ts          # v1.3.2 wireframe frustum from sensor_msgs/CameraInfo intrinsics
-├── markerSet.ts              # (ns, id) → Object3D manager + frame-grouped TFs
-├── mapPlane.ts               # nav_msgs/OccupancyGrid textured plane (v0.9)
-├── accumulator.ts            # Ring buffer + voxel-grid downsample for accumulation
-├── robotModel.ts             # v1.3 URDF → Three.js subtree builder (joints + meshes)
-└── tfTransform.ts            # composeTFChain + pickWorldFrame helpers
-```
-
-### Build-time scripts
-
-- `scripts/build-sample-bag.mjs`: generates `public/sample-bags/tour.mcap`, a ~3.3 MB synthetic bag with `/odom`, `/imu/data`, `/scan`, `/tf`, `/markers`, `/map`, `/gps/fix`, `/camera/image_raw`, `/camera/camera_info`, and `/camera_rear/camera_info` topics over 30 seconds. The `/markers` topic publishes 8 markers at 1 Hz across `status` (base_link, frame-locked) and `planning` (odom) namespaces to exercise the v0.8 MarkerArray renderer end-to-end. `/map` publishes a 100×100 `nav_msgs/OccupancyGrid` that expands outward over the bag, mimicking an incremental SLAM run with outer walls, two pillars, and a mid-cost diagonal corridor to exercise the v0.9 cost ramp. `/gps/fix` projects the figure-eight onto realistic lat/lon around Cambridge UK so the v0.9 OSM tile underlay shows familiar streets when toggled on. Idempotent; rerun only if the synthetic data needs changing. The output is committed so a fresh checkout serves the sample without a Node build step.
-- `scripts/verify-sample-bag.mjs`: parses the generated bag with `McapIndexedReader` and prints the topic table; smoke-test the writer when you change the synthesiser.
-- `scripts/verify-parsers.mjs`: Node-side verification of the `.db3` and `.mcap` parser paths against the real test fixtures in `test_files/`.
+[CONTRIBUTING.md](CONTRIBUTING.md) has the annotated map, the house style, how to
+add support for a new message type, and what the tests expect.
 
 ### Tests
 
-```
-tests/
-├── fixtures/
-│   └── synth.ts                # In-memory MCAP / .bag / .db3 writers (per-test bags as Uint8Array)
-│
-├── parsers/                    # Parser unit tests
-│   ├── cdr.test.ts             # CDR round-trips (String, Twist, Odometry w/ covariance)
-│   ├── mcap.test.ts            # Parse + read + at-time + cache invalidation against synth bags
-│   ├── db3.test.ts             # .db3 read paths on synthetic fixtures (sql.js mocked)
-│   ├── bag.test.ts             # ROS1 .bag read paths against the synthetic writer
-│   ├── edit.test.ts            # v1.1 trim + topic filter round-trips (synth + tour.mcap)
-│   ├── editDb3.test.ts         # v1.2 .db3-in / MCAP-out + missing-schema opt-in path
-│   ├── editRos1.test.ts        # v1.2 .bag-in / MCAP-out + connection-record schema flow
-│   ├── source.test.ts          # HTTP Range reader: CORS / 416 / no-Content-Length / Range-ignored
-│   ├── pcd.test.ts             # PCD ascii/binary/compressed: headers (LF+CRLF), truncation guards
-│   ├── ply.test.ts             # PLY binary truncation, ASCII row tolerance, color heuristics
-│   ├── foxgloveSchemas.test.ts # Foxglove translators incl. TFMessage to ROS shape
-│   ├── db3Stress.test.ts       # Many sequential reads on one reused Database + LRU bounds
-│   ├── rosbag1.test.ts         # ROS1 definition parsing + sequential deserializer reuse
-│   ├── robustness.test.ts      # Truncation/corruption of MCAP, .bag, .db3; zstd size hints
-│   ├── urdf.test.ts            # v1.3 URDF parser: primitives, meshes, joints, xacro detection
-│   └── packageResolver.test.ts # v1.3 package:// resolver: URL + file bindings, persistence
-│
-├── utils/                      # Utility unit tests
-│   ├── time.test.ts            # BigInt ns math + alignment offsets
-│   ├── bytes.test.ts           # Size formatting + magic-byte detection
-│   ├── messages.test.ts        # flattenNumeric + type sniffing across every panel kind
-│   ├── pointcloud.test.ts      # FLOAT32 fast path + DataView path + packed RGB + Turbo gradient + big-endian
-│   ├── trajectory.test.ts      # Pose extraction across all 7 supported types + NavSatFix projection
-│   ├── occupancyGrid.test.ts   # int8 → RGBA mapping + content-fingerprint stability
-│   ├── customCloud.test.ts     # Livox/list-of-struct decode + maxPoints clamping
-│   ├── gpsTiles.test.ts        # Mercator projection zoom picking incl. polar clamps
-│   ├── mathExpr.test.ts        # Sandboxed expression parsing/evaluation
-│   ├── png16.test.ts           # 16-bit PNG scanline decode + truncation guards
-│   ├── topicStats.test.ts      # Hz, jitter, gap, and bandwidth stats
-│   ├── compressedDepth.test.ts # compressed_depth_image_transport dequantization
-│   ├── imageRectify.test.ts    # CameraInfo undistortion remap
-│   ├── anomalies.test.ts       # Timeline anomaly detection
-│   ├── messageDensity.test.ts  # Message-density bucketing
-│   ├── actionableError.test.ts # User-facing error classification
-│   └── clipEncoder.test.ts     # Clip recording pipeline
-│
-├── components/                 # ThreeDScene panel unit tests
-│   ├── markerObjects.test.ts   # v1.3.1 MESH_RESOURCE + TRIANGLE_LIST factories (mocked loader)
-│   ├── cameraFrustum.test.ts   # v1.3.2 frustum geometry math (centred + offset principal points)
-│   ├── clipBox.test.ts         # Pure axis-clip key building for the decode memo
-│   ├── mapPlane.test.ts        # Occupancy texture rebuild incl. color-scheme changes
-│   ├── sceneObjects.test.ts    # pickFrameId + camera-fit math
-│   └── useDecodedPointCloud.test.ts # Settle-state bailout behavior
-│
-├── store/                      # Zustand store tests (pure logic, no React renderer)
-│   ├── playheadLoop.test.ts    # Loop playback wrap-around + non-discrete advanceTo
-│   ├── panelDefaults.test.ts   # Per-data-type defaults: portable subset + save/clear flow
-│   ├── annotations.test.ts     # Bookmarks incl. re-basing on alignment/anchor switches
-│   ├── presetStore.test.ts     # Preset persistence with corrupt-payload validation
-│   ├── layoutStore.test.ts     # Split layout moves and panel lifecycle
-│   ├── frustumHide.test.ts     # Frustum visibility toggling
-│   ├── spatialOverlays.test.ts # Overlay topic selection persistence
-│   ├── liveStore.test.ts       # Live connection entry/status bookkeeping
-│   └── pinnedTopicsStore.test.ts # Pinned topic rows
-│
-├── hooks/                      # React hook helpers (pure functions covered without renderer)
-│   ├── useCameraInfo.test.ts   # v1.3.2 auto-pair convention + parseCameraInfo + per-panel persistence
-│   └── useUrlState.test.ts     # Shared-link hash round-trip, splat kind, corrupt-hash robustness
-│
-├── live/                       # Foxglove live-connection tests
-│   ├── liveRingBuffer.test.ts  # Sorted out-of-order inserts, eviction, clock-wrap ranges
-│   ├── liveDecoder.test.ts     # Message decoding across supported encodings
-│   ├── liveRecorder.test.ts    # finish() output parsed back through the MCAP reader
-│   ├── foxgloveClient.test.ts  # Websocket frame handling incl. unknown-subscription drops
-│   └── simClock.test.ts        # /clock simulation time handling
-│
-└── integration/                # Real-bag end-to-end through the unified parseBag entry
-    ├── sample-bag.test.ts      # Committed public/sample-bags/tour.mcap (ships with the repo)
-    ├── real-mcap.test.ts       # test_files/mcap/pose_topics/* (skipped on CI; gitignored)
-    └── real-db3.test.ts        # test_files/db3/sample.db3 (skipped on CI; gitignored)
-```
+`pnpm test` runs a **logic-only** Vitest suite (749 tests, 61 files, a few
+seconds). Pure helpers are tested in `tests/utils/`, parser and codec paths in
+`tests/parsers/`, store logic in `tests/store/`, live-connection code in
+`tests/live/`, and there is an integration pass over the committed
+`public/sample-bags/tour.mcap`.
 
-Run with `pnpm test` (one-shot, under 20 s wall time, 600+ passing tests) or `pnpm test:watch` for HMR-style re-runs. `pnpm test:coverage` adds an `@vitest/coverage-v8` report under `coverage/`. The `tests/` directory uses synthetic fixtures (no disk hit) and the bundled `tour.mcap` as the integration layer, so a fresh checkout has everything the suite needs without downloading any new fixtures.
+There is no React component-test harness, so panel components are verified by
+building and by hand. The synthetic fixtures in `tests/fixtures/synth.ts` mean a
+fresh checkout needs nothing downloaded to run the suite. The two real-bag
+suites (`real-mcap`, `real-db3`) skip themselves because `test_files/` is
+gitignored; the committed sample bag carries that coverage in CI instead.
 
 ---
 

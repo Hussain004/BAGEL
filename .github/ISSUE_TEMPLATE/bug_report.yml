@@ -1,0 +1,123 @@
+name: Bug report
+description: Something in BAGEL does not work as expected
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing this. BAGEL is a static web app with no server, so
+        almost every bug is reproducible from a bag file plus a browser, and
+        most reports are actionable with that alone.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you see, and what did you expect instead?
+      placeholder: |
+        Loading a 4 GB MCAP shows the progress bar reaches 100% and then the
+        panel stays blank. I expected the 3D scene to appear.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: input
+    id: bag-format
+    attributes:
+      label: Bag format
+      description: "Which extension: .mcap, .db3, .bag, .pcd, .ply, .splat, .ksplat, or another file type?"
+      placeholder: .mcap
+    validations:
+      required: true
+
+  - type: input
+    id: ros-distro
+    attributes:
+      label: ROS version or distro
+      description: ROS1 or ROS2? Which distro, if you know it? Leave blank if the bag has no ROS origin.
+      placeholder: ROS2 Jazzy
+    validations:
+      required: false
+
+  - type: input
+    id: bag-size
+    attributes:
+      label: Approximate file size
+      description: MB or GB. Large files behave differently, so this matters.
+      placeholder: 4.2 GB
+    validations:
+      required: false
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and version
+      description: Chrome, Firefox, Safari, or Edge, with the version number if you can find it.
+      placeholder: Chrome 141
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: Ubuntu 24.04
+    validations:
+      required: false
+
+  - type: textarea
+    id: error-details
+    attributes:
+      label: Error text
+      description: |
+        If BAGEL showed an error, please paste it here. Use the
+        **Copy error details** button in the error state if there is one; it
+        includes the exact message and stack that are useful to us.
+      render: |
+        If the page is stuck on the crash screen, copy the text it shows and
+        paste it into the box below.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: can-share
+    attributes:
+      label: Can you share the bag file?
+      description: |
+        If you can share it privately (a link, or a Drive/Dropbox link we can
+        request), say how. You do not need to attach a multi-GB file to a public
+        issue.
+      options:
+        - Yes, I can share it privately
+        - Yes, it is already public
+        - No, I cannot share this bag
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Screenshots, the topic types involved, or what you were trying to do.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues for this.
+        - label: I am using the latest release, not a cached page.
+          required: true

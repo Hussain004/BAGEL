@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Roadmap
+    url: https://github.com/Hussain004/BAGEL/blob/main/ROADMAP_UPGRADES.md
+    about: Planned work, sized and scoped. Check here before filing a feature request.
+  - name: Contributing guide
+    url: https://github.com/Hussain004/BAGEL/blob/main/CONTRIBUTING.md
+    about: How to build, test, and add support for a new message type.
+  - name: Supported formats
+    url: https://github.com/Hussain004/BAGEL/blob/main/README.md#supported-formats
+    about: Confirm a file or message type is already supported before filing.
