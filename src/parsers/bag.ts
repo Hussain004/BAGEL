@@ -44,7 +44,7 @@ import {
   sourceDisplayName,
   sourceKey,
   sourceSize,
-  type BagSource,
+  type SingleBagSource,
 } from './source';
 
 /**
@@ -52,7 +52,7 @@ import {
  * File handles, `HttpFilelike` for remote URLs. Lives here rather than in
  * `source.ts` so the `@foxglove/rosbag/web` import stays out of the main bundle.
  */
-function filelikeFor(source: BagSource): Filelike {
+function filelikeFor(source: SingleBagSource): Filelike {
   if (source.kind === 'file') return new BlobReader(source.file);
   return new HttpFilelike(source.url, source.contentLength);
 }
@@ -159,7 +159,7 @@ export function disposeBagCache(): void {
   clearRos1ReaderCache();
 }
 
-async function loadBag(source: BagSource): Promise<CachedBag> {
+async function loadBag(source: SingleBagSource): Promise<CachedBag> {
   const key = sourceKey(source);
   if (cached && cached.sourceKey === key) {
     return cached;
@@ -207,7 +207,7 @@ async function loadBag(source: BagSource): Promise<CachedBag> {
   return cached;
 }
 
-export async function parseBagFile(source: BagSource): Promise<BagSummary> {
+export async function parseBagFile(source: SingleBagSource): Promise<BagSummary> {
   const meta = await loadBag(source);
   const { bag } = meta;
 
@@ -260,7 +260,7 @@ export async function parseBagFile(source: BagSource): Promise<BagSummary> {
 }
 
 export async function readRawMessagesBag(
-  source: BagSource,
+  source: SingleBagSource,
   topicName: string,
   limit?: number,
 ): Promise<RawMessage[]> {
@@ -289,7 +289,7 @@ export async function readRawMessagesBag(
 const YIELD_EVERY = 500;
 
 export async function readDeserializedMessagesBag(
-  source: BagSource,
+  source: SingleBagSource,
   topicName: string,
   limit?: number,
   onProgress?: (decoded: number) => void,
@@ -368,7 +368,7 @@ function rememberDecoded(
 }
 
 export async function readMessageAtTimeBag(
-  source: BagSource,
+  source: SingleBagSource,
   topicName: string,
   timeNs: bigint,
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null } | null> {
@@ -422,7 +422,7 @@ export async function readMessageAtTimeBag(
 }
 
 export async function getTopicTypeBag(
-  source: BagSource,
+  source: SingleBagSource,
   topicName: string,
 ): Promise<string | undefined> {
   const meta = await loadBag(source);
@@ -431,7 +431,7 @@ export async function getTopicTypeBag(
 
 const BAG_MAX_SAMPLES_PER_TOPIC = 50_000;
 
-export async function readAllMessageStatsBag(source: BagSource): Promise<AllTopicStats> {
+export async function readAllMessageStatsBag(source: SingleBagSource): Promise<AllTopicStats> {
   const meta = await loadBag(source);
   const { bag } = meta;
   const startNs = timeToNs(bag.startTime);
@@ -513,7 +513,7 @@ export interface CachedBagForEdit {
   messageCountByConn: Map<number, number>;
 }
 
-export async function loadBagForEdit(source: BagSource): Promise<CachedBagForEdit> {
+export async function loadBagForEdit(source: SingleBagSource): Promise<CachedBagForEdit> {
   const meta = await loadBag(source);
   const connectionsById = new Map<
     number,

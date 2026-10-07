@@ -63,6 +63,7 @@ import {
 import { decodeLaserScan, type LaserScanExtraction, type LaserScanMessage } from '../utils/laserscan';
 import { decodeCustomCloud, looksLikeCustomCloud } from '../utils/customCloud';
 import { clearDefinitionCaches } from './typeRegistry';
+import * as multi from './multi';
 
 const MCAP_MAGIC = [0x89, 0x4d, 0x43, 0x41, 0x50, 0x30, 0x0d, 0x0a];
 const SQLITE_MAGIC = [0x53, 0x51, 0x4c, 0x69, 0x74, 0x65];
@@ -74,6 +75,7 @@ const ROSBAG_V2_MAGIC = [
 ];
 
 export async function detectFormat(source: BagSource): Promise<BagFormat | 'unknown'> {
+  if (source.kind === 'multi') return multi.formatOfMulti(source);
   const name = sourceDisplayName(source);
   const ext = name.split('.').pop()?.toLowerCase();
   if (ext === 'mcap') return 'mcap';
@@ -107,6 +109,7 @@ export async function detectFormat(source: BagSource): Promise<BagFormat | 'unkn
 }
 
 export async function parseBag(source: BagSource): Promise<BagSummary> {
+  if (source.kind === 'multi') return multi.parseMulti(source);
   const format = await detectFormat(source);
 
   switch (format) {
@@ -137,6 +140,7 @@ export async function readRawMessages(
   topicName: string,
   limit?: number,
 ): Promise<RawMessage[]> {
+  if (source.kind === 'multi') return multi.readRawMessagesMulti(source, format, topicName, limit);
   if (format === 'pcd' || format === 'ply' || format === 'splat') return [];
   if (format === 'mcap') return readRawMessagesMcap(source, topicName, limit);
   if (format === 'bag') return readRawMessagesBag(source, topicName, limit);
@@ -152,6 +156,9 @@ export async function readDeserializedMessages(
   onProgress?: (decoded: number) => void,
   onBatch?: (batch: { timestamp: bigint; value: Record<string, unknown> | null }[]) => void,
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null }[]> {
+  if (source.kind === 'multi') {
+    return multi.readDeserializedMessagesMulti(source, format, topicName, limit, onProgress, onBatch);
+  }
   if (format === 'pcd' || format === 'ply' || format === 'splat') return [];
   if (format === 'mcap')
     return readDeserializedMessagesMcap(source, topicName, limit, onProgress, onBatch);
@@ -173,6 +180,7 @@ export async function readMessageAtTime(
   topicName: string,
   timeNs: bigint,
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null } | null> {
+  if (source.kind === 'multi') return multi.readMessageAtTimeMulti(source, format, topicName, timeNs);
   if (format === 'pcd' || format === 'ply' || format === 'splat') return null;
   if (format === 'mcap') return readMessageAtTimeMcap(source, topicName, timeNs);
   if (format === 'bag') return readMessageAtTimeBag(source, topicName, timeNs);
@@ -184,6 +192,7 @@ export async function getTopicType(
   format: BagFormat,
   topicName: string,
 ): Promise<string | undefined> {
+  if (source.kind === 'multi') return multi.getTopicTypeMulti(source, format, topicName);
   if (format === 'pcd' || format === 'ply') return 'sensor_msgs/PointCloud2';
   if (format === 'splat') return SPLAT_TYPE;
   if (format === 'mcap') return getTopicTypeMcap(source, topicName);
@@ -198,6 +207,7 @@ export function disposeParserCaches(): void {
   disposePcdCache();
   disposePlyCache();
   disposeSplatCache();
+  multi.disposeMultiCache();
   clearDefinitionCaches();
 }
 
@@ -205,6 +215,7 @@ export async function readAllMessageStats(
   source: BagSource,
   format: BagFormat,
 ): Promise<AllTopicStats> {
+  if (source.kind === 'multi') return multi.readAllMessageStatsMulti(source, format);
   if (format === 'pcd' || format === 'ply' || format === 'splat') return {};
   if (format === 'mcap') return readAllMessageStatsMcap(source);
   if (format === 'bag') return readAllMessageStatsBag(source);
@@ -230,6 +241,11 @@ export async function readPointCloudAtTime(
   heightAxis: HeightAxis = '+z',
   axisClip?: AxisClip,
 ): Promise<(PointCloudExtraction & { timestamp: bigint }) | null> {
+  if (source.kind === 'multi') {
+    return multi.nearest(source, topicName, timeNs, (part) =>
+      readPointCloudAtTime(part, format, topicName, timeNs, colorMode, maxPoints, maxRange, heightAxis, axisClip),
+    );
+  }
   if (format === 'pcd') {
     return readPointCloudAtTimePcd(source, colorMode, maxPoints, maxRange, heightAxis, axisClip);
   }
@@ -280,6 +296,7 @@ export async function readLaserScanAtTime(
   topicName: string,
   timeNs: bigint,
 ): Promise<(LaserScanExtraction & { timestamp: bigint }) | null> {
+  if (source.kind === 'multi') return multi.readLaserScanAtTimeMulti(source, format, topicName, timeNs);
   if (format === 'pcd' || format === 'ply' || format === 'splat') return null;
   const message =
     format === 'mcap'
@@ -306,6 +323,7 @@ export async function readVideoChunkRange(
   endNs: bigint,
 ): Promise<VideoChunksResult | null> {
   if (format !== 'mcap') return null;
+  if (source.kind === 'multi') return multi.readVideoChunkRangeMulti(source, format, topicName, startNs, endNs);
   return readVideoChunkRangeMcap(source, topicName, startNs, endNs);
 }
 
@@ -316,6 +334,7 @@ export async function readVideoChunksAtTime(
   timeNs: bigint,
 ): Promise<VideoChunksResult | null> {
   if (format !== 'mcap') return null;
+  if (source.kind === 'multi') return multi.readVideoChunksAtTimeMulti(source, format, topicName, timeNs);
   return readVideoChunksMcap(source, topicName, timeNs);
 }
 

@@ -74,6 +74,12 @@ interface BagState {
   loadProgress: number;
 
   addBagFromFile: (file: File) => Promise<string | null>;
+  /**
+   * Add one recording stored as `files.length` parts (a split bag). A single
+   * file is just `addBagFromFile`. `displayName` labels the combined bag.
+   */
+  addBagFromFiles: (files: File[], displayName?: string) => Promise<string | null>;
+  addBagFromSource: (source: BagSource) => Promise<string | null>;
   addBagFromUrl: (url: string) => Promise<string>;
   addBagLive: (wsUrl: string) => string;
   removeBag: (id: string) => void;
@@ -92,6 +98,8 @@ interface BagState {
   // ── v0.8.x back-compat aliases (single-bag flow). ──────────────────────
   /** Loads a file and focuses it. Clears any other bags first. */
   loadBag: (file: File) => Promise<void>;
+  /** Like `loadBag` for a split recording. */
+  loadBagFiles: (files: File[], displayName?: string) => Promise<void>;
   /** Loads a URL and focuses it. Clears any other bags first. */
   loadBagFromUrl: (url: string) => Promise<void>;
   /** Clears every loaded bag and resets focus. */
@@ -141,10 +149,20 @@ export const useBagStore = create<BagState>((set, get) => ({
   bag: null,
   source: null,
 
-  addBagFromFile: async (file: File) => {
+  addBagFromFile: (file: File) => get().addBagFromSource(createFileSource(file)),
+
+  addBagFromFiles: (files, displayName) => {
+    if (files.length === 1) return get().addBagFromFile(files[0]!);
+    return get().addBagFromSource({
+      kind: 'multi',
+      parts: files.map(createFileSource),
+      displayName: displayName ?? `${files[0]?.name ?? 'recording'} (${files.length} parts)`,
+    });
+  },
+
+  addBagFromSource: async (source: BagSource) => {
     set({ isLoading: true, error: null, loadProgress: 10 });
     try {
-      const source = createFileSource(file);
       // Mint the bagId up front so parseBag's worker assignment matches the
       // id we'll register the entry under. Subsequent per-topic reads will
       // hit the same worker's reader cache and skip the re-parse.
@@ -442,6 +460,11 @@ export const useBagStore = create<BagState>((set, get) => ({
   loadBag: async (file: File) => {
     get().clearAll();
     await get().addBagFromFile(file);
+  },
+
+  loadBagFiles: async (files: File[], displayName?: string) => {
+    get().clearAll();
+    await get().addBagFromFiles(files, displayName);
   },
 
   loadBagFromUrl: async (url: string) => {

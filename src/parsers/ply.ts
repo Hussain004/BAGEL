@@ -21,7 +21,7 @@
 import type { BagSummary } from '../types/bag';
 import type { AxisClip, PointCloud2Message, PointField, PointCloudExtraction, ColorMode, HeightAxis, DecodeOptions } from '../utils/pointcloud';
 import { POINT_FIELD_TYPE, decodePointCloud2 } from '../utils/pointcloud';
-import { sourceKey, sourceReadAll, type BagSource } from './source';
+import { sourceKey, sourceReadAll, type SingleBagSource } from './source';
 
 const plyCloudCache = new Map<string, PointCloud2Message>();
 const plySummaryCache = new Map<string, BagSummary>();
@@ -341,7 +341,7 @@ function buildPlyCloud(bytes: Uint8Array, header: PlyHeader): PointCloud2Message
   };
 }
 
-async function loadPlyCloud(source: BagSource): Promise<PointCloud2Message> {
+async function loadPlyCloud(source: SingleBagSource): Promise<PointCloud2Message> {
   const key = sourceKey(source);
   const cached = plyCloudCache.get(key);
   if (cached) return cached;
@@ -354,7 +354,7 @@ async function loadPlyCloud(source: BagSource): Promise<PointCloud2Message> {
   return cloud;
 }
 
-export async function parsePly(source: BagSource): Promise<BagSummary> {
+export async function parsePly(source: SingleBagSource): Promise<BagSummary> {
   const key = sourceKey(source);
   const cached = plySummaryCache.get(key);
   if (cached) return cached;
@@ -385,7 +385,7 @@ export async function parsePly(source: BagSource): Promise<BagSummary> {
 }
 
 export async function readPointCloudAtTimePly(
-  source: BagSource,
+  source: SingleBagSource,
   colorMode: ColorMode = 'height',
   maxPoints?: number,
   maxRange?: number,

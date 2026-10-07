@@ -255,6 +255,10 @@
 .ingest-panel__icon svg { width: 25px; height: 25px; }
 .ingest-panel__content strong { display: block; color: #e7f5fe; font-size: 1rem; font-weight: 570; letter-spacing: -0.01em; }
 .ingest-panel__content p { margin-top: 5px; color: #617c8f; font-size: 0.76rem; }
+.ingest-folder { display: flex; justify-content: center; margin-top: 10px; }
+.ingest-folder__button { padding: 6px 10px; color: #7fb5d4; background: transparent; border: 1px dashed rgba(73, 191, 255, 0.28); font: 600 0.58rem/1 var(--font-mono); letter-spacing: 0.08em; cursor: pointer; transition: color 0.15s, border-color 0.15s; }
+.ingest-folder__button:hover:not(:disabled) { color: #bfe3f6; border-color: rgba(73, 191, 255, 0.55); }
+.ingest-folder__button:disabled { opacity: 0.5; cursor: not-allowed; }
 .ingest-panel__browse { align-self: center; padding: 10px 13px; color: #9bcce7; border: 1px solid rgba(73, 191, 255, 0.22); background: rgba(73, 191, 255, 0.055); font: 600 0.61rem/1 var(--font-mono); letter-spacing: 0.08em; }
 .ingest-panel__formats { grid-column: 1 / -1; display: flex; align-items: center; gap: 7px; padding-top: 20px; }
 .ingest-panel__formats span { padding: 4px 7px; color: #526f82; border: 1px solid rgba(103, 168, 207, 0.12); background: rgba(44, 82, 107, 0.07); font: 600 0.55rem/1 var(--font-mono); letter-spacing: 0.05em; }

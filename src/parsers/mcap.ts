@@ -30,7 +30,7 @@ import {
   sourceDisplayName,
   sourceKey,
   sourceSize,
-  type BagSource,
+  type SingleBagSource,
 } from './source';
 
 /**
@@ -39,7 +39,7 @@ import {
  * remote URLs (HTTP Range requests). Lives here rather than in `source.ts`
  * so the `@mcap/browser` import doesn't get pulled into the main bundle.
  */
-function readableFor(source: BagSource): IReadable {
+function readableFor(source: SingleBagSource): IReadable {
   if (source.kind === 'file') return new BlobReadable(source.file);
   return new HttpReadable(source.url, BigInt(source.contentLength));
 }
@@ -476,7 +476,7 @@ function channelIdsForTopic(meta: CachedMcap, topicName: string): Set<number> {
 }
 
 async function readUnindexedRef(
-  source: BagSource,
+  source: SingleBagSource,
   meta: CachedMcap,
   ref: UnindexedRecordRef,
   channelIds: Set<number>,
@@ -510,7 +510,7 @@ async function readUnindexedRef(
 }
 
 async function readRawMessagesUnindexed(
-  source: BagSource,
+  source: SingleBagSource,
   meta: CachedMcap,
   topicName: string,
   limit?: number,
@@ -587,7 +587,7 @@ async function readRawMessagesUnindexed(
 }
 
 async function readClosestRawMessageUnindexed(
-  source: BagSource,
+  source: SingleBagSource,
   meta: CachedMcap,
   topicName: string,
   timeNs: bigint,
@@ -648,7 +648,7 @@ async function readClosestRawMessageUnindexed(
   return best;
 }
 
-async function loadMcap(source: BagSource): Promise<CachedMcap> {
+async function loadMcap(source: SingleBagSource): Promise<CachedMcap> {
   const key = sourceKey(source);
   if (cached && cached.sourceKey === key) {
     return cached;
@@ -753,7 +753,7 @@ async function loadMcap(source: BagSource): Promise<CachedMcap> {
   return cached;
 }
 
-export async function parseMcap(source: BagSource): Promise<BagSummary> {
+export async function parseMcap(source: SingleBagSource): Promise<BagSummary> {
   const meta = await loadMcap(source);
 
   if (meta.reader) {
@@ -897,7 +897,7 @@ function extractSummaryFromStream(meta: CachedMcap): BagSummary {
 }
 
 export async function readRawMessagesMcap(
-  source: BagSource,
+  source: SingleBagSource,
   topicName: string,
   limit?: number,
 ): Promise<RawMessage[]> {
@@ -982,7 +982,7 @@ function makeMessageDecoder(
 }
 
 export async function readDeserializedMessagesMcap(
-  source: BagSource,
+  source: SingleBagSource,
   topicName: string,
   limit?: number,
   onProgress?: (decoded: number) => void,
@@ -1067,7 +1067,7 @@ export async function readDeserializedMessagesMcap(
 }
 
 export async function getTopicTypeMcap(
-  source: BagSource,
+  source: SingleBagSource,
   topicName: string,
 ): Promise<string | undefined> {
   const meta = await loadMcap(source);
@@ -1092,7 +1092,7 @@ function readU64LEBig(b: Uint8Array, o: number): bigint {
 
 const MCAP_MAX_SAMPLES_PER_TOPIC = 50_000;
 
-export async function readAllMessageStatsMcap(source: BagSource): Promise<AllTopicStats> {
+export async function readAllMessageStatsMcap(source: SingleBagSource): Promise<AllTopicStats> {
   const meta = await loadMcap(source);
 
   if (meta.reader && meta.reader.chunkIndexes.length > 0) {
@@ -1174,7 +1174,7 @@ export async function readAllMessageStatsMcap(source: BagSource): Promise<AllTop
  *   op(1) + bodyLen(8) + channelId(2) + recordsByteLen(4) + [(logTime(8)+offset(8))*N]
  */
 async function readStatsFromMcapIndexes(
-  source: BagSource,
+  source: SingleBagSource,
   meta: CachedMcap,
 ): Promise<AllTopicStats> {
   const reader = meta.reader!;
@@ -1268,7 +1268,7 @@ export interface CachedMcapForEdit {
 }
 
 /** Resolve the cached MCAP reader for `source`, lazily loading if needed. */
-export async function loadMcapForEdit(source: BagSource): Promise<CachedMcapForEdit> {
+export async function loadMcapForEdit(source: SingleBagSource): Promise<CachedMcapForEdit> {
   const meta = await loadMcap(source);
   return { reader: meta.reader };
 }
@@ -1328,7 +1328,7 @@ function rememberDecoded(
  *    topic publishes).
  */
 export async function readMessageAtTimeMcap(
-  source: BagSource,
+  source: SingleBagSource,
   topicName: string,
   timeNs: bigint,
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null } | null> {
@@ -1446,7 +1446,7 @@ function extractVideoChunk(
 
 async function readRosCompressedH264ChunksMcap(
   meta: CachedMcap,
-  source: BagSource,
+  source: SingleBagSource,
   topicName: string,
   topicInfo: { schemaName: string; schemaText: string | null; messageEncoding: string },
   timeNs: bigint,
@@ -1760,7 +1760,7 @@ async function readVideoChunkRangeMcapImpl(
  * recordings, but subsequent seeks are O(GOP size) - typically 1-60 frames.
  */
 export async function readVideoChunkRangeMcap(
-  source: BagSource,
+  source: SingleBagSource,
   topicName: string,
   startNs: bigint,
   endNs: bigint,
@@ -1772,7 +1772,7 @@ export async function readVideoChunkRangeMcap(
 }
 
 export async function readVideoChunksMcap(
-  source: BagSource,
+  source: SingleBagSource,
   topicName: string,
   timeNs: bigint,
 ): Promise<VideoChunksResult | null> {
