@@ -254,7 +254,7 @@ Add a short "How to add support for a new message type" walkthrough (detector in
 
 **How:**
 1. **Data model.** Keep `PanelLeaf.topicName` as the plot's *primary* topic for back-compat. Add plot-specific state in a per-panel store (same pattern as `threeDPanelStore`): `extraSeries: Array<{ bagId, topicName, fieldPath, alias }>`. Don't change the `PanelLeaf` shape, so old hashes and presets parse unchanged.
-2. **URL.** Encode extra series as a new hash param `ps=<panelId>~<bag>:<topic>:<field>|...` parsed in `useUrlState.ts`. Unknown params are already ignored, so old BAGEL builds won't break on new links.
+2. **URL (not done in the first cut).** Extra series live in the panel store like expressions do, not in the hash. If shareable series are wanted, encode them as a new hash param `ps=<panelId>~<bag>:<topic>:<field>|...` parsed in `useUrlState.ts`. Unknown params are already ignored, so old BAGEL builds won't break on new links.
 3. **Loading.** The plot currently loads through `useTopicMessages`. Run one loader per distinct topic and merge.
 4. **Time alignment.** Topics have different timestamps. uPlot needs one shared x array, so build the union of timestamps and fill gaps with `null` (uPlot draws gaps; set `spanGaps: true` per series). For expressions over different topics, sample each input at the expression's reference topic timestamps with zero-order hold (last value), which is what engineers expect. Put this in a pure `src/utils/alignSeries.ts`.
 5. **Multi-bag.** Respect the existing time-alignment modes (`wall-clock`, `bag-start`, `anchor`) by applying the same offset function the timeline uses when merging.
