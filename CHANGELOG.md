@@ -9,7 +9,12 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
-Nothing yet.
+- Depth images get colormaps. Raw `16UC1` and `32FC1` image topics, which
+  previously failed with "Unsupported image encoding", now decode, and together
+  with `compressedDepth` they share a colormap select (gray, turbo, inverted
+  turbo), an auto range (1st to 99th percentile of valid pixels) with
+  optional min/max overrides, and a labelled color bar. Invalid pixels
+  (0, NaN, Infinity) are always drawn black.
 
 ## [1.7.1]
 

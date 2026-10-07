@@ -347,7 +347,7 @@ Add a short "How to add support for a new message type" walkthrough (detector in
 
 ### C9. Depth image colormaps
 
-**Why:** `16UC1` / `32FC1` depth images and `compressedDepth` are decoded (`utils/compressedDepth.ts`, `utils/png16.ts`) but appear as grayscale, which hides structure.
+**Why:** `compressedDepth` is decoded (`utils/compressedDepth.ts`, `utils/png16.ts`) but shown as plain grayscale, which hides structure, and raw `16UC1` / `32FC1` images were not decoded at all (they threw "Unsupported image encoding"). Both are fixed together in this item.
 
 **How:** A colormap select (gray / turbo / inverted) and min/max range inputs (auto from 1st/99th percentile) in the ImageViewer header for depth encodings. Map through `turboColor`, building a 256-entry LUT once. Show a small color bar with the metres scale.
 

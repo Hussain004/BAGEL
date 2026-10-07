@@ -22,6 +22,15 @@ import {
 } from '../../../utils/imageRectify';
 import { registerCapture } from '../../../utils/captureRegistry';
 import { decodeCompressedDepthImage } from '../../../utils/compressedDepth';
+import {
+  DEPTH_COLORMAPS,
+  colorizeDepth,
+  decodeRawDepth,
+  depthColorbarGradient,
+  depthUnit,
+  type ColorizeOptions,
+  type DepthColormap,
+} from '../../../utils/depthColor';
 
 interface ImageViewerProps {
   panelId: string;
@@ -34,6 +43,18 @@ interface VideoFrameState {
   bitmap: ImageBitmap | null;
   loading: boolean;
   error: string | null;
+}
+
+/** What a depth decode used, so the footer can label the color bar. */
+interface DepthInfo {
+  min: number;
+  max: number;
+  unit: 'mm' | 'm';
+}
+
+interface DecodedFrame {
+  bitmap: ImageBitmap;
+  depth?: DepthInfo;
 }
 
 const MAX_SEQUENTIAL_VIDEO_GAP_NS = 2_000_000_000n;
@@ -224,6 +245,7 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
   const [meta, setMeta] = useState<{ width: number; height: number; encoding: string } | null>(
     null,
   );
+  const [depthInfo, setDepthInfo] = useState<DepthInfo | null>(null);
   const [view, setView] = useState({ zoom: 1, panX: 0, panY: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -296,7 +318,7 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setRenderError(null);
 
-    const drawBitmap = (bitmap: ImageBitmap, encoding: string) => {
+    const drawBitmap = (bitmap: ImageBitmap, encoding: string, depth: DepthInfo | null = null) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
       canvas.width = bitmap.width;
@@ -320,6 +342,7 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
       }
 
       setMeta({ width: bitmap.width, height: bitmap.height, encoding });
+      setDepthInfo(depth);
     };
 
     // Video path: bitmap is already decoded by useVideoFrame.
@@ -342,9 +365,14 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
     let cancelled = false;
     (async () => {
       try {
-        const bitmap = compressed
-          ? await decodeCompressed(message.value!)
-          : await decodeRaw(message.value!);
+        const depthOpts: ColorizeOptions = {
+          colormap: settings.depthColormap,
+          min: settings.depthMin,
+          max: settings.depthMax,
+        };
+        const { bitmap, depth } = compressed
+          ? await decodeCompressed(message.value!, depthOpts)
+          : await decodeRaw(message.value!, depthOpts);
         if (cancelled) {
           bitmap?.close?.();
           return;
@@ -354,6 +382,7 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
           (message.value!.encoding as string) ??
             (message.value!.format as string) ??
             (compressed ? 'compressed' : 'raw'),
+          depth ?? null,
         );
         bitmap.close?.();
       } catch (err) {
@@ -363,9 +392,18 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
     })();
 
     return () => { cancelled = true; };
-    // settings.rectify is intentionally included so toggling rectify
-    // re-decodes the current frame immediately.
-  }, [message, videoBitmap, isVideo, compressed, settings.rectify]);
+    // settings.rectify and the depth settings are intentionally included so
+    // toggling them re-decodes the current frame immediately.
+  }, [
+    message,
+    videoBitmap,
+    isVideo,
+    compressed,
+    settings.rectify,
+    settings.depthColormap,
+    settings.depthMin,
+    settings.depthMax,
+  ]);
 
   const accent = getTopicColor(topicName, type);
   const showInitialLoading = loading && !hasContent;
@@ -480,6 +518,16 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
             />
           )}
 
+          {depthInfo && (
+            <DepthControls
+              info={depthInfo}
+              colormap={settings.depthColormap}
+              minOverride={settings.depthMin}
+              maxOverride={settings.depthMax}
+              onChange={(partial) => updateSettings(panelId, partial)}
+            />
+          )}
+
           <div className="px-4 py-1.5 border-t border-border flex items-center justify-between text-text-muted text-xs mono">
             <span>
               t = {nsToSeconds((isVideo ? playheadNs : (message?.timestamp ?? playheadNs)) - startNs).toFixed(3)}s
@@ -499,6 +547,92 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
         </div>
       )}
     </PanelShell>
+  );
+}
+
+interface DepthControlsProps {
+  info: DepthInfo;
+  colormap: DepthColormap;
+  minOverride: number | null;
+  maxOverride: number | null;
+  onChange: (partial: {
+    depthColormap?: DepthColormap;
+    depthMin?: number | null;
+    depthMax?: number | null;
+  }) => void;
+}
+
+/** Parse a range input; blank or non-numeric means "auto" (null). */
+function parseRangeInput(raw: string): number | null {
+  if (raw.trim() === '') return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+function DepthControls({ info, colormap, minOverride, maxOverride, onChange }: DepthControlsProps) {
+  const fmt = (v: number) => (info.unit === 'm' ? v.toFixed(2) : String(Math.round(v)));
+  const inputCls =
+    'w-16 bg-bg-secondary border border-border rounded px-1 py-0.5 text-text-primary mono text-[11px]';
+  return (
+    <div className="px-4 py-1.5 border-t border-border flex flex-wrap items-center gap-x-3 gap-y-1 text-text-muted text-xs mono">
+      <label className="flex items-center gap-1">
+        <span>colormap</span>
+        <select
+          value={colormap}
+          onChange={(e) => onChange({ depthColormap: e.target.value as DepthColormap })}
+          className="bg-bg-secondary border border-border rounded px-1 py-0.5 text-text-primary text-[11px]"
+        >
+          {DEPTH_COLORMAPS.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="flex items-center gap-1">
+        <span>min</span>
+        <input
+          type="number"
+          className={inputCls}
+          value={minOverride ?? ''}
+          placeholder={fmt(info.min)}
+          onChange={(e) => onChange({ depthMin: parseRangeInput(e.target.value) })}
+          aria-label={`Depth range minimum (${info.unit}), blank for auto`}
+        />
+      </label>
+      <label className="flex items-center gap-1">
+        <span>max</span>
+        <input
+          type="number"
+          className={inputCls}
+          value={maxOverride ?? ''}
+          placeholder={fmt(info.max)}
+          onChange={(e) => onChange({ depthMax: parseRangeInput(e.target.value) })}
+          aria-label={`Depth range maximum (${info.unit}), blank for auto`}
+        />
+      </label>
+      <span className="flex items-center gap-1.5 flex-1 min-w-[140px]">
+        <span>{fmt(info.min)}</span>
+        <span
+          className="h-2 flex-1 rounded-sm border border-border"
+          style={{ background: depthColorbarGradient(colormap) }}
+          role="img"
+          aria-label={`Depth scale from ${fmt(info.min)} to ${fmt(info.max)} ${info.unit}`}
+        />
+        <span>
+          {fmt(info.max)} {info.unit}
+        </span>
+      </span>
+      {(minOverride != null || maxOverride != null) && (
+        <button
+          type="button"
+          onClick={() => onChange({ depthMin: null, depthMax: null })}
+          className="text-[10px] px-1.5 py-0.5 rounded border border-border text-text-tertiary hover:text-text-secondary hover:border-border-hover transition-colors"
+        >
+          auto range
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -727,13 +861,16 @@ function RectifyHeaderToggle({
 }
 
 /** Decode a sensor_msgs/CompressedImage. */
-async function decodeCompressed(msg: Record<string, unknown>): Promise<ImageBitmap> {
+async function decodeCompressed(
+  msg: Record<string, unknown>,
+  depthOpts: ColorizeOptions,
+): Promise<DecodedFrame> {
   const data = msg.data as Uint8Array;
   const format = (msg.format as string) || 'jpeg';
 
   const depthMatch = /compressedDepth(\s+(\w+))?/.exec(format);
   if (depthMatch) {
-    return decodeCompressedDepth(data, format, depthMatch[2] ?? 'png');
+    return decodeCompressedDepth(data, format, depthMatch[2] ?? 'png', depthOpts);
   }
 
   const mimeFormat = format.toLowerCase().includes('png') ? 'png' : 'jpeg';
@@ -741,20 +878,21 @@ async function decodeCompressed(msg: Record<string, unknown>): Promise<ImageBitm
   const copy = new Uint8Array(data.byteLength);
   copy.set(data);
   const blob = new Blob([copy.buffer], { type: `image/${mimeFormat}` });
-  return await createImageBitmap(blob);
+  return { bitmap: await createImageBitmap(blob) };
 }
 
 /**
- * Decode `compressed_depth_image_transport` data to a viewable frame. The
- * byte-level parsing and dequantization live in utils/compressedDepth.ts
- * (unit-tested there); this just normalizes the resulting depth samples to
- * grayscale, since BAGEL doesn't have a depth colormap yet.
+ * Decode `compressed_depth_image_transport` data to a colorized frame. The
+ * byte-level parsing and dequantization live in utils/compressedDepth.ts and
+ * the colormap in utils/depthColor.ts (both unit-tested); this just joins
+ * them.
  */
 async function decodeCompressedDepth(
   data: Uint8Array,
   format: string,
   subFormat: string,
-): Promise<ImageBitmap> {
+  depthOpts: ColorizeOptions,
+): Promise<DecodedFrame> {
   if (subFormat.toLowerCase() === 'rvl') {
     throw new Error(
       'This depth stream uses the RVL compressed_depth_image_transport codec, which is not supported yet (PNG-backed compressedDepth is).',
@@ -763,33 +901,33 @@ async function decodeCompressedDepth(
 
   const imageEncoding = format.split(';')[0] ?? '';
   const { width, height, depth } = decodeCompressedDepthImage(data, imageEncoding);
+  return colorizedFrame(depth, width, height, imageEncoding, depthOpts);
+}
 
-  let maxDepth = 0;
-  for (const d of depth) {
-    if (Number.isFinite(d) && d > maxDepth) maxDepth = d;
-  }
-
-  const rgba = new Uint8ClampedArray(width * height * 4);
-  const scale = maxDepth > 0 ? 255 / maxDepth : 0;
-  for (let i = 0; i < depth.length; i++) {
-    const d = depth[i]!;
-    const v = Number.isFinite(d) ? Math.round(d * scale) : 0;
-    rgba[i * 4] = v;
-    rgba[i * 4 + 1] = v;
-    rgba[i * 4 + 2] = v;
-    rgba[i * 4 + 3] = 255;
-  }
-
-  const imageData = new ImageData(rgba, width, height);
-  return await createImageBitmap(imageData);
+async function colorizedFrame(
+  depth: Float32Array,
+  width: number,
+  height: number,
+  encoding: string,
+  depthOpts: ColorizeOptions,
+): Promise<DecodedFrame> {
+  const { rgba, min, max } = colorizeDepth(depth, depthOpts);
+  const bitmap = await createImageBitmap(new ImageData(rgba, width, height));
+  return { bitmap, depth: { min, max, unit: depthUnit(encoding) ?? 'm' } };
 }
 
 /** Decode a sensor_msgs/Image (raw pixels in a supported encoding). */
-async function decodeRaw(msg: Record<string, unknown>): Promise<ImageBitmap> {
+async function decodeRaw(
+  msg: Record<string, unknown>,
+  depthOpts: ColorizeOptions,
+): Promise<DecodedFrame> {
   const width = msg.width as number;
   const height = msg.height as number;
   const encoding = String(msg.encoding ?? 'rgb8').toLowerCase();
   const data = msg.data as Uint8Array;
+
+  const depth = decodeRawDepth(encoding, data, width, height, msg.is_bigendian === true || msg.is_bigendian === 1);
+  if (depth) return colorizedFrame(depth, width, height, encoding, depthOpts);
 
   const rgba = new Uint8ClampedArray(width * height * 4);
 
@@ -843,5 +981,5 @@ async function decodeRaw(msg: Record<string, unknown>): Promise<ImageBitmap> {
   }
 
   const imageData = new ImageData(rgba, width, height);
-  return await createImageBitmap(imageData);
+  return { bitmap: await createImageBitmap(imageData) };
 }

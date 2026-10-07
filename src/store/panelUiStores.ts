@@ -22,6 +22,7 @@
  */
 
 import { create } from 'zustand';
+import type { DepthColormap } from '../utils/depthColor';
 
 // ── TimeSeriesPlot ─────────────────────────────────────────────────────
 
@@ -149,12 +150,20 @@ export interface ImagePanelSettings {
    * (fisheye, equidistant) keep the raw frame unchanged.
    */
   rectify: boolean;
+  /** Colormap for depth encodings (16UC1, 32FC1, compressedDepth). */
+  depthColormap: DepthColormap;
+  /** Explicit depth range ends in the encoding's unit; null means auto (1st/99th percentile). */
+  depthMin: number | null;
+  depthMax: number | null;
 }
 
 export const DEFAULT_IMAGE_SETTINGS: ImagePanelSettings = {
   cameraInfoOverlay: false,
   cameraInfoManualPair: '',
   rectify: false,
+  depthColormap: 'turbo',
+  depthMin: null,
+  depthMax: null,
 };
 
 interface ImagePanelState {
