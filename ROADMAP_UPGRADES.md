@@ -419,7 +419,7 @@ Add a short "How to add support for a new message type" walkthrough (detector in
 1. **Ingest.** Accept a folder drop (`DataTransferItem.webkitGetAsEntry()` / `getAsFileSystemHandle()`) or multi-select. If the files share a stem with `_N` suffixes, or a `metadata.yaml` lists them (`rosbag2_bagfile_information.relative_file_paths`), treat them as one logical bag. A tiny YAML subset parser is enough for that key; don't add a YAML dependency.
 2. **Parser layer.** Add a composite source in `parsers/source.ts`: `{ kind: 'multi', parts: BagSource[] }`. Implement `parseBag` for it by parsing each part (they're independent, fully indexed files) and merging summaries: union topics, sum counts, min/max times. `readMessageAtTime` / `readRawMessages` route to the part(s) whose time range overlaps; for ranged reads, concatenate in time order.
 3. **Bag identity.** `sourceKey()` for multi-sources must be stable (sorted part keys) so bookmarks and presets keyed by fingerprint keep working.
-4. **Edit/export.** `BagEditModal` can already write a fresh MCAP; feeding it the merged reader also gives "merge split bag into one file" for free. Advertise that.
+4. **Edit/export.** Not free: the edit pipelines (`edit.ts`, `editDb3.ts`, `editRos1.ts`) read a single source directly, so they refuse a split recording with a clear message and the Edit button is disabled. A real "merge split bag into one MCAP" needs a k-way merge writer over the parts; treat it as its own follow-up.
 5. **`.db3` splits** follow the same pattern via `parsers/db3.ts`.
 
 **Files:** `parsers/source.ts`, `parsers/core.ts`, new `parsers/multi.ts`, `DropZone.tsx`, `landing/FileIngestPanel.tsx`, `store/bagStore.ts`.

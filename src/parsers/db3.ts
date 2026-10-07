@@ -17,7 +17,7 @@ import {
   sourceKey,
   sourceReadAll,
   sourceSize,
-  type BagSource,
+  type SingleBagSource,
 } from './source';
 
 interface SqlDatabase {
@@ -94,7 +94,7 @@ export function clearDb3DecodedCache(): void {
   if (cachedDb) cachedDb.messageCache.clear();
 }
 
-async function loadDb(source: BagSource): Promise<CachedDb> {
+async function loadDb(source: SingleBagSource): Promise<CachedDb> {
   const key = sourceKey(source);
   if (cachedDb && cachedDb.sourceKey === key) {
     return cachedDb;
@@ -168,7 +168,7 @@ async function rememberDecodedDb3(
 /**
  * Parse a .db3 ROS2 bag file and return a BagSummary.
  */
-export async function parseDb3(source: BagSource): Promise<BagSummary> {
+export async function parseDb3(source: SingleBagSource): Promise<BagSummary> {
   const meta = await loadDb(source);
   const { db } = meta;
 
@@ -259,7 +259,7 @@ function queryMessageStats(db: SqlDatabase): {
  * every message would exhaust memory.
  */
 export async function readRawMessagesDb3(
-  source: BagSource,
+  source: SingleBagSource,
   topicName: string,
   limit?: number,
 ): Promise<RawMessage[]> {
@@ -304,7 +304,7 @@ export async function readRawMessagesDb3(
 const DB3_YIELD_EVERY = 500;
 
 export async function readDeserializedMessagesDb3(
-  source: BagSource,
+  source: SingleBagSource,
   topicName: string,
   limit?: number,
   onProgress?: (decoded: number) => void,
@@ -348,7 +348,7 @@ export async function readDeserializedMessagesDb3(
  * topic's blobs into memory.
  */
 export async function readMessageAtTimeDb3(
-  source: BagSource,
+  source: SingleBagSource,
   topicName: string,
   timeNs: bigint,
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null } | null> {
@@ -419,7 +419,7 @@ export async function readMessageAtTimeDb3(
 
 /** Get the ROS2 type name for a topic in this db3 file. */
 export async function getTopicTypeDb3(
-  source: BagSource,
+  source: SingleBagSource,
   topicName: string,
 ): Promise<string | undefined> {
   const { topicTypeByName } = await loadDb(source);
@@ -428,7 +428,7 @@ export async function getTopicTypeDb3(
 
 const DB3_MAX_TOTAL_SAMPLES = 100_000;
 
-export async function readAllMessageStatsDb3(source: BagSource): Promise<AllTopicStats> {
+export async function readAllMessageStatsDb3(source: SingleBagSource): Promise<AllTopicStats> {
   const { db } = await loadDb(source);
 
   const timeResult = db.exec('SELECT MIN(timestamp), COUNT(*) FROM messages');
@@ -500,7 +500,7 @@ export interface CachedDb3ForEdit {
   topicTypeByName: Map<string, string>;
 }
 
-export async function loadDb3ForEdit(source: BagSource): Promise<CachedDb3ForEdit> {
+export async function loadDb3ForEdit(source: SingleBagSource): Promise<CachedDb3ForEdit> {
   const meta = await loadDb(source);
   return {
     db: meta.db,

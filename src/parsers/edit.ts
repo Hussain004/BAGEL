@@ -27,7 +27,7 @@
  */
 
 import { McapWriter, type IWritable } from '@mcap/core';
-import type { BagSource } from './source';
+import { assertSingleSource, type BagSource, type SingleBagSource } from './source';
 import type { BagFormat } from '../types/bag';
 import {
   loadMcapForEdit,
@@ -186,7 +186,7 @@ export function estimateMessageCount(
  *     bags see a clearer error than "writer threw").
  */
 export async function editMcapBag(
-  source: BagSource,
+  source: SingleBagSource,
   options: EditOptions,
 ): Promise<EditResult> {
   if (options.endNs <= options.startNs) {
@@ -323,6 +323,7 @@ export async function editBag(
   format: BagFormat,
   options: EditOptions,
 ): Promise<EditResult> {
+  assertSingleSource(source, 'Editing');
   if (format === 'mcap') return editMcapBag(source, options);
   if (format === 'bag') {
     const { editRos1Bag } = await import('./editRos1');
@@ -347,6 +348,7 @@ export async function estimateMessageCountForFormat(
   endNs: bigint,
   topics: Set<string> | null,
 ): Promise<number> {
+  assertSingleSource(source, 'Editing');
   if (format === 'mcap') {
     const meta = await loadMcapForEdit(source);
     return estimateMessageCount(meta, startNs, endNs, topics);

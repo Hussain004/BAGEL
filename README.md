@@ -63,6 +63,7 @@ A condensed feature list is below. **Detailed version-by-version release notes (
 | ROS2 `.mcap` | Including `zstd`-compressed chunks (the new ROS2 default). Foxglove Studio JSON-encoded channels (`schemaEncoding: "jsonschema"`, `encoding: "json"`) supported from v1.6.1. |
 | ROS2 `.db3` | SQLite via `sql.js` / WASM |
 | ROS1 `.bag` | Including `bz2` and `lz4` compressed chunks |
+| Split recordings | Pick or drop all the parts of a `ros2 bag record --max-bag-size` run (`name_0.mcap`, `name_1.mcap`, ...), a ROS1 `--split` recording, or the bag folder itself, and they open as one recording. Works for `.mcap`, `.db3` and `.bag`. |
 | Remote URLs | HTTP Range requests, so only the chunks you scrub through hit the network. `.mcap` / `.bag` stream lazily; `.db3` eager-fetches (sql.js needs it in memory). |
 | **Foxglove WebSocket** *(v1.5.0)* | Paste a `ws://` or `wss://` URL to connect to a live robot running `foxglove_bridge` or `rosbridge_suite`. All panels update in real time. Per-topic ring buffer holds the last 10,000 messages per topic; Follow/Pause button lets you scrub back into history without disconnecting. Auto-reconnect with exponential backoff. |
 | **`.pcd` point clouds** *(v1.6.0)* | All three PCD 0.7 encodings: `ascii`, `binary`, `binary_compressed` (LZF). All color modes (height, intensity, rgb, single). Feeds directly into the ThreeDScene panel via a synthetic `sensor_msgs/PointCloud2` message. |

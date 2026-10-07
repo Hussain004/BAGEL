@@ -1,11 +1,12 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useCallback, useRef, useState, type ChangeEvent, type DragEvent, type KeyboardEvent, type RefObject } from 'react';
 import { recordRecentFile, supportsFileSystemAccess } from '../../utils/recentFiles';
+import { collectDropped, ingestFromFiles, type IngestFile } from '../../utils/droppedFiles';
 
 interface FileIngestPanelProps {
   isLoading: boolean;
   progress: number;
-  onFile: (file: File) => void | Promise<unknown>;
+  onFiles: (items: IngestFile[]) => void | Promise<unknown>;
   inputRef: RefObject<HTMLInputElement | null>;
 }
 
@@ -30,7 +31,8 @@ const PICKER_TYPES = [
 
 const ACCEPT_ATTR = ACCEPTED_EXTENSIONS.join(',');
 
-export function FileIngestPanel({ isLoading, progress, onFile, inputRef }: FileIngestPanelProps) {
+export function FileIngestPanel({ isLoading, progress, onFiles, inputRef }: FileIngestPanelProps) {
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const dragCounter = useRef(0);
   const reduceMotion = useReducedMotion();
@@ -55,38 +57,34 @@ export function FileIngestPanel({ isLoading, progress, onFile, inputRef }: FileI
     dragCounter.current = 0;
     setIsDragOver(false);
 
-    // Prefer a handle so the file can be reopened from the recents list
-    // without a picker round trip. getAsFileSystemHandle is Chromium-only;
-    // everywhere else falls through to the plain File path.
-    const item = event.dataTransfer.items.length > 0 ? event.dataTransfer.items[0] : null;
-    if (item && item.kind === 'file' && typeof item.getAsFileSystemHandle === 'function') {
-      void item.getAsFileSystemHandle().then(async (handle: FileSystemHandle | null) => {
-        if (handle && handle.kind === 'file') {
-          const fileHandle = handle as FileSystemFileHandle;
-          const file = await fileHandle.getFile();
-          void recordRecentFile(file, fileHandle);
-          void onFile(file);
-        } else {
-          const file = event.dataTransfer.files.item(0);
-          if (file) void onFile(file);
-        }
-      });
-      return;
-    }
-    const file = event.dataTransfer.files.item(0);
-    if (file) void onFile(file);
-  }, [onFile]);
+    // DataTransfer empties once this handler returns, so both the file-system
+    // handle (Chromium only, lets a single file be reopened from recents) and
+    // the folder-expanding collector are started synchronously, then awaited.
+    const dt = event.dataTransfer;
+    const only = dt.items.length === 1 ? dt.items[0] : null;
+    const handleP: Promise<FileSystemHandle | null> =
+      only && only.kind === 'file' && typeof only.getAsFileSystemHandle === 'function'
+        ? only.getAsFileSystemHandle().catch(() => null)
+        : Promise.resolve(null);
+    const collected = collectDropped(dt);
+    void Promise.all([handleP, collected]).then(([handle, items]) => {
+      if (items.length === 1 && handle && handle.kind === 'file') {
+        void recordRecentFile(items[0]!.file, handle as FileSystemFileHandle);
+      }
+      void onFiles(items);
+    });
+  }, [onFiles]);
 
   const onChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.item(0);
-    if (file) {
+    const items = ingestFromFiles(event.target.files ?? []);
+    if (items.length === 1) {
       // The input path has no handle to persist, so it lands in recents as
       // metadata only: the row shows, reopening falls back to the picker.
-      void recordRecentFile(file, null);
-      void onFile(file);
+      void recordRecentFile(items[0]!.file, null);
     }
+    if (items.length > 0) void onFiles(items);
     event.target.value = '';
-  }, [onFile]);
+  }, [onFiles]);
 
   const activate = () => {
     if (isLoading) return;
@@ -95,11 +93,13 @@ export function FileIngestPanel({ isLoading, progress, onFile, inputRef }: FileI
     // Firefox and Safari have no picker at all.
     if (supportsFileSystemAccess()) {
       void window
-        .showOpenFilePicker({ types: PICKER_TYPES, multiple: false })
-        .then(async ([handle]) => {
-          const file = await handle.getFile();
-          void recordRecentFile(file, handle);
-          void onFile(file);
+        .showOpenFilePicker({ types: PICKER_TYPES, multiple: true })
+        .then(async (handles) => {
+          const files = await Promise.all(handles.map((h) => h.getFile()));
+          // Only a lone file goes to recents: a split recording would need
+          // every part's handle to reopen, which the recents list can't hold.
+          if (handles.length === 1) void recordRecentFile(files[0]!, handles[0]!);
+          void onFiles(ingestFromFiles(files));
         })
         .catch((error: unknown) => {
           // AbortError is the user pressing Escape in the picker; anything
@@ -120,6 +120,7 @@ export function FileIngestPanel({ isLoading, progress, onFile, inputRef }: FileI
   };
 
   return (
+    <>
     <motion.div
       className={`ingest-panel${isDragOver ? ' ingest-panel--active' : ''}${isLoading ? ' ingest-panel--loading' : ''}`}
       onDragEnter={onDragEnter}
@@ -139,7 +140,7 @@ export function FileIngestPanel({ isLoading, progress, onFile, inputRef }: FileI
       }}
       transition={{ type: 'spring', stiffness: 360, damping: 28 }}
     >
-      <input ref={inputRef} type="file" accept={ACCEPT_ATTR} onChange={onChange} className="hidden" data-testid="file-input" />
+      <input ref={inputRef} type="file" multiple accept={ACCEPT_ATTR} onChange={onChange} className="hidden" data-testid="file-input" />
       <div className="ingest-panel__corners" aria-hidden="true"><i /><i /><i /><i /></div>
       <AnimatePresence mode="wait" initial={false}>
         {isLoading ? <LoadingSequence key="loading" progress={progress} /> : (
@@ -164,6 +165,19 @@ export function FileIngestPanel({ isLoading, progress, onFile, inputRef }: FileI
         )}
       </AnimatePresence>
     </motion.div>
+      <div className="ingest-folder">
+        <button
+          type="button"
+          className="ingest-folder__button"
+          disabled={isLoading}
+          onClick={() => folderInputRef.current?.click()}
+          title="Pick a recording's folder: split bags (name_0.mcap, name_1.mcap, ...) open as one recording"
+        >
+          OPEN A BAG FOLDER
+        </button>
+        <input ref={folderInputRef} type="file" onChange={onChange} className="hidden" data-testid="folder-input" {...{ webkitdirectory: '' }} />
+      </div>
+    </>
   );
 }
 

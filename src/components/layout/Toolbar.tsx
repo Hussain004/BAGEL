@@ -6,6 +6,7 @@ import {
   type TimeAlignment,
 } from '../../store/bagStore';
 import { useLiveStore, type LiveStatus } from '../../store/liveStore';
+import { ingestFromFiles, openBagFiles } from '../../utils/droppedFiles';
 import { usePlayheadStore } from '../../store/playheadStore';
 import { useLayoutStore } from '../../store/layoutStore';
 import { usePresetStore } from '../../store/presetStore';
@@ -32,7 +33,6 @@ export function Toolbar() {
   const bagOrder = useBagStore((s) => s.bagOrder);
   const focusBagId = useBagStore((s) => s.focusBagId);
   const alignment = useBagStore((s) => s.alignment);
-  const addBagFromFile = useBagStore((s) => s.addBagFromFile);
   const removeBag = useBagStore((s) => s.removeBag);
   const setFocusBag = useBagStore((s) => s.setFocusBag);
   const setAlignment = useBagStore((s) => s.setAlignment);
@@ -72,10 +72,11 @@ export function Toolbar() {
   const addInputRef = useRef<HTMLInputElement>(null);
   const onAddClick = () => addInputRef.current?.click();
   const onAddInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files ?? []);
     e.target.value = '';
-    await addBagFromFile(file);
+    if (files.length === 0) return;
+    // Several files may be parts of one split recording; group before adding.
+    await openBagFiles(ingestFromFiles(files), 'add');
   };
 
   if (!bag) return null;
@@ -83,6 +84,7 @@ export function Toolbar() {
   // v1.2: bag editing now covers every format BAGEL reads. Output is MCAP
   // regardless of the source - the format-specific edit pipelines hand off
   // to the same MCAP writer. Live connections are not editable.
+  const focusedIsSplit = bags.get(focusBagId ?? '')?.source?.kind === 'multi';
   const canEditFocusedBag =
     bag.format === 'mcap' || bag.format === 'bag' || bag.format === 'db3';
   const focusedBagIsLive = bag.format === 'live';
@@ -146,6 +148,7 @@ export function Toolbar() {
             ref={addInputRef}
             type="file"
             accept=".mcap,.db3,.bag"
+            multiple
             className="hidden"
             onChange={onAddInput}
           />
@@ -227,8 +230,13 @@ export function Toolbar() {
         {canEditFocusedBag && (
           <button
             onClick={() => setModal('bag-edit')}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-text-secondary hover:text-text-primary hover:bg-surface-hover border border-border hover:border-accent-blue/40 transition-colors"
-            title="Trim time range and drop topics, then download as a new MCAP (v1.2: works for .mcap / .bag / .db3)"
+            disabled={focusedIsSplit}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-text-secondary hover:text-text-primary hover:bg-surface-hover border border-border hover:border-accent-blue/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title={
+              focusedIsSplit
+                ? 'Editing is not available for split recordings yet. Open one part on its own to trim it.'
+                : 'Trim time range and drop topics, then download as a new MCAP (v1.2: works for .mcap / .bag / .db3)'
+            }
             aria-label="Edit bag - trim and re-export"
           >
             <EditIcon />

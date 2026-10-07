@@ -23,7 +23,7 @@
 
 import { McapWriter, type IWritable } from '@mcap/core';
 import { stringify } from '@foxglove/rosmsg';
-import type { BagSource } from './source';
+import { assertSingleSource, type BagSource, type SingleBagSource } from './source';
 import { loadDb3ForEdit } from './db3';
 import { getMessageDefinition } from './typeRegistry';
 import type { EditOptions, EditResult } from './edit';
@@ -77,6 +77,7 @@ export interface Db3TopicResolution {
 export async function getResolvableTopicsDb3(
   source: BagSource,
 ): Promise<Db3TopicResolution[]> {
+  assertSingleSource(source, 'Editing');
   const meta = await loadDb3ForEdit(source);
   const out: Db3TopicResolution[] = [];
   for (const [topic, type] of meta.topicTypeByName) {
@@ -95,7 +96,7 @@ export async function getResolvableTopicsDb3(
  * single SQL aggregate so even multi-GB bags answer in milliseconds.
  */
 export async function estimateMessageCountDb3(
-  source: BagSource,
+  source: SingleBagSource,
   startNs: bigint,
   endNs: bigint,
   topics: Set<string> | null,
@@ -144,7 +145,7 @@ export async function estimateMessageCountDb3(
  *  - the bag has no topics at all.
  */
 export async function editDb3Bag(
-  source: BagSource,
+  source: SingleBagSource,
   options: EditOptions,
 ): Promise<EditResult> {
   if (options.endNs <= options.startNs) {

@@ -65,6 +65,8 @@ function sourceFileName(source: BagSource): string {
   return source.kind === 'file' ? source.file.name : source.displayName;
 }
 
+/** Splats are always one file; a split recording never reaches this panel. */
+
 function sceneFormatFor(name: string): GaussianSplats3D.SceneFormat {
   const ext = name.split('.').pop()?.toLowerCase();
   if (ext === 'splat') return GaussianSplats3D.SceneFormat.Splat;
@@ -318,6 +320,7 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
     setOrientationIndex(0);
     setLoadState({ status: 'loading', percent: 0 });
 
+    if (source.kind === 'multi') return;
     const path =
       source.kind === 'file'
         ? (objectUrl = URL.createObjectURL(source.file))

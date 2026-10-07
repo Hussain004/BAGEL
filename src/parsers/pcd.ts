@@ -15,7 +15,7 @@
 import type { BagSummary } from '../types/bag';
 import type { AxisClip, PointCloud2Message, PointField, PointCloudExtraction, ColorMode, HeightAxis, DecodeOptions } from '../utils/pointcloud';
 import { POINT_FIELD_TYPE, decodePointCloud2 } from '../utils/pointcloud';
-import { sourceKey, sourceReadAll, type BagSource } from './source';
+import { sourceKey, sourceReadAll, type SingleBagSource } from './source';
 
 // Cache: sourceKey -> synthetic PointCloud2Message for instant reuse
 const pcdCloudCache = new Map<string, PointCloud2Message>();
@@ -279,7 +279,7 @@ function pcdPointStep(header: PcdHeader): number {
   return step;
 }
 
-async function loadPcdCloud(source: BagSource): Promise<PointCloud2Message> {
+async function loadPcdCloud(source: SingleBagSource): Promise<PointCloud2Message> {
   const key = sourceKey(source);
   const cached = pcdCloudCache.get(key);
   if (cached) return cached;
@@ -324,7 +324,7 @@ async function loadPcdCloud(source: BagSource): Promise<PointCloud2Message> {
   return cloud;
 }
 
-export async function parsePcd(source: BagSource): Promise<BagSummary> {
+export async function parsePcd(source: SingleBagSource): Promise<BagSummary> {
   const key = sourceKey(source);
   const cached = pcdSummaryCache.get(key);
   if (cached) return cached;
@@ -355,7 +355,7 @@ export async function parsePcd(source: BagSource): Promise<BagSummary> {
 }
 
 export async function readPointCloudAtTimePcd(
-  source: BagSource,
+  source: SingleBagSource,
   colorMode: ColorMode = 'height',
   maxPoints?: number,
   maxRange?: number,

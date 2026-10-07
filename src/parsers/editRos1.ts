@@ -14,7 +14,7 @@
  */
 
 import { McapWriter, type IWritable } from '@mcap/core';
-import type { BagSource } from './source';
+import type { SingleBagSource } from './source';
 import { loadBagForEdit } from './bag';
 import type { EditOptions, EditResult } from './edit';
 
@@ -76,7 +76,7 @@ function timeToNs(t: { sec: number; nsec: number } | undefined): bigint {
  * than walking each chunk's message index. Good enough for a progress bar.
  */
 export async function estimateMessageCountRos1(
-  source: BagSource,
+  source: SingleBagSource,
   startNs: bigint,
   endNs: bigint,
   topics: Set<string> | null,
@@ -111,7 +111,7 @@ export async function estimateMessageCountRos1(
  *  - the bag has no readable connections (corrupt index).
  */
 export async function editRos1Bag(
-  source: BagSource,
+  source: SingleBagSource,
   options: EditOptions,
 ): Promise<EditResult> {
   if (options.endNs <= options.startNs) {

@@ -17,7 +17,7 @@
 
 import type { BagSummary } from '../types/bag';
 import { parsePlyHeader } from './ply';
-import { sourceDisplayName, sourceKey, sourceReadSlice, sourceSize, type BagSource } from './source';
+import { sourceDisplayName, sourceKey, sourceReadSlice, sourceSize, type SingleBagSource } from './source';
 
 /** Synthetic topic type for the one splat "topic" a summary reports. */
 export const SPLAT_TYPE = 'gaussian/GaussianSplat';
@@ -43,7 +43,7 @@ export function isSplatPly(bytes: Uint8Array): boolean {
 }
 
 /** Best-effort splat count without decoding: cheap for `.splat`, header-only for splat-PLY, unknown for `.ksplat`. */
-async function estimateSplatCount(source: BagSource): Promise<number | undefined> {
+async function estimateSplatCount(source: SingleBagSource): Promise<number | undefined> {
   const name = sourceDisplayName(source).toLowerCase();
   if (name.endsWith('.splat')) {
     return Math.floor(sourceSize(source) / SPLAT_RECORD_BYTES);
@@ -61,7 +61,7 @@ async function estimateSplatCount(source: BagSource): Promise<number | undefined
   return undefined;
 }
 
-export async function parseSplat(source: BagSource): Promise<BagSummary> {
+export async function parseSplat(source: SingleBagSource): Promise<BagSummary> {
   const key = sourceKey(source);
   const cached = splatSummaryCache.get(key);
   if (cached) return cached;

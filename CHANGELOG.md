@@ -9,6 +9,15 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Split recordings open as one bag. Pick or drop the parts of a
+  `ros2 bag record --max-bag-size` / `--max-bag-duration` run (`name_0.mcap`,
+  `name_1.mcap`, ...), a ROS1 `--split` recording, or a whole bag folder, and
+  BAGEL merges them into a single recording: one topic list, one timeline, and
+  reads that cross part boundaries. Works for `.mcap`, `.db3` and `.bag`. A
+  `metadata.yaml` in the selection is used as the source of truth for which
+  files belong together. Parts are matched by name only when numbered from 0 in
+  the same folder, so two unrelated runs (`run_1`, `run_2`) stay separate bags.
+  Editing/trimming is not available for split recordings yet.
 - The Health panel can put its findings on the timeline. "Mark on timeline"
   adds a rose tick for each topic gap and out-of-order timestamp (bursts merge,
   capped at 200). Ticks follow the bag through alignment changes, are never

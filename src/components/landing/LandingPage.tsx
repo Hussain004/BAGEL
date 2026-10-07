@@ -13,6 +13,7 @@ import { RecentFiles } from './RecentFiles';
 import { TelemetryScene } from './TelemetryScene';
 import { WorkspacePreview } from './WorkspacePreview';
 import { recordRecentUrl } from '../../utils/recentFiles';
+import { openBagFiles, type IngestFile } from '../../utils/droppedFiles';
 
 const entrance = {
   hidden: { opacity: 0, y: 18 },
@@ -34,6 +35,13 @@ export function LandingPage() {
     clearError();
     return loadBag(file);
   }, [clearError, loadBag]);
+
+  // The drop zone can hand over several files or a folder; those may be parts
+  // of one split recording, so they go through grouping rather than loadBag.
+  const handleFiles = useCallback((items: IngestFile[]) => {
+    clearError();
+    return openBagFiles(items, 'replace');
+  }, [clearError]);
 
   const handleUrl = useCallback((url: string) => {
     clearError();
@@ -81,7 +89,7 @@ export function LandingPage() {
               <Capability icon="shield" label="Data never uploaded" />
             </motion.div>
             <motion.div variants={entrance} transition={{ duration: 0.55 }}>
-              <FileIngestPanel isLoading={isLoading} progress={loadProgress} onFile={handleFile} inputRef={fileInputRef} />
+              <FileIngestPanel isLoading={isLoading} progress={loadProgress} onFiles={handleFiles} inputRef={fileInputRef} />
             </motion.div>
             <motion.div variants={entrance} transition={{ duration: 0.5 }}>
               <SourceDock onUrl={handleUrl} onLive={handleLive} disabled={isLoading} />

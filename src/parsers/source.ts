@@ -26,7 +26,12 @@
 import type { IReadable } from '@mcap/core';
 import type { Filelike } from '@foxglove/rosbag';
 
-export type BagSource =
+/**
+ * A bag source that maps to exactly one file or URL. Every format reader
+ * (mcap.ts, bag.ts, db3.ts) takes this; `multi` sources are split into their
+ * parts by `parsers/multi.ts` before a reader ever sees them.
+ */
+export type SingleBagSource =
   | { kind: 'file'; file: File }
   | {
       kind: 'url';
@@ -43,22 +48,56 @@ export type BagSource =
       displayName: string;
     };
 
+/**
+ * One logical recording stored as several files, e.g. the `name_0.mcap`,
+ * `name_1.mcap` ... that `ros2 bag record --max-bag-size` writes, or a ROS1
+ * `rosbag record --split`. All parts share one format.
+ */
+export interface MultiBagSource {
+  kind: 'multi';
+  parts: SingleBagSource[];
+  /** Shown wherever a file name would be, e.g. `run (3 parts)`. */
+  displayName: string;
+}
+
+export type BagSource = SingleBagSource | MultiBagSource;
+
+/**
+ * Narrow to a single file or URL, or fail with a message the user can act on.
+ * Used by features that have not been taught about split recordings yet.
+ */
+export function assertSingleSource(
+  source: BagSource,
+  what: string,
+): asserts source is SingleBagSource {
+  if (source.kind === 'multi') {
+    throw new Error(
+      `${what} is not supported for split recordings yet. Open one part on its own, or merge the parts into a single file first.`,
+    );
+  }
+}
+
 /** Stable per-source cache key - file (name + size) or URL string. */
 export function sourceKey(source: BagSource): string {
+  // Sorted so the same set of files gets the same fingerprint (and therefore
+  // the same bookmarks and presets) whatever order the OS handed them over.
+  if (source.kind === 'multi') return `multi:${source.parts.map(sourceKey).sort().join('|')}`;
   if (source.kind === 'file') return `file:${source.file.name}:${source.file.size}`;
   return `url:${source.url}`;
 }
 
 export function sourceDisplayName(source: BagSource): string {
+  if (source.kind === 'multi') return source.displayName;
   return source.kind === 'file' ? source.file.name : source.displayName;
 }
 
 export function sourceSize(source: BagSource): number {
+  if (source.kind === 'multi') return source.parts.reduce((n, p) => n + sourceSize(p), 0);
   return source.kind === 'file' ? source.file.size : source.contentLength;
 }
 
 /** Read the entire content of the source into a Uint8Array. */
-export async function sourceReadAll(source: BagSource): Promise<Uint8Array> {
+export async function sourceReadAll(source: SingleBagSource): Promise<Uint8Array> {
   if (source.kind === 'file') {
     const ab = await source.file.arrayBuffer();
     return new Uint8Array(ab);
@@ -81,7 +120,7 @@ export async function sourceReadAll(source: BagSource): Promise<Uint8Array> {
  * request is one round-trip even on slow links).
  */
 export async function sourceReadSlice(
-  source: BagSource,
+  source: SingleBagSource,
   start: number,
   end: number,
 ): Promise<Uint8Array> {
@@ -335,6 +374,6 @@ function extractDisplayName(url: string): string {
  * drag-and-drop / file-picker flow. Convenience so consumers don't have to
  * type the discriminator literal everywhere.
  */
-export function createFileSource(file: File): BagSource {
+export function createFileSource(file: File): SingleBagSource {
   return { kind: 'file', file };
 }
