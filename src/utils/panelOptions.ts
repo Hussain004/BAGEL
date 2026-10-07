@@ -14,6 +14,7 @@
 
 import type { PanelKind } from '../store/layoutStore';
 import type { TopicInfo } from '../types/bag';
+import { isStateScalarType } from './stateSegments';
 import {
   isCloudType,
   isDiagnosticArrayType,
@@ -41,6 +42,7 @@ export const KIND_BUTTON_LABEL: Record<PanelKind, string> = {
   log: 'Log',
   health: 'Health',
   splat: 'Splat',
+  state: 'State',
 };
 
 /** Longer label used by the command palette, where there is room and no ambiguity. */
@@ -55,6 +57,7 @@ export const KIND_PALETTE_LABEL: Record<PanelKind, string> = {
   log: 'Log',
   health: 'Bag health',
   splat: 'Gaussian splat',
+  state: 'State timeline',
 };
 
 export const KIND_BUTTON_TITLE: Record<PanelKind, string> = {
@@ -68,6 +71,7 @@ export const KIND_BUTTON_TITLE: Record<PanelKind, string> = {
   log: 'Open log viewer',
   health: 'Open bag health dashboard',
   splat: 'Open gaussian splat viewer',
+  state: 'Open state timeline',
 };
 
 /**
@@ -80,6 +84,8 @@ export function suggestPanelKind(topic: TopicInfo): PanelKind {
   if (isTfTopic(topic.name, topic.type)) return 'tf';
   if (isImageType(topic.type)) return 'image';
   if (isSplatType(topic.type)) return 'splat';
+  // Bool / String carry no number to plot; a state lane is the only useful view.
+  if (/^std_msgs\/(msg\/)?(Bool|String)$/.test(topic.type)) return 'state';
   if (isCloudType(topic.type) || isLaserScanType(topic.type)) return '3d';
   // MarkerArrays / Markers live in 3D space - there is no useful 2D view.
   if (isMarkerArrayType(topic.type) || isMarkerType(topic.type)) return '3d';
@@ -108,6 +114,9 @@ export function panelOptionsFor(topic: TopicInfo): PanelKind[] {
   if (isTfTopic(topic.name, topic.type)) return ['tf', 'raw'];
   if (isImageType(topic.type)) return ['image', 'raw'];
   if (isSplatType(topic.type)) return ['splat', 'raw'];
+  // Integers are usually enums (a mode, a status code): offer both views.
+  if (/^std_msgs\/(msg\/)?String$/.test(topic.type)) return ['state', 'raw'];
+  if (isStateScalarType(topic.type)) return ['state', 'plot', 'raw'];
   if (isCloudType(topic.type)) return ['3d', 'raw'];
   if (isLaserScanType(topic.type)) return ['3d', 'plot', 'raw'];
   if (isMarkerArrayType(topic.type) || isMarkerType(topic.type)) return ['3d', 'raw'];
