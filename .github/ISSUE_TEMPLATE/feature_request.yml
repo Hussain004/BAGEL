@@ -1,0 +1,77 @@
+name: Feature request
+description: Suggest something BAGEL should be able to do
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        BAGEL is aimed at robotics and SLAM debugging, so the most useful
+        requests describe a debugging workflow that is currently slow or
+        impossible. Concrete beats hypothetical.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the workflow, not just the feature. What are you doing today, and what is slow or impossible about it?
+      placeholder: |
+        When a camera drops out mid-run I have to open the bag in Foxglove to
+        find roughly when, then come back. I cannot tell from BAGEL whether the
+        drop was the camera or a TF gap.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like BAGEL to do?
+      description: Sketch it, even loosely. Naming the ROS message types and topics involved helps a lot.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What have you tried instead?
+      description: Foxglove Studio, rqt_bag, a Python script, or nothing suitable. This tells us whether the gap is real.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which area does this touch?
+      options:
+        - 3D scene / point clouds / TF
+        - Time-series plots
+        - Image and video
+        - Topic list / navigation
+        - Timeline / playback / bookmarks
+        - Layout / panels / workspace
+        - Live connection
+        - Export (clip, CSV, screenshots)
+        - Parsing a new file or message format
+        - Accessibility or keyboard control
+        - Performance
+        - Docs or onboarding
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Mockups, links, or relevant papers or tools.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues and roadmap for this.
+        - label: I would be willing to help implement it.
+        - label: I am willing to test a build if one is needed.

@@ -1,0 +1,89 @@
+name: New message type support
+description: "I want BAGEL to visualize something like foo_msgs/Bar"
+title: "[Message Type]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Most ROS message types already open in BAGEL's generic **Raw** panel
+        without any code. This template is for the cases where you want real
+        support: a dedicated visualization, decoding of the payload, or a panel
+        option on the topic row.
+
+        If you only want to look at a message, try the Raw panel first and file
+        a bug report if it cannot show the fields you need.
+
+  - type: input
+    id: type
+    attributes:
+      label: Message type
+      description: The full ROS 2 type name, or the ROS 1 name if that is what you have.
+      placeholder: foo_msgs/msg/Bar
+    validations:
+      required: true
+
+  - type: input
+    id: topic
+    attributes:
+      label: Example topic name
+      description: "The topic this is typically published on. Even a made-up realistic name is fine."
+      placeholder: /robot1/barmanager/status
+    validations:
+      required: true
+
+  - type: textarea
+    id: definition
+    attributes:
+      label: The .msg definition
+      description: |
+        Paste the contents of the .msg file. This is the important part: it is
+        all that is needed to decide how to visualize the message.
+      render: |
+        If the message comes from a public package, linking the package or its
+        docs is enough.
+    validations:
+      required: true
+
+  - type: textarea
+    id: visualization
+    attributes:
+      label: How should it be visualized?
+      description: |
+        What should a BAGEL user see? For example: a list, a chart, a table, a
+        diagnostic panel, a 3D marker, or nothing special needed.
+      placeholder: The message is a status enum plus a diagnostic string. A
+        diagnostic panel showing the enum name rather than its integer would be ideal.
+    validations:
+      required: false
+
+  - type: textarea
+    id: sample-bag
+    attributes:
+      label: Sample bag
+      description: |
+        The best possible thing you can attach is a small bag that publishes
+        this message a few times. Trimming to a few seconds is worth it.
+      render: |
+        You do not have to attach a large file. A handful of messages, or even
+        the raw serialized bytes, is usually enough to write a test against.
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Where it is published, whether you use it for debugging, and what you currently do to inspect it.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues for this message type.
+        - label: I can provide a small sample bag or serialized bytes if needed.
+        - label: I would be willing to submit a pull request.
+        - label: I would be willing to provide test data but not code.
