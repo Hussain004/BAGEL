@@ -436,3 +436,17 @@
   .ingest-panel--active::after { animation: none; }
   .workspace-preview { transform: none; }
 }
+
+/* Recent files (B4). Sits under the source dock; same quiet mono aesthetic. */
+.recent-files { margin-top: 10px; }
+.recent-files__label { margin-bottom: 6px; color: #40586a; font: 600 0.51rem/1 var(--font-mono); letter-spacing: 0.12em; }
+.recent-files__list { display: flex; flex-direction: column; gap: 3px; max-height: 138px; overflow-y: auto; }
+.recent-files__item { display: grid; grid-template-columns: 1fr auto; align-items: center; }
+.recent-files__open { min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 7px; padding: 5px 7px; color: #6f8ea0; font: 500 0.6rem/1.2 var(--font-mono); text-align: left; border: 1px solid transparent; }
+.recent-files__open:hover:not(:disabled) { color: #b9d7e6; border-color: rgba(101, 159, 194, 0.16); background: rgba(73, 191, 255, 0.045); }
+.recent-files__open:disabled { opacity: 0.5; cursor: not-allowed; }
+.recent-files__icon { color: #4f7186; display: flex; }
+.recent-files__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+.recent-files__meta { color: #3f5a6c; font-size: 0.55rem; flex-shrink: 0; }
+.recent-files__remove { padding: 0 6px; color: #3a4f5e; font-size: 0.9rem; line-height: 1; }
+.recent-files__remove:hover { color: #e5a0ac; }

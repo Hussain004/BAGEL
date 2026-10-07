@@ -1,5 +1,6 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useCallback, useRef, useState, type ChangeEvent, type DragEvent, type KeyboardEvent, type RefObject } from 'react';
+import { recordRecentFile, supportsFileSystemAccess } from '../../utils/recentFiles';
 
 interface FileIngestPanelProps {
   isLoading: boolean;
@@ -7,6 +8,27 @@ interface FileIngestPanelProps {
   onFile: (file: File) => void | Promise<unknown>;
   inputRef: RefObject<HTMLInputElement | null>;
 }
+
+/**
+ * Extensions BAGEL accepts, shared by the picker and the fallback input so the
+ * two paths never drift apart.
+ */
+const ACCEPTED_EXTENSIONS = ['.db3', '.mcap', '.bag', '.pcd', '.ply', '.splat', '.ksplat'] as const;
+
+/**
+ * The file types shown in the File System Access picker. The fallback input
+ * gets the same list as an accept string.
+ */
+const PICKER_TYPES = [
+  {
+    description: 'ROS recordings and point clouds',
+    accept: {
+      'application/octet-stream': [...ACCEPTED_EXTENSIONS],
+    },
+  },
+];
+
+const ACCEPT_ATTR = ACCEPTED_EXTENSIONS.join(',');
 
 export function FileIngestPanel({ isLoading, progress, onFile, inputRef }: FileIngestPanelProps) {
   const [isDragOver, setIsDragOver] = useState(false);
@@ -32,18 +54,62 @@ export function FileIngestPanel({ isLoading, progress, onFile, inputRef }: FileI
     event.stopPropagation();
     dragCounter.current = 0;
     setIsDragOver(false);
+
+    // Prefer a handle so the file can be reopened from the recents list
+    // without a picker round trip. getAsFileSystemHandle is Chromium-only;
+    // everywhere else falls through to the plain File path.
+    const item = event.dataTransfer.items.length > 0 ? event.dataTransfer.items[0] : null;
+    if (item && item.kind === 'file' && typeof item.getAsFileSystemHandle === 'function') {
+      void item.getAsFileSystemHandle().then(async (handle: FileSystemHandle | null) => {
+        if (handle && handle.kind === 'file') {
+          const fileHandle = handle as FileSystemFileHandle;
+          const file = await fileHandle.getFile();
+          void recordRecentFile(file, fileHandle);
+          void onFile(file);
+        } else {
+          const file = event.dataTransfer.files.item(0);
+          if (file) void onFile(file);
+        }
+      });
+      return;
+    }
     const file = event.dataTransfer.files.item(0);
     if (file) void onFile(file);
   }, [onFile]);
 
   const onChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.item(0);
-    if (file) void onFile(file);
+    if (file) {
+      // The input path has no handle to persist, so it lands in recents as
+      // metadata only: the row shows, reopening falls back to the picker.
+      void recordRecentFile(file, null);
+      void onFile(file);
+    }
     event.target.value = '';
   }, [onFile]);
 
   const activate = () => {
-    if (!isLoading) inputRef.current?.click();
+    if (isLoading) return;
+    // Use the File System Access picker when it exists so the handle can be
+    // stored for one-click reopen later. Falling back to the input matters:
+    // Firefox and Safari have no picker at all.
+    if (supportsFileSystemAccess()) {
+      void window
+        .showOpenFilePicker({ types: PICKER_TYPES, multiple: false })
+        .then(async ([handle]) => {
+          const file = await handle.getFile();
+          void recordRecentFile(file, handle);
+          void onFile(file);
+        })
+        .catch((error: unknown) => {
+          // AbortError is the user pressing Escape in the picker; anything
+          // else is a reason to try the input path instead of failing.
+          if (error instanceof DOMException && error.name === 'AbortError') return;
+          inputRef.current?.click();
+        });
+      return;
+    }
+    inputRef.current?.click();
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -73,7 +139,7 @@ export function FileIngestPanel({ isLoading, progress, onFile, inputRef }: FileI
       }}
       transition={{ type: 'spring', stiffness: 360, damping: 28 }}
     >
-      <input ref={inputRef} type="file" accept=".db3,.mcap,.bag,.pcd,.ply,.splat,.ksplat" onChange={onChange} className="hidden" data-testid="file-input" />
+      <input ref={inputRef} type="file" accept={ACCEPT_ATTR} onChange={onChange} className="hidden" data-testid="file-input" />
       <div className="ingest-panel__corners" aria-hidden="true"><i /><i /><i /><i /></div>
       <AnimatePresence mode="wait" initial={false}>
         {isLoading ? <LoadingSequence key="loading" progress={progress} /> : (

@@ -9,8 +9,10 @@ import { CopyErrorButton } from '../panels/shared/CopyErrorButton';
 import { DATASET_HOSTING_DOC_URL } from '../../utils/actionableError';
 import { BrandLockup } from './Brand';
 import { FileIngestPanel } from './FileIngestPanel';
+import { RecentFiles } from './RecentFiles';
 import { TelemetryScene } from './TelemetryScene';
 import { WorkspacePreview } from './WorkspacePreview';
+import { recordRecentUrl } from '../../utils/recentFiles';
 
 const entrance = {
   hidden: { opacity: 0, y: 18 },
@@ -35,7 +37,9 @@ export function LandingPage() {
 
   const handleUrl = useCallback((url: string) => {
     clearError();
-    void loadBagFromUrl(url.trim()).catch(() => undefined);
+    const trimmed = url.trim();
+    void recordRecentUrl(trimmed);
+    void loadBagFromUrl(trimmed).catch(() => undefined);
   }, [clearError, loadBagFromUrl]);
 
   const handleLive = useCallback((url: string) => {
@@ -81,6 +85,9 @@ export function LandingPage() {
             </motion.div>
             <motion.div variants={entrance} transition={{ duration: 0.5 }}>
               <SourceDock onUrl={handleUrl} onLive={handleLive} disabled={isLoading} />
+            </motion.div>
+            <motion.div variants={entrance} transition={{ duration: 0.5 }}>
+              <RecentFiles onFile={handleFile} onUrl={handleUrl} disabled={isLoading} />
             </motion.div>
 
             <AnimatePresence initial={false}>

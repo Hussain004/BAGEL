@@ -209,6 +209,8 @@ Add a short "How to add support for a new message type" walkthrough (detector in
 - On the landing page, show "Recent" (max 8). Clicking calls `handle.requestPermission({ mode: 'read' })`, then `getFile()`, then the normal load path.
 - Firefox and Safari don't have the API: hide the section, keep the input fallback. Remote URLs can be listed in the same "Recent" list without any of this.
 
+**Status: done** (`utils/recentFiles.ts` + `landing/RecentFiles.tsx`, 9 unit tests and 7 browser tests). The File System Access picker and drag handles persist a `FileSystemFileHandle` per file in IndexedDB alongside the metadata list, so reopening is one click plus one permission prompt. Metadata and handles live in two stores keyed by the same id, since handles are not JSON-serialisable. The section hides when there is nothing to show, and on browsers without the API only URL entries render. The end-to-end reopen path (pick, reload, click, workspace again) is covered by a browser test with a stubbed picker returning a real bag.
+
 **Files:** `DropZone.tsx`, `landing/FileIngestPanel.tsx`, `landing/LandingPage.tsx`, new `utils/recentFiles.ts`.
 **Tests:** unit-test list ordering, dedupe by (name, size, lastModified), cap at 8. Test the permission flow manually in Chrome.
 **Effort:** M
