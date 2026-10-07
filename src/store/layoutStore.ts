@@ -72,6 +72,32 @@ export type DropEdge = 'top' | 'right' | 'bottom' | 'left';
  */
 export type PanelInstance = PanelLeaf;
 
+/**
+ * Everything needed to put a closed panel back exactly where it was.
+ *
+ * The neighbour matters: reopening by appending to the right would drop the
+ * panel somewhere the user never put it, which for a carefully arranged
+ * workspace is almost as disorienting as losing it. We record the sibling the
+ * leaf was removed from and the edge it sat on, so `reopenLastClosed` can reuse
+ * `dockPanel` and land it back in place.
+ */
+export interface ClosedPanel {
+  leaf: PanelLeaf;
+  /**
+   * The leaf that shared the removed panel's parent split, and which side the
+   * removed panel was on (`left` meaning it preceded the sibling). Null when
+   * the panel was the only one in the tree, in which case reopening just opens
+   * it at the root.
+   */
+  siblingId: string | null;
+  /** Whether the removed panel sat before (`true`) or after its sibling. */
+  wasBeforeSibling: boolean;
+  /** Whether the removed panel's parent split was vertical (top/bottom). */
+  siblingIsVertical: boolean;
+  /** The panel that was maximized at close time, if any. */
+  maximizedId: string | null;
+}
+
 interface LayoutState {
   /** Layout tree, or null when no panels are open. */
   root: LayoutNode | null;
@@ -80,6 +106,17 @@ interface LayoutState {
    * `dockPanel` doesn't touch it (docking is a move, not an open/close).
    */
   openOrder: string[];
+
+  /**
+   * The most recently closed panel, retained so the UI can offer undo.
+   * Cleared by anything that makes the recorded position meaningless
+   * (`closeAllPanels`, `restoreLayout`, reopening).
+   */
+  lastClosed: ClosedPanel | null;
+  /** Put `lastClosed` back, if it is still there. Returns true if it reopened. */
+  reopenLastClosed: () => boolean;
+  /** Discard the undo record without reopening. */
+  clearLastClosed: () => void;
 
   openPanel: (panel: Omit<PanelLeaf, 'id' | 'node'>) => void;
   closePanel: (id: string) => void;
@@ -141,6 +178,51 @@ function makeSplitId(): string {
 
 function orientationFromEdge(edge: DropEdge): SplitOrientation {
   return edge === 'top' || edge === 'bottom' ? 'vertical' : 'horizontal';
+}
+
+/**
+ * Describe the leaf's position relative to a sibling, for undo.
+ *
+ * Returns null when there is no usable sibling, which happens when the panel
+ * was the only child of its parent split. In that case the reopen path just
+ * calls `openPanel`, which is correct: a panel that was alone in its split was
+ * effectively at the root of whatever its subtree was.
+ */
+function describeCloseContext(
+  tree: LayoutNode | null,
+  id: string,
+): { siblingId: string; wasBeforeSibling: boolean; siblingIsVertical: boolean } | null {
+  if (!tree) return null;
+
+  const walk = (node: LayoutNode): { siblingId: string; wasBeforeSibling: boolean; siblingIsVertical: boolean } | null => {
+    if (node.node === 'panel') return null;
+    // Only a parent split with exactly two children has an unambiguous
+    // sibling. A three-child split (which appendLeafRight builds) would leave
+    // several candidates; using the immediate neighbour is still correct, and
+    // dockPanel will place it adjacent, which is what "restore" should mean.
+    const index = node.children.findIndex((c) => c.node === 'panel' && c.id === id);
+    if (index !== -1) {
+      const before = index > 0 ? node.children[index - 1] : node.children[index + 1];
+      if (before && before.node === 'panel') {
+        return {
+          siblingId: before.id,
+          wasBeforeSibling: index > 0,
+          siblingIsVertical: node.orientation === 'vertical',
+        };
+      }
+      // The immediate neighbour is a split, so walk into it for a leaf.
+      const nested = before ? walk(before) : null;
+      if (nested) return { ...nested, wasBeforeSibling: index > 0 };
+      return null;
+    }
+    for (const c of node.children) {
+      const found = walk(c);
+      if (found) return found;
+    }
+    return null;
+  };
+
+  return walk(tree);
 }
 
 /** Recursively walk the tree, returning every leaf in left-to-right order. */
@@ -287,6 +369,43 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   root: null,
   openOrder: [],
   maximizedId: null,
+  lastClosed: null,
+
+  reopenLastClosed: () => {
+    const { lastClosed } = get();
+    if (!lastClosed) return false;
+    const { leaf, siblingId, wasBeforeSibling, siblingIsVertical } = lastClosed;
+    // Clear first: openPanel/dockPanel below both write state, and leaving a
+    // stale record around would let undo fire twice for one close.
+    set({ lastClosed: null });
+    if (findPanel(get().root, leaf.id)) return false;
+
+    const panel = {
+      kind: leaf.kind,
+      topicName: leaf.topicName,
+      type: leaf.type,
+      bagId: leaf.bagId,
+    };
+    // dockPanel moves a panel that is already in the tree, so the leaf has to
+    // exist before it can be positioned. openPanel appends it to the right,
+    // then dockPanel lifts it into the recorded slot.
+    get().openPanel(panel);
+    if (siblingId && findPanel(get().root, siblingId)) {
+      const edge: DropEdge = siblingIsVertical
+        ? wasBeforeSibling
+          ? 'bottom'
+          : 'top'
+        : wasBeforeSibling
+          ? 'right'
+          : 'left';
+      get().dockPanel(panelLeafId(leaf.kind, leaf.topicName, leaf.bagId), siblingId, edge);
+    }
+    // Restore the maximized view if the closed panel was the focused one.
+    if (lastClosed.maximizedId === leaf.id) get().setMaximizedId(leaf.id);
+    return true;
+  },
+
+  clearLastClosed: () => set({ lastClosed: null }),
 
   openPanel: ({ kind, topicName, type, bagId }) => {
     const id = panelLeafId(kind, topicName, bagId);
@@ -294,21 +413,36 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     if (findPanel(state.root, id)) return;
     const leaf: PanelLeaf = { node: 'panel', id, kind, topicName, type, bagId };
     const newRoot = state.root ? appendLeafRight(state.root, leaf) : leaf;
-    set({ root: newRoot, openOrder: [...state.openOrder, id] });
+    // Opening something new supersedes the undo record: the recorded position
+    // no longer describes a gap the user just made.
+    set({ root: newRoot, openOrder: [...state.openOrder, id], lastClosed: null });
   },
 
   closePanel: (id) => {
     const state = get();
     if (!state.root) return;
+    const leaf = findPanel(state.root, id);
+    if (!leaf) return;
+    const context = describeCloseContext(state.root, id);
     const newRoot = removeLeafById(state.root, id);
     set({
       root: newRoot,
       openOrder: state.openOrder.filter((x) => x !== id),
       maximizedId: state.maximizedId === id ? null : state.maximizedId,
+      lastClosed: {
+        leaf,
+        siblingId: context?.siblingId ?? null,
+        wasBeforeSibling: context?.wasBeforeSibling ?? false,
+        siblingIsVertical: context?.siblingIsVertical ?? false,
+        // Preserve a maximize that was already cleared by this close, so undo
+        // can restore the focused view too.
+        maximizedId: state.maximizedId === id ? id : state.maximizedId,
+      },
     });
   },
 
-  closeAllPanels: () => set({ root: null, openOrder: [], maximizedId: null }),
+  closeAllPanels: () =>
+    set({ root: null, openOrder: [], maximizedId: null, lastClosed: null }),
 
   closePanelsForBag: (bagId) => {
     const state = get();
@@ -323,6 +457,10 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
       openOrder: state.openOrder.filter((id) => survivingIds.has(id)),
       maximizedId:
         state.maximizedId && survivingIds.has(state.maximizedId) ? state.maximizedId : null,
+      // Bag removal is not a user-initiated panel close, so there is nothing
+      // meaningful to undo here: reopening would resurrect a panel reading from
+      // a bag that no longer exists.
+      lastClosed: null,
     });
   },
 
@@ -344,7 +482,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     // Maximize state isn't part of the URL hash schema (it's a transient
     // view, not a saved layout choice), so a restored layout always starts
     // un-maximized.
-    set({ root, openOrder, maximizedId: null });
+    set({ root, openOrder, maximizedId: null, lastClosed: null });
   },
 
   hasPanelForTopic: (topicName, bagId) =>

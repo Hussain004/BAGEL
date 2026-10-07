@@ -6,6 +6,7 @@ import { useThemeStore, applyTheme } from './store/themeStore';
 import { LandingPage } from './components/landing/LandingPage';
 import { Toolbar } from './components/layout/Toolbar';
 import { Timeline } from './components/layout/Timeline';
+import { UndoToast } from './components/layout/UndoToast';
 import { PanelGrid } from './components/layout/PanelGrid';
 import { TopicInspector } from './components/panels/TopicInspector';
 import { ModalHost } from './components/modals/ModalHost';
@@ -104,6 +105,7 @@ function AppInner() {
           <Toolbar />
           <MainView />
           <Timeline />
+          <UndoToast />
         </div>
       )}
       <ModalHost />
