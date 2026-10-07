@@ -6,6 +6,7 @@ import { BagEditModal } from './BagEditModal';
 import { UrdfLoadModal } from './UrdfLoadModal';
 import { ClipExportModal } from './ClipExportModal';
 import { ShareModal } from './ShareModal';
+import { CommandPalette } from './CommandPalette';
 
 /**
  * ModalHost - Renders whichever modal the UI store has selected. Mounted once
@@ -28,6 +29,7 @@ export function ModalHost() {
       {modal === 'urdf-load' && <UrdfLoadModal />}
       {modal === 'clip-export' && <ClipExportModal />}
       {modal === 'share' && <ShareModal />}
+      {modal === 'command-palette' && <CommandPalette />}
       {schemaPaste && <SchemaPasteModal />}
     </>
   );

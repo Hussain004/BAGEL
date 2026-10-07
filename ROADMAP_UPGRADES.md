@@ -175,6 +175,8 @@ Add a short "How to add support for a new message type" walkthrough (detector in
 - Render using `ModalShell.tsx` (it already has the focus trap). Use an `aria-activedescendant` listbox pattern for the result list.
 - Register `mod+k` in `useKeyboardShortcuts.ts`, and add it to `ShortcutsModal.tsx`.
 
+**Status: done** (`utils/fuzzy.ts`, `utils/commands.ts`, `CommandPalette`, `Cmd/Ctrl+K`, 20 fuzzy tests, 20 command tests, 11 browser tests). The fuzzy scorer is a small DP over (query position, target position), **not** a greedy scan: greedy matching takes the `r` in "ca**r**a" when scoring `raw` against `/camera/image_raw`, so it ties with a scattered `mra` instead of finding "ima**r**ew". `panelOptionsFor` / `suggestPanelKind` moved out of `TopicRow.tsx` into `utils/panelOptions.ts` so the palette and the sidebar quick buttons share one mapping rather than two that drift. `Cmd/Ctrl+K` is bound above the `typing` guard, next to Escape, because the palette's search field holds focus for the whole interaction and a binding below that guard would be dead exactly when it is needed.
+
 **Files:** new `components/modals/CommandPalette.tsx`, `utils/fuzzy.ts`, `ModalHost.tsx`, `useKeyboardShortcuts.ts`, `ShortcutsModal.tsx`.
 **Tests:** `tests/utils/fuzzy.test.ts`: ranking (prefix > word-start > subsequence), case-insensitivity, `/` and `_` in topic names, empty query.
 **Effort:** M
