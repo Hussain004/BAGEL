@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useEscapeToClose } from '../../hooks/useEscapeToClose';
+import { pageEmbedConfig } from '../../utils/embedConfig';
 import { useLayoutStore, type PanelKind } from '../../store/layoutStore';
 import { useDragDockStore } from '../../store/dragDockStore';
 import { useBagStore, resolveBagEntry } from '../../store/bagStore';
@@ -241,6 +242,7 @@ export function PanelShell({
               </svg>
             )}
           </button>
+          {!pageEmbedConfig().embed && (
           <button
             onClick={() => setIsClosing(true)}
             disabled={isClosing}
@@ -253,6 +255,7 @@ export function PanelShell({
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
+          )}
         </div>
       </header>
       <div className="flex-1 flex flex-col min-h-0">{children}</div>

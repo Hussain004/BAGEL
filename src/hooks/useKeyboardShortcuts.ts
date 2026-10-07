@@ -16,6 +16,7 @@ import { usePlayheadStore } from '../store/playheadStore';
 import { useLayoutStore } from '../store/layoutStore';
 import { useUiStore } from '../store/uiStore';
 import { useAnnotationStore } from '../store/annotationStore';
+import { pageEmbedConfig } from '../utils/embedConfig';
 
 /** Single source of truth for the Shortcuts modal + the handler. */
 export interface ShortcutDescription {
@@ -57,6 +58,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
 export function useKeyboardShortcuts(): void {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const embed = pageEmbedConfig().embed;
       const bag = useBagStore.getState().bag;
       if (!bag) return;
       const typing = isTypingTarget(e.target);
@@ -79,6 +81,8 @@ export function useKeyboardShortcuts(): void {
           layout.setMaximizedId(null);
           return;
         }
+        // A viewer of an embed has no sidebar to reopen a panel from.
+        if (embed) return;
         if (e.shiftKey) {
           layout.closeAllPanels();
         } else if (layout.openOrder.length > 0) {
@@ -100,6 +104,9 @@ export function useKeyboardShortcuts(): void {
       // Escape. Same rationale as the Escape ordering: a modal toggle has to
       // work from inside the thing it toggles.
       if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'k' || e.key === 'K')) {
+        // The palette (like every modal) is not rendered in an embed, and an
+        // open-but-invisible modal would silence the other shortcuts.
+        if (embed) return;
         e.preventDefault();
         const ui = useUiStore.getState();
         ui.setModal(ui.modal === 'command-palette' ? null : 'command-palette');
@@ -114,6 +121,7 @@ export function useKeyboardShortcuts(): void {
       // undo available outside the workspace (there is no editable text state
       // to protect here, but a future input could rely on it).
       if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'z' || e.key === 'Z')) {
+        if (embed) return;
         e.preventDefault();
         useLayoutStore.getState().reopenLastClosed();
         return;
@@ -123,6 +131,11 @@ export function useKeyboardShortcuts(): void {
       // mutate bags, bookmarks, or the playhead behind a dialog.
       const overlay = useUiStore.getState();
       if (overlay.modal !== null || overlay.schemaPaste !== null) return;
+
+      // In an embed only playback keys apply: '?' opens an unrendered modal, T
+      // targets a sidebar that is absent, O would clear the bag, M would add
+      // bookmarks the viewer cannot see or manage.
+      if (embed && ['?', 't', 'T', 'o', 'O', 'm', 'M'].includes(e.key)) return;
 
       // Fires before the playback bindings so '?' isn't swallowed by anything
       // else. 'A' used to open About here too, freed up for panel-scoped 3D

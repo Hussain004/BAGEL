@@ -16,6 +16,8 @@ import { useUrlState } from './hooks/useUrlState';
 import { useCustomSchemaSync } from './hooks/useCustomSchemaSync';
 import { useLivePlayhead } from './hooks/useLivePlayhead';
 import { formatDuration } from './utils/time';
+import { fullAppHash, pageEmbedConfig } from './utils/embedConfig';
+import { usePlayheadStore } from './store/playheadStore';
 import type { BagSummary } from './types/bag';
 
 interface ErrorBoundaryState { error: Error | null }
@@ -66,9 +68,17 @@ function AppInner() {
   // Apply the persisted (or system-preferred) theme to <html data-theme=…>
   // before the first paint, then keep it in sync as the user toggles.
   const theme = useThemeStore((s) => s.theme);
+  const embedConfig = pageEmbedConfig();
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
+  // A host page can pin the theme to match itself. Set on the store (so the
+  // charts and 3D clear colour follow) but NOT persisted: the iframe shares
+  // localStorage with the viewer's own BAGEL, and a host's choice must not
+  // overwrite the viewer's saved preference.
+  useEffect(() => {
+    if (embedConfig.embed && embedConfig.theme) useThemeStore.setState({ theme: embedConfig.theme });
+  }, [embedConfig]);
 
   // Drop panels + cached messages that belonged to a bag that is no longer
   // part of the picture. The key change alone is not enough to decide:
@@ -96,6 +106,8 @@ function AppInner() {
     lastBagCountRef.current = bagCount;
   }, [bag, bagCount, closeAllPanels]);
 
+  if (embedConfig.embed) return <EmbedApp />;
+
   return (
     <>
       {!bag ? (
@@ -110,6 +122,79 @@ function AppInner() {
       )}
       <ModalHost />
     </>
+  );
+}
+
+/**
+ * Embed mode (`#embed=1`): just the panels and a timeline, for an iframe on a
+ * paper, dataset page or course. No toolbar, sidebar, modals or landing page,
+ * and nothing that could leave a viewer stuck (panels cannot be closed, files
+ * cannot be swapped). A corner link opens the same view in the full app.
+ */
+function EmbedApp() {
+  const bag = useBagStore((s) => s.bag);
+  const isLoading = useBagStore((s) => s.isLoading);
+  const loadProgress = useBagStore((s) => s.loadProgress);
+  const error = useBagStore((s) => s.error);
+  const hasPanels = useLayoutStore((s) => s.root !== null);
+  const config = pageEmbedConfig();
+
+  // Autoplay / loop once the bag is ready. Keyed on the bag so a reload of the
+  // same view does not restart a viewer who has paused.
+  const startedForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!bag) return;
+    const key = `${bag.fileName}::${bag.fileSize}`;
+    if (startedForRef.current === key) return;
+    startedForRef.current = key;
+    const playhead = usePlayheadStore.getState();
+    if (config.loop) playhead.setLoop(true);
+    if (config.autoplay) playhead.setPlaying(true);
+  }, [bag, config.loop, config.autoplay]);
+
+  const fullAppHref = `${window.location.origin}${window.location.pathname}#${fullAppHash(window.location.hash)}`;
+
+  return (
+    <div className="h-screen flex flex-col overflow-hidden bg-bg-primary" data-testid="embed-root">
+      {bag ? (
+        <>
+          <div className="flex-1 min-h-0 flex flex-col relative">
+            {hasPanels ? (
+              <PanelGrid />
+            ) : (
+              <div className="flex-1 flex items-center justify-center p-6 text-text-muted text-sm text-center">
+                This link has no panels. Add a layout (p=) to the URL, or open it in BAGEL to explore {bag.fileName}.
+              </div>
+            )}
+            <a
+              href={fullAppHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="absolute bottom-2 right-3 z-30 px-2 py-1 rounded-md text-[11px] mono border border-border bg-bg-primary/90 text-text-secondary hover:text-accent-blue hover:border-accent-blue/50 transition-colors shadow-panel"
+              title="Open this view in the full BAGEL app"
+            >
+              Open in BAGEL
+            </a>
+          </div>
+          <Timeline />
+        </>
+      ) : (
+        <div className="flex-1 flex items-center justify-center p-6 text-center text-sm" role="status" aria-live="polite">
+          {error ? (
+            <div className="max-w-md">
+              <div className="text-accent-rose font-medium mb-1">{error.title}</div>
+              <div className="text-text-secondary">{error.detail}</div>
+            </div>
+          ) : isLoading ? (
+            <div className="text-text-secondary">Loading recording… {Math.round(loadProgress)}%</div>
+          ) : (
+            <div className="text-text-muted max-w-sm">
+              This embed has no recording to show. The link needs a bag URL (<span className="mono">b=</span>).
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
