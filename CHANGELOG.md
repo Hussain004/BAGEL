@@ -9,6 +9,16 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Plots have a "stats" toggle and CSV / SVG / PNG export of the range you are
+  looking at. Zoom into a region (drag on the chart) and the table shows the
+  sample count, min, max, mean, standard deviation and RMS of every visible
+  series over just that span. Variance is computed with Welford's update, so a
+  tiny spread on a large offset stays accurate. The buttons export that range:
+  CSV rows, a light print-ready SVG figure (reduced to a per-pixel envelope so a
+  million-point series stays small), and a PNG of the chart.
+- Fixed the plot's saved zoom lagging one gesture behind. The range was read on
+  `pointerup`, before uPlot applied the drag, so a re-dock restored the previous
+  zoom rather than the latest.
 - New State panel for booleans, strings and integer enums. A control mode, an
   e-stop flag or a behaviour-tree node name is drawn as lanes of coloured runs
   with the value written on each, the current value beside the lane, and a
