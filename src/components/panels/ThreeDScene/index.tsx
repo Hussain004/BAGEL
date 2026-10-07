@@ -714,6 +714,9 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
       owned.mapPlane = createMapPlane(MAP_PLANE_RENDER_ORDER[classifyMapPlaneTier(topicName)]);
       setMapPlaneOpacity(owned.mapPlane, mapAlpha);
       refs.userGroup.add(owned.mapPlane.object);
+    } else if (sceneKind === 'path') {
+      // Drawn by the <SpatialOverlay> mounted for the primary topic below, so
+      // a path looks identical whether it is the panel's topic or an overlay.
     } else {
       owned.poseAxes = createPoseAxes(1.0, bagEntry?.color ?? '#ffffff');
       refs.userGroup.add(owned.poseAxes.object);
@@ -1670,6 +1673,21 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
             onUpdate={handleCameraInfoUpdate}
           />
         ))}
+      {sceneReady && sceneKind === 'path' && (
+        <SpatialOverlay
+          key="primary-path"
+          topic={{ bagId: resolvedBagId ?? '', name: topicName, type }}
+          sceneRef={sceneRef}
+          worldFrame={worldFrame}
+          upFixMatrix={upFixMatrix}
+          colorMode={colorMode}
+          pointSize={pointSize}
+          style={spatialOverlayStyles[overlayKey(resolvedBagId ?? '', topicName)]}
+          heightAxis={heightAxis}
+          mapAlpha={mapAlpha}
+          showPoseAxesTripod={showPoseAxesTripod}
+        />
+      )}
       {sceneReady &&
         selectedSpatialOverlays.map((overlay) => (
           <SpatialOverlay
@@ -1954,7 +1972,9 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
                   ? mapMessage
                     ? `${stats.points.toLocaleString()} cells`
                     : 'no map at playhead'
-                  : `${stats.points.toLocaleString()} pts`}
+                  : sceneKind === 'path'
+                    ? `${type.split('/').pop()} layer`
+                    : `${stats.points.toLocaleString()} pts`}
             {sceneKind === 'markerarray' && markerNamespaces.length > 0 && (
               <span className="text-text-tertiary ml-3">
                 {markerNamespaces.length} ns

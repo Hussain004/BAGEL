@@ -23,6 +23,7 @@ import {
   isMarkerArrayType,
   isMarkerType,
   isOccupancyGridType,
+  isPathLikeType,
   isSplatType,
   isTfTopic,
   isTrajectoryCapableType,
@@ -84,6 +85,8 @@ export function suggestPanelKind(topic: TopicInfo): PanelKind {
   if (isMarkerArrayType(topic.type) || isMarkerType(topic.type)) return '3d';
   // OccupancyGrid maps render as a textured plane in the 3D scene.
   if (isOccupancyGridType(topic.type)) return '3d';
+  // Paths, pose arrays and polygons are geometry in the world frame.
+  if (isPathLikeType(topic.type)) return '3d';
   if (isDiagnosticArrayType(topic.type)) return 'diagnostic';
   if (isLogType(topic.type)) return 'log';
   // For pose-only types (Pose, Point, TransformStamped) plot has nothing
@@ -109,6 +112,7 @@ export function panelOptionsFor(topic: TopicInfo): PanelKind[] {
   if (isLaserScanType(topic.type)) return ['3d', 'plot', 'raw'];
   if (isMarkerArrayType(topic.type) || isMarkerType(topic.type)) return ['3d', 'raw'];
   if (isOccupancyGridType(topic.type)) return ['3d', 'raw'];
+  if (isPathLikeType(topic.type)) return ['3d', 'raw'];
   if (isDiagnosticArrayType(topic.type)) return ['diagnostic', 'raw'];
   if (isLogType(topic.type)) return ['log', 'raw'];
   if (

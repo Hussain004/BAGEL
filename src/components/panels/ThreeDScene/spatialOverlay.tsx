@@ -36,6 +36,20 @@ import {
   type MapPlaneObject,
 } from './mapPlane';
 import { detectKind } from './sceneKind';
+import {
+  createLineLayer,
+  createPoseArrayLayer,
+  extractPathPositions,
+  extractPolygonPositions,
+  extractPoseArray,
+  setLineLayerColor,
+  setPoseArrayColor,
+  updateLineLayer,
+  updatePoseArrayLayer,
+  type LineLayer,
+  type PoseArrayLayer,
+} from './pathObjects';
+import { isPathType, isPoseArrayType } from '../../../utils/messages';
 import { useDecodedCloud } from './useDecodedPointCloud';
 import { applyTransform } from './tfTransform';
 import type { SceneRefs } from './useScene';
@@ -85,6 +99,7 @@ export function SpatialOverlay(props: SpatialOverlayOwnProps) {
     return <CloudOverlay {...props} graph={graph} playheadNs={playheadNs} kind={kind} />;
   }
   if (kind === 'occupancygrid') return <MapOverlay {...props} graph={graph} playheadNs={playheadNs} />;
+  if (kind === 'path') return <PathOverlay {...props} graph={graph} playheadNs={playheadNs} />;
   if (kind === 'markerarray') return null;
   return <PoseOverlay {...props} graph={graph} playheadNs={playheadNs} />;
 }
@@ -237,6 +252,95 @@ function MapOverlay({
     updateMapPlane(owned.map, decoded, scheme);
     scene.renderOnce();
   }, [graph, sceneRef, state.message, upFixMatrix, worldFrame, scheme]);
+
+  return null;
+}
+
+/**
+ * A `nav_msgs/Path`, `geometry_msgs/PoseArray` or polygon outline. All three
+ * are "geometry already expressed in the message's header frame", so one
+ * component handles them: only the object built and the extractor differ.
+ */
+type PathLayer = { kind: 'poses'; poses: PoseArrayLayer } | { kind: 'line'; line: LineLayer };
+
+function PathOverlay({
+  topic,
+  playheadNs,
+  sceneRef,
+  graph,
+  worldFrame,
+  upFixMatrix,
+  style,
+}: SpatialOverlayProps) {
+  const state = useMessageAtTime(topic.name, playheadNs, topic.bagId);
+  const bagColor = useBagStore((s) => resolveBagEntry(s, topic.bagId)?.color ?? '#ffffff');
+  const color = style?.color ?? bagColor;
+  const isPoses = isPoseArrayType(topic.type);
+  const isPath = isPathType(topic.type);
+  const ownedRef = useRef<{ group: THREE.Group; layer: PathLayer } | null>(null);
+  const transformCache = useRef<{ key: string; matrix: THREE.Matrix4 } | null>(null);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    const group = new THREE.Group();
+    group.name = `overlay:${topic.name}`;
+    // Polygons close back on their first vertex; paths do not.
+    const layer: PathLayer = isPoses
+      ? { kind: 'poses', poses: createPoseArrayLayer(color) }
+      : { kind: 'line', line: createLineLayer(color, !isPath) };
+    group.add(layer.kind === 'poses' ? layer.poses.object : layer.line.object);
+    scene.scene.add(group);
+    ownedRef.current = { group, layer };
+    scene.renderOnce();
+
+    return () => {
+      scene.scene.remove(group);
+      disposeObject(group);
+      ownedRef.current = null;
+      scene.renderOnce();
+    };
+    // initial color only - the color effect below keeps it in sync afterward.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sceneRef, topic.name, isPoses, isPath]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    const owned = ownedRef.current;
+    if (!scene || !owned) return;
+    if (owned.layer.kind === 'poses') setPoseArrayColor(owned.layer.poses, color);
+    else setLineLayerColor(owned.layer.line, color);
+    scene.renderOnce();
+  }, [color, sceneRef]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    const owned = ownedRef.current;
+    const message = state.message;
+    if (!scene || !owned) return;
+    const value = message?.value ?? null;
+    // No message at the playhead yet: clear rather than leave the previous
+    // topic's geometry on screen.
+    if (owned.layer.kind === 'poses') updatePoseArrayLayer(owned.layer.poses, extractPoseArray(value));
+    else {
+      updateLineLayer(
+        owned.layer.line,
+        isPath ? extractPathPositions(value) : extractPolygonPositions(value),
+      );
+    }
+    if (message) {
+      applyTransform(
+        owned.group,
+        graph,
+        pickFrameId(value),
+        worldFrame,
+        message.timestamp,
+        transformCache,
+        upFixMatrix,
+      );
+    }
+    scene.renderOnce();
+  }, [graph, sceneRef, state.message, upFixMatrix, worldFrame, isPath]);
 
   return null;
 }

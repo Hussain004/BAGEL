@@ -12,6 +12,7 @@ import {
   isMarkerArrayType,
   isMarkerType,
   isOccupancyGridType,
+  isPathLikeType,
 } from '../../../utils/messages';
 
 export type SceneKind =
@@ -19,7 +20,8 @@ export type SceneKind =
   | 'laserscan'
   | 'pose'
   | 'markerarray'
-  | 'occupancygrid';
+  | 'occupancygrid'
+  | 'path';
 
 export const SCENE_KINDS: readonly SceneKind[] = [
   'pointcloud',
@@ -27,6 +29,7 @@ export const SCENE_KINDS: readonly SceneKind[] = [
   'pose',
   'markerarray',
   'occupancygrid',
+  'path',
 ] as const;
 
 /** Human-readable label used in user-facing copy (e.g. "Save as default for PointCloud2"). */
@@ -36,6 +39,7 @@ export const SCENE_KIND_LABELS: Record<SceneKind, string> = {
   pose: 'Pose',
   markerarray: 'MarkerArray',
   occupancygrid: 'OccupancyGrid',
+  path: 'Path',
 };
 
 /**
@@ -47,6 +51,7 @@ export const SCENE_KIND_LABELS: Record<SceneKind, string> = {
  *    share the same render pipeline once the worker has produced typed
  *    arrays, so they collapse onto 'pointcloud'.
  *  - SLAM-produced maps render as a textured plane in the world frame.
+ *  - Paths, pose arrays and polygons are drawn as line / arrow layers.
  *  - Everything else falls back to 'pose' (geometry_msgs/Pose, Odometry,
  *    TransformStamped, ...).
  */
@@ -55,5 +60,6 @@ export function detectKind(type: string): SceneKind {
   if (isCloudType(type)) return 'pointcloud';
   if (isLaserScanType(type)) return 'laserscan';
   if (isOccupancyGridType(type)) return 'occupancygrid';
+  if (isPathLikeType(type)) return 'path';
   return 'pose';
 }
