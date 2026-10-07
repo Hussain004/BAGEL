@@ -84,6 +84,8 @@ tests/            mirrors src/; tests/fixtures/synth.ts builds in-memory bags
 ```
 Add a short "How to add support for a new message type" walkthrough (detector in `utils/messages.ts` -> button in `TopicInspector/TopicRow.tsx` `panelOptionsFor` -> render path -> test with a `synth.ts` fixture). That's the most common contribution people will want to make.
 
+**Status: done** (`CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, three issue templates, a PR checklist, `config.yml`).
+
 **Files:** new `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1 verbatim), `.github/ISSUE_TEMPLATE/*.yml`, `.github/pull_request_template.md`, commit `.nvmrc`.
 **Tests:** none. Have someone unfamiliar with the repo follow CONTRIBUTING on a clean clone.
 **Effort:** S
@@ -100,6 +102,8 @@ Add a short "How to add support for a new message type" walkthrough (detector in
    - opens one panel of every kind from the topic list and checks for no errors
    - scrubs the timeline with the keyboard (arrow keys) and checks the playhead text changes
 3. New CI job `e2e` running `npx playwright install --with-deps chromium` then the spec. Use Chromium only; WebGL under SwiftShader is enough for a "doesn't crash" check (FEATURES.md notes the splat GPU sort is blank there, so skip pixel asserts on splats).
+
+**Status: done** (lint is a hard gate; `tests/e2e/smoke.spec.ts` runs against `pnpm preview` on Chromium in a new `e2e` CI job). Verified the smoke test catches the bug it was written for: reintroducing a `.slice()` into the pinned-topics selector in `Timeline.tsx` fails the e2e job while all 749 Vitest tests still pass.
 
 **Files:** `.github/workflows/ci.yml`, `package.json` (`test:e2e` script), `playwright.config.ts`, `tests/e2e/smoke.spec.ts`, `vitest.config.ts` (exclude `tests/e2e`).
 **Tests:** The spec is the test. Check that it catches the bug: temporarily reintroduce a selector returning a fresh `[]` and confirm the run fails.
@@ -119,6 +123,8 @@ Add a short "How to add support for a new message type" walkthrough (detector in
 
 **How:** The link builder reuses the serializer `useUrlState.ts` already uses to write the hash (around line 310). If the current bag is a local file, disable the snippet and explain why ("upload the bag somewhere with CORS, paste its URL here, and we'll build the link"). Add a URL input that validates by issuing a `HEAD` plus a `Range: bytes=0-15` request and reports exactly which header is missing.
 
+**Status: done** (`ShareModal` + `public/badge.svg` + `docs/DATASET_HOSTING.md` + `utils/corsProbe.ts`, 17 unit tests and 4 browser tests). The hosting doc's host table is from real probe runs, not assumptions: **Hugging Face works** (302 to a CDN, then `206` with `Content-Range`), **Zenodo does not** (answers a Range request with `200` and the full body, no `Accept-Ranges`, `Content-Range` not exposed).
+
 **Files:** new `src/components/modals/ShareModal.tsx`, register in `ModalHost.tsx`, button in `Toolbar.tsx` next to Copy link, `public/badge.svg`, `docs/DATASET_HOSTING.md`, `src/utils/actionableError.ts` (doc link).
 **Tests:** unit-test the CORS probe classifier with mocked `fetch` responses: no `Accept-Ranges`, 200 instead of 206, `Content-Range` not exposed, opaque CORS failure.
 **Effort:** S
@@ -128,6 +134,8 @@ Add a short "How to add support for a new message type" walkthrough (detector in
 **Why:** The README has grown into a full release history (every v0.x to v1.7 entry, the long roadmap paragraph). A first-time visitor needs about 30 seconds of content: what it is, a GIF, the live demo link, the supported formats table, and how to run it. The deep material already lives in FEATURES.md.
 
 **What:** Keep: hero, demo video, "Why BAGEL" table, condensed format and panel tables, quick start, contributing link. Move "Earlier version highlights" and the roadmap paragraph into `CHANGELOG.md` (Keep a Changelog format, one short entry per version linking to the FEATURES.md anchor). Turn "Possible future directions" into GitHub issues labelled `roadmap` and link the filtered issue list; that also gives contributors something to pick up.
+
+**Status: done** (README 59 KB to 29 KB; `CHANGELOG.md` added; the seven "future directions" became roadmap issues #119-#125 with a `roadmap` label).
 
 **Files:** `README.md`, new `CHANGELOG.md`.
 **Effort:** S

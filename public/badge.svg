@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="132" height="20" role="img" aria-label="Open in BAGEL">
+  <title>Open in BAGEL</title>
+  <linearGradient id="s" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%" stop-color="#3b82f6"/>
+    <stop offset="50%" stop-color="#06b6d4"/>
+    <stop offset="100%" stop-color="#8b5cf6"/>
+  </linearGradient>
+  <rect width="86" height="20" fill="#555"/>
+  <rect x="86" width="46" height="20" fill="url(#s)"/>
+  <rect width="85.5" height="19.5" fill="none" stroke="#bbb" stroke-opacity=".4"/>
+  <g fill="#fff" text-anchor="middle" font-family="Verdana,DejaVu Sans,sans-serif" font-size="11">
+    <text x="43" y="15" fill="#010101" fill-opacity=".3">Open in BAGEL</text>
+    <text x="43" y="14">Open in BAGEL</text>
+    <text x="108" y="15" fill="#010101" fill-opacity=".3">view</text>
+    <text x="108" y="14">view</text>
+  </g>
+</svg>

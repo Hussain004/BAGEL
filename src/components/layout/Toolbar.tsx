@@ -215,6 +215,7 @@ export function Toolbar() {
           </button>
         )}
         <CopyLinkButton />
+        <ShareButton />
         <PresetsMenu />
         {focusedBagIsLive && focusBagId && (
           <RecordButton
@@ -747,6 +748,46 @@ function CopyLinkButton() {
         {copied ? 'Copied' : 'Link'}
       </span>
     </button>
+  );
+}
+
+/**
+ * ShareButton - opens the Share modal, which builds a dataset badge and a
+ * permalink. Separate from CopyLinkButton because the two answer different
+ * questions: "give me this link" versus "how do I publish this".
+ */
+function ShareButton() {
+  const setModal = useUiStore((s) => s.setModal);
+  return (
+    <button
+      onClick={() => setModal('share')}
+      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs border border-border text-text-secondary hover:text-text-primary hover:bg-surface-hover hover:border-accent-blue/40 transition-colors"
+      title="Build a shareable link or an Open in BAGEL badge for a dataset README"
+      aria-label="Share this view"
+    >
+      <ShareIcon />
+      <span className="hidden xl:inline">Share</span>
+    </button>
+  );
+}
+
+function ShareIcon() {
+  return (
+    <svg
+      className="w-3.5 h-3.5"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={1.7}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="18" cy="5" r="3" />
+      <circle cx="6" cy="12" r="3" />
+      <circle cx="18" cy="19" r="3" />
+      <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" />
+    </svg>
   );
 }
 

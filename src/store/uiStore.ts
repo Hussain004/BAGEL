@@ -20,7 +20,7 @@ function readHintDismissed(): boolean {
   }
 }
 
-export type ModalKind = 'about' | 'shortcuts' | 'bag-edit' | 'urdf-load' | 'clip-export' | null;
+export type ModalKind = 'about' | 'shortcuts' | 'bag-edit' | 'urdf-load' | 'clip-export' | 'share' | null;
 
 /**
  * Per-target state for the schema-paste modal. We keep this separate from

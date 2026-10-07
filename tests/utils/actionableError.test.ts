@@ -1,14 +1,35 @@
 import { describe, expect, it } from 'vitest';
-import { classifyBagError, classifyPanelError } from '../../src/utils/actionableError';
+import {
+  classifyBagError,
+  classifyPanelError,
+  DATASET_HOSTING_DOC_URL,
+} from '../../src/utils/actionableError';
 
 describe('classifyBagError', () => {
-  it('turns CORS and range failures into a local-file action', () => {
+  it('turns CORS and range failures into a pointer at the hosting doc', () => {
+    // Changed from "open a local copy": the real fix for a remote-host CORS or
+    // Range failure is a server config, which the user cannot do from here.
     const error = classifyBagError(
       'The server may not allow cross-origin requests or expose Content-Length.',
       'url',
     );
     expect(error.title).toBe('Remote server cannot stream this bag');
-    expect(error.action).toEqual({ kind: 'choose-file', label: 'Open a local copy' });
+    expect(error.action?.kind).toBe('hosting-doc');
+    expect(DATASET_HOSTING_DOC_URL).toContain('DATASET_HOSTING.md');
+  });
+
+  it('classifies every remote-server failure signature to the hosting doc', () => {
+    for (const message of [
+      'A cross-origin request was blocked.',
+      'CORS policy rejected the request.',
+      'Response is missing Content-Length.',
+      'Server advertises Accept-Ranges: none.',
+      'Range request failed.',
+      'Expected 206 Partial Content.',
+      'TypeError: Failed to fetch',
+    ]) {
+      expect(classifyBagError(message, 'url').action?.kind, message).toBe('hosting-doc');
+    }
   });
 
   it('identifies incomplete or corrupt bags', () => {
