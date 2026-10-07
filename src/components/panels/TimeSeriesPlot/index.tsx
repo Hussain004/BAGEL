@@ -18,6 +18,9 @@ import {
 } from '../../../store/panelUiStores';
 import { compileExpr } from '../../../utils/mathExpr';
 import { eulerExpressions, findQuaternionPrefixes } from '../../../utils/eulerExpressions';
+import { plotCsv, plotFilename, plotSvg, rangeStats, type PlotColumn } from '../../../utils/seriesStats';
+import { downloadText } from '../../../utils/export';
+import { downloadBytes } from '../../../utils/clipEncoder';
 import { registerCapture } from '../../../utils/captureRegistry';
 import { alignColumns, extraKey, holdForward, newSeriesId, readField, type TimedColumn } from '../../../utils/alignSeries';
 import {
@@ -50,6 +53,9 @@ interface PlotSeries {
   fieldNames: string[];
   baseNs: bigint;
 }
+
+const EXPORT_BTN =
+  'px-2 py-1 rounded-md text-xs mono border border-border text-text-muted hover:border-border-hover hover:text-text-primary transition-colors';
 
 interface TimeSeriesPlotProps {
   panelId: string;
@@ -398,6 +404,82 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
     updateSettings(panelId, { expressions: [...expressions, ...defs.filter((d) => !have.has(d.id))] });
   };
 
+  // Visible series (raw fields, extra-topic series, expressions) with the same
+  // colours the chart uses, and the x range the user is looking at. Stats and
+  // exports describe exactly this, not the whole recording.
+  const [statsOpen, setStatsOpen] = useState(false);
+  const visibleColumns = useMemo<PlotColumn[]>(() => {
+    if (!series) return [];
+    const cols: PlotColumn[] = [];
+    series.fieldNames.forEach((f, i) => {
+      if (visibility[f] !== false) cols.push({ name: f, values: series.values[f]!, color: SERIES_PALETTE[i % SERIES_PALETTE.length]! });
+    });
+    expressions.forEach((e, i) => {
+      if (visibility[e.id] !== false) {
+        cols.push({
+          name: e.label,
+          values: expressionResults[e.id] ?? [],
+          color: SERIES_PALETTE[(series.fieldNames.length + i) % SERIES_PALETTE.length]!,
+        });
+      }
+    });
+    return cols;
+  }, [series, visibility, expressions, expressionResults]);
+  const viewRange = useMemo(() => {
+    if (!series || series.time.length === 0) return null;
+    if (settings.xRange) return settings.xRange;
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const t of series.time) {
+      if (t < lo) lo = t;
+      if (t > hi) hi = t;
+    }
+    return { min: lo, max: hi };
+  }, [series, settings.xRange]);
+  const statsRows = useMemo(
+    () =>
+      statsOpen && series && viewRange
+        ? visibleColumns
+            .map((c) => rangeStats(c.name, series.time, c.values, viewRange.min, viewRange.max))
+            .filter((r): r is NonNullable<typeof r> => r !== null)
+        : [],
+    [statsOpen, series, viewRange, visibleColumns],
+  );
+  const bagFileName = bag?.fileName ?? 'bag';
+  const exportCsv = () => {
+    if (!series || !viewRange) return;
+    downloadText(
+      plotCsv(series.time, visibleColumns, viewRange.min, viewRange.max),
+      plotFilename(bagFileName, topicName, 'csv'),
+      'text/csv',
+    );
+  };
+  const exportSvg = () => {
+    if (!series || !viewRange) return;
+    downloadText(
+      plotSvg({ title: topicName, time: series.time, columns: visibleColumns, lo: viewRange.min, hi: viewRange.max }),
+      plotFilename(bagFileName, topicName, 'svg'),
+      'image/svg+xml',
+    );
+  };
+  const exportPng = () => {
+    const src = containerRef.current?.querySelector('canvas');
+    if (!src) return;
+    // uPlot draws on a transparent canvas, so a dark-theme export would be
+    // pale text on nothing. Composite onto the panel background first.
+    const out = document.createElement('canvas');
+    out.width = src.width;
+    out.height = src.height;
+    const ctx = out.getContext('2d');
+    if (!ctx) return;
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--color-bg-primary').trim() || '#ffffff';
+    ctx.fillRect(0, 0, out.width, out.height);
+    ctx.drawImage(src, 0, 0);
+    out.toBlob((blob) => {
+      if (blob) downloadBytes(blob, plotFilename(bagFileName, topicName, 'png'));
+    }, 'image/png');
+  };
+
   const handleRemoveExpr = (id: string) => {
     updateSettings(panelId, {
       expressions: expressions.filter(e => e.id !== id),
@@ -486,13 +568,19 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
     // generate any input events.
     const container = containerRef.current;
     const handlePointerUp = () => {
-      if (!plotRef.current) return;
-      const sx = plotRef.current.scales.x;
-      if (sx.min == null || sx.max == null) return;
-      const next = { min: sx.min, max: sx.max };
-      const prev = savedXRangeRef.current;
-      if (prev && prev.min === next.min && prev.max === next.max) return;
-      updateSettings(panelId, { xRange: next });
+      // Deferred one tick: uPlot applies a drag-zoom on `mouseup`, which fires
+      // AFTER `pointerup`. Reading the scale synchronously here saved the range
+      // from before the gesture, so the stored zoom (and anything derived from
+      // it, such as the range stats) lagged one gesture behind.
+      setTimeout(() => {
+        if (!plotRef.current) return;
+        const sx = plotRef.current.scales.x;
+        if (sx.min == null || sx.max == null) return;
+        const next = { min: sx.min, max: sx.max };
+        const prev = savedXRangeRef.current;
+        if (prev && prev.min === next.min && prev.max === next.max) return;
+        updateSettings(panelId, { xRange: next });
+      }, 0);
     };
     const handleDblClick = () => {
       // Reset zoom: clear the saved range and let uPlot auto-fit to data.
@@ -761,6 +849,55 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
                 </button>
               )}
             </div>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                onClick={() => setStatsOpen((o) => !o)}
+                aria-pressed={statsOpen}
+                title="Min, max, mean, spread and RMS of the visible series over the range you are looking at"
+                className={`px-2 py-1 rounded-md text-xs mono border transition-colors ${
+                  statsOpen ? 'border-accent-blue/60 text-accent-blue bg-accent-blue/10' : 'border-border text-text-muted hover:border-border-hover'
+                }`}
+              >
+                stats
+              </button>
+              <span className="text-text-muted text-xs mono">export view:</span>
+              <button onClick={exportCsv} title="Visible range as CSV" className={EXPORT_BTN}>csv</button>
+              <button onClick={exportSvg} title="Vector figure of the visible range" className={EXPORT_BTN}>svg</button>
+              <button onClick={exportPng} title="Chart image" className={EXPORT_BTN}>png</button>
+            </div>
+
+            {statsOpen && viewRange && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs mono tabular-nums" data-testid="plot-stats">
+                  <caption className="text-left text-text-muted pb-1">
+                    {viewRange.min.toFixed(2)}s to {viewRange.max.toFixed(2)}s ({(viewRange.max - viewRange.min).toFixed(2)}s)
+                    {settings.xRange ? '' : ' - drag the chart to zoom'}
+                  </caption>
+                  <thead>
+                    <tr className="text-text-muted text-left">
+                      {['series', 'n', 'min', 'max', 'mean', 'std', 'rms'].map((h) => (
+                        <th key={h} className={`font-medium pr-3 ${h === 'series' ? '' : 'text-right'}`}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {statsRows.map((r) => (
+                      <tr key={r.name}>
+                        <td className="pr-3 max-w-[160px] truncate" title={r.name}>{r.name}</td>
+                        <td className="pr-3 text-right">{r.n}</td>
+                        {[r.min, r.max, r.mean, r.std, r.rms].map((v, i) => (
+                          <td key={i} className="pr-3 text-right">{Number(v.toPrecision(5))}</td>
+                        ))}
+                      </tr>
+                    ))}
+                    {statsRows.length === 0 && (
+                      <tr><td colSpan={7} className="text-text-muted py-1">No samples in this range.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
 
             {extraPickerVisible && (
               <ExtraSeriesPicker
