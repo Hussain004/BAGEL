@@ -69,6 +69,10 @@ export interface TimeSeriesPanelSettings {
    * shared link (the hash only carries layout, playhead and bag URL).
    */
   extraSeries: ExtraSeriesDef[];
+  /** Series plotted on the x axis instead of time (an XY plot); null means the usual time axis. */
+  xyX: string | null;
+  /** XY plot only: give both axes the same scale so a circle in the data stays a circle. */
+  xyEqual: boolean;
 }
 
 export const DEFAULT_TIMESERIES_SETTINGS: TimeSeriesPanelSettings = {
@@ -76,6 +80,8 @@ export const DEFAULT_TIMESERIES_SETTINGS: TimeSeriesPanelSettings = {
   xRange: null,
   expressions: [],
   extraSeries: [],
+  xyX: null,
+  xyEqual: false,
 };
 
 interface TimeSeriesPanelState {

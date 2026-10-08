@@ -9,6 +9,16 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Plots can show one field against another. The "x axis" selector under a plot
+  switches from time to any visible series (including series from other topics
+  and expressions), and every other visible series is drawn against it: a
+  command against a measurement, a controller's phase plot, a position's x
+  against y. The path is joined and its dots are coloured from early to late
+  with a legend, so direction is readable; a ring marks the sample nearest the
+  playhead, and clicking a point seeks to its time. "equal scale" gives both
+  axes the same pixels per unit so a circle in the data is a circle on screen.
+  Series from different topics are paired by holding each at its last value.
+  PNG export works in this mode; SVG export stays time-axis only.
 - New Find panel: "when did this field meet a condition?". Open it from a topic
   (scalar messages such as a battery, a float or a mode string get a Find
   button), pick a field, a condition (is below / at most / above / at least /
