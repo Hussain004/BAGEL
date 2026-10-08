@@ -43,6 +43,13 @@ jobs:
       - name: Run tests
         run: pnpm test
 
+      # cli/bundle is committed so the GitHub Action needs no install step. A
+      # source change that forgot to rebuild it would ship a stale CLI.
+      - name: CLI bundle is up to date
+        run: |
+          pnpm build:cli
+          git diff --exit-code -- cli/bundle
+
   # The logic suite above runs in Node and never mounts React, so it cannot see
   # render-time failures. That is not hypothetical: a Zustand selector
   # returning a fresh `[]` on every call caused an infinite render loop that

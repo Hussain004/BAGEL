@@ -1,0 +1,26 @@
+name: BAGEL bag check
+description: Fail a workflow when a ROS bag (.mcap, .db3, .bag) is missing topics, publishes too slowly, has gaps, or is too short.
+author: BAGEL
+branding:
+  icon: check-circle
+  color: orange
+inputs:
+  path:
+    description: Bag files or rosbag2 folders to check, separated by spaces. Globs are expanded.
+    required: true
+  expect:
+    description: Path to a JSON expectations file. Without it the action only reports and never fails.
+    required: false
+    default: ''
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        BAGEL_PATH: ${{ inputs.path }}
+        BAGEL_EXPECT: ${{ inputs.expect }}
+      run: |
+        # Word splitting and globbing of BAGEL_PATH are intended.
+        args=()
+        if [ -n "$BAGEL_EXPECT" ]; then args+=(--expect "$BAGEL_EXPECT"); fi
+        node "$GITHUB_ACTION_PATH/cli/bundle/bagel-check.mjs" "${args[@]}" $BAGEL_PATH
