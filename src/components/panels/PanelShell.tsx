@@ -124,6 +124,8 @@ export function PanelShell({
    */
   const handleHeaderPointerDown = (e: React.PointerEvent<HTMLElement>) => {
     if (e.button !== 0) return; // left-click only
+    // No drag-to-dock by touch: the header is also what a finger scrolls past.
+    if (e.pointerType === 'touch') return;
     const target = e.target as HTMLElement;
     if (target.closest('button, input, select, a, [role="menu"], [role="menuitem"]')) {
       return;

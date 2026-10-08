@@ -331,7 +331,7 @@ export function Timeline() {
 
       <div
         ref={trackRef}
-        className="flex-1 h-8 flex items-center cursor-pointer select-none group relative"
+        className="flex-1 h-8 pointer-coarse:h-11 flex items-center cursor-pointer select-none touch-none group relative"
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
@@ -360,10 +360,10 @@ export function Timeline() {
             style={{ width: `${Math.max(0, Math.min(1, fraction)) * 100}%` }}
           />
           <div
-            className={`absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-white shadow-glow-blue border border-accent-blue transition-transform ${
+            className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-coarse:w-5 pointer-coarse:h-5 rounded-full bg-white shadow-glow-blue border border-accent-blue transition-transform ${
               isDragging ? 'scale-[1.3]' : 'group-hover:scale-110'
             }`}
-            style={{ left: `calc(${Math.max(0, Math.min(1, fraction)) * 100}% - 7px)` }}
+            style={{ left: `${Math.max(0, Math.min(1, fraction)) * 100}%` }}
           />
         </div>
 

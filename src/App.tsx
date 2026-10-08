@@ -13,6 +13,7 @@ import { ModalHost } from './components/modals/ModalHost';
 import { clearTopicMessageCache } from './hooks/useTopicMessages';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useUrlState } from './hooks/useUrlState';
+import { useCompactLayout } from './hooks/useCompactLayout';
 import { useCustomSchemaSync } from './hooks/useCustomSchemaSync';
 import { useLivePlayhead } from './hooks/useLivePlayhead';
 import { formatDuration } from './utils/time';
@@ -211,6 +212,12 @@ function MainView() {
   const hasPanels = useLayoutStore((s) => s.root !== null);
   const sidebarRef = useRef<PanelImperativeHandle>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const compact = useCompactLayout();
+  // On a narrow screen the topic list and a panel cannot share the width: when
+  // the first panel opens, give it the screen. The arrow brings the list back.
+  useEffect(() => {
+    if (compact && hasPanels) sidebarRef.current?.collapse();
+  }, [compact, hasPanels]);
   if (!bag) return null;
 
   const toggleSidebar = () => {

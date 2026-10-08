@@ -240,6 +240,8 @@ Add a short "How to add support for a new message type" walkthrough (detector in
 - 3D: `OrbitControls` already handles touch; add a visible "Fit" button since there's no `F` key.
 - Disable drag-to-dock on touch.
 
+**Status: mostly done.** Tab stack, 44 px timeline, always-visible touch controls, no touch drag-to-dock, softened banner. Not done: pinch-to-zoom of the time range (the timeline has no range zoom to pinch yet), and no swipe between panels (it would fight plot pan and 3D orbit).
+
 **Files:** `layout/PanelGrid.tsx`, `layout/Timeline.tsx`, `index.css`, `DropZone.tsx` (soften the banner).
 **Tests:** a Playwright run at the iPad viewport (if A2 lands) loading the sample bag.
 **Effort:** M

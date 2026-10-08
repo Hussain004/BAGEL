@@ -9,6 +9,16 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Phones and upright tablets get a layout of their own. Below 768 px, or on a
+  touch screen narrower than 1024 px, the panel grid shows one panel at a time
+  behind a tab strip (tap a tab to switch; opening a topic shows it), the topic
+  list steps aside when the first panel opens, the timeline track and its
+  handle grow to touch size, the 3D and topic-row controls that used to appear
+  only on hover are always visible, and header drag-to-dock is off for touch.
+  Your split arrangement is untouched and returns in landscape or on a wider
+  screen. The small-screen notice on the start page now says what to expect
+  instead of telling people to go away. Not done: pinch-to-zoom of the
+  timeline range.
 - New Measure tool in the 3D scene. Turn on "Measure", click two points (on the
   point cloud where there is one, otherwise on the ground plane) and read the
   straight-line distance, the dx / dy / dz between them and the horizontal
