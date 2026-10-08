@@ -66,3 +66,8 @@ IMPROVEMENTS_PROGRESS.md
 /BAGEL-*.mp4
 /BAGEL-*.jpg
 /videos/
+
+# Local agent and planning files. Each developer's own; not part of the project.
+.codex/
+.claude/
+ROADMAP_UPGRADES.md

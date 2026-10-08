@@ -188,7 +188,6 @@ Keep the change focused, fill in the PR checklist, and make sure `pnpm lint`,
 user-visible, add a line to `FEATURES.md`.
 
 Looking for something to pick up? Issues labelled `good first issue` are scoped
-deliberately small, and `ROADMAP_UPGRADES.md` lists larger items with the files
-and tests each one would need.
+deliberately small, and issues labelled `roadmap` are the larger planned items.
 
 By participating you agree to abide by our [Code of Conduct](CODE_OF_CONDUCT.md).
