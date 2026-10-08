@@ -1,7 +1,7 @@
 // Bundle the headless bagel-check CLI into one committed file so the GitHub
 // Action can run it with no install step. CI rebuilds it and fails on drift.
 import { build } from 'esbuild';
-import { copyFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, mkdirSync, readFileSync } from 'node:fs';
 
 const out = 'cli/bundle';
 mkdirSync(out, { recursive: true });
@@ -35,3 +35,5 @@ await build({
 });
 // sql.js (for .db3) looks for its wasm next to the running script.
 copyFileSync('node_modules/sql.js/dist/sql-wasm.wasm', `${out}/sql-wasm.wasm`);
+// copyFileSync keeps the source mode, which differs between machines; pin it so the CI drift check compares content only.
+chmodSync(`${out}/sql-wasm.wasm`, 0o644);
