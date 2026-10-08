@@ -336,6 +336,8 @@ Add a short "How to add support for a new message type" walkthrough (detector in
 
 **How:** A ruler toggle in the 3D header. While active, a click raycasts against point clouds (`THREE.Raycaster` with `params.Points.threshold` scaled by point size) and against the ground plane as a fallback. Two clicks give distance + delta xyz in the fixed frame. A hover tooltip on a point shows xyz, intensity, ring, and the source topic (read from the decoded buffer by the hit `index`). Esc clears (route through `useEscapeToClose`).
 
+**Status: measuring done**, in `ThreeDScene/measureTool.ts` (pure maths, formatting, a shared raycast helper that the shift+click pivot picker now uses too). The hover point inspector (intensity, ring) is not done: the decoded buffer keeps positions and colours only, so it needs the decoder to retain extra fields.
+
 **Files:** `ThreeDScene/index.tsx` (after G1 splits it, this belongs in a new `ThreeDScene/measureTool.tsx`).
 **Tests:** a pure `distanceReadout` formatter test. Check picking manually.
 **Effort:** M

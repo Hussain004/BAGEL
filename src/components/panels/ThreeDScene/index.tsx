@@ -47,6 +47,14 @@ import { useTFGraph, type TFGraph } from '../TFTree/useTFGraph';
 import type { ColorMode, HeightAxis } from '../../../utils/pointcloud';
 import { useScene, MIN_ZOOM_LEVEL, MAX_ZOOM_LEVEL } from './useScene';
 import {
+  createMeasureOverlay,
+  distanceReadout,
+  pickScenePoint,
+  readoutText,
+  type MeasureOverlay,
+  type V3,
+} from './measureTool';
+import {
   computeFit,
   createGroundGrid,
   createLaserScan,
@@ -877,6 +885,11 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
   // initial mount (or on a remount, when settings are being restored from
   // the per-panel store). Without this, a remount triggered by adding a
   // sibling panel would silently null out the user's pivot.
+  // Measure tool state lives up here because the coordinate-change effect below clears it.
+  const [measureOn, setMeasureOn] = useState(false);
+  const [measurePts, setMeasurePts] = useState<V3[]>([]);
+  const measureRef = useRef<MeasureOverlay | null>(null);
+
   const prevCoordDepsRef = useRef({ worldFrame, topicName, upAxis });
   useEffect(() => {
     const refs = sceneRef.current;
@@ -895,6 +908,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
       setAccumStats({ points: 0, frames: 0 });
     }
     setPivot(null);
+    setMeasurePts([]);
     refs.renderOnce();
   }, [worldFrame, topicName, upAxis, sceneRef, setPivot]);
 
@@ -918,46 +932,21 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     const refs = sceneRef.current;
     if (!refs) return;
     const canvas = refs.renderer.domElement;
-    const raycaster = new THREE.Raycaster();
-    const ndc = new THREE.Vector2();
-    const groundPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
-    const planeHit = new THREE.Vector3();
-
     const handlePointerDown = (event: PointerEvent) => {
       if (!event.shiftKey || event.button !== 0) return;
       // Block OrbitControls from interpreting this as a drag-start.
       event.preventDefault();
       event.stopPropagation();
 
-      const rect = canvas.getBoundingClientRect();
-      ndc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      ndc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-      raycaster.setFromCamera(ndc, refs.camera);
-      // Threshold scales with view radius so picking feels the same whether
-      // you're zoomed into a 5 m room or out over a 200 m field.
-      const viewRadius = refs.camera.position.distanceTo(refs.controls.target);
-      raycaster.params.Points = { threshold: Math.max(viewRadius * 0.01, 0.05) };
-
-      let hit: THREE.Vector3 | null = null;
-      const cloudObj = objectsRef.current?.cloud?.object;
-      const accumObj = objectsRef.current?.accumulator?.object;
       // Try both the live frame and the accumulated cloud - either is fair
       // game as a pivot target.
       const targets: THREE.Object3D[] = [];
+      const cloudObj = objectsRef.current?.cloud?.object;
+      const accumObj = objectsRef.current?.accumulator?.object;
       if (cloudObj) targets.push(cloudObj);
       if (accumObj && accumObj.visible) targets.push(accumObj);
-      for (const target of targets) {
-        const hits = raycaster.intersectObject(target, false);
-        if (hits.length > 0) {
-          hit = hits[0].point.clone();
-          break;
-        }
-      }
-      if (!hit) {
-        const out = raycaster.ray.intersectPlane(groundPlane, planeHit);
-        if (out) hit = planeHit.clone();
-      }
+      const viewRadius = refs.camera.position.distanceTo(refs.controls.target);
+      const hit = pickScenePoint(refs.camera, viewRadius, canvas, event.clientX, event.clientY, targets);
       if (!hit) return;
       refs.setOrbitTarget(hit);
       setPivot({ x: hit.x, y: hit.y, z: hit.z });
@@ -984,6 +973,74 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     }
     refs.renderOnce();
   }, [pivot, sceneRef]);
+
+  // ── Measure tool ─────────────────────────────────────────────────────────
+  // Click two points (cloud first, ground plane as a fallback) to read the
+  // distance between them. A click is a press and release without a drag, so
+  // orbiting still works while the tool is on.
+  useEffect(() => {
+    const refs = sceneRef.current;
+    if (!refs) return;
+    const overlay = createMeasureOverlay();
+    refs.worldGroup.add(overlay.object);
+    measureRef.current = overlay;
+    return () => {
+      refs.worldGroup.remove(overlay.object);
+      overlay.dispose();
+      measureRef.current = null;
+    };
+  }, [sceneRef]);
+
+  useEffect(() => {
+    const refs = sceneRef.current;
+    if (!refs || !measureOn) return;
+    const canvas = refs.renderer.domElement;
+    let down: { x: number; y: number } | null = null;
+    const onDown = (e: PointerEvent) => {
+      down = e.button === 0 && !e.shiftKey ? { x: e.clientX, y: e.clientY } : null;
+    };
+    const onUp = (e: PointerEvent) => {
+      const start = down;
+      down = null;
+      if (!start || Math.hypot(e.clientX - start.x, e.clientY - start.y) > 4) return;
+      const targets: THREE.Object3D[] = [];
+      const cloudObj = objectsRef.current?.cloud?.object;
+      const accumObj = objectsRef.current?.accumulator?.object;
+      if (cloudObj) targets.push(cloudObj);
+      if (accumObj && accumObj.visible) targets.push(accumObj);
+      const viewRadius = refs.camera.position.distanceTo(refs.controls.target);
+      const hit = pickScenePoint(refs.camera, viewRadius, canvas, e.clientX, e.clientY, targets);
+      if (!hit) return;
+      const p = { x: hit.x, y: hit.y, z: hit.z };
+      // A third click starts a new measurement.
+      setMeasurePts((prev) => (prev.length === 1 ? [prev[0]!, p] : [p]));
+    };
+    canvas.addEventListener('pointerdown', onDown);
+    canvas.addEventListener('pointerup', onUp);
+    canvas.style.cursor = 'crosshair';
+    return () => {
+      canvas.removeEventListener('pointerdown', onDown);
+      canvas.removeEventListener('pointerup', onUp);
+      canvas.style.cursor = '';
+    };
+  }, [sceneRef, measureOn]);
+
+  useEffect(() => {
+    const refs = sceneRef.current;
+    if (!refs) return;
+    const viewRadius = refs.camera.position.distanceTo(refs.controls.target);
+    measureRef.current?.update(measurePts, Math.max(viewRadius * 0.012, 0.03));
+    refs.renderOnce();
+  }, [measurePts, sceneRef]);
+
+  // Esc clears a measurement first, then turns the tool off.
+  useEscapeToClose(measureOn, () => {
+    if (measurePts.length > 0) setMeasurePts([]);
+    else setMeasureOn(false);
+  });
+
+  const measureReadout =
+    measurePts.length === 2 ? readoutText(distanceReadout(measurePts[0]!, measurePts[1]!)) : null;
 
   // Footer stats. Updated only when the data actually changes (not on every
   // playhead tick), so React doesn't churn during playback.
@@ -1782,6 +1839,22 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
               >
                 Fit
               </button>
+              <button
+                type="button"
+                aria-pressed={measureOn}
+                onClick={() => {
+                  setMeasureOn((v) => !v);
+                  setMeasurePts([]);
+                }}
+                className={
+                  measureOn
+                    ? 'px-2 py-1 rounded-md text-xs mono border border-accent-amber/60 bg-accent-amber/15 text-accent-amber'
+                    : 'px-2 py-1 rounded-md text-xs mono bg-surface/80 border border-border hover:border-accent-blue/40 hover:text-accent-blue text-text-secondary transition-colors'
+                }
+                title="Measure the distance between two points (Esc clears)"
+              >
+                Measure
+              </button>
             </div>
             <label className="flex items-center gap-2 rounded-md border border-border bg-surface/80 px-2 py-1 text-[10px] mono text-text-tertiary">
               <span>zoom</span>
@@ -1899,6 +1972,16 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
             />
           </div>
 
+          {measureOn && (
+            <div
+              className="absolute bottom-2 left-2 right-2 rounded-md border border-accent-amber/40 bg-surface/90 px-2 py-1 text-[10px] mono text-text-secondary"
+              data-testid="measure-readout"
+              role="status"
+            >
+              {measureReadout ??
+                (measurePts.length === 1 ? 'Click a second point' : 'Click two points to measure')}
+            </div>
+          )}
           <OverlayCard variant="subtle" className="absolute top-2 left-2 text-text-muted text-[10px] mono leading-tight px-2 py-1 max-w-[60%]">
             <div className="text-text-secondary">
               {SCENE_KIND_LABELS[sceneKind]}

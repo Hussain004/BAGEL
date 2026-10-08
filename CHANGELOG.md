@@ -9,6 +9,14 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- New Measure tool in the 3D scene. Turn on "Measure", click two points (on the
+  point cloud where there is one, otherwise on the ground plane) and read the
+  straight-line distance, the dx / dy / dz between them and the horizontal
+  distance, with amber markers and a line drawn over the scene. Orbiting still
+  works while the tool is on (a drag is not a click). A third click starts a
+  new measurement, Esc clears it and Esc again turns the tool off, and changing
+  the frame or up axis clears it. Deltas are in the scene's axes. Not done: a
+  hover tooltip with a point's intensity and ring.
 - The image viewer can project a LiDAR point cloud onto the picture, the usual
   sanity check for a camera-LiDAR calibration. With a CameraInfo and a
   `PointCloud2` topic in the bag, a "lidar" picker appears in the image header.
