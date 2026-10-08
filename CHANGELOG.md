@@ -9,6 +9,15 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- BAGEL is now an installable app. Chromium browsers offer "Install app" in the
+  landing page header (and the address bar); once installed, `.mcap`, `.bag`,
+  `.db3`, `.pcd`, `.ply`, `.splat` and `.ksplat` files appear in the OS "Open
+  with" menu and open straight into BAGEL (several files at once are grouped as
+  split recordings, like a drop). A service worker lets the app load with no
+  network after a first visit. Ordinary visitors cache only what they use;
+  installing precaches every panel, the sample bag and the SQLite engine so
+  nothing is missing offline. Offline responses keep their cross-origin
+  isolation headers, which the splat viewer needs.
 - New `bagel-check` command line tool and GitHub Action. It runs BAGEL's parsers
   in Node (no browser) and fails a pipeline when a recording is missing a
   topic, publishes below a minimum rate, has a silence longer than allowed, or

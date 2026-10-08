@@ -1,0 +1,25 @@
+{
+  "id": "/",
+  "name": "BAGEL: ROS bag explorer",
+  "short_name": "BAGEL",
+  "description": "Explore ROS 1 and ROS 2 recordings locally, with no upload.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#03080d",
+  "theme_color": "#03080d",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ],
+  "file_handlers": [
+    {
+      "action": "/",
+      "accept": {
+        "application/octet-stream": [".mcap", ".bag", ".db3", ".pcd", ".ply", ".splat", ".ksplat"]
+      }
+    }
+  ]
+}

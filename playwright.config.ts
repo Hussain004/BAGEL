@@ -32,6 +32,9 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:4173',
     trace: 'retain-on-failure',
+    // The offline worker would sit between page.route() mocks and the network;
+    // only pwa.spec.ts opts back in.
+    serviceWorkers: 'block',
     // Deterministic viewport so a failure is reproducible locally.
     viewport: { width: 1440, height: 900 },
   },
