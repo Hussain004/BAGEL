@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { CloudProjection } from './CloudProjection';
+import { useCanvasRect } from './useCanvasRect';
 import { useMessageAtTime } from '../../../hooks/useMessageAtTime';
 import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
 import { useBagLocalPlayhead } from '../../../hooks/useBagLocalPlayhead';
-import { isCompressedImageType, isVideoType } from '../../../utils/messages';
+import { isCloudType, isCompressedImageType, isVideoType } from '../../../utils/messages';
 import { readVideoChunkRange, readVideoChunksAtTime } from '../../../parsers';
 import { VideoFrameDecoder } from '../../../parsers/video';
 import { nsToSeconds } from '../../../utils/time';
@@ -266,6 +268,15 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
         .sort(),
     [bag],
   );
+  const cloudCandidates = useMemo(
+    () =>
+      (bag?.topics ?? [])
+        .filter((t) => isCloudType(t.type))
+        .map((t) => t.name)
+        .sort(),
+    [bag],
+  );
+  const cloudTopic = cloudCandidates.includes(settings.cloudTopic) ? settings.cloudTopic : '';
   const detectionTopic = detectionCandidates.includes(settings.detectionTopic) ? settings.detectionTopic : '';
   const detectionMsg = useMessageAtTime(detectionTopic, message?.timestamp ?? playheadNs, bagId).message;
   const detections = useMemo(() => parseDetection2DArray(detectionMsg?.value), [detectionMsg]);
@@ -478,6 +489,22 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
           ))}
         </select>
       )}
+      {cloudCandidates.length > 0 && camera.info && (
+        <select
+          value={cloudTopic}
+          onChange={(e) => updateSettings(panelId, { cloudTopic: e.target.value })}
+          aria-label="Project point cloud topic"
+          title="Project a LiDAR point cloud onto this image to check the camera-LiDAR calibration"
+          className="text-[10px] mono px-1 py-0.5 rounded border border-border bg-bg-secondary text-text-secondary max-w-[140px]"
+        >
+          <option value="">lidar: off</option>
+          {cloudCandidates.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+      )}
       <RectifyHeaderToggle
         hasCandidates={camera.candidates.length > 0}
         enabled={settings.rectify}
@@ -553,6 +580,11 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
                   boxes={detectionTopic && freshness.fresh ? detections.detections : []}
                   imageSize={meta ? { width: meta.width, height: meta.height } : null}
                   rectifyCamera={rectifyCamera}
+                  projection={
+                    cloudTopic && camera.info && meta
+                      ? { topic: cloudTopic, bagId, timeNs: message?.timestamp ?? playheadNs, camera: camera.info }
+                      : null
+                  }
                 />
               </div>
             )}
@@ -727,6 +759,8 @@ interface CanvasWithOverlayProps {
   imageSize: { width: number; height: number } | null;
   /** When set, box corners are undistorted with these intrinsics to match a rectified frame. */
   rectifyCamera: CameraIntrinsics | null;
+  /** LiDAR projection to draw over the image, or null for none. */
+  projection: { topic: string; bagId?: string; timeNs: bigint; camera: CameraIntrinsics } | null;
 }
 
 /** Detection boxes as SVG in image-pixel space, laid exactly over the canvas. */
@@ -736,31 +770,7 @@ function DetectionBoxes({
   imageSize,
   rectifyCamera,
 }: Pick<CanvasWithOverlayProps, 'canvasRef' | 'boxes' | 'imageSize' | 'rectifyCamera'>) {
-  const [rect, setRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    const parent = canvas?.parentElement;
-    if (!canvas || !parent || boxes.length === 0) return;
-    const compute = () => {
-      const c = canvas.getBoundingClientRect();
-      const p = parent.getBoundingClientRect();
-      // Positioned against the wrapper, which is not scaled by the zoom
-      // transform's own box model, so divide that scale back out.
-      const sx = parent.offsetWidth > 0 ? p.width / parent.offsetWidth : 1;
-      setRect({
-        left: (c.left - p.left) / sx,
-        top: (c.top - p.top) / sx,
-        width: c.width / sx,
-        height: c.height / sx,
-      });
-    };
-    compute();
-    const ro = new ResizeObserver(compute);
-    ro.observe(canvas);
-    ro.observe(parent);
-    return () => ro.disconnect();
-  }, [canvasRef, boxes.length, imageSize]);
+  const rect = useCanvasRect(canvasRef, boxes.length > 0, imageSize);
 
   if (boxes.length === 0 || !rect || !imageSize) return null;
   const fs = Math.max(11, imageSize.height / 38);
@@ -806,7 +816,7 @@ function DetectionBoxes({
   );
 }
 
-function CanvasWithOverlay({ canvasRef, showOverlay, camera, boxes, imageSize, rectifyCamera }: CanvasWithOverlayProps) {
+function CanvasWithOverlay({ canvasRef, showOverlay, camera, boxes, imageSize, rectifyCamera, projection }: CanvasWithOverlayProps) {
   // The reticle sits over the canvas in absolute coords. We compute its CSS
   // position from (cx, cy) and the rendered canvas size, kept in sync via
   // ResizeObserver so a resize from a panel drag doesn't drift it.
@@ -843,6 +853,17 @@ function CanvasWithOverlay({ canvasRef, showOverlay, camera, boxes, imageSize, r
         className="max-w-full max-h-full object-contain rounded-md border border-border"
       />
       <DetectionBoxes canvasRef={canvasRef} boxes={boxes} imageSize={imageSize} rectifyCamera={rectifyCamera} />
+      {projection && imageSize && (
+        <CloudProjection
+          canvasRef={canvasRef}
+          topic={projection.topic}
+          bagId={projection.bagId}
+          timeNs={projection.timeNs}
+          camera={projection.camera}
+          imageSize={imageSize}
+          rectified={!!rectifyCamera}
+        />
+      )}
       {showOverlay && reticle && (
         <div
           className="pointer-events-none absolute"

@@ -9,6 +9,16 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- The image viewer can project a LiDAR point cloud onto the picture, the usual
+  sanity check for a camera-LiDAR calibration. With a CameraInfo and a
+  `PointCloud2` topic in the bag, a "lidar" picker appears in the image header.
+  Pick a cloud and its points are moved through the TF tree into the camera's
+  frame, projected with the camera intrinsics (and lens distortion, unless the
+  frame is being undistorted), and drawn as depth-coloured dots, nearest on top.
+  If the points sit on the edges they belong to, the extrinsics are right. A
+  note under the image says how many points landed in view, or why none did (no
+  TF between the frames, everything behind the camera). Up to 200,000 points
+  per frame. Assumes the CameraInfo frame is the optical frame (z forward).
 - Empty panels now say why and what to do next. A plot opened on a topic with no numeric fields explains that it holds text or flags and offers the raw inspector and a state timeline; the trajectory view with no usable position offers a plot or the raw inspector; the TF tree with no `/tf` explains why 3D cannot line topics up; an image panel with nothing to show points at the health dashboard.
 - `.spz` files (Niantic Scaniverse's compressed Gaussian splat format) now open in the splat viewer, from the file picker, a drop, or the OS "Open with" menu. The splat count in the topic list is read from the file's gzip header without decoding it. An `.spz` served from a URL that has no `.spz` extension is not recognised yet.
 - BAGEL is now an installable app. Chromium browsers offer "Install app" in the
