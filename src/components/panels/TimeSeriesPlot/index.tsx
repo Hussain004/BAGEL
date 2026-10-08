@@ -9,6 +9,7 @@ import { useThemeStore } from '../../../store/themeStore';
 import { chartTheme } from '../../../utils/chartTheme';
 import { PanelShell } from '../PanelShell';
 import { PanelLoadingState, PanelErrorState, PanelEmptyState } from '../shared/PanelStates';
+import { openInActions } from '../../../utils/emptyActions';
 import { getTopicColor } from '../../../utils/color';
 import {
   DEFAULT_TIMESERIES_SETTINGS,
@@ -728,6 +729,22 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
             !messages || messages.length === 0
               ? 'No messages on this topic.'
               : 'No numeric fields found in this message type.'
+          }
+          hint={
+            !messages || messages.length === 0
+              ? undefined
+              : 'A plot draws numbers over time, and this message holds text or flags. Read it in the raw inspector, or see when its values change in a state timeline.'
+          }
+          actions={
+            !messages || messages.length === 0
+              ? undefined
+              : openInActions(
+                  [
+                    { kind: 'raw', label: 'Open raw inspector' },
+                    { kind: 'state', label: 'Open state timeline' },
+                  ],
+                  { topicName, type, bagId },
+                )
           }
         />
       )}

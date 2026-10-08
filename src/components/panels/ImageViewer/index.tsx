@@ -8,6 +8,7 @@ import { VideoFrameDecoder } from '../../../parsers/video';
 import { nsToSeconds } from '../../../utils/time';
 import { PanelShell } from '../PanelShell';
 import { PanelLoadingState, PanelErrorState, PanelEmptyState } from '../shared/PanelStates';
+import { openInActions } from '../../../utils/emptyActions';
 import { OverlayCard } from '../shared/OverlayCard';
 import { getTopicColor } from '../../../utils/color';
 import { useCameraInfo, type CameraIntrinsics } from '../../../hooks/useCameraInfo';
@@ -512,7 +513,11 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
         />
       )}
       {!loading && !error && !hasContent && (
-        <PanelEmptyState message="No image messages on this topic." />
+        <PanelEmptyState
+          message="No image messages on this topic."
+          hint="Nothing could be shown for this topic. The health dashboard lists how many messages each topic has and where it stopped publishing."
+          actions={openInActions([{ kind: 'health', label: 'Open health dashboard' }], { topicName, type, bagId })}
+        />
       )}
       {hasContent && (
         <div className="flex-1 flex flex-col min-h-0">

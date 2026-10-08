@@ -131,7 +131,10 @@ export function TFTree({ panelId, topicName, type, bagId }: TFTreeProps) {
         />
       )}
       {!loading && !error && missing && (
-        <PanelEmptyState message="No /tf or /tf_static topic in this bag." />
+        <PanelEmptyState
+          message="No /tf or /tf_static topic in this bag."
+          hint="TF is what lets BAGEL place one sensor relative to another. Without it, the 3D view draws each topic in its own frame, so a lidar and a map will not line up."
+        />
       )}
       {!loading && !error && graph && graph.frames.size === 0 && (
         <PanelEmptyState message="The /tf topic contains no transforms." />

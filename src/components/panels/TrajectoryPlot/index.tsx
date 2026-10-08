@@ -3,6 +3,7 @@ import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
 import { useBagLocalPlayhead } from '../../../hooks/useBagLocalPlayhead';
 import { PanelShell } from '../PanelShell';
 import { PanelLoadingState, PanelErrorState, PanelEmptyState } from '../shared/PanelStates';
+import { openInActions } from '../../../utils/emptyActions';
 import { OverlayCard } from '../shared/OverlayCard';
 import { getTopicColor } from '../../../utils/color';
 import { useThemeStore } from '../../../store/themeStore';
@@ -423,7 +424,17 @@ export function TrajectoryPlot({ panelId, topicName, type, bagId }: TrajectoryPl
         />
       )}
       {!loading && !error && points.length === 0 && (
-        <PanelEmptyState message="No usable pose data on this topic." />
+        <PanelEmptyState
+          message="No usable pose data on this topic."
+          hint="The trajectory view needs an x and y position in each message. If this topic carries numbers under other names, plot them against time instead."
+          actions={openInActions(
+            [
+              { kind: 'plot', label: 'Open plot' },
+              { kind: 'raw', label: 'Open raw inspector' },
+            ],
+            { topicName, type, bagId },
+          )}
+        />
       )}
       {points.length > 0 && (
         <div className="flex-1 flex flex-col min-h-0">
