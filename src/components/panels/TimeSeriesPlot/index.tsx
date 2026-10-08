@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
-import { alignmentOffsetFor, useBagStore, resolveBagEntry } from '../../../store/bagStore';
+import { alignedTimeFor, alignmentOffsetFor, useBagStore, resolveBagEntry } from '../../../store/bagStore';
 import { useBagLocalPlayhead } from '../../../hooks/useBagLocalPlayhead';
 import { useTopicMessages, type DecodedMessage } from '../../../hooks/useTopicMessages';
 import { flattenNumeric } from '../../../utils/messages';
@@ -21,6 +21,9 @@ import { eulerExpressions, findQuaternionPrefixes } from '../../../utils/eulerEx
 import { plotCsv, plotFilename, plotSvg, rangeStats, type PlotColumn } from '../../../utils/seriesStats';
 import { downloadText } from '../../../utils/export';
 import { downloadBytes } from '../../../utils/clipEncoder';
+import { buildXY } from '../../../utils/xyPlot';
+import { XYChart, type XYSeries } from './XYChart';
+import { usePlayheadStore } from '../../../store/playheadStore';
 import { registerCapture } from '../../../utils/captureRegistry';
 import { alignColumns, extraKey, holdForward, newSeriesId, readField, type TimedColumn } from '../../../utils/alignSeries';
 import {
@@ -436,6 +439,30 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
     }
     return { min: lo, max: hi };
   }, [series, settings.xRange]);
+  // XY mode: one series is the x axis and every other visible series is plotted
+  // against it. If the chosen x series disappears (hidden, removed), fall back
+  // to the time axis rather than showing a blank chart.
+  const xyName = settings.xyX ?? null;
+  const xyCol = xyName ? visibleColumns.find((c) => c.name === xyName) : undefined;
+  const xyMode = !!series && !!xyCol;
+  const xySeries = useMemo<XYSeries[]>(() => {
+    if (!series || !xyCol) return [];
+    return visibleColumns
+      .filter((c) => c.name !== xyCol.name)
+      .map((c) => ({
+        name: c.name,
+        color: c.color,
+        // Columns from different topics only line up once each is held at its last value.
+        points: buildXY(series.time, xyCol.values as ReadonlyArray<number | null>, c.values as ReadonlyArray<number | null>, -Infinity, Infinity, extraSeries.length > 0),
+      }));
+  }, [series, xyCol, visibleColumns, extraSeries.length]);
+  const xyCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const seekToPlotTime = (timeSec: number) => {
+    if (!series || !entry) return;
+    const local = series.baseNs + BigInt(Math.round(timeSec * 1e9));
+    usePlayheadStore.getState().seek(alignedTimeFor(entry, local, useBagStore.getState().alignment));
+  };
+
   const statsRows = useMemo(
     () =>
       statsOpen && series && viewRange
@@ -455,7 +482,7 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
     );
   };
   const exportSvg = () => {
-    if (!series || !viewRange) return;
+    if (!series || !viewRange || xyMode) return;
     downloadText(
       plotSvg({ title: topicName, time: series.time, columns: visibleColumns, lo: viewRange.min, hi: viewRange.max }),
       plotFilename(bagFileName, topicName, 'svg'),
@@ -463,7 +490,7 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
     );
   };
   const exportPng = () => {
-    const src = containerRef.current?.querySelector('canvas');
+    const src = xyMode ? xyCanvasRef.current : containerRef.current?.querySelector('canvas');
     if (!src) return;
     // uPlot draws on a transparent canvas, so a dark-theme export would be
     // pale text on nothing. Composite onto the panel background first.
@@ -713,7 +740,17 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
               would still grow by the padding amount per tick. pt-2 stays
               for top breathing room; horizontal spacing comes from the
               panel border. */}
-          <div ref={containerRef} className="flex-1 min-h-[240px] pt-2 min-w-0" />
+          <div ref={containerRef} className={`flex-1 min-h-[240px] pt-2 min-w-0 ${xyMode ? 'hidden' : ''}`} />
+          {xyMode && xyCol && (
+            <XYChart
+              series={xySeries}
+              xLabel={xyCol.name}
+              playheadSec={Number(playheadNs - series.baseNs) / 1e9}
+              equalScale={settings.xyEqual}
+              onSeek={seekToPlotTime}
+              canvasRef={xyCanvasRef}
+            />
+          )}
           {seriesSummary.length > 0 && (
             <table className="sr-only">
               <caption>Numeric summary of visible series for {topicName}</caption>
@@ -861,9 +898,38 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
               >
                 stats
               </button>
+              <label className="flex items-center gap-1 text-xs mono text-text-muted">
+                x axis
+                <select
+                  aria-label="X axis"
+                  value={xyCol ? xyCol.name : ''}
+                  onChange={(e) => updateSettings(panelId, { xyX: e.target.value || null })}
+                  className="bg-bg-secondary border border-border rounded px-1.5 py-0.5 text-text-primary max-w-[160px]"
+                >
+                  <option value="">time</option>
+                  {visibleColumns.map((c) => (
+                    <option key={c.name} value={c.name}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {xyMode && (
+                <label className="flex items-center gap-1 text-xs mono text-text-muted cursor-pointer" title="Same scale on both axes, so a circle in the data stays a circle">
+                  <input type="checkbox" checked={settings.xyEqual} onChange={(e) => updateSettings(panelId, { xyEqual: e.target.checked })} />
+                  equal scale
+                </label>
+              )}
               <span className="text-text-muted text-xs mono">export view:</span>
               <button onClick={exportCsv} title="Visible range as CSV" className={EXPORT_BTN}>csv</button>
-              <button onClick={exportSvg} title="Vector figure of the visible range" className={EXPORT_BTN}>svg</button>
+              <button
+                onClick={exportSvg}
+                disabled={xyMode}
+                title={xyMode ? 'SVG export is for the time axis; use png for an XY plot' : 'Vector figure of the visible range'}
+                className={`${EXPORT_BTN} disabled:opacity-40 disabled:cursor-not-allowed`}
+              >
+                svg
+              </button>
               <button onClick={exportPng} title="Chart image" className={EXPORT_BTN}>png</button>
             </div>
 
