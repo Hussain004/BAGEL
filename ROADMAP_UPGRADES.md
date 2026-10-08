@@ -324,6 +324,8 @@ Add a short "How to add support for a new message type" walkthrough (detector in
 
 **How:** In ImageViewer, a "Project point cloud" overlay picks a `PointCloud2` topic. For the cloud nearest the image stamp: transform points into the camera optical frame with the existing TF chain utility (the one `cameraFrustum` placement uses), keep `z > 0`, project with `K` (plus distortion via the plumb-bob forward model already in `imageRectify.ts`), and draw as 2 px dots colored by depth with `turboColor`. Do the projection in a worker or cap at 200k points; it's an embarrassingly parallel loop over a `Float32Array`.
 
+**Status: done.** Main-thread projection (capped at 200k points) rather than a worker; points are bucketed into 64 depth colours so a frame costs 64 style changes.
+
 **Files:** `ImageViewer/index.tsx`, new `utils/projectCloud.ts`, reuse `utils/pointcloud.ts`, TF helpers from `ThreeDScene`.
 **Tests:** `projectCloud.test.ts`: a synthetic cube of points at known positions with identity extrinsics and a known K projects to known pixels; points behind the camera are dropped; distortion is applied in the right direction (compare against hand-computed values).
 **Effort:** M
