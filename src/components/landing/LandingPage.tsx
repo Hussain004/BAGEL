@@ -81,32 +81,33 @@ export function LandingPage() {
               <span>One timeline.</span>
             </motion.h1>
             <motion.p className="landing-lede" variants={entrance} transition={{ duration: 0.55 }}>
-              Inspect ROS recordings at full signal, directly in your browser. Decode, synchronize,
-              and visualize high-volume sensor data without provisioning a backend.
+              Open a ROS recording and see every sensor on one synchronized timeline: 3D, camera, plots and
+              logs. Nothing is uploaded.
             </motion.p>
-            <motion.div className="landing-capabilities" variants={entrance} transition={{ duration: 0.5 }}>
-              <Capability icon="cpu" label="Worker-isolated parsing" />
-              <Capability icon="stream" label="HTTP range streaming" />
-              <Capability icon="shield" label="Data never uploaded" />
-            </motion.div>
             <motion.div variants={entrance} transition={{ duration: 0.55 }}>
+              <StartLabel step="1" text="Open your recording" />
               <FileIngestPanel isLoading={isLoading} progress={loadProgress} onFiles={handleFiles} inputRef={fileInputRef} />
             </motion.div>
+            <AnimatePresence initial={false}>
+              {error && <ErrorCard error={error} onDismiss={clearError} onChooseFile={() => fileInputRef.current?.click()} />}
+            </AnimatePresence>
+
             <motion.div variants={entrance} transition={{ duration: 0.5 }}>
-              <SourceDock onUrl={handleUrl} onLive={handleLive} disabled={isLoading} />
+              <StartLabel step="2" text="No recording handy?" />
+              <SampleBagButton onLoad={handleFile} disabled={isLoading} />
+            </motion.div>
+            <motion.div variants={entrance} transition={{ duration: 0.5 }}>
+              <StartLabel step="3" text="Or connect to a source" />
+              <SourceCards onUrl={handleUrl} onLive={handleLive} disabled={isLoading} />
             </motion.div>
             <motion.div variants={entrance} transition={{ duration: 0.5 }}>
               <RecentFiles onFile={handleFile} onUrl={handleUrl} disabled={isLoading} />
             </motion.div>
 
-            <AnimatePresence initial={false}>
-              {error && <ErrorCard error={error} onDismiss={clearError} onChooseFile={() => fileInputRef.current?.click()} />}
-            </AnimatePresence>
-
-            <motion.div className="landing-actions" variants={entrance} transition={{ duration: 0.5 }}>
-              <SampleBagButton onLoad={handleFile} disabled={isLoading} />
-              <span className="landing-actions__divider" />
-              <span>ROS 1 + ROS 2</span><span>MCAP</span><span>Point clouds</span><span>Gaussian splats</span>
+            <motion.div className="landing-capabilities" variants={entrance} transition={{ duration: 0.5 }}>
+              <Capability icon="cpu" label="Worker-isolated parsing" />
+              <Capability icon="stream" label="HTTP range streaming" />
+              <Capability icon="shield" label="Data never uploaded" />
             </motion.div>
           </motion.div>
 
@@ -165,35 +166,65 @@ function Capability({ icon, label }: { icon: 'cpu' | 'stream' | 'shield'; label:
   return <span className="landing-capability"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.35">{paths[icon]}</svg>{label}</span>;
 }
 
-function SourceDock({ onUrl, onLive, disabled }: { onUrl: (url: string) => void; onLive: (url: string) => void; disabled: boolean }) {
-  const [mode, setMode] = useState<'url' | 'live'>('url');
-  const [value, setValue] = useState('');
-  const isConnecting = useLiveStore((state) => [...state.statuses.values()].some((status) => status === 'connecting'));
-  const valid = mode === 'url' ? /^https?:\/\//i.test(value.trim()) : /^wss?:\/\//i.test(value.trim());
+function StartLabel({ step, text }: { step: string; text: string }) {
+  return <div className="start-label"><span>{step}</span>{text}</div>;
+}
 
+function SourceCards({ onUrl, onLive, disabled }: { onUrl: (url: string) => void; onLive: (url: string) => void; disabled: boolean }) {
+  const isConnecting = useLiveStore((state) => [...state.statuses.values()].some((status) => status === 'connecting'));
+  return (
+    <div className="source-cards">
+      <SourceCard
+        title="Remote URL"
+        hint="A bag served over HTTPS. Only the parts you view are downloaded."
+        placeholder="https://data.example/run.mcap"
+        label="Remote bag URL"
+        action="OPEN"
+        valid={(v) => /^https?:\/\//i.test(v)}
+        disabled={disabled}
+        onSubmit={onUrl}
+      />
+      <SourceCard
+        title="Live robot"
+        hint="A Foxglove bridge WebSocket on your robot or simulator."
+        placeholder="ws://robot.local:8765"
+        label="Live robot WebSocket URL"
+        action={isConnecting ? 'CONNECTING' : 'CONNECT'}
+        valid={(v) => /^wss?:\/\//i.test(v)}
+        clearOnSubmit
+        disabled={disabled}
+        onSubmit={onLive}
+      />
+    </div>
+  );
+}
+
+function SourceCard({
+  title, hint, placeholder, label, action, valid, clearOnSubmit, disabled, onSubmit,
+}: {
+  title: string; hint: string; placeholder: string; label: string; action: string;
+  valid: (value: string) => boolean; clearOnSubmit?: boolean; disabled: boolean; onSubmit: (value: string) => void;
+}) {
+  const [value, setValue] = useState('');
+  const ok = valid(value.trim());
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
-    const trimmed = value.trim();
-    if (disabled || !valid) return;
-    if (mode === 'url') onUrl(trimmed);
-    else { onLive(trimmed); setValue(''); }
+    if (disabled || !ok) return;
+    onSubmit(value.trim());
+    if (clearOnSubmit) setValue('');
   };
-
   return (
-    <div className="source-dock">
-      <div className="source-dock__modes" role="tablist" aria-label="Alternate data sources">
-        <button type="button" role="tab" aria-selected={mode === 'url'} onClick={() => { setMode('url'); setValue(''); }}>REMOTE URL</button>
-        <button type="button" role="tab" aria-selected={mode === 'live'} onClick={() => { setMode('live'); setValue(''); }}>LIVE ROBOT</button>
-      </div>
-      <form onSubmit={submit}>
-        <span className="source-dock__protocol">{mode === 'url' ? 'HTTPS' : 'WSS'}</span>
-        <input value={value} onChange={(event) => setValue(event.target.value)} onBlur={() => setValue((current) => current.trim())} placeholder={mode === 'url' ? 'https://data.example/run.mcap' : 'ws://robot.local:8765'} spellCheck={false} autoComplete="off" disabled={disabled} aria-label={mode === 'url' ? 'Remote bag URL' : 'Live robot WebSocket URL'} />
-        <motion.button type="submit" disabled={disabled || !valid} whileHover={valid ? { x: 2 } : undefined} whileTap={valid ? { scale: 0.97 } : undefined}>
-          {mode === 'live' && isConnecting ? 'CONNECTING' : mode === 'url' ? 'OPEN' : 'CONNECT'}
+    <form className="source-card" onSubmit={submit}>
+      <strong>{title}</strong>
+      <p>{hint}</p>
+      <div className="source-card__row">
+        <input value={value} onChange={(event) => setValue(event.target.value)} onBlur={() => setValue((current) => current.trim())} placeholder={placeholder} spellCheck={false} autoComplete="off" disabled={disabled} aria-label={label} />
+        <button type="submit" disabled={disabled || !ok}>
+          {action}
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 8h9m-3-3 3 3-3 3" /></svg>
-        </motion.button>
-      </form>
-    </div>
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -242,13 +273,17 @@ function SampleBagButton({ onLoad, disabled }: { onLoad: (file: File) => void | 
     }
   };
   return (
-    <span className="sample-action">
-      <motion.button type="button" onClick={load} disabled={fetching || disabled} whileHover={{ x: 2 }} whileTap={{ scale: 0.97 }}>
+    <div className="sample-card">
+      <div>
+        <strong>Try the sample bag</strong>
+        <p>A 30 second robot tour with lidar, a camera, IMU, GPS and a map. Loads in a moment, nothing to download.</p>
+        {sampleError && <small role="alert">Sample failed: {sampleError}</small>}
+      </div>
+      <motion.button type="button" onClick={load} disabled={fetching || disabled} whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }}>
         {fetching ? 'LOADING SAMPLE' : 'EXPLORE SAMPLE DATA'}
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 8h9m-3-3 3 3-3 3" /></svg>
       </motion.button>
-      {sampleError && <small role="alert">Sample failed: {sampleError}</small>}
-    </span>
+    </div>
   );
 }
 

@@ -106,7 +106,6 @@ test.describe('recent files', () => {
     });
 
     await page.goto('/');
-    await page.getByRole('tab', { name: 'REMOTE URL' }).click();
     const input = page.getByLabel('Remote bag URL');
     await input.fill('http://localhost:4173/remote-tour.mcap');
     await input.press('Enter');

@@ -9,6 +9,14 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- The start page now shows the three ways in at once, numbered and labelled:
+  1. Open your recording: a large drop zone with a solid "Choose files" button
+     and the folder option inside it, 2. No recording handy? a card with a
+     bright "Explore sample data" button saying what the sample contains, and
+  3. Or connect to a source: "Remote URL" and "Live robot" side by side, each
+  with its own box and explanation, where the live robot used to hide behind a
+  small tab. Text is larger and the primary buttons are filled. `.spz` is now
+  listed among the accepted formats.
 - Phones and upright tablets get a layout of their own. Below 768 px, or on a
   touch screen narrower than 1024 px, the panel grid shows one panel at a time
   behind a tab strip (tap a tab to switch; opening a topic shows it), the topic

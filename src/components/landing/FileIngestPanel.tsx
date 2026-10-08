@@ -158,25 +158,29 @@ export function FileIngestPanel({ isLoading, progress, onFiles, inputRef }: File
                 <path d="M4 15.5v2.25A2.25 2.25 0 0 0 6.25 20h11.5A2.25 2.25 0 0 0 20 17.75V15.5" />
               </svg>
             </motion.div>
-            <div><strong>{isDragOver ? 'Release to decode' : 'Drop a recording to begin'}</strong><p>Local-first ingestion for multi-gigabyte robotics datasets</p></div>
-            <span className="ingest-panel__browse">BROWSE FILES</span>
-            <div className="ingest-panel__formats"><span>.MCAP</span><span>.DB3</span><span>.BAG</span><span>.PCD</span><span>.PLY</span><span>.SPLAT</span></div>
+            <div>
+              <strong>{isDragOver ? 'Release to decode' : 'Drop a recording here'}</strong>
+              <p>or choose it from your computer. It is read in this browser tab and never uploaded.</p>
+            </div>
+            <span className="ingest-panel__browse">CHOOSE FILES</span>
+            <div className="ingest-panel__formats">
+              <span>.MCAP</span><span>.DB3</span><span>.BAG</span><span>.PCD</span><span>.PLY</span><span>.SPLAT</span><span>.SPZ</span>
+              <button
+                type="button"
+                className="ingest-panel__folder"
+                disabled={isLoading}
+                onClick={(event) => { event.stopPropagation(); folderInputRef.current?.click(); }}
+                onKeyDown={(event) => event.stopPropagation()}
+                title="Pick a recording's folder: split bags (name_0.mcap, name_1.mcap, ...) open as one recording"
+              >
+                OPEN A FOLDER
+              </button>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
     </motion.div>
-      <div className="ingest-folder">
-        <button
-          type="button"
-          className="ingest-folder__button"
-          disabled={isLoading}
-          onClick={() => folderInputRef.current?.click()}
-          title="Pick a recording's folder: split bags (name_0.mcap, name_1.mcap, ...) open as one recording"
-        >
-          OPEN A BAG FOLDER
-        </button>
-        <input ref={folderInputRef} type="file" onChange={onChange} className="hidden" data-testid="folder-input" {...{ webkitdirectory: '' }} />
-      </div>
+      <input ref={folderInputRef} type="file" onChange={onChange} className="hidden" data-testid="folder-input" {...{ webkitdirectory: '' }} />
     </>
   );
 }
