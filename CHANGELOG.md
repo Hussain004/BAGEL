@@ -9,6 +9,7 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Empty panels now say why and what to do next. A plot opened on a topic with no numeric fields explains that it holds text or flags and offers the raw inspector and a state timeline; the trajectory view with no usable position offers a plot or the raw inspector; the TF tree with no `/tf` explains why 3D cannot line topics up; an image panel with nothing to show points at the health dashboard.
 - `.spz` files (Niantic Scaniverse's compressed Gaussian splat format) now open in the splat viewer, from the file picker, a drop, or the OS "Open with" menu. The splat count in the topic list is read from the file's gzip header without decoding it. An `.spz` served from a URL that has no `.spz` extension is not recognised yet.
 - BAGEL is now an installable app. Chromium browsers offer "Install app" in the
   landing page header (and the address bar); once installed, `.mcap`, `.bag`,

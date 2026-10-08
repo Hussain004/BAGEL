@@ -63,10 +63,42 @@ export function PanelErrorState({
   );
 }
 
-export function PanelEmptyState({ message }: { message: string }) {
+export interface EmptyAction {
+  label: string;
+  onClick: () => void;
+}
+
+/**
+ * Shown when a panel has nothing to draw. `hint` says why and what would help;
+ * `actions` are one-click ways to get there (open another view of the topic).
+ */
+export function PanelEmptyState({
+  message,
+  hint,
+  actions,
+}: {
+  message: string;
+  hint?: string;
+  actions?: EmptyAction[];
+}) {
   return (
-    <div className="flex-1 flex items-center justify-center text-text-muted text-sm p-8">
-      {message}
+    <div className="flex-1 flex flex-col items-center justify-center gap-2 text-center p-8">
+      <div className="text-text-muted text-sm">{message}</div>
+      {hint && <div className="text-text-secondary text-xs max-w-md">{hint}</div>}
+      {actions && actions.length > 0 && (
+        <div className="flex items-center gap-3 mt-1">
+          {actions.map((a) => (
+            <button
+              key={a.label}
+              type="button"
+              onClick={a.onClick}
+              className="text-xs font-medium text-accent-blue hover:text-accent-cyan transition-colors"
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

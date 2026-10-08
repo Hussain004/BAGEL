@@ -225,6 +225,8 @@ Add a short "How to add support for a new message type" walkthrough (detector in
 - Plot with no numeric fields: list the field types found and suggest Raw.
 - Trajectory with a single message: "Only one pose; nothing to draw a path from."
 
+**Status: partly done.** `PanelEmptyState` takes `hint` and `actions`; plot, trajectory, TF and image use them. Not done: the 3D no-TF note (3D has no empty state to hang it on) and CameraInfo pairing.
+
 **Files:** `components/panels/shared/PanelStates.tsx` (accept `hint` and `action` props), call sites per panel.
 **Effort:** S
 
