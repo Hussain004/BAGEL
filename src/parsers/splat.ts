@@ -1,7 +1,7 @@
 /**
  * Gaussian splat format detection + lightweight summary.
  *
- * BAGEL treats splat files (splat-flavored `.ply`, `.splat`, `.ksplat`) as a
+ * BAGEL treats splat files (splat-flavored `.ply`, `.splat`, `.ksplat`, `.spz`) as a
  * standalone format, same tier as `.pcd`/`.ply`, but rendered by the
  * SplatViewer panel through `@mkkellogg/gaussian-splats-3d` rather than
  * BAGEL's own point-cloud decoder. That decoder only understands positions +
@@ -15,6 +15,7 @@
  * which does its own parsing, sorting, and rendering off-thread.
  */
 
+import { Gunzip } from 'fflate';
 import type { BagSummary } from '../types/bag';
 import { parsePlyHeader } from './ply';
 import { sourceDisplayName, sourceKey, sourceReadSlice, sourceSize, type SingleBagSource } from './source';
@@ -42,6 +43,36 @@ export function isSplatPly(bytes: Uint8Array): boolean {
   }
 }
 
+/**
+ * How much of an `.spz` to read for its count. A stored (level 0) gzip block can
+ * be 64 KB and inflates only once whole, so 4 KB is not enough for those.
+ */
+const SPZ_HEAD_BYTES = 128 * 1024;
+
+/**
+ * Point count of an `.spz`: a gzip stream whose decompressed header is
+ * `magic u32, version u32, numPoints u32, ...`. Only the head of the file is
+ * inflated (streaming, so a truncated input still yields its first bytes).
+ */
+export function spzPointCount(head: Uint8Array): number | undefined {
+  const out = new Uint8Array(12);
+  let got = 0;
+  try {
+    const gz = new Gunzip((chunk) => {
+      const n = Math.min(chunk.length, out.length - got);
+      out.set(chunk.subarray(0, n), got);
+      got += n;
+    });
+    gz.push(head, false);
+  } catch {
+    return undefined;
+  }
+  if (got < 12) return undefined;
+  const view = new DataView(out.buffer);
+  // 'NGSP' little-endian: anything else is gzip of something that is not a splat.
+  return view.getUint32(0, true) === 0x5053474e ? view.getUint32(8, true) : undefined;
+}
+
 /** Best-effort splat count without decoding: cheap for `.splat`, header-only for splat-PLY, unknown for `.ksplat`. */
 async function estimateSplatCount(source: SingleBagSource): Promise<number | undefined> {
   const name = sourceDisplayName(source).toLowerCase();
@@ -56,6 +87,7 @@ async function estimateSplatCount(source: SingleBagSource): Promise<number | und
       return undefined;
     }
   }
+  if (name.endsWith('.spz')) return spzPointCount(await sourceReadSlice(source, 0, SPZ_HEAD_BYTES));
   // .ksplat has its own compressed section-header layout; not worth
   // parsing just to report a count in the topic list.
   return undefined;

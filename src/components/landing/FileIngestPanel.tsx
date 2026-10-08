@@ -14,7 +14,7 @@ interface FileIngestPanelProps {
  * Extensions BAGEL accepts, shared by the picker and the fallback input so the
  * two paths never drift apart.
  */
-const ACCEPTED_EXTENSIONS = ['.db3', '.mcap', '.bag', '.pcd', '.ply', '.splat', '.ksplat'] as const;
+const ACCEPTED_EXTENSIONS = ['.db3', '.mcap', '.bag', '.pcd', '.ply', '.splat', '.ksplat', '.spz'] as const;
 
 /**
  * The file types shown in the File System Access picker. The fallback input

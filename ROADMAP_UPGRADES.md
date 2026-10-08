@@ -466,6 +466,8 @@ Add a short "How to add support for a new message type" walkthrough (detector in
 
 **How:** Add `.spz` to `detectFormat()` in `parsers/core.ts` (extension-based, like `.splat`), to the DropZone `accept` list, and pass the right format hint to the viewer's `addSplatScene`. For multi-splat, allow dropping a second splat onto an existing SplatViewer panel and keep a per-scene transform list (the `dynamicScene: true` path already supports per-scene transforms).
 
+**Status:** `.spz` done (extension-based; extension-less URLs not sniffed because the viewer picks its loader from the name). Multi-splat not done.
+
 **Files:** `parsers/splat.ts`, `parsers/core.ts`, `DropZone.tsx`, `SplatViewer/index.tsx`.
 **Tests:** detection tests in `tests/parsers/splat.test.ts` (`.spz` with and without an extension-less URL).
 **Effort:** S (`.spz`) / M (multi-splat)

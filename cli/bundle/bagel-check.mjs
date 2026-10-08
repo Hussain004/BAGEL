@@ -278,7 +278,7 @@ var require_heap_js_umd = __commonJS({
           };
           HeapAsync2.minComparator = function(a, b) {
             return __awaiter(this, void 0, void 0, function() {
-              return __generator$1(this, function(_a) {
+              return __generator$1(this, function(_a2) {
                 if (a > b) {
                   return [2, 1];
                 } else if (a < b) {
@@ -291,7 +291,7 @@ var require_heap_js_umd = __commonJS({
           };
           HeapAsync2.maxComparator = function(a, b) {
             return __awaiter(this, void 0, void 0, function() {
-              return __generator$1(this, function(_a) {
+              return __generator$1(this, function(_a2) {
                 if (b > a) {
                   return [2, 1];
                 } else if (b < a) {
@@ -304,21 +304,21 @@ var require_heap_js_umd = __commonJS({
           };
           HeapAsync2.minComparatorNumber = function(a, b) {
             return __awaiter(this, void 0, void 0, function() {
-              return __generator$1(this, function(_a) {
+              return __generator$1(this, function(_a2) {
                 return [2, a - b];
               });
             });
           };
           HeapAsync2.maxComparatorNumber = function(a, b) {
             return __awaiter(this, void 0, void 0, function() {
-              return __generator$1(this, function(_a) {
+              return __generator$1(this, function(_a2) {
                 return [2, b - a];
               });
             });
           };
           HeapAsync2.defaultIsEqual = function(a, b) {
             return __awaiter(this, void 0, void 0, function() {
-              return __generator$1(this, function(_a) {
+              return __generator$1(this, function(_a2) {
                 return [2, a === b];
               });
             });
@@ -363,14 +363,14 @@ var require_heap_js_umd = __commonJS({
           HeapAsync2.heapify = function(arr, compare) {
             return __awaiter(this, void 0, void 0, function() {
               var heap;
-              return __generator$1(this, function(_a) {
-                switch (_a.label) {
+              return __generator$1(this, function(_a2) {
+                switch (_a2.label) {
                   case 0:
                     heap = new HeapAsync2(compare);
                     heap.heapArray = arr;
                     return [4, heap.init()];
                   case 1:
-                    _a.sent();
+                    _a2.sent();
                     return [2, heap];
                 }
               });
@@ -384,14 +384,14 @@ var require_heap_js_umd = __commonJS({
           HeapAsync2.heappush = function(heapArr, item, compare) {
             return __awaiter(this, void 0, void 0, function() {
               var heap;
-              return __generator$1(this, function(_a) {
-                switch (_a.label) {
+              return __generator$1(this, function(_a2) {
+                switch (_a2.label) {
                   case 0:
                     heap = new HeapAsync2(compare);
                     heap.heapArray = heapArr;
                     return [4, heap.push(item)];
                   case 1:
-                    _a.sent();
+                    _a2.sent();
                     return [
                       2
                       /*return*/
@@ -429,14 +429,14 @@ var require_heap_js_umd = __commonJS({
           HeapAsync2.nlargest = function(n, iterable, compare) {
             return __awaiter(this, void 0, void 0, function() {
               var heap;
-              return __generator$1(this, function(_a) {
-                switch (_a.label) {
+              return __generator$1(this, function(_a2) {
+                switch (_a2.label) {
                   case 0:
                     heap = new HeapAsync2(compare);
                     heap.heapArray = __spreadArray$1([], __read$1(iterable), false);
                     return [4, heap.init()];
                   case 1:
-                    _a.sent();
+                    _a2.sent();
                     return [2, heap.top(n)];
                 }
               });
@@ -445,14 +445,14 @@ var require_heap_js_umd = __commonJS({
           HeapAsync2.nsmallest = function(n, iterable, compare) {
             return __awaiter(this, void 0, void 0, function() {
               var heap;
-              return __generator$1(this, function(_a) {
-                switch (_a.label) {
+              return __generator$1(this, function(_a2) {
+                switch (_a2.label) {
                   case 0:
                     heap = new HeapAsync2(compare);
                     heap.heapArray = __spreadArray$1([], __read$1(iterable), false);
                     return [4, heap.init()];
                   case 1:
-                    _a.sent();
+                    _a2.sent();
                     return [2, heap.bottom(n)];
                 }
               });
@@ -460,12 +460,12 @@ var require_heap_js_umd = __commonJS({
           };
           HeapAsync2.prototype.add = function(element) {
             return __awaiter(this, void 0, void 0, function() {
-              return __generator$1(this, function(_a) {
-                switch (_a.label) {
+              return __generator$1(this, function(_a2) {
+                switch (_a2.label) {
                   case 0:
                     return [4, this._sortNodeUp(this.heapArray.push(element) - 1)];
                   case 1:
-                    _a.sent();
+                    _a2.sent();
                     this._applyLimit();
                     return [2, true];
                 }
@@ -475,20 +475,20 @@ var require_heap_js_umd = __commonJS({
           HeapAsync2.prototype.addAll = function(elements) {
             return __awaiter(this, void 0, void 0, function() {
               var i, l;
-              var _a;
-              return __generator$1(this, function(_b) {
-                switch (_b.label) {
+              var _a2;
+              return __generator$1(this, function(_b2) {
+                switch (_b2.label) {
                   case 0:
                     i = this.length;
-                    (_a = this.heapArray).push.apply(_a, __spreadArray$1([], __read$1(elements), false));
+                    (_a2 = this.heapArray).push.apply(_a2, __spreadArray$1([], __read$1(elements), false));
                     l = this.length;
-                    _b.label = 1;
+                    _b2.label = 1;
                   case 1:
                     if (!(i < l)) return [3, 4];
                     return [4, this._sortNodeUp(i)];
                   case 2:
-                    _b.sent();
-                    _b.label = 3;
+                    _b2.sent();
+                    _b2.label = 3;
                   case 3:
                     ++i;
                     return [3, 1];
@@ -504,7 +504,7 @@ var require_heap_js_umd = __commonJS({
               if (n === void 0) {
                 n = 1;
               }
-              return __generator$1(this, function(_a) {
+              return __generator$1(this, function(_a2) {
                 if (this.heapArray.length === 0 || n <= 0) {
                   return [2, []];
                 } else if (this.heapArray.length === 1) {
@@ -520,42 +520,42 @@ var require_heap_js_umd = __commonJS({
           HeapAsync2.prototype.check = function() {
             return __awaiter(this, void 0, void 0, function() {
               var j, el, children, children_1, children_1_1, ch, e_1_1;
-              var e_1, _a;
-              return __generator$1(this, function(_b) {
-                switch (_b.label) {
+              var e_1, _a2;
+              return __generator$1(this, function(_b2) {
+                switch (_b2.label) {
                   case 0:
                     j = 0;
-                    _b.label = 1;
+                    _b2.label = 1;
                   case 1:
                     if (!(j < this.heapArray.length)) return [3, 10];
                     el = this.heapArray[j];
                     children = this.getChildrenOf(j);
-                    _b.label = 2;
+                    _b2.label = 2;
                   case 2:
-                    _b.trys.push([2, 7, 8, 9]);
+                    _b2.trys.push([2, 7, 8, 9]);
                     children_1 = (e_1 = void 0, __values(children)), children_1_1 = children_1.next();
-                    _b.label = 3;
+                    _b2.label = 3;
                   case 3:
                     if (!!children_1_1.done) return [3, 6];
                     ch = children_1_1.value;
                     return [4, this.compare(el, ch)];
                   case 4:
-                    if (_b.sent() > 0) {
+                    if (_b2.sent() > 0) {
                       return [2, el];
                     }
-                    _b.label = 5;
+                    _b2.label = 5;
                   case 5:
                     children_1_1 = children_1.next();
                     return [3, 3];
                   case 6:
                     return [3, 9];
                   case 7:
-                    e_1_1 = _b.sent();
+                    e_1_1 = _b2.sent();
                     e_1 = { error: e_1_1 };
                     return [3, 9];
                   case 8:
                     try {
-                      if (children_1_1 && !children_1_1.done && (_a = children_1.return)) _a.call(children_1);
+                      if (children_1_1 && !children_1_1.done && (_a2 = children_1.return)) _a2.call(children_1);
                     } finally {
                       if (e_1) throw e_1.error;
                     }
@@ -589,7 +589,7 @@ var require_heap_js_umd = __commonJS({
           };
           HeapAsync2.prototype.contains = function(o_1) {
             return __awaiter(this, arguments, void 0, function(o, fn) {
-              var _a, _b, el, e_2_1;
+              var _a2, _b2, el, e_2_1;
               var e_2, _c;
               if (fn === void 0) {
                 fn = HeapAsync2.defaultIsEqual;
@@ -598,11 +598,11 @@ var require_heap_js_umd = __commonJS({
                 switch (_d.label) {
                   case 0:
                     _d.trys.push([0, 5, 6, 7]);
-                    _a = __values(this.heapArray), _b = _a.next();
+                    _a2 = __values(this.heapArray), _b2 = _a2.next();
                     _d.label = 1;
                   case 1:
-                    if (!!_b.done) return [3, 4];
-                    el = _b.value;
+                    if (!!_b2.done) return [3, 4];
+                    el = _b2.value;
                     return [4, fn(el, o)];
                   case 2:
                     if (_d.sent()) {
@@ -610,7 +610,7 @@ var require_heap_js_umd = __commonJS({
                     }
                     _d.label = 3;
                   case 3:
-                    _b = _a.next();
+                    _b2 = _a2.next();
                     return [3, 1];
                   case 4:
                     return [3, 7];
@@ -620,7 +620,7 @@ var require_heap_js_umd = __commonJS({
                     return [3, 7];
                   case 6:
                     try {
-                      if (_b && !_b.done && (_c = _a.return)) _c.call(_a);
+                      if (_b2 && !_b2.done && (_c = _a2.return)) _c.call(_a2);
                     } finally {
                       if (e_2) throw e_2.error;
                     }
@@ -637,20 +637,20 @@ var require_heap_js_umd = __commonJS({
           HeapAsync2.prototype.init = function(array) {
             return __awaiter(this, void 0, void 0, function() {
               var i;
-              return __generator$1(this, function(_a) {
-                switch (_a.label) {
+              return __generator$1(this, function(_a2) {
+                switch (_a2.label) {
                   case 0:
                     if (array) {
                       this.heapArray = __spreadArray$1([], __read$1(array), false);
                     }
                     i = HeapAsync2.getParentIndexOf(this.length - 1);
-                    _a.label = 1;
+                    _a2.label = 1;
                   case 1:
                     if (!(i >= 0)) return [3, 4];
                     return [4, this._sortNodeDown(i)];
                   case 2:
-                    _a.sent();
-                    _a.label = 3;
+                    _a2.sent();
+                    _a2.label = 3;
                   case 3:
                     --i;
                     return [3, 1];
@@ -710,7 +710,7 @@ var require_heap_js_umd = __commonJS({
           HeapAsync2.prototype.pop = function() {
             return __awaiter(this, void 0, void 0, function() {
               var last;
-              return __generator$1(this, function(_a) {
+              return __generator$1(this, function(_a2) {
                 last = this.heapArray.pop();
                 if (this.length > 0 && last !== void 0) {
                   return [2, this.replace(last)];
@@ -725,7 +725,7 @@ var require_heap_js_umd = __commonJS({
               elements[_i] = arguments[_i];
             }
             return __awaiter(this, void 0, void 0, function() {
-              return __generator$1(this, function(_a) {
+              return __generator$1(this, function(_a2) {
                 if (elements.length < 1) {
                   return [2, false];
                 } else if (elements.length === 1) {
@@ -738,18 +738,18 @@ var require_heap_js_umd = __commonJS({
           };
           HeapAsync2.prototype.pushpop = function(element) {
             return __awaiter(this, void 0, void 0, function() {
-              var _a;
-              return __generator$1(this, function(_b) {
-                switch (_b.label) {
+              var _a2;
+              return __generator$1(this, function(_b2) {
+                switch (_b2.label) {
                   case 0:
                     return [4, this.compare(this.heapArray[0], element)];
                   case 1:
-                    if (!(_b.sent() < 0)) return [3, 3];
-                    _a = __read$1([this.heapArray[0], element], 2), element = _a[0], this.heapArray[0] = _a[1];
+                    if (!(_b2.sent() < 0)) return [3, 3];
+                    _a2 = __read$1([this.heapArray[0], element], 2), element = _a2[0], this.heapArray[0] = _a2[1];
                     return [4, this._sortNodeDown(0)];
                   case 2:
-                    _b.sent();
-                    _b.label = 3;
+                    _b2.sent();
+                    _b2.label = 3;
                   case 3:
                     return [2, element];
                 }
@@ -763,29 +763,29 @@ var require_heap_js_umd = __commonJS({
               if (fn === void 0) {
                 fn = HeapAsync2.defaultIsEqual;
               }
-              return __generator$1(this, function(_a) {
-                switch (_a.label) {
+              return __generator$1(this, function(_a2) {
+                switch (_a2.label) {
                   case 0:
                     if (!this.heapArray.length)
                       return [2, false];
                     if (!(o === void 0)) return [3, 2];
                     return [4, this.pop()];
                   case 1:
-                    _a.sent();
+                    _a2.sent();
                     return [2, true];
                   case 2:
                     queue = [0];
-                    _a.label = 3;
+                    _a2.label = 3;
                   case 3:
                     if (!queue.length) return [3, 13];
                     idx = queue.shift();
                     return [4, fn(this.heapArray[idx], o)];
                   case 4:
-                    if (!_a.sent()) return [3, 11];
+                    if (!_a2.sent()) return [3, 11];
                     if (!(idx === 0)) return [3, 6];
                     return [4, this.pop()];
                   case 5:
-                    _a.sent();
+                    _a2.sent();
                     return [3, 10];
                   case 6:
                     if (!(idx === this.heapArray.length - 1)) return [3, 7];
@@ -795,11 +795,11 @@ var require_heap_js_umd = __commonJS({
                     this.heapArray.splice(idx, 1, this.heapArray.pop());
                     return [4, this._sortNodeUp(idx)];
                   case 8:
-                    _a.sent();
+                    _a2.sent();
                     return [4, this._sortNodeDown(idx)];
                   case 9:
-                    _a.sent();
-                    _a.label = 10;
+                    _a2.sent();
+                    _a2.label = 10;
                   case 10:
                     return [2, true];
                   case 11:
@@ -807,7 +807,7 @@ var require_heap_js_umd = __commonJS({
                       return c < _this.heapArray.length;
                     });
                     queue.push.apply(queue, __spreadArray$1([], __read$1(children), false));
-                    _a.label = 12;
+                    _a2.label = 12;
                   case 12:
                     return [3, 3];
                   case 13:
@@ -819,14 +819,14 @@ var require_heap_js_umd = __commonJS({
           HeapAsync2.prototype.replace = function(element) {
             return __awaiter(this, void 0, void 0, function() {
               var peek;
-              return __generator$1(this, function(_a) {
-                switch (_a.label) {
+              return __generator$1(this, function(_a2) {
+                switch (_a2.label) {
                   case 0:
                     peek = this.heapArray[0];
                     this.heapArray[0] = element;
                     return [4, this._sortNodeDown(0)];
                   case 1:
-                    _a.sent();
+                    _a2.sent();
                     return [2, peek];
                 }
               });
@@ -840,7 +840,7 @@ var require_heap_js_umd = __commonJS({
               if (n === void 0) {
                 n = 1;
               }
-              return __generator$1(this, function(_a) {
+              return __generator$1(this, function(_a2) {
                 if (this.heapArray.length === 0 || n <= 0) {
                   return [2, []];
                 } else if (this.heapArray.length === 1 || n === 1) {
@@ -875,13 +875,13 @@ var require_heap_js_umd = __commonJS({
             return this.heapArray[pi];
           };
           HeapAsync2.prototype[Symbol.iterator] = function() {
-            return __generator$1(this, function(_a) {
-              switch (_a.label) {
+            return __generator$1(this, function(_a2) {
+              switch (_a2.label) {
                 case 0:
                   if (!this.length) return [3, 2];
                   return [4, this.pop()];
                 case 1:
-                  _a.sent();
+                  _a2.sent();
                   return [3, 0];
                 case 2:
                   return [
@@ -906,15 +906,15 @@ var require_heap_js_umd = __commonJS({
           HeapAsync2.prototype._bottomN_push = function(n) {
             return __awaiter(this, void 0, void 0, function() {
               var bottomHeap, startAt, parentStartAt, indices, i, arr, i;
-              return __generator$1(this, function(_a) {
-                switch (_a.label) {
+              return __generator$1(this, function(_a2) {
+                switch (_a2.label) {
                   case 0:
                     bottomHeap = new HeapAsync2(this.compare);
                     bottomHeap.limit = n;
                     bottomHeap.heapArray = this.heapArray.slice(-n);
                     return [4, bottomHeap.init()];
                   case 1:
-                    _a.sent();
+                    _a2.sent();
                     startAt = this.heapArray.length - 1 - n;
                     parentStartAt = HeapAsync2.getParentIndexOf(startAt);
                     indices = [];
@@ -922,20 +922,20 @@ var require_heap_js_umd = __commonJS({
                       indices.push(i);
                     }
                     arr = this.heapArray;
-                    _a.label = 2;
+                    _a2.label = 2;
                   case 2:
                     if (!indices.length) return [3, 6];
                     i = indices.shift();
                     return [4, this.compare(arr[i], bottomHeap.peek())];
                   case 3:
-                    if (!(_a.sent() > 0)) return [3, 5];
+                    if (!(_a2.sent() > 0)) return [3, 5];
                     return [4, bottomHeap.replace(arr[i])];
                   case 4:
-                    _a.sent();
+                    _a2.sent();
                     if (i % 2) {
                       indices.push(HeapAsync2.getParentIndexOf(i));
                     }
-                    _a.label = 5;
+                    _a2.label = 5;
                   case 5:
                     return [3, 2];
                   case 6:
@@ -951,29 +951,29 @@ var require_heap_js_umd = __commonJS({
           };
           HeapAsync2.prototype._sortNodeDown = function(i) {
             return __awaiter(this, void 0, void 0, function() {
-              var length, originalIndex, value, left, right, best, _a;
-              return __generator$1(this, function(_b) {
-                switch (_b.label) {
+              var length, originalIndex, value, left, right, best, _a2;
+              return __generator$1(this, function(_b2) {
+                switch (_b2.label) {
                   case 0:
                     length = this.heapArray.length;
                     originalIndex = i;
                     value = this.heapArray[i];
                     left = 2 * i + 1;
-                    _b.label = 1;
+                    _b2.label = 1;
                   case 1:
                     if (!(left < length)) return [3, 5];
                     right = left + 1;
-                    _a = right >= length;
-                    if (_a) return [3, 3];
+                    _a2 = right >= length;
+                    if (_a2) return [3, 3];
                     return [4, this.compare(this.heapArray[left], this.heapArray[right])];
                   case 2:
-                    _a = _b.sent() < 0;
-                    _b.label = 3;
+                    _a2 = _b2.sent() < 0;
+                    _b2.label = 3;
                   case 3:
-                    best = _a ? left : right;
+                    best = _a2 ? left : right;
                     return [4, this.compare(this.heapArray[best], value)];
                   case 4:
-                    if (_b.sent() < 0) {
+                    if (_b2.sent() < 0) {
                       this.heapArray[i] = this.heapArray[best];
                       i = best;
                       left = 2 * i + 1;
@@ -995,18 +995,18 @@ var require_heap_js_umd = __commonJS({
           HeapAsync2.prototype._sortNodeUp = function(i) {
             return __awaiter(this, void 0, void 0, function() {
               var value, originalIndex, pi;
-              return __generator$1(this, function(_a) {
-                switch (_a.label) {
+              return __generator$1(this, function(_a2) {
+                switch (_a2.label) {
                   case 0:
                     value = this.heapArray[i];
                     originalIndex = i;
-                    _a.label = 1;
+                    _a2.label = 1;
                   case 1:
                     if (!(i > 0)) return [3, 3];
                     pi = HeapAsync2.getParentIndexOf(i);
                     return [4, this.compare(value, this.heapArray[pi])];
                   case 2:
-                    if (_a.sent() < 0) {
+                    if (_a2.sent() < 0) {
                       this.heapArray[i] = this.heapArray[pi];
                       i = pi;
                     } else
@@ -1027,14 +1027,14 @@ var require_heap_js_umd = __commonJS({
           HeapAsync2.prototype._topN_push = function(n) {
             return __awaiter(this, void 0, void 0, function() {
               var topHeap, indices, arr, i;
-              return __generator$1(this, function(_a) {
-                switch (_a.label) {
+              return __generator$1(this, function(_a2) {
+                switch (_a2.label) {
                   case 0:
                     topHeap = new HeapAsync2(this._invertedCompare);
                     topHeap.limit = n;
                     indices = [0];
                     arr = this.heapArray;
-                    _a.label = 1;
+                    _a2.label = 1;
                   case 1:
                     if (!indices.length) return [3, 7];
                     i = indices.shift();
@@ -1042,18 +1042,18 @@ var require_heap_js_umd = __commonJS({
                     if (!(topHeap.length < n)) return [3, 3];
                     return [4, topHeap.push(arr[i])];
                   case 2:
-                    _a.sent();
+                    _a2.sent();
                     indices.push.apply(indices, __spreadArray$1([], __read$1(HeapAsync2.getChildrenIndexOf(i)), false));
                     return [3, 6];
                   case 3:
                     return [4, this.compare(arr[i], topHeap.peek())];
                   case 4:
-                    if (!(_a.sent() < 0)) return [3, 6];
+                    if (!(_a2.sent() < 0)) return [3, 6];
                     return [4, topHeap.replace(arr[i])];
                   case 5:
-                    _a.sent();
+                    _a2.sent();
                     indices.push.apply(indices, __spreadArray$1([], __read$1(HeapAsync2.getChildrenIndexOf(i)), false));
-                    _a.label = 6;
+                    _a2.label = 6;
                   case 6:
                     return [3, 1];
                   case 7:
@@ -1065,8 +1065,8 @@ var require_heap_js_umd = __commonJS({
           HeapAsync2.prototype._topN_fill = function(n) {
             return __awaiter(this, void 0, void 0, function() {
               var heapArray, topHeap, branch, indices, i, i;
-              return __generator$1(this, function(_a) {
-                switch (_a.label) {
+              return __generator$1(this, function(_a2) {
+                switch (_a2.label) {
                   case 0:
                     heapArray = this.heapArray;
                     topHeap = new HeapAsync2(this._invertedCompare);
@@ -1074,7 +1074,7 @@ var require_heap_js_umd = __commonJS({
                     topHeap.heapArray = heapArray.slice(0, n);
                     return [4, topHeap.init()];
                   case 1:
-                    _a.sent();
+                    _a2.sent();
                     branch = HeapAsync2.getParentIndexOf(n - 1) + 1;
                     indices = [];
                     for (i = branch; i < n; ++i) {
@@ -1085,19 +1085,19 @@ var require_heap_js_umd = __commonJS({
                     if ((n - 1) % 2) {
                       indices.push(n);
                     }
-                    _a.label = 2;
+                    _a2.label = 2;
                   case 2:
                     if (!indices.length) return [3, 6];
                     i = indices.shift();
                     if (!(i < heapArray.length)) return [3, 5];
                     return [4, this.compare(heapArray[i], topHeap.peek())];
                   case 3:
-                    if (!(_a.sent() < 0)) return [3, 5];
+                    if (!(_a2.sent() < 0)) return [3, 5];
                     return [4, topHeap.replace(heapArray[i])];
                   case 4:
-                    _a.sent();
+                    _a2.sent();
                     indices.push.apply(indices, __spreadArray$1([], __read$1(HeapAsync2.getChildrenIndexOf(i)), false));
-                    _a.label = 5;
+                    _a2.label = 5;
                   case 5:
                     return [3, 2];
                   case 6:
@@ -1108,7 +1108,7 @@ var require_heap_js_umd = __commonJS({
           };
           HeapAsync2.prototype._topN_heap = function(n) {
             return __awaiter(this, void 0, void 0, function() {
-              var topHeap, result, i, _a, _b;
+              var topHeap, result, i, _a2, _b2;
               return __generator$1(this, function(_c) {
                 switch (_c.label) {
                   case 0:
@@ -1118,10 +1118,10 @@ var require_heap_js_umd = __commonJS({
                     _c.label = 1;
                   case 1:
                     if (!(i < n)) return [3, 4];
-                    _b = (_a = result).push;
+                    _b2 = (_a2 = result).push;
                     return [4, topHeap.pop()];
                   case 2:
-                    _b.apply(_a, [_c.sent()]);
+                    _b2.apply(_a2, [_c.sent()]);
                     _c.label = 3;
                   case 3:
                     ++i;
@@ -1135,8 +1135,8 @@ var require_heap_js_umd = __commonJS({
           HeapAsync2.prototype._topIdxOf = function(list) {
             return __awaiter(this, void 0, void 0, function() {
               var idx, top, i, comp;
-              return __generator$1(this, function(_a) {
-                switch (_a.label) {
+              return __generator$1(this, function(_a2) {
+                switch (_a2.label) {
                   case 0:
                     if (!list.length) {
                       return [2, -1];
@@ -1144,17 +1144,17 @@ var require_heap_js_umd = __commonJS({
                     idx = 0;
                     top = list[idx];
                     i = 1;
-                    _a.label = 1;
+                    _a2.label = 1;
                   case 1:
                     if (!(i < list.length)) return [3, 4];
                     return [4, this.compare(list[i], top)];
                   case 2:
-                    comp = _a.sent();
+                    comp = _a2.sent();
                     if (comp < 0) {
                       idx = i;
                       top = list[i];
                     }
-                    _a.label = 3;
+                    _a2.label = 3;
                   case 3:
                     ++i;
                     return [3, 1];
@@ -1171,13 +1171,13 @@ var require_heap_js_umd = __commonJS({
             }
             return __awaiter(this, void 0, void 0, function() {
               var heap;
-              return __generator$1(this, function(_a) {
-                switch (_a.label) {
+              return __generator$1(this, function(_a2) {
+                switch (_a2.label) {
                   case 0:
                     heap = new HeapAsync2(this.compare);
                     return [4, heap.init(list)];
                   case 1:
-                    _a.sent();
+                    _a2.sent();
                     return [2, heap.peek()];
                 }
               });
@@ -1443,9 +1443,9 @@ var require_heap_js_umd = __commonJS({
             return true;
           };
           Heap3.prototype.addAll = function(elements) {
-            var _a;
+            var _a2;
             var i = this.length;
-            (_a = this.heapArray).push.apply(_a, __spreadArray([], __read(elements), false));
+            (_a2 = this.heapArray).push.apply(_a2, __spreadArray([], __read(elements), false));
             for (var l = this.length; i < l; ++i) {
               this._sortNodeUp(i);
             }
@@ -1624,9 +1624,9 @@ var require_heap_js_umd = __commonJS({
             }
           };
           Heap3.prototype.pushpop = function(element) {
-            var _a;
+            var _a2;
             if (this.compare(this.heapArray[0], element) < 0) {
-              _a = __read([this.heapArray[0], element], 2), element = _a[0], this.heapArray[0] = _a[1];
+              _a2 = __read([this.heapArray[0], element], 2), element = _a2[0], this.heapArray[0] = _a2[1];
               this._sortNodeDown(0);
             }
             return element;
@@ -1710,13 +1710,13 @@ var require_heap_js_umd = __commonJS({
             return this.heapArray[pi];
           };
           Heap3.prototype[Symbol.iterator] = function() {
-            return __generator(this, function(_a) {
-              switch (_a.label) {
+            return __generator(this, function(_a2) {
+              switch (_a2.label) {
                 case 0:
                   if (!this.length) return [3, 2];
                   return [4, this.pop()];
                 case 1:
-                  _a.sent();
+                  _a2.sent();
                   return [3, 0];
                 case 2:
                   return [
@@ -1938,20 +1938,20 @@ var require_dist = __commonJS({
               "builtin_interfaces/msg/Time",
               "builtin_interfaces/msg/Duration"
             ];
-            function parseBigIntLiteral(str, min, max) {
+            function parseBigIntLiteral(str, min, max2) {
               const value = BigInt(str);
-              if (value < min || value > max) {
-                throw new Error(`Number ${str} out of range [${min}, ${max}]`);
+              if (value < min || value > max2) {
+                throw new Error(`Number ${str} out of range [${min}, ${max2}]`);
               }
               return value;
             }
-            function parseNumberLiteral(str, min, max) {
+            function parseNumberLiteral(str, min, max2) {
               const value = parseInt(str);
               if (Number.isNaN(value)) {
                 throw new Error(`Invalid numeric literal: ${str}`);
               }
-              if (value < min || value > max) {
-                throw new Error(`Number ${str} out of range [${min}, ${max}]`);
+              if (value < min || value > max2) {
+                throw new Error(`Number ${str} out of range [${min}, ${max2}]`);
               }
               return value;
             }
@@ -2694,10 +2694,10 @@ var require_dist = __commonJS({
                   } catch (e) {
                     var nextColumn = new Column(this.grammar, this.current + 1);
                     this.table.push(nextColumn);
-                    var err2 = new Error(this.reportLexerError(e));
-                    err2.offset = this.current;
-                    err2.token = e.token;
-                    throw err2;
+                    var err3 = new Error(this.reportLexerError(e));
+                    err3.offset = this.current;
+                    err3.token = e.token;
+                    throw err3;
                   }
                   var column = this.table[this.current];
                   if (!this.options.keepHistory) {
@@ -2719,10 +2719,10 @@ var require_dist = __commonJS({
                   }
                   nextColumn.process();
                   if (nextColumn.states.length === 0) {
-                    var err2 = new Error(this.reportError(token));
-                    err2.offset = this.current;
-                    err2.token = token;
-                    throw err2;
+                    var err3 = new Error(this.reportError(token));
+                    err3.offset = this.current;
+                    err3.token = token;
+                    throw err3;
                   }
                   if (this.options.keepHistory) {
                     column.lexerState = lexer.save();
@@ -3580,8 +3580,8 @@ var require_dist = __commonJS({
                   this.col += size;
                 }
                 if (group.shouldThrow) {
-                  var err2 = new Error(this.formatError(token, "invalid syntax"));
-                  throw err2;
+                  var err3 = new Error(this.formatError(token, "invalid syntax"));
+                  throw err3;
                 }
                 if (group.pop) this.popState();
                 else if (group.push) this.pushState(group.push);
@@ -6758,7 +6758,7 @@ var require_sql_wasm = __commonJS({
                 else if (null != l.length) {
                   var n = da(l.length);
                   m.set(l, n);
-                  ec2(f2, n, l.length, -1);
+                  ec3(f2, n, l.length, -1);
                   ea(n);
                 } else sa(f2, "Wrong API use : tried to return a value of an unknown type (" + l + ").", -1);
                 break;
@@ -6840,7 +6840,7 @@ var require_sql_wasm = __commonJS({
             "sqlite3_value_blob",
             "number",
             ["number"]
-          ), gc = h("sqlite3_value_double", "number", ["number"]), cc = h("sqlite3_result_double", "", ["number", "number"]), lb = h("sqlite3_result_null", "", ["number"]), dc = h("sqlite3_result_text", "", ["number", "string", "number", "number"]), ec2 = h("sqlite3_result_blob", "", ["number", "number", "number", "number"]), bc = h("sqlite3_result_int", "", ["number", "number"]), sa = h("sqlite3_result_error", "", ["number", "string", "number"]), ub = h("sqlite3_aggregate_context", "number", ["number", "number"]), ob = h(
+          ), gc = h("sqlite3_value_double", "number", ["number"]), cc = h("sqlite3_result_double", "", ["number", "number"]), lb = h("sqlite3_result_null", "", ["number"]), dc = h("sqlite3_result_text", "", ["number", "string", "number", "number"]), ec3 = h("sqlite3_result_blob", "", ["number", "number", "number", "number"]), bc = h("sqlite3_result_int", "", ["number", "number"]), sa = h("sqlite3_result_error", "", ["number", "string", "number"]), ub = h("sqlite3_aggregate_context", "number", ["number", "number"]), ob = h(
             "RegisterExtensionFunctions",
             "number",
             ["number"]
@@ -10485,10 +10485,10 @@ var require_dist4 = __commonJS({
                   } catch (e) {
                     var nextColumn = new Column(this.grammar, this.current + 1);
                     this.table.push(nextColumn);
-                    var err2 = new Error(this.reportLexerError(e));
-                    err2.offset = this.current;
-                    err2.token = e.token;
-                    throw err2;
+                    var err3 = new Error(this.reportLexerError(e));
+                    err3.offset = this.current;
+                    err3.token = e.token;
+                    throw err3;
                   }
                   var column = this.table[this.current];
                   if (!this.options.keepHistory) {
@@ -10510,10 +10510,10 @@ var require_dist4 = __commonJS({
                   }
                   nextColumn.process();
                   if (nextColumn.states.length === 0) {
-                    var err2 = new Error(this.reportError(token));
-                    err2.offset = this.current;
-                    err2.token = token;
-                    throw err2;
+                    var err3 = new Error(this.reportError(token));
+                    err3.offset = this.current;
+                    err3.token = token;
+                    throw err3;
                   }
                   if (this.options.keepHistory) {
                     column.lexerState = lexer.save();
@@ -10726,20 +10726,20 @@ var require_dist4 = __commonJS({
               "builtin_interfaces/msg/Time",
               "builtin_interfaces/msg/Duration"
             ];
-            function parseBigIntLiteral(str, min, max) {
+            function parseBigIntLiteral(str, min, max2) {
               const value = BigInt(str);
-              if (value < min || value > max) {
-                throw new Error(`Number ${str} out of range [${min}, ${max}]`);
+              if (value < min || value > max2) {
+                throw new Error(`Number ${str} out of range [${min}, ${max2}]`);
               }
               return value;
             }
-            function parseNumberLiteral(str, min, max) {
+            function parseNumberLiteral(str, min, max2) {
               const value = parseInt(str);
               if (Number.isNaN(value)) {
                 throw new Error(`Invalid numeric literal: ${str}`);
               }
-              if (value < min || value > max) {
-                throw new Error(`Number ${str} out of range [${min}, ${max}]`);
+              if (value < min || value > max2) {
+                throw new Error(`Number ${str} out of range [${min}, ${max2}]`);
               }
               return value;
             }
@@ -12691,23 +12691,23 @@ var require_bitreader = __commonJS({
         this.hasByte = true;
       }
     };
-    BitReader.prototype.read = function(bits) {
+    BitReader.prototype.read = function(bits2) {
       var result = 0;
-      while (bits > 0) {
+      while (bits2 > 0) {
         this._ensureByte();
         var remaining = 8 - this.bitOffset;
-        if (bits >= remaining) {
+        if (bits2 >= remaining) {
           result <<= remaining;
           result |= BITMASK[remaining] & this.curByte;
           this.hasByte = false;
           this.bitOffset = 0;
-          bits -= remaining;
+          bits2 -= remaining;
         } else {
-          result <<= bits;
-          var shift = remaining - bits;
-          result |= (this.curByte & BITMASK[bits] << shift) >> shift;
-          this.bitOffset += bits;
-          bits = 0;
+          result <<= bits2;
+          var shift = remaining - bits2;
+          result |= (this.curByte & BITMASK[bits2] << shift) >> shift;
+          this.bitOffset += bits2;
+          bits2 = 0;
         }
       }
       return result;
@@ -14127,8 +14127,8 @@ var Reader = class {
       while (this.offset < endOffset) {
         result.push([readKey(this), readValue(this)]);
       }
-    } catch (err2) {
-      throw new Error(`Error reading key-value pairs: ${err2.message}`);
+    } catch (err3) {
+      throw new Error(`Error reading key-value pairs: ${err3.message}`);
     }
     if (this.offset !== endOffset) {
       throw new Error(`Key-value pairs length (${this.offset - endOffset + length}) greater than expected (${length})`);
@@ -14152,8 +14152,8 @@ var Reader = class {
         }
         result.set(key, value);
       }
-    } catch (err2) {
-      throw new Error(`Error reading map: ${err2.message}`);
+    } catch (err3) {
+      throw new Error(`Error reading map: ${err3.message}`);
     }
     if (this.offset !== endOffset) {
       throw new Error(`Map length (${this.offset - endOffset + length}) greater than expected (${length})`);
@@ -15772,10 +15772,10 @@ var rzfh = function(dat, w) {
   err(0);
 };
 var msb = function(val) {
-  var bits = 0;
-  for (; 1 << bits <= val; ++bits)
+  var bits2 = 0;
+  for (; 1 << bits2 <= val; ++bits2)
     ;
-  return bits - 1;
+  return bits2 - 1;
 };
 var rfse = function(dat, bt, mal) {
   var tpos = (bt << 3) + 4;
@@ -15792,17 +15792,17 @@ var rfse = function(dat, bt, mal) {
   var syms = new u8(buf, bb1, sz);
   var nbits = new u8(buf, bb1 + sz);
   while (sym < 255 && probs > 0) {
-    var bits = msb(probs + 1);
+    var bits2 = msb(probs + 1);
     var cbt = tpos >> 3;
-    var msk = (1 << bits + 1) - 1;
+    var msk = (1 << bits2 + 1) - 1;
     var val = (dat[cbt] | dat[cbt + 1] << 8 | dat[cbt + 2] << 16) >> (tpos & 7) & msk;
-    var msk1fb = (1 << bits) - 1;
+    var msk1fb = (1 << bits2) - 1;
     var msv = msk - probs - 1;
     var sval = val & msk1fb;
     if (sval < msv)
-      tpos += bits, val = sval;
+      tpos += bits2, val = sval;
     else {
-      tpos += bits + 1;
+      tpos += bits2 + 1;
       if (val > msk1fb)
         val -= msv;
     }
@@ -15860,13 +15860,13 @@ var rhu = function(dat, bt) {
   var rc = buf.subarray(256, 268);
   var ri = new u16(buf.buffer, 268);
   if (hb < 128) {
-    var _a = rfse(dat, bt + 1, 6), ebt = _a[0], fdt = _a[1];
+    var _a2 = rfse(dat, bt + 1, 6), ebt = _a2[0], fdt2 = _a2[1];
     bt += hb;
     var epos = ebt << 3;
     var lb = dat[bt];
     if (!lb)
       err(0);
-    var st1 = 0, st2 = 0, btr1 = fdt.b, btr2 = btr1;
+    var st1 = 0, st2 = 0, btr1 = fdt2.b, btr2 = btr1;
     var fpos = (++bt << 3) - 8 + msb(lb);
     for (; ; ) {
       fpos -= btr1;
@@ -15874,17 +15874,17 @@ var rhu = function(dat, bt) {
         break;
       var cbt = fpos >> 3;
       st1 += (dat[cbt] | dat[cbt + 1] << 8) >> (fpos & 7) & (1 << btr1) - 1;
-      hw[++wc] = fdt.s[st1];
+      hw[++wc] = fdt2.s[st1];
       fpos -= btr2;
       if (fpos < epos)
         break;
       cbt = fpos >> 3;
       st2 += (dat[cbt] | dat[cbt + 1] << 8) >> (fpos & 7) & (1 << btr2) - 1;
-      hw[++wc] = fdt.s[st2];
-      btr1 = fdt.n[st1];
-      st1 = fdt.t[st1];
-      btr2 = fdt.n[st2];
-      st2 = fdt.t[st2];
+      hw[++wc] = fdt2.s[st2];
+      btr1 = fdt2.n[st1];
+      st1 = fdt2.t[st1];
+      btr2 = fdt2.n[st2];
+      st2 = fdt2.t[st2];
     }
     if (++wc > 255)
       err(0);
@@ -15924,10 +15924,10 @@ var rhu = function(dat, bt) {
   if (ri[0] != ts)
     err(0);
   for (i = 0; i < wc; ++i) {
-    var bits = hw[i];
-    if (bits) {
-      var code = ri[bits];
-      fill(syms, i, code, ri[bits] = code + (1 << mb - bits));
+    var bits2 = hw[i];
+    if (bits2) {
+      var code = ri[bits2];
+      fill(syms, i, code, ri[bits2] = code + (1 << mb - bits2));
     }
   }
   return [bt, {
@@ -16062,7 +16062,7 @@ var dhu4 = function(dat, out, hu) {
   dhu(dat.subarray(bt), out.subarray(sz3), hu);
 };
 var rzb = function(dat, st, out) {
-  var _a;
+  var _a2;
   var bt = st.b;
   var b0 = dat[bt], btype = b0 >> 1 & 3;
   st.l = b0 & 1;
@@ -16144,14 +16144,14 @@ var rzb = function(dat, st, out) {
             b: 0
           };
         } else if (md == 2) {
-          _a = rfse(dat, bt, 9 - (i & 1)), bt = _a[0], dts[i] = _a[1];
+          _a2 = rfse(dat, bt, 9 - (i & 1)), bt = _a2[0], dts[i] = _a2[1];
         } else if (md == 3) {
           if (!st.t)
             err(0);
           dts[i] = st.t[i];
         }
       }
-      var _b = st.t = dts, mlt = _b[0], oct = _b[1], llt = _b[2];
+      var _b2 = st.t = dts, mlt = _b2[0], oct = _b2[1], llt = _b2[2];
       var lb = dat[ebt - 1];
       if (!lb)
         err(0);
@@ -16417,10 +16417,10 @@ async function rangeFetch(url, offset, length) {
       mode: "cors",
       headers: { Range: `bytes=${offset}-${end}` }
     });
-  } catch (err2) {
+  } catch (err3) {
     throw new Error(
-      `Could not fetch from "${url}": ${err2 instanceof Error ? err2.message : String(err2)}. This often means the remote server does not allow cross-origin requests. Try a CORS-enabled mirror, or download the file and drag it in.`,
-      { cause: err2 }
+      `Could not fetch from "${url}": ${err3 instanceof Error ? err3.message : String(err3)}. This often means the remote server does not allow cross-origin requests. Try a CORS-enabled mirror, or download the file and drag it in.`,
+      { cause: err3 }
     );
   }
   if (res.status === 416) {
@@ -16839,8 +16839,8 @@ async function loadMcap(source) {
         messageEncoding: channel.messageEncoding
       });
     }
-  } catch (err2) {
-    indexedError = err2;
+  } catch (err3) {
+    indexedError = err3;
   }
   if (!reader) {
     try {
@@ -18066,6 +18066,458 @@ async function parsePly(source) {
   return summary;
 }
 
+// node_modules/.pnpm/fflate@0.8.3/node_modules/fflate/esm/index.mjs
+import { createRequire } from "module";
+var require2 = createRequire("/");
+var _a;
+var Worker;
+var isMarkedAsUntransferable;
+try {
+  _a = require2("worker_threads"), Worker = _a.Worker, isMarkedAsUntransferable = _a.isMarkedAsUntransferable;
+} catch (e) {
+}
+var u82 = Uint8Array;
+var u162 = Uint16Array;
+var i322 = Int32Array;
+var fleb = new u82([
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  1,
+  1,
+  1,
+  1,
+  2,
+  2,
+  2,
+  2,
+  3,
+  3,
+  3,
+  3,
+  4,
+  4,
+  4,
+  4,
+  5,
+  5,
+  5,
+  5,
+  0,
+  /* unused */
+  0,
+  0,
+  /* impossible */
+  0
+]);
+var fdeb = new u82([
+  0,
+  0,
+  0,
+  0,
+  1,
+  1,
+  2,
+  2,
+  3,
+  3,
+  4,
+  4,
+  5,
+  5,
+  6,
+  6,
+  7,
+  7,
+  8,
+  8,
+  9,
+  9,
+  10,
+  10,
+  11,
+  11,
+  12,
+  12,
+  13,
+  13,
+  /* unused */
+  0,
+  0
+]);
+var clim = new u82([16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]);
+var freb = function(eb, start) {
+  var b = new u162(31);
+  for (var i = 0; i < 31; ++i) {
+    b[i] = start += 1 << eb[i - 1];
+  }
+  var r = new i322(b[30]);
+  for (var i = 1; i < 30; ++i) {
+    for (var j = b[i]; j < b[i + 1]; ++j) {
+      r[j] = j - b[i] << 5 | i;
+    }
+  }
+  return { b, r };
+};
+var _a = freb(fleb, 2);
+var fl = _a.b;
+var revfl = _a.r;
+fl[28] = 258, revfl[258] = 28;
+var _b = freb(fdeb, 0);
+var fd = _b.b;
+var revfd = _b.r;
+var rev = new u162(32768);
+for (i = 0; i < 32768; ++i) {
+  x = (i & 43690) >> 1 | (i & 21845) << 1;
+  x = (x & 52428) >> 2 | (x & 13107) << 2;
+  x = (x & 61680) >> 4 | (x & 3855) << 4;
+  rev[i] = ((x & 65280) >> 8 | (x & 255) << 8) >> 1;
+}
+var x;
+var i;
+var hMap = (function(cd, mb, r) {
+  var s = cd.length;
+  var i = 0;
+  var l = new u162(mb);
+  for (; i < s; ++i) {
+    if (cd[i])
+      ++l[cd[i] - 1];
+  }
+  var le = new u162(mb);
+  for (i = 1; i < mb; ++i) {
+    le[i] = le[i - 1] + l[i - 1] << 1;
+  }
+  var co;
+  if (r) {
+    co = new u162(1 << mb);
+    var rvb = 15 - mb;
+    for (i = 0; i < s; ++i) {
+      if (cd[i]) {
+        var sv = i << 4 | cd[i];
+        var r_1 = mb - cd[i];
+        var v = le[cd[i] - 1]++ << r_1;
+        for (var m = v | (1 << r_1) - 1; v <= m; ++v) {
+          co[rev[v] >> rvb] = sv;
+        }
+      }
+    }
+  } else {
+    co = new u162(s);
+    for (i = 0; i < s; ++i) {
+      if (cd[i]) {
+        co[i] = rev[le[cd[i] - 1]++] >> 15 - cd[i];
+      }
+    }
+  }
+  return co;
+});
+var flt = new u82(288);
+for (i = 0; i < 144; ++i)
+  flt[i] = 8;
+var i;
+for (i = 144; i < 256; ++i)
+  flt[i] = 9;
+var i;
+for (i = 256; i < 280; ++i)
+  flt[i] = 7;
+var i;
+for (i = 280; i < 288; ++i)
+  flt[i] = 8;
+var i;
+var fdt = new u82(32);
+for (i = 0; i < 32; ++i)
+  fdt[i] = 5;
+var i;
+var flrm = /* @__PURE__ */ hMap(flt, 9, 1);
+var fdrm = /* @__PURE__ */ hMap(fdt, 5, 1);
+var max = function(a) {
+  var m = a[0];
+  for (var i = 1; i < a.length; ++i) {
+    if (a[i] > m)
+      m = a[i];
+  }
+  return m;
+};
+var bits = function(d, p, m) {
+  var o = p / 8 | 0;
+  return (d[o] | d[o + 1] << 8) >> (p & 7) & m;
+};
+var bits16 = function(d, p) {
+  var o = p / 8 | 0;
+  return (d[o] | d[o + 1] << 8 | d[o + 2] << 16) >> (p & 7);
+};
+var shft = function(p) {
+  return (p + 7) / 8 | 0;
+};
+var slc2 = function(v, s, e) {
+  if (s == null || s < 0)
+    s = 0;
+  if (e == null || e > v.length)
+    e = v.length;
+  return new u82(v.subarray(s, e));
+};
+var ec2 = [
+  "unexpected EOF",
+  "invalid block type",
+  "invalid length/literal",
+  "invalid distance",
+  "stream finished",
+  "no stream handler",
+  ,
+  // determined by compression function
+  "no callback",
+  "invalid UTF-8 data",
+  "extra field too long",
+  "date not in range 1980-2099",
+  "filename too long",
+  "stream finishing",
+  "invalid zip data"
+  // determined by unknown compression method
+];
+var err2 = function(ind, msg, nt) {
+  var e = new Error(msg || ec2[ind]);
+  e.code = ind;
+  if (Error.captureStackTrace)
+    Error.captureStackTrace(e, err2);
+  if (!nt)
+    throw e;
+  return e;
+};
+var inflt = function(dat, st, buf, dict) {
+  var sl = dat.length, dl = dict ? dict.length : 0;
+  if (!sl || st.f && !st.l)
+    return buf || new u82(0);
+  var noBuf = !buf;
+  var resize = noBuf || st.i != 2;
+  var noSt = st.i;
+  if (noBuf)
+    buf = new u82(sl * 3);
+  var cbuf = function(l2) {
+    var bl = buf.length;
+    if (l2 > bl) {
+      var nbuf = new u82(Math.max(bl * 2, l2));
+      nbuf.set(buf);
+      buf = nbuf;
+    }
+  };
+  var final = st.f || 0, pos = st.p || 0, bt = st.b || 0, lm = st.l, dm = st.d, lbt = st.m, dbt = st.n;
+  var tbts = sl * 8;
+  do {
+    if (!lm) {
+      final = bits(dat, pos, 1);
+      var type = bits(dat, pos + 1, 3);
+      pos += 3;
+      if (!type) {
+        var s = shft(pos) + 4, l = dat[s - 4] | dat[s - 3] << 8, t = s + l;
+        if (t > sl) {
+          if (noSt)
+            err2(0);
+          break;
+        }
+        if (resize)
+          cbuf(bt + l);
+        buf.set(dat.subarray(s, t), bt);
+        st.b = bt += l, st.p = pos = t * 8, st.f = final;
+        continue;
+      } else if (type == 1)
+        lm = flrm, dm = fdrm, lbt = 9, dbt = 5;
+      else if (type == 2) {
+        var hLit = bits(dat, pos, 31) + 257, hcLen = bits(dat, pos + 10, 15) + 4;
+        var tl = hLit + bits(dat, pos + 5, 31) + 1;
+        pos += 14;
+        var ldt = new u82(tl);
+        var clt = new u82(19);
+        for (var i = 0; i < hcLen; ++i) {
+          clt[clim[i]] = bits(dat, pos + i * 3, 7);
+        }
+        pos += hcLen * 3;
+        var clb = max(clt), clbmsk = (1 << clb) - 1;
+        var clm = hMap(clt, clb, 1);
+        for (var i = 0; i < tl; ) {
+          var r = clm[bits(dat, pos, clbmsk)];
+          pos += r & 15;
+          var s = r >> 4;
+          if (s < 16) {
+            ldt[i++] = s;
+          } else {
+            var c = 0, n = 0;
+            if (s == 16)
+              n = 3 + bits(dat, pos, 3), pos += 2, c = ldt[i - 1];
+            else if (s == 17)
+              n = 3 + bits(dat, pos, 7), pos += 3;
+            else if (s == 18)
+              n = 11 + bits(dat, pos, 127), pos += 7;
+            while (n--)
+              ldt[i++] = c;
+          }
+        }
+        var lt = ldt.subarray(0, hLit), dt = ldt.subarray(hLit);
+        lbt = max(lt);
+        dbt = max(dt);
+        lm = hMap(lt, lbt, 1);
+        dm = hMap(dt, dbt, 1);
+      } else
+        err2(1);
+      if (pos > tbts) {
+        if (noSt)
+          err2(0);
+        break;
+      }
+    }
+    if (resize)
+      cbuf(bt + 131072);
+    var lms = (1 << lbt) - 1, dms = (1 << dbt) - 1;
+    var lpos = pos;
+    for (; ; lpos = pos) {
+      var c = lm[bits16(dat, pos) & lms], sym = c >> 4;
+      pos += c & 15;
+      if (pos > tbts) {
+        if (noSt)
+          err2(0);
+        break;
+      }
+      if (!c)
+        err2(2);
+      if (sym < 256)
+        buf[bt++] = sym;
+      else if (sym == 256) {
+        lpos = pos, lm = null;
+        break;
+      } else {
+        var add = sym - 254;
+        if (sym > 264) {
+          var i = sym - 257, b = fleb[i];
+          add = bits(dat, pos, (1 << b) - 1) + fl[i];
+          pos += b;
+        }
+        var d = dm[bits16(dat, pos) & dms], dsym = d >> 4;
+        if (!d)
+          err2(3);
+        pos += d & 15;
+        var dt = fd[dsym];
+        if (dsym > 3) {
+          var b = fdeb[dsym];
+          dt += bits16(dat, pos) & (1 << b) - 1, pos += b;
+        }
+        if (pos > tbts) {
+          if (noSt)
+            err2(0);
+          break;
+        }
+        if (resize)
+          cbuf(bt + 131072);
+        var end = bt + add;
+        if (bt < dt) {
+          var shift = dl - dt, dend = Math.min(dt, end);
+          if (shift + bt < 0)
+            err2(3);
+          for (; bt < dend; ++bt)
+            buf[bt] = dict[shift + bt];
+        }
+        for (; bt < end; ++bt)
+          buf[bt] = buf[bt - dt];
+      }
+    }
+    st.l = lm, st.p = lpos, st.b = bt, st.f = final;
+    if (lm)
+      final = 1, st.m = lbt, st.d = dm, st.n = dbt;
+  } while (!final);
+  return bt != buf.length && noBuf ? slc2(buf, 0, bt) : buf.subarray(0, bt);
+};
+var et = /* @__PURE__ */ new u82(0);
+var gzs = function(d) {
+  if (d[0] != 31 || d[1] != 139 || d[2] != 8)
+    err2(6, "invalid gzip data");
+  var flg = d[3];
+  var st = 10;
+  if (flg & 4)
+    st += (d[10] | d[11] << 8) + 2;
+  for (var zs = (flg >> 3 & 1) + (flg >> 4 & 1); zs > 0; zs -= !d[st++])
+    ;
+  return st + (flg & 2);
+};
+var Inflate = /* @__PURE__ */ (function() {
+  function Inflate2(opts, cb) {
+    if (typeof opts == "function")
+      cb = opts, opts = {};
+    this.ondata = cb;
+    var dict = opts && opts.dictionary && opts.dictionary.subarray(-32768);
+    this.s = { i: 0, b: dict ? dict.length : 0 };
+    this.o = new u82(32768);
+    this.p = new u82(0);
+    if (dict)
+      this.o.set(dict);
+  }
+  Inflate2.prototype.e = function(c) {
+    if (!this.ondata)
+      err2(5);
+    if (this.d)
+      err2(4);
+    if (!this.p.length)
+      this.p = c;
+    else if (c.length) {
+      var n = new u82(this.p.length + c.length);
+      n.set(this.p), n.set(c, this.p.length), this.p = n;
+    }
+  };
+  Inflate2.prototype.c = function(final) {
+    this.s.i = +(this.d = final || false);
+    var bts = this.s.b;
+    var dt = inflt(this.p, this.s, this.o);
+    this.ondata(slc2(dt, bts, this.s.b), this.d);
+    this.o = slc2(dt, this.s.b - 32768), this.s.b = this.o.length;
+    this.p = slc2(this.p, this.s.p / 8 | 0), this.s.p &= 7;
+  };
+  Inflate2.prototype.push = function(chunk, final) {
+    this.e(chunk), this.c(final);
+  };
+  return Inflate2;
+})();
+var Gunzip = /* @__PURE__ */ (function() {
+  function Gunzip2(opts, cb) {
+    this.v = 1;
+    this.r = 0;
+    Inflate.call(this, opts, cb);
+  }
+  Gunzip2.prototype.push = function(chunk, final) {
+    Inflate.prototype.e.call(this, chunk);
+    this.r += chunk.length;
+    if (this.v) {
+      var p = this.p.subarray(this.v - 1);
+      var s = p.length > 3 ? gzs(p) : 4;
+      if (s > p.length) {
+        if (!final)
+          return;
+      } else if (this.v > 1 && this.onmember) {
+        this.onmember(this.r - p.length);
+      }
+      this.p = p.subarray(s), this.v = 0;
+    }
+    Inflate.prototype.c.call(this, 0);
+    if (this.s.f && !this.s.l) {
+      this.v = shft(this.s.p) + 9;
+      this.s = { i: 0 };
+      this.o = new u82(0);
+      this.push(new u82(0), final);
+    } else if (final) {
+      Inflate.prototype.c.call(this, final);
+    }
+  };
+  return Gunzip2;
+})();
+var td = typeof TextDecoder != "undefined" && /* @__PURE__ */ new TextDecoder();
+var tds = 0;
+try {
+  td.decode(et, { stream: true });
+  tds = 1;
+} catch (e) {
+}
+
 // src/parsers/splat.ts
 var SPLAT_TYPE = "gaussian/GaussianSplat";
 var SPLAT_RECORD_BYTES = 32;
@@ -18077,6 +18529,24 @@ function isSplatPly(bytes) {
   } catch {
     return false;
   }
+}
+var SPZ_HEAD_BYTES = 128 * 1024;
+function spzPointCount(head) {
+  const out = new Uint8Array(12);
+  let got = 0;
+  try {
+    const gz = new Gunzip((chunk) => {
+      const n = Math.min(chunk.length, out.length - got);
+      out.set(chunk.subarray(0, n), got);
+      got += n;
+    });
+    gz.push(head, false);
+  } catch {
+    return void 0;
+  }
+  if (got < 12) return void 0;
+  const view = new DataView(out.buffer);
+  return view.getUint32(0, true) === 1347635022 ? view.getUint32(8, true) : void 0;
 }
 async function estimateSplatCount(source) {
   const name = sourceDisplayName(source).toLowerCase();
@@ -18091,6 +18561,7 @@ async function estimateSplatCount(source) {
       return void 0;
     }
   }
+  if (name.endsWith(".spz")) return spzPointCount(await sourceReadSlice(source, 0, SPZ_HEAD_BYTES));
   return void 0;
 }
 async function parseSplat(source) {
@@ -18263,7 +18734,7 @@ async function detectFormat(source) {
   if (ext === "db3") return "db3";
   if (ext === "bag") return "bag";
   if (ext === "pcd") return "pcd";
-  if (ext === "splat" || ext === "ksplat") return "splat";
+  if (ext === "splat" || ext === "ksplat" || ext === "spz") return "splat";
   if (ext === "ply") {
     const head = await sourceReadSlice(source, 0, 8192);
     return isSplatPly(head) ? "splat" : "ply";
@@ -18298,7 +18769,7 @@ async function parseBag(source) {
       return parseSplat(source);
     default:
       throw new Error(
-        `Unsupported file format: "${sourceDisplayName(source)}". BAGEL supports .mcap, .db3, .bag, .pcd, .ply, .splat, and .ksplat files.`
+        `Unsupported file format: "${sourceDisplayName(source)}". BAGEL supports .mcap, .db3, .bag, .pcd, .ply, .splat, .ksplat, and .spz files.`
       );
   }
 }
@@ -18312,7 +18783,7 @@ async function readAllMessageStats(source, format) {
 
 // src/utils/bagGroups.ts
 var SPLITTABLE_EXTENSIONS = ["mcap", "db3", "bag"];
-var INGEST_EXTENSIONS = [...SPLITTABLE_EXTENSIONS, "pcd", "ply", "splat", "ksplat"];
+var INGEST_EXTENSIONS = [...SPLITTABLE_EXTENSIONS, "pcd", "ply", "splat", "ksplat", "spz"];
 function extOf(name) {
   const dot = name.lastIndexOf(".");
   return dot < 0 ? "" : name.slice(dot + 1).toLowerCase();
@@ -18580,9 +19051,9 @@ function parseExpectations(text) {
   return out;
 }
 function maxGapSeconds(times) {
-  let max = 0;
-  for (let i = 1; i < times.length; i++) max = Math.max(max, times[i] - times[i - 1]);
-  return max / 1e9;
+  let max2 = 0;
+  for (let i = 1; i < times.length; i++) max2 = Math.max(max2, times[i] - times[i - 1]);
+  return max2 / 1e9;
 }
 function topicRows(summary, stats) {
   return summary.topics.map((t) => {

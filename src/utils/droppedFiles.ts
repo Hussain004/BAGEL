@@ -93,7 +93,7 @@ export async function openBagFiles(
   if (groups.length === 0) {
     useBagStore.setState({
       error: classifyBagError(
-        'Unsupported file format. BAGEL supports .mcap, .db3, .bag, .pcd, .ply, .splat, and .ksplat files.',
+        'Unsupported file format. BAGEL supports .mcap, .db3, .bag, .pcd, .ply, .splat, .ksplat, and .spz files.',
         'file',
       ),
     });

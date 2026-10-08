@@ -1,5 +1,5 @@
 /**
- * SplatViewer - renders `.ply` (splat-flavored), `.splat`, and `.ksplat`
+ * SplatViewer - renders `.ply` (splat-flavored), `.splat`, `.ksplat`, and `.spz`
  * gaussian splat files.
  *
  * Splats are a fundamentally different render path from point clouds: each
@@ -71,6 +71,7 @@ function sceneFormatFor(name: string): GaussianSplats3D.SceneFormat {
   const ext = name.split('.').pop()?.toLowerCase();
   if (ext === 'splat') return GaussianSplats3D.SceneFormat.Splat;
   if (ext === 'ksplat') return GaussianSplats3D.SceneFormat.KSplat;
+  if (ext === 'spz') return GaussianSplats3D.SceneFormat.Spz;
   return GaussianSplats3D.SceneFormat.Ply;
 }
 
@@ -747,7 +748,7 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
           {loadState.status === 'idle' && (
             <div className="absolute inset-0 flex items-center justify-center bg-bg-primary/40 pointer-events-none">
               <div className="px-3 py-1.5 rounded-md text-xs mono bg-surface/90 border border-border text-text-secondary max-w-md text-center">
-                No splat file open. Load a .ply, .splat, or .ksplat file to view splats.
+                No splat file open. Load a .ply, .splat, .ksplat, or .spz file to view splats.
               </div>
             </div>
           )}
