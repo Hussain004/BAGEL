@@ -14,6 +14,7 @@ import { TelemetryScene } from './TelemetryScene';
 import { WorkspacePreview } from './WorkspacePreview';
 import { recordRecentUrl } from '../../utils/recentFiles';
 import { openBagFiles, type IngestFile } from '../../utils/droppedFiles';
+import { useInstallPrompt } from '../../hooks/useInstallPrompt';
 
 const entrance = {
   hidden: { opacity: 0, y: 18 },
@@ -132,11 +133,13 @@ export function LandingPage() {
 }
 
 function LandingHeader() {
+  const install = useInstallPrompt();
   return (
     <motion.header className="landing-header" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}>
       <BrandLockup compact />
       <div className="landing-header__context"><span>BAG EXPLORATION</span><i /><span>ROS DATA WORKSPACE</span></div>
       <nav className="landing-header__actions" aria-label="Utility navigation">
+        {install && <button type="button" onClick={() => void install()}>INSTALL APP</button>}
         <button type="button" onClick={() => useUiStore.getState().setModal('shortcuts')}>SHORTCUTS</button>
         <button type="button" onClick={() => useUiStore.getState().setModal('about')}>ABOUT</button>
         <a

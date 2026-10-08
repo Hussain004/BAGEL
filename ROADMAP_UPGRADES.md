@@ -438,6 +438,8 @@ Add a short "How to add support for a new message type" walkthrough (detector in
 - Service worker: precache the built assets. Write a ~60-line `sw.js` that caches `dist` assets by hashed filename (Vite hashes them, so cache-first is safe), or use `vite-plugin-pwa` if a dependency is acceptable. Watch out for the COOP/COEP headers in `vercel.json`: responses served from the SW cache must keep them, or `crossOriginIsolated` turns false and the splat shared-memory path silently turns off. Store full `Response` objects, which keep headers, and verify `crossOriginIsolated === true` when offline.
 - Add a small "Install app" button on the landing page (`beforeinstallprompt`).
 
+**Status: done.** Deviations: hand-written `public/sw.js` with runtime caching, plus a full precache (listed in a build-emitted `sw-assets.json`) triggered only for installed use so ordinary visitors do not download the whole app in the background. Cache lookups use `ignoreVary` because a CORS-mode module request otherwise misses a copy fetched without an `Origin`.
+
 **Files:** `public/manifest.webmanifest`, `index.html`, `src/main.tsx`, `public/sw.js` or `vite.config.ts`, `landing/LandingPage.tsx`.
 **Tests:** Playwright: load, go offline (`context.setOffline(true)`), reload, sample bag still loads, `crossOriginIsolated` still true.
 **Effort:** M
