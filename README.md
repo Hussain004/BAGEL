@@ -148,10 +148,8 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 ## Roadmap
 
 BAGEL is maintained in the open. Planned work is tracked as GitHub issues
-labelled [`roadmap`](https://github.com/Hussain004/BAGEL/labels/roadmap), and
-the reasoning behind each one lives in
-[`ROADMAP_UPGRADES.md`](ROADMAP_UPGRADES.md), which sizes every item and lists
-the files and tests it would need. Issues labelled
+labelled [`roadmap`](https://github.com/Hussain004/BAGEL/labels/roadmap).
+Issues labelled
 [`good first issue`](https://github.com/Hussain004/BAGEL/labels/good%20first%20issue)
 are the deliberately small ones.
 

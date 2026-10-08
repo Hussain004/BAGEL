@@ -213,8 +213,6 @@ including the playhead position and bookmarks. The `b=` parameter is the bag URL
 the rest of the hash encodes the layout, so the link opens the same cockpit you
 were looking at.
 
-See `ROADMAP_UPGRADES.md` item A3 for the design behind this.
-
 ## Embedding a live bag in a page
 
 A paper's project page, a dataset site or a course can show a live, scrubbable
