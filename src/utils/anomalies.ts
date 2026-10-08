@@ -29,7 +29,7 @@ export interface AutoMark {
   /** Bag-local time (ns, same coordinate space as BagSummary.startTime). Alignment is applied at render. */
   localNs: bigint;
   label: string;
-  kind: 'gap' | 'non-monotonic-stamp';
+  kind: 'gap' | 'non-monotonic-stamp' | 'search';
   /** Larger is more severe; used to pick survivors when capping. */
   weight: number;
 }

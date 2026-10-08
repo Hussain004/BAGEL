@@ -21,6 +21,7 @@ import { Log } from '../panels/Log';
 import { BagHealth } from '../panels/BagHealth';
 import { SplatViewer } from '../panels/SplatViewer';
 import { StateTransitions } from '../panels/StateTransitions';
+import { SearchPanel } from '../panels/Search';
 
 /**
  * PanelGrid - Recursive renderer for the layout tree.
@@ -155,6 +156,8 @@ function Visualisation({ leaf }: { leaf: PanelLeaf }) {
       return <SplatViewer {...props} />;
     case 'state':
       return <StateTransitions {...props} />;
+    case 'search':
+      return <SearchPanel {...props} />;
   }
 }
 

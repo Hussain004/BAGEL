@@ -43,6 +43,7 @@ export const KIND_BUTTON_LABEL: Record<PanelKind, string> = {
   health: 'Health',
   splat: 'Splat',
   state: 'State',
+  search: 'Find',
 };
 
 /** Longer label used by the command palette, where there is room and no ambiguity. */
@@ -58,6 +59,7 @@ export const KIND_PALETTE_LABEL: Record<PanelKind, string> = {
   health: 'Bag health',
   splat: 'Gaussian splat',
   state: 'State timeline',
+  search: 'Find in messages',
 };
 
 export const KIND_BUTTON_TITLE: Record<PanelKind, string> = {
@@ -72,6 +74,7 @@ export const KIND_BUTTON_TITLE: Record<PanelKind, string> = {
   health: 'Open bag health dashboard',
   splat: 'Open gaussian splat viewer',
   state: 'Open state timeline',
+  search: 'Find when a field meets a condition',
 };
 
 /**
@@ -115,8 +118,8 @@ export function panelOptionsFor(topic: TopicInfo): PanelKind[] {
   if (isImageType(topic.type)) return ['image', 'raw'];
   if (isSplatType(topic.type)) return ['splat', 'raw'];
   // Integers are usually enums (a mode, a status code): offer both views.
-  if (/^std_msgs\/(msg\/)?String$/.test(topic.type)) return ['state', 'raw'];
-  if (isStateScalarType(topic.type)) return ['state', 'plot', 'raw'];
+  if (/^std_msgs\/(msg\/)?String$/.test(topic.type)) return ['state', 'raw', 'search'];
+  if (isStateScalarType(topic.type)) return ['state', 'plot', 'raw', 'search'];
   if (isCloudType(topic.type)) return ['3d', 'raw'];
   if (isLaserScanType(topic.type)) return ['3d', 'plot', 'raw'];
   if (isMarkerArrayType(topic.type) || isMarkerType(topic.type)) return ['3d', 'raw'];
@@ -134,5 +137,9 @@ export function panelOptionsFor(topic: TopicInfo): PanelKind[] {
     return ['trajectory', '3d', 'plot', 'raw'];
   }
   if (isTrajectoryCapableType(topic.type)) return ['trajectory', 'plot', 'raw'];
-  return ['plot', 'raw'];
+  // Everything else is a plain message of scalars (a battery, an IMU, a float):
+  // exactly what "find when it crosses a value" is for. Images, clouds and
+  // trajectories return earlier and do not get it: scanning them is heavy and
+  // their fields are not what anyone searches.
+  return ['plot', 'raw', 'search'];
 }
