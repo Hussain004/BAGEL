@@ -44,16 +44,20 @@ test.describe('upright tablet', () => {
     await page.locator(SAMPLE_BUTTON).click();
     await page.getByTestId('compact-tabs').getByRole('tab', { name: /3D scene/ }).click();
     await expect(page.getByRole('button', { name: 'Fit', exact: true })).toBeVisible();
-    const opacity = await page.getByRole('button', { name: 'Fit', exact: true }).evaluate((el) => {
-      let n: HTMLElement | null = el as HTMLElement;
-      let min = 1;
-      while (n) {
-        min = Math.min(min, Number(getComputedStyle(n).opacity));
-        n = n.parentElement;
-      }
-      return min;
-    });
-    expect(opacity).toBe(1);
+    // Poll: the controls fade in, and a reading taken mid-transition (0.95) is not "hidden".
+    await expect
+      .poll(() =>
+        page.getByRole('button', { name: 'Fit', exact: true }).evaluate((el) => {
+          let n: HTMLElement | null = el as HTMLElement;
+          let min = 1;
+          while (n) {
+            min = Math.min(min, Number(getComputedStyle(n).opacity));
+            n = n.parentElement;
+          }
+          return min;
+        }),
+      )
+      .toBe(1);
   });
 });
 
