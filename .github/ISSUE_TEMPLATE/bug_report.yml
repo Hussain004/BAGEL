@@ -36,7 +36,7 @@ body:
     id: bag-format
     attributes:
       label: Bag format
-      description: "Which extension: .mcap, .db3, .bag, .pcd, .ply, .splat, .ksplat, or another file type?"
+      description: "Which extension: .mcap, .db3, .bag, .pcd, .ply, .splat, .ksplat, .spz, or another file type?"
       placeholder: .mcap
     validations:
       required: true

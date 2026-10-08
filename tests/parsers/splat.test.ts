@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { isSplatPly, parseSplat, disposeSplatCache, SPLAT_TYPE } from '../../src/parsers/splat';
+import { gzipSync } from 'fflate';
+import { isSplatPly, parseSplat, disposeSplatCache, spzPointCount, SPLAT_TYPE } from '../../src/parsers/splat';
 import { detectFormat } from '../../src/parsers/core';
 import type { BagSource } from '../../src/parsers/source';
 
@@ -163,5 +164,52 @@ describe('parseSplat', () => {
     disposeSplatCache();
     const c = await parseSplat(source);
     expect(c).not.toBe(a);
+  });
+});
+
+// A valid-shaped SPZ v2 body for `n` points at SH degree 0: 16-byte header, then
+// positions (9 B), alpha (1), colour (3), scale (3), rotation (3) per point.
+function spzBytes(n: number, opts: { level?: 0 | 1 | 6 | 9; magic?: number } = {}): Uint8Array {
+  const raw = new Uint8Array(16 + n * 19);
+  const v = new DataView(raw.buffer);
+  v.setUint32(0, opts.magic ?? 0x5053474e, true);
+  v.setUint32(4, 2, true);
+  v.setUint32(8, n, true);
+  raw[12] = 0; // SH degree
+  raw[13] = 12; // fractional bits
+  // xorshift noise: real splat data does not deflate to nothing, and neither should the fixture.
+  let x = 2463534242;
+  for (let i = 16; i < raw.length; i++) {
+    x ^= x << 13;
+    x ^= x >>> 17;
+    x ^= x << 5;
+    raw[i] = x & 0xff;
+  }
+  return gzipSync(raw, { level: opts.level ?? 6 });
+}
+
+describe('.spz', () => {
+  it('routes by extension and reports the point count from the gzip header', async () => {
+    const bytes = spzBytes(1234);
+    expect(await detectFormat(fileSource(bytes, 'scan.spz'))).toBe('splat');
+    const summary = await parseSplat(fileSource(bytes, 'scan.spz'));
+    expect(summary.topics[0]!.messageCount).toBe(1234);
+  });
+
+  it.each([0, 1, 6, 9] as const)('reads the count at gzip level %i (stored or deflated blocks)', (level) => {
+    expect(spzPointCount(spzBytes(50_000, { level }).subarray(0, 128 * 1024))).toBe(50_000);
+  });
+
+  it('works when only the head of a large file was read', () => {
+    const whole = spzBytes(200_000);
+    expect(whole.length).toBeGreaterThan(128 * 1024);
+    expect(spzPointCount(whole.subarray(0, 128 * 1024))).toBe(200_000);
+  });
+
+  it('reports nothing, rather than throwing, for gzip that is not a splat or for junk', () => {
+    expect(spzPointCount(spzBytes(10, { magic: 0x12345678 }))).toBeUndefined();
+    expect(spzPointCount(new Uint8Array(64).fill(7))).toBeUndefined();
+    expect(spzPointCount(new Uint8Array(0))).toBeUndefined();
+    expect(spzPointCount(gzipSync(new Uint8Array(4)))).toBeUndefined();
   });
 });

@@ -82,7 +82,7 @@ export async function detectFormat(source: BagSource): Promise<BagFormat | 'unkn
   if (ext === 'db3') return 'db3';
   if (ext === 'bag') return 'bag';
   if (ext === 'pcd') return 'pcd';
-  if (ext === 'splat' || ext === 'ksplat') return 'splat';
+  if (ext === 'splat' || ext === 'ksplat' || ext === 'spz') return 'splat';
   if (ext === 'ply') {
     // A splat-flavored PLY (SH color / opacity / scale / rotation
     // properties) routes to the dedicated splat renderer instead of the
@@ -128,7 +128,7 @@ export async function parseBag(source: BagSource): Promise<BagSummary> {
     default:
       throw new Error(
         `Unsupported file format: "${sourceDisplayName(source)}". ` +
-          'BAGEL supports .mcap, .db3, .bag, .pcd, .ply, .splat, and .ksplat files.',
+          'BAGEL supports .mcap, .db3, .bag, .pcd, .ply, .splat, .ksplat, and .spz files.',
       );
   }
 }
