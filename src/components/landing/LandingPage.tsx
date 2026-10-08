@@ -257,7 +257,7 @@ function Metric({ value, label }: { value: string; label: string }) { return <di
 function NarrowViewportNotice() {
   const [dismissed, setDismissed] = useState(false);
   if (dismissed) return null;
-  return <div className="narrow-notice" role="note"><span>BAGEL is designed for a desktop-class viewport.</span><button type="button" onClick={() => setDismissed(true)}>DISMISS</button></div>;
+  return <div className="narrow-notice" role="note"><span>Small screen: BAGEL shows one panel at a time here. It is roomier on a tablet or desktop.</span><button type="button" onClick={() => setDismissed(true)}>DISMISS</button></div>;
 }
 
 function applyCuratedSampleLayout(): void {

@@ -202,7 +202,7 @@ export function TopicRow({ topic, index, bagId }: TopicRowProps) {
           "Add schema" affordance instead of the panel set, since opening
           panels with no decoder is just confusing. */}
       <div
-        className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity z-10"
+        className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 pointer-coarse:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity z-10"
         onClick={(e) => e.stopPropagation()}
       >
         {resolvedBagId && (

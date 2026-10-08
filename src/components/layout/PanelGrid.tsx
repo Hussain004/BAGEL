@@ -1,8 +1,11 @@
 import { Fragment, useState } from 'react';
+import { useCompactLayout } from '../../hooks/useCompactLayout';
+import { KIND_PALETTE_LABEL } from '../../utils/panelOptions';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import {
   useLayoutStore,
   findPanel,
+  getAllPanels,
   type DropEdge,
   type LayoutNode,
   type PanelLeaf,
@@ -41,7 +44,9 @@ import { SearchPanel } from '../panels/Search';
 export function PanelGrid() {
   const root = useLayoutStore((s) => s.root);
   const maximizedId = useLayoutStore((s) => s.maximizedId);
+  const compact = useCompactLayout();
   if (!root) return null;
+  if (compact) return <CompactStack root={root} />;
   // Maximized view: render just that one leaf full-grid. The split tree
   // underneath is untouched, so restoring goes straight back to it. Falls
   // through to the normal tree if the maximized id no longer exists (panel
@@ -51,6 +56,58 @@ export function PanelGrid() {
     <div className="flex-1 flex p-3 overflow-hidden min-w-0">
       <div className="flex-1 flex w-full h-full min-w-0">
         {maximizedLeaf ? <PanelLeafContent leaf={maximizedLeaf} /> : renderTree(root)}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Phone and upright-tablet layout: every open panel is a tab and exactly one
+ * is shown, full size. The split tree is untouched underneath, so rotating to
+ * landscape brings the arrangement straight back.
+ *
+ * A panel opened while in this view becomes the visible one (the count of
+ * panels changing makes an earlier pick stale), which is what "tap a topic to
+ * see it" should do. No swipe gesture on the content: it would fight the
+ * pan and orbit gestures of the plot and 3D panels, so switching is by tab.
+ */
+function CompactStack({ root }: { root: LayoutNode }) {
+  const leaves = getAllPanels(root);
+  const [picked, setPicked] = useState<{ id: string; count: number } | null>(null);
+  const valid = picked && picked.count === leaves.length ? leaves.find((l) => l.id === picked.id) : undefined;
+  const active = valid ?? leaves[leaves.length - 1];
+  if (!active) return null;
+  return (
+    <div className="flex-1 flex flex-col min-h-0 min-w-0 p-2 gap-2">
+      <div role="tablist" aria-label="Open panels" className="flex gap-1.5 overflow-x-auto flex-shrink-0 pb-0.5" data-testid="compact-tabs">
+        {leaves.map((leaf) => {
+          const selected = leaf.id === active.id;
+          const topic = leaf.topicName.split('/').filter(Boolean).pop() || leaf.topicName;
+          return (
+            <button
+              key={leaf.id}
+              type="button"
+              ref={(el) => {
+                // Keep the visible panel's tab in view when the strip is wider than the screen.
+                if (selected) el?.scrollIntoView?.({ inline: 'center', block: 'nearest' });
+              }}
+              role="tab"
+              aria-selected={selected}
+              onClick={() => setPicked({ id: leaf.id, count: leaves.length })}
+              className={`flex-shrink-0 min-h-11 px-3 rounded-md text-xs mono border whitespace-nowrap transition-colors ${
+                selected
+                  ? 'bg-accent-blue/15 border-accent-blue/50 text-accent-blue'
+                  : 'bg-surface/80 border-border text-text-secondary'
+              }`}
+            >
+              {KIND_PALETTE_LABEL[leaf.kind]}
+              {topic ? ` · ${topic}` : ''}
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex-1 flex min-h-0 min-w-0" role="tabpanel">
+        <PanelLeafContent key={active.id} leaf={active} />
       </div>
     </div>
   );
