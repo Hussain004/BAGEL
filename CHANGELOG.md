@@ -9,6 +9,14 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- New `bagel-check` command line tool and GitHub Action. It runs BAGEL's parsers
+  in Node (no browser) and fails a pipeline when a recording is missing a
+  topic, publishes below a minimum rate, has a silence longer than allowed, or
+  is the wrong length. Rules live in a strict JSON file, so a typo is an error
+  instead of a check that silently does nothing. Reads `.mcap`, `.db3` and
+  `.bag`, treats split recordings and rosbag2 folders as one, prints a table or
+  `--json`, and writes a per-topic table to the GitHub job summary. See
+  [docs/BAGEL_CHECK.md](docs/BAGEL_CHECK.md).
 - Plots can show one field against another. The "x axis" selector under a plot
   switches from time to any visible series (including series from other topics
   and expressions), and every other visible series is drawn against it: a

@@ -126,6 +126,7 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 - **Math expressions in plots** *(v1.4.1)*: type arithmetic expressions (`vel_x * 2 + offset`, `sqrt(x*x + y*y)`) as derived series directly in the TimeSeriesPlot panel. References other numeric fields from the same topic; evaluated in a sandboxed expression engine (no `eval`).
 - **Clip export** *(v1.4.2)*: render any panel to an animated PNG zip or MP4 video (WebM fallback) via a frame-sync protocol. Toolbar Export button opens the modal.
 - **Timeline bookmarks** *(v1.4.3)*: named markers on the scrubber, persisted per bag and shareable via the `bm=` URL hash segment.
+- **`bagel-check` CI gate**: a headless command line tool and GitHub Action that fail a pipeline when a recording is missing a topic, publishes too slowly, has a long gap, or is too short. See [docs/BAGEL_CHECK.md](docs/BAGEL_CHECK.md).
 
 ### UX and quality
 
