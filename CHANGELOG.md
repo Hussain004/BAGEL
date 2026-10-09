@@ -9,14 +9,13 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
-- The start page now shows the three ways in at once, numbered and labelled:
-  1. Open your recording: a large drop zone with a solid "Choose files" button
-     and the folder option inside it, 2. No recording handy? a card with a
-     bright "Explore sample data" button saying what the sample contains, and
-  3. Or connect to a source: "Remote URL" and "Live robot" side by side, each
-  with its own box and explanation, where the live robot used to hide behind a
-  small tab. Text is larger and the primary buttons are filled. `.spz` is now
-  listed among the accepted formats.
+- The start page is redesigned to be calm and fit one screen. The neon glow,
+  animated WebGL backdrop, scanning effects, corner brackets and uppercase
+  monospace labels are gone. It now uses the app's own light and dark theme
+  colours, one typeface, hairline borders and solid buttons: a drop zone with a
+  clear "Choose files" button, the sample bag, and remote URL and live robot
+  boxes, beside a real screenshot of the workspace. It no longer scrolls on a
+  laptop-sized window (1280x720 and up), and stacks and scrolls on narrow ones.
 - Phones and upright tablets get a layout of their own. Below 768 px, or on a
   touch screen narrower than 1024 px, the panel grid shows one panel at a time
   behind a tab strip (tap a tab to switch; opening a topic shows it), the topic
