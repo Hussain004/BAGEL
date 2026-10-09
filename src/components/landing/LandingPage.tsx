@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useCallback, useRef, useState } from 'react';
 import { useBagStore } from '../../store/bagStore';
 import { useLiveStore } from '../../store/liveStore';
@@ -10,9 +10,16 @@ import { DATASET_HOSTING_DOC_URL } from '../../utils/actionableError';
 import { BrandLockup } from './Brand';
 import { FileIngestPanel } from './FileIngestPanel';
 import { RecentFiles } from './RecentFiles';
+import { TelemetryScene } from './TelemetryScene';
+import { WorkspacePreview } from './WorkspacePreview';
 import { recordRecentUrl } from '../../utils/recentFiles';
 import { openBagFiles, type IngestFile } from '../../utils/droppedFiles';
 import { useInstallPrompt } from '../../hooks/useInstallPrompt';
+
+const entrance = {
+  hidden: { opacity: 0, y: 18 },
+  visible: { opacity: 1, y: 0 },
+};
 
 export function LandingPage() {
   const loadBag = useBagStore((state) => state.loadBag);
@@ -23,6 +30,7 @@ export function LandingPage() {
   const error = useBagStore((state) => state.error);
   const clearError = useBagStore((state) => state.clearError);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const reduceMotion = useReducedMotion();
 
   const handleFile = useCallback((file: File) => {
     clearError();
@@ -49,39 +57,76 @@ export function LandingPage() {
   }, [addBagLive, clearError]);
 
   return (
-    <div className="landing">
-      <LandingHeader />
-      <main className="landing__main">
-        <section className="landing__intro" aria-labelledby="landing-title">
-          <h1 id="landing-title">
-            See the whole robot.
-            <span>One timeline.</span>
-          </h1>
-          <p className="landing__lede">
-            Open a ROS recording and see every sensor on one synchronized timeline: 3D, camera, plots and
-            logs. It runs entirely in your browser, and nothing is uploaded.
-          </p>
+    <div className="landing-shell">
+      <TelemetryScene />
+      <div className="landing-shell__wash" aria-hidden="true" />
+      <div className="landing-shell__noise" aria-hidden="true" />
 
-          <FileIngestPanel isLoading={isLoading} progress={loadProgress} onFiles={handleFiles} inputRef={fileInputRef} />
-          <AnimatePresence initial={false}>
-            {error && <ErrorCard error={error} onDismiss={clearError} onChooseFile={() => fileInputRef.current?.click()} />}
-          </AnimatePresence>
-          <SampleBagButton onLoad={handleFile} disabled={isLoading} />
-          <SourceCards onUrl={handleUrl} onLive={handleLive} disabled={isLoading} />
-          <RecentFiles onFile={handleFile} onUrl={handleUrl} disabled={isLoading} />
-        </section>
+      <div className="landing-page">
+        <LandingHeader />
+        <main className="landing-main">
+          <motion.div
+            className="landing-copy"
+            initial={reduceMotion ? false : 'hidden'}
+            animate="visible"
+            transition={{ staggerChildren: 0.08, delayChildren: 0.06 }}
+          >
+            <motion.div className="landing-eyebrow" variants={entrance} transition={{ duration: 0.5 }}>
+              <span className="status-dot status-dot--live" />
+              LOCAL DATA PLANE READY
+              <span className="landing-eyebrow__version">BROWSER NATIVE</span>
+            </motion.div>
+            <motion.h1 variants={entrance} transition={{ duration: 0.62, ease: [0.16, 1, 0.3, 1] }}>
+              See the whole robot.
+              <span>One timeline.</span>
+            </motion.h1>
+            <motion.p className="landing-lede" variants={entrance} transition={{ duration: 0.55 }}>
+              Inspect ROS recordings at full signal, directly in your browser. Decode, synchronize,
+              and visualize high-volume sensor data without provisioning a backend.
+            </motion.p>
+            <motion.div className="landing-capabilities" variants={entrance} transition={{ duration: 0.5 }}>
+              <Capability icon="cpu" label="Worker-isolated parsing" />
+              <Capability icon="stream" label="HTTP range streaming" />
+              <Capability icon="shield" label="Data never uploaded" />
+            </motion.div>
+            <motion.div variants={entrance} transition={{ duration: 0.55 }}>
+              <FileIngestPanel isLoading={isLoading} progress={loadProgress} onFiles={handleFiles} inputRef={fileInputRef} />
+            </motion.div>
+            <motion.div variants={entrance} transition={{ duration: 0.5 }}>
+              <SourceDock onUrl={handleUrl} onLive={handleLive} disabled={isLoading} />
+            </motion.div>
+            <motion.div variants={entrance} transition={{ duration: 0.5 }}>
+              <RecentFiles onFile={handleFile} onUrl={handleUrl} disabled={isLoading} />
+            </motion.div>
 
-        <figure className="landing__preview" aria-label="BAGEL showing the sample recording">
-          <div className="landing__preview-bar"><span>bagel-tour.mcap</span><span>sample recording</span></div>
-          <img src={`${import.meta.env.BASE_URL ?? '/'}landing/hero.jpg`} alt="The BAGEL workspace with a 3D view, a camera image and a plot, playing the sample recording" width={1028} height={744} />
-        </figure>
-      </main>
+            <AnimatePresence initial={false}>
+              {error && <ErrorCard error={error} onDismiss={clearError} onChooseFile={() => fileInputRef.current?.click()} />}
+            </AnimatePresence>
 
-      <footer className="landing__footer">
-        <span>Open source, MIT licensed</span>
-        <span>Parsing runs in a worker in this tab</span>
-        <a href="https://github.com/Hussain004/BAGEL" target="_blank" rel="noreferrer">GitHub</a>
-      </footer>
+            <motion.div className="landing-actions" variants={entrance} transition={{ duration: 0.5 }}>
+              <SampleBagButton onLoad={handleFile} disabled={isLoading} />
+              <span className="sample-action__hint">A 30 second robot run. Nothing to download.</span>
+            </motion.div>
+          </motion.div>
+
+          <div className="landing-visual">
+            <div className="landing-visual__label"><span>LIVE INTERFACE</span><span>60 FPS TARGET</span></div>
+            <WorkspacePreview />
+            <div className="landing-metrics">
+              <Metric value="100%" label="client-side" />
+              <Metric value="0 B" label="uploaded" />
+              <Metric value="7" label="file formats" />
+            </div>
+          </div>
+        </main>
+
+        <footer className="landing-footer">
+          <span>OPEN SOURCE ROS DATA EXPLORATION</span>
+          <span className="landing-footer__line" />
+          <span>MCAP / DB3 / BAG / PCD / PLY / SPLAT</span>
+        </footer>
+      </div>
+      <NarrowViewportNotice />
     </div>
   );
 }
@@ -89,95 +134,89 @@ export function LandingPage() {
 function LandingHeader() {
   const install = useInstallPrompt();
   return (
-    <header className="landing__header">
-      <BrandLockup />
-      <nav aria-label="Utility navigation">
-        {install && <button type="button" onClick={() => void install()}>Install app</button>}
-        <button type="button" onClick={() => useUiStore.getState().setModal('shortcuts')}>Shortcuts</button>
-        <button type="button" onClick={() => useUiStore.getState().setModal('about')}>About</button>
-        <a href="https://github.com/Hussain004/BAGEL" target="_blank" rel="noreferrer">GitHub</a>
-        <a className="landing__support" href="https://donatr.ee/hussain/" target="_blank" rel="noreferrer" aria-label="Support BAGEL on donatr.ee">Support</a>
+    <motion.header className="landing-header" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}>
+      <BrandLockup compact />
+      <div className="landing-header__context"><span>BAG EXPLORATION</span><i /><span>ROS DATA WORKSPACE</span></div>
+      <nav className="landing-header__actions" aria-label="Utility navigation">
+        {install && <button type="button" onClick={() => void install()}>INSTALL APP</button>}
+        <button type="button" onClick={() => useUiStore.getState().setModal('shortcuts')}>SHORTCUTS</button>
+        <button type="button" onClick={() => useUiStore.getState().setModal('about')}>ABOUT</button>
+        <a
+          className="landing-header__support"
+          href="https://donatr.ee/hussain/"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Support BAGEL on donatr.ee"
+        >
+          SUPPORT BAGEL
+        </a>
       </nav>
-    </header>
+    </motion.header>
   );
 }
 
-function SourceCards({ onUrl, onLive, disabled }: { onUrl: (url: string) => void; onLive: (url: string) => void; disabled: boolean }) {
-  const isConnecting = useLiveStore((state) => [...state.statuses.values()].some((status) => status === 'connecting'));
-  return (
-    <div className="sources">
-      <SourceCard
-        title="Remote URL"
-        hint="A bag served over HTTPS"
-        placeholder="https://example.com/run.mcap"
-        label="Remote bag URL"
-        action="Open"
-        valid={(v) => /^https?:\/\//i.test(v)}
-        disabled={disabled}
-        onSubmit={onUrl}
-      />
-      <SourceCard
-        title="Live robot"
-        hint="A Foxglove bridge WebSocket"
-        placeholder="ws://robot.local:8765"
-        label="Live robot WebSocket URL"
-        action={isConnecting ? 'Connecting' : 'Connect'}
-        valid={(v) => /^wss?:\/\//i.test(v)}
-        clearOnSubmit
-        disabled={disabled}
-        onSubmit={onLive}
-      />
-    </div>
-  );
+function Capability({ icon, label }: { icon: 'cpu' | 'stream' | 'shield'; label: string }) {
+  const paths = {
+    cpu: <><rect x="5" y="5" width="10" height="10" rx="2" /><path d="M8 1v4m4-4v4m4 3h4m-4 4h4M8 15v4m4-4v4M1 8h4m-4 4h4" /></>,
+    stream: <><path d="M3 12h14M13 8l4 4-4 4" /><path d="M3 6h8M3 18h8" /></>,
+    shield: <path d="M10 2 3.5 4.7v4.8c0 4.1 2.7 7.1 6.5 8.5 3.8-1.4 6.5-4.4 6.5-8.5V4.7L10 2Zm-3 8 2 2 4-4" />,
+  };
+  return <span className="landing-capability"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.35">{paths[icon]}</svg>{label}</span>;
 }
 
-function SourceCard({
-  title, hint, placeholder, label, action, valid, clearOnSubmit, disabled, onSubmit,
-}: {
-  title: string; hint: string; placeholder: string; label: string; action: string;
-  valid: (value: string) => boolean; clearOnSubmit?: boolean; disabled: boolean; onSubmit: (value: string) => void;
-}) {
+function SourceDock({ onUrl, onLive, disabled }: { onUrl: (url: string) => void; onLive: (url: string) => void; disabled: boolean }) {
+  const [mode, setMode] = useState<'url' | 'live'>('url');
   const [value, setValue] = useState('');
-  const ok = valid(value.trim());
+  const isConnecting = useLiveStore((state) => [...state.statuses.values()].some((status) => status === 'connecting'));
+  const valid = mode === 'url' ? /^https?:\/\//i.test(value.trim()) : /^wss?:\/\//i.test(value.trim());
+
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
-    if (disabled || !ok) return;
-    onSubmit(value.trim());
-    if (clearOnSubmit) setValue('');
+    const trimmed = value.trim();
+    if (disabled || !valid) return;
+    if (mode === 'url') onUrl(trimmed);
+    else { onLive(trimmed); setValue(''); }
   };
+
   return (
-    <form className="source" onSubmit={submit}>
-      <div className="source__head"><strong>{title}</strong><span>{hint}</span></div>
-      <div className="source__row">
-        <input value={value} onChange={(event) => setValue(event.target.value)} onBlur={() => setValue((current) => current.trim())} placeholder={placeholder} spellCheck={false} autoComplete="off" disabled={disabled} aria-label={label} />
-        <button type="submit" disabled={disabled || !ok}>{action}</button>
+    <div className="source-dock">
+      <div className="source-dock__modes" role="tablist" aria-label="Alternate data sources">
+        <button type="button" role="tab" aria-selected={mode === 'url'} onClick={() => { setMode('url'); setValue(''); }}>REMOTE URL</button>
+        <button type="button" role="tab" aria-selected={mode === 'live'} onClick={() => { setMode('live'); setValue(''); }}>LIVE ROBOT <small>ws://</small></button>
       </div>
-    </form>
+      <form onSubmit={submit}>
+        <span className="source-dock__protocol">{mode === 'url' ? 'HTTPS' : 'WSS'}</span>
+        <input value={value} onChange={(event) => setValue(event.target.value)} onBlur={() => setValue((current) => current.trim())} placeholder={mode === 'url' ? 'https://data.example/run.mcap' : 'ws://robot.local:8765'} spellCheck={false} autoComplete="off" disabled={disabled} aria-label={mode === 'url' ? 'Remote bag URL' : 'Live robot WebSocket URL'} />
+        <motion.button type="submit" disabled={disabled || !valid} whileHover={valid ? { x: 2 } : undefined} whileTap={valid ? { scale: 0.97 } : undefined}>
+          {mode === 'live' && isConnecting ? 'CONNECTING' : mode === 'url' ? 'OPEN' : 'CONNECT'}
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 8h9m-3-3 3 3-3 3" /></svg>
+        </motion.button>
+      </form>
+    </div>
   );
 }
 
 function ErrorCard({ error, onDismiss, onChooseFile }: { error: NonNullable<ReturnType<typeof useBagStore.getState>['error']>; onDismiss: () => void; onChooseFile: () => void }) {
   return (
-    <motion.div className="landing__error" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} role="alert">
-      <div className="landing__error-body">
-        <div><strong>{error.title}</strong><p>{error.detail}</p></div>
-        <div className="landing__error-actions">
-          {error.action?.kind === 'choose-file' && (
-            <button type="button" onClick={onChooseFile}>{error.action.label}</button>
-          )}
-          {error.action?.kind === 'hosting-doc' && (
-            // The fix for a remote-host CORS or Range failure is a server
-            // config, so this opens the doc rather than doing anything in-app.
-            <a href={DATASET_HOSTING_DOC_URL} target="_blank" rel="noreferrer">
-              {error.action.label}
-            </a>
-          )}
-          {error.action?.kind === 'retry' && (
-            <button type="button" onClick={onDismiss}>{error.action.label}</button>
-          )}
-          <CopyErrorButton text={error.raw} />
-          <button type="button" onClick={onDismiss} aria-label="Dismiss error">Dismiss</button>
-        </div>
+    <motion.div className="landing-error" initial={{ opacity: 0, height: 0, y: -6 }} animate={{ opacity: 1, height: 'auto', y: 0 }} exit={{ opacity: 0, height: 0 }} role="alert">
+      <span className="landing-error__code">ERR</span>
+      <div><strong>{error.title}</strong><p>{error.detail}</p></div>
+      <div className="landing-error__actions">
+        {error.action?.kind === 'choose-file' && (
+          <button type="button" onClick={onChooseFile}>{error.action.label}</button>
+        )}
+        {error.action?.kind === 'hosting-doc' && (
+          // The fix for a remote-host CORS or Range failure is a server
+          // config, so this opens the doc rather than doing anything in-app.
+          <a href={DATASET_HOSTING_DOC_URL} target="_blank" rel="noreferrer">
+            {error.action.label}
+          </a>
+        )}
+        {error.action?.kind === 'retry' && (
+          <button type="button" onClick={onDismiss}>{error.action.label}</button>
+        )}
+        <CopyErrorButton text={error.raw} />
+        <button type="button" onClick={onDismiss} aria-label="Dismiss error">CLOSE</button>
       </div>
     </motion.div>
   );
@@ -202,17 +241,22 @@ function SampleBagButton({ onLoad, disabled }: { onLoad: (file: File) => void | 
     }
   };
   return (
-    <div className="sample">
-      <div>
-        <strong>No recording handy?</strong>
-        <p>Try a 30 second robot run with lidar, a camera, IMU, GPS and a map.</p>
-        {sampleError && <small role="alert">Sample failed: {sampleError}</small>}
-      </div>
-      <button type="button" onClick={load} disabled={fetching || disabled}>
-        {fetching ? 'Loading sample' : 'Explore sample data'}
-      </button>
-    </div>
+    <span className="sample-action">
+      <motion.button type="button" onClick={load} disabled={fetching || disabled} whileHover={{ x: 2 }} whileTap={{ scale: 0.97 }}>
+        {fetching ? 'LOADING SAMPLE' : 'EXPLORE SAMPLE DATA'}
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 8h9m-3-3 3 3-3 3" /></svg>
+      </motion.button>
+      {sampleError && <small role="alert">Sample failed: {sampleError}</small>}
+    </span>
   );
+}
+
+function Metric({ value, label }: { value: string; label: string }) { return <div><strong>{value}</strong><span>{label}</span></div>; }
+
+function NarrowViewportNotice() {
+  const [dismissed, setDismissed] = useState(false);
+  if (dismissed) return null;
+  return <div className="narrow-notice" role="note"><span>Small screen: BAGEL shows one panel at a time here. It is roomier on a tablet or desktop.</span><button type="button" onClick={() => setDismissed(true)}>DISMISS</button></div>;
 }
 
 function applyCuratedSampleLayout(): void {

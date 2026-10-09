@@ -63,6 +63,7 @@ async function loadBagAsUrl(page: Page) {
   // The landing page has a tabbed ingest panel; the remote-URL tab is the one
   // that takes an http(s) URL. Switching tabs first matters, otherwise the
   // input visible is the WebSocket one.
+  await page.getByRole('tab', { name: 'REMOTE URL' }).click();
   const urlInput = page.getByLabel('Remote bag URL');
   await urlInput.fill('http://localhost:4173/remote-tour.mcap');
   await urlInput.press('Enter');

@@ -1,3 +1,4 @@
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useCallback, useRef, useState, type ChangeEvent, type DragEvent, type KeyboardEvent, type RefObject } from 'react';
 import { recordRecentFile, supportsFileSystemAccess } from '../../utils/recentFiles';
 import { collectDropped, ingestFromFiles, type IngestFile } from '../../utils/droppedFiles';
@@ -34,6 +35,7 @@ export function FileIngestPanel({ isLoading, progress, onFiles, inputRef }: File
   const folderInputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const dragCounter = useRef(0);
+  const reduceMotion = useReducedMotion();
 
   const onDragEnter = useCallback((event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -119,63 +121,79 @@ export function FileIngestPanel({ isLoading, progress, onFiles, inputRef }: File
 
   return (
     <>
-      <div
-        className={`dropzone${isDragOver ? ' dropzone--active' : ''}${isLoading ? ' dropzone--loading' : ''}`}
-        onDragEnter={onDragEnter}
-        onDragLeave={onDragLeave}
-        onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); }}
-        onDrop={onDrop}
-        onClick={activate}
-        onKeyDown={onKeyDown}
-        role="button"
-        tabIndex={0}
-        aria-label="Drop a ROS bag file here or click to browse"
-        aria-busy={isLoading}
-        data-testid="file-input-zone"
-      >
-        <input ref={inputRef} type="file" multiple accept={ACCEPT_ATTR} onChange={onChange} className="hidden" data-testid="file-input" />
-        {isLoading ? <LoadingSequence progress={progress} /> : (
-          <>
-            <div className="dropzone__main">
-              <span className="dropzone__icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" />
-                  <path d="M4 15.5v2.25A2.25 2.25 0 0 0 6.25 20h11.5A2.25 2.25 0 0 0 20 17.75V15.5" />
-                </svg>
-              </span>
-              <div>
-                <strong>{isDragOver ? 'Release to open' : 'Drop a recording here'}</strong>
-                <p>or choose it from your computer. It is read in this tab and never uploaded.</p>
-              </div>
-              <span className="dropzone__cta">Choose files</span>
-            </div>
-            <div className="dropzone__meta">
-              <span>MCAP, DB3, BAG, PCD, PLY, SPLAT, SPZ</span>
+    <motion.div
+      className={`ingest-panel${isDragOver ? ' ingest-panel--active' : ''}${isLoading ? ' ingest-panel--loading' : ''}`}
+      onDragEnter={onDragEnter}
+      onDragLeave={onDragLeave}
+      onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); }}
+      onDrop={onDrop}
+      onClick={activate}
+      onKeyDown={onKeyDown}
+      role="button"
+      tabIndex={0}
+      aria-label="Drop a ROS bag file here or click to browse"
+      aria-busy={isLoading}
+      data-testid="file-input-zone"
+      animate={{
+        scale: isDragOver && !reduceMotion ? 1.012 : 1,
+        borderColor: isDragOver ? 'rgba(84, 246, 176, 0.72)' : 'rgba(87, 160, 204, 0.28)',
+      }}
+      transition={{ type: 'spring', stiffness: 360, damping: 28 }}
+    >
+      <input ref={inputRef} type="file" multiple accept={ACCEPT_ATTR} onChange={onChange} className="hidden" data-testid="file-input" />
+      <div className="ingest-panel__corners" aria-hidden="true"><i /><i /><i /><i /></div>
+      <AnimatePresence mode="wait" initial={false}>
+        {isLoading ? <LoadingSequence key="loading" progress={progress} /> : (
+          <motion.div
+            key="idle"
+            className="ingest-panel__content"
+            initial={reduceMotion ? false : { opacity: 0, y: 7 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={reduceMotion ? undefined : { opacity: 0, y: -7 }}
+            transition={{ duration: 0.24 }}
+          >
+            <motion.div className="ingest-panel__icon" animate={isDragOver && !reduceMotion ? { y: [0, -6, 0] } : { y: 0 }} transition={{ duration: 0.9, repeat: isDragOver ? Infinity : 0 }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" />
+                <path d="M4 15.5v2.25A2.25 2.25 0 0 0 6.25 20h11.5A2.25 2.25 0 0 0 20 17.75V15.5" />
+              </svg>
+            </motion.div>
+            <div><strong>{isDragOver ? 'Release to decode' : 'Drop a recording to begin'}</strong><p>Local-first ingestion for multi-gigabyte robotics datasets</p></div>
+            <span className="ingest-panel__browse">BROWSE FILES</span>
+            <div className="ingest-panel__formats">
+              <span>.MCAP</span><span>.DB3</span><span>.BAG</span><span>.PCD</span><span>.PLY</span><span>.SPLAT</span><span>.SPZ</span>
               <button
                 type="button"
+                className="ingest-panel__folder"
                 disabled={isLoading}
                 onClick={(event) => { event.stopPropagation(); folderInputRef.current?.click(); }}
                 onKeyDown={(event) => event.stopPropagation()}
                 title="Pick a recording's folder: split bags (name_0.mcap, name_1.mcap, ...) open as one recording"
               >
-                Open a folder
+                OPEN A FOLDER
               </button>
             </div>
-          </>
+          </motion.div>
         )}
-      </div>
+      </AnimatePresence>
+    </motion.div>
       <input ref={folderInputRef} type="file" onChange={onChange} className="hidden" data-testid="folder-input" {...{ webkitdirectory: '' }} />
     </>
   );
 }
 
 function LoadingSequence({ progress }: { progress: number }) {
-  const stage = progress < 25 ? 'Reading the file' : progress < 70 ? 'Indexing topics' : 'Building the workspace';
+  const stage = progress < 25 ? 'Reading container' : progress < 70 ? 'Indexing channels' : 'Building workspace';
   return (
-    <div className="loading" role="status" aria-live="polite">
-      <div className="loading__copy"><strong>{stage}</strong><span>{Math.round(progress)}%</span></div>
-      <div className="loading__track"><span style={{ width: `${Math.max(4, progress)}%` }} /></div>
-      <p>Parsing stays in this browser tab.</p>
-    </div>
+    <motion.div className="loading-sequence" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} role="status" aria-live="polite">
+      <div className="loading-sequence__radar"><motion.span animate={{ rotate: 360 }} transition={{ duration: 1.8, repeat: Infinity, ease: 'linear' }} /><i /></div>
+      <div className="loading-sequence__copy"><div><strong>{stage}</strong><span>{Math.round(progress)}%</span></div><p>Parsing stays in this browser process</p></div>
+      <div className="loading-sequence__track"><motion.span animate={{ width: `${Math.max(4, progress)}%` }} transition={{ duration: 0.35 }} /></div>
+      <div className="loading-sequence__stages" aria-hidden="true">
+        <span className={progress >= 10 ? 'is-complete' : ''}>HEADER</span>
+        <span className={progress >= 30 ? 'is-complete' : ''}>SCHEMA</span>
+        <span className={progress >= 70 ? 'is-complete' : ''}>INDEX</span>
+      </div>
+    </motion.div>
   );
 }

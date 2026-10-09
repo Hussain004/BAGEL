@@ -9,13 +9,12 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
-- The start page is redesigned to be calm and fit one screen. The neon glow,
-  animated WebGL backdrop, scanning effects, corner brackets and uppercase
-  monospace labels are gone. It now uses the app's own light and dark theme
-  colours, one typeface, hairline borders and solid buttons: a drop zone with a
-  clear "Choose files" button, the sample bag, and remote URL and live robot
-  boxes, beside a real screenshot of the workspace. It no longer scrolls on a
-  laptop-sized window (1280x720 and up), and stacks and scrolls on narrow ones.
+- Start page: the page itself is unchanged, but the three ways in are easier to
+  find. "Browse files" is a solid button, "Open a folder" sits inside the drop
+  zone, "Remote URL" and "Live robot" are side-by-side tabs instead of a
+  vertical list, and "Explore sample data" is a bright button with a line saying
+  what it is. `.spz` is listed among the accepted formats. The page still fits
+  one screen without scrolling.
 - Phones and upright tablets get a layout of their own. Below 768 px, or on a
   touch screen narrower than 1024 px, the panel grid shows one panel at a time
   behind a tab strip (tap a tab to switch; opening a topic shows it), the topic

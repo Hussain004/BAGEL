@@ -90,7 +90,7 @@ test.describe('recent files', () => {
   test('is hidden on a fresh visit with nothing recent', async ({ page }) => {
     const problems = watchForErrors(page);
     await page.goto('/');
-    await expect(page.locator('.landing')).toBeVisible();
+    await expect(page.locator('.landing-page')).toBeVisible();
     await expect(recentSection(page)).toHaveCount(0);
     expect(problems).toEqual([]);
   });
@@ -106,6 +106,7 @@ test.describe('recent files', () => {
     });
 
     await page.goto('/');
+    await page.getByRole('tab', { name: 'REMOTE URL' }).click();
     const input = page.getByLabel('Remote bag URL');
     await input.fill('http://localhost:4173/remote-tour.mcap');
     await input.press('Enter');
@@ -114,7 +115,7 @@ test.describe('recent files', () => {
     // Back to the landing page via the toolbar's close button, which is the real
 // user path; the recents list should then offer the URL.
     await page.getByRole('button', { name: 'Close bag file' }).click();
-    await expect(page.locator('.landing')).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('.landing-page')).toBeVisible({ timeout: 30_000 });
 
     const item = recentItemByName(page, 'remote-tour.mcap');
     await expect(item).toBeVisible({ timeout: 30_000 });
@@ -260,7 +261,7 @@ test.describe('recent files', () => {
 
     // Back to the landing page: the row must be there, named after the file.
     await page.getByRole('button', { name: 'Close bag file' }).click();
-    await expect(page.locator('.landing')).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('.landing-page')).toBeVisible({ timeout: 30_000 });
     await expect(recentItemByName(page, 'picked-tour.mcap')).toBeVisible({ timeout: 30_000 });
 
     // Reopen from the row. The stub is still installed after the soft
