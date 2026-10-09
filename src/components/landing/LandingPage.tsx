@@ -5,6 +5,9 @@ import { useLiveStore } from '../../store/liveStore';
 import { useLayoutStore, panelLeafId } from '../../store/layoutStore';
 import { usePlayheadStore } from '../../store/playheadStore';
 import { useUiStore } from '../../store/uiStore';
+import { useImagePanelStore, useTimeSeriesPanelStore } from '../../store/panelUiStores';
+import { useThreeDPanelStore } from '../../store/threeDPanelStore';
+import { overlayKey } from '../panels/ThreeDScene/spatialOverlayTopics';
 import { CopyErrorButton } from '../panels/shared/CopyErrorButton';
 import { DATASET_HOSTING_DOC_URL } from '../../utils/actionableError';
 import { BrandLockup } from './Brand';
@@ -261,12 +264,33 @@ function NarrowViewportNotice() {
 
 function applyCuratedSampleLayout(): void {
   const layout = useLayoutStore.getState();
-  layout.openPanel({ kind: '3d', topicName: '/scan', type: 'sensor_msgs/msg/LaserScan' });
+  layout.openPanel({ kind: '3d', topicName: '/lidar/points', type: 'sensor_msgs/msg/PointCloud2' });
   layout.openPanel({ kind: 'image', topicName: '/camera/image_raw', type: 'sensor_msgs/msg/Image' });
-  layout.openPanel({ kind: 'plot', topicName: '/imu/data', type: 'sensor_msgs/msg/Imu' });
+  layout.openPanel({ kind: 'plot', topicName: '/battery', type: 'sensor_msgs/msg/BatteryState' });
+  layout.openPanel({ kind: 'state', topicName: '/robot/mode', type: 'std_msgs/msg/String' });
   const imageId = panelLeafId('image', '/camera/image_raw');
-  const plotId = panelLeafId('plot', '/imu/data');
+  const plotId = panelLeafId('plot', '/battery');
+  const stateId = panelLeafId('state', '/robot/mode');
+  // A 2x2 grid: 3D and camera on top, the robot's state and battery under them.
   layout.dockPanel(plotId, imageId, 'bottom');
+  layout.dockPanel(stateId, panelLeafId('3d', '/lidar/points'), 'bottom');
+
+  // Make the demo show off what is in the bag rather than leaving it to be discovered:
+  // detection boxes and the LiDAR projected onto the camera image, colour by
+  // intensity, and the planned route and particle cloud over the 3D view.
+  // Plot the battery charge alone; the other fields are available as chips.
+  useTimeSeriesPanelStore.getState().update(plotId, {
+    visibility: Object.fromEntries(
+      ['header.stamp.sec', 'header.stamp.nanosec', 'voltage', 'temperature', 'current', 'charge', 'capacity', 'design_capacity', 'power_supply_status', 'power_supply_health', 'power_supply_technology'].map((f) => [f, false]),
+    ),
+  });
+  useImagePanelStore.getState().update(imageId, { detectionTopic: '/detections', cloudTopic: '/lidar/points' });
+  const bagId = useBagStore.getState().focusBagId ?? 'b1';
+  useThreeDPanelStore.getState().update(panelLeafId('3d', '/lidar/points'), {
+    colorMode: 'intensity',
+    spatialOverlayTopics: [overlayKey(bagId, '/plan'), overlayKey(bagId, '/particles')],
+  });
+
   const playhead = usePlayheadStore.getState();
   playhead.seek(playhead.startNs + 3_000_000_000n);
   playhead.setPlaying(true);

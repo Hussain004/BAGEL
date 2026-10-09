@@ -125,10 +125,10 @@ test.describe('panel close undo', () => {
     const afterEscape = await page
       .locator('header[tabindex="0"] span.badge.badge-slate')
       .allTextContents();
-    expect(afterEscape.length).toBe(2);
+    expect(afterEscape.length).toBe(3);
 
     await page.keyboard.press('ControlOrMeta+z');
-    await expect(page.locator('header[tabindex="0"] span.badge.badge-slate')).toHaveCount(3);
+    await expect(page.locator('header[tabindex="0"] span.badge.badge-slate')).toHaveCount(4);
 
     expect(problems).toEqual([]);
   });

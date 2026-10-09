@@ -101,7 +101,8 @@ test('a circle is a circle with equal scale, and an ellipse without it', async (
   expect((free.x1 - free.x0) / (free.y1 - free.y0)).toBeGreaterThan(1.3);
 
   await page.getByLabel('equal scale').check();
-  await expect.poll(async () => { const b = await dotBox(page); return Math.abs((b.x1 - b.x0) - (b.y1 - b.y0)); }).toBeLessThan(6);
+  // Within 4% of its size: a dot edge is antialiased over a pixel or two, so an absolute pixel count is brittle.
+  await expect.poll(async () => { const b = await dotBox(page); const w = b.x1 - b.x0; const h = b.y1 - b.y0; return Math.abs(w - h) / Math.max(w, h); }).toBeLessThan(0.04);
   expect(problems).toEqual([]);
 });
 

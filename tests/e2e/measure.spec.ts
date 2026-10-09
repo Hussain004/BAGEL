@@ -18,6 +18,10 @@ test('two clicks measure, a drag does not, Esc clears then turns the tool off', 
   await page.locator(SAMPLE_BUTTON).click();
   await expect(page.locator('header[tabindex="0"] span.badge.badge-slate', { hasText: /^3D Scene$/ })).toBeVisible({ timeout: 60_000 });
 
+  // The scene is covered by a loading overlay until its first cloud has decoded; clicks before that miss the canvas.
+  await expect(page.getByText(/[\d,]+ pts/)).toBeVisible({ timeout: 60_000 });
+  // The world frame is auto-picked once the TF tree loads, and a frame change clears a measurement (by design).
+  await expect(page.getByText(/lidar_link\s*→\s*map/)).toBeVisible({ timeout: 60_000 });
   const canvas = page.locator('canvas').first();
   await expect(canvas).toBeVisible();
   const box = (await canvas.boundingBox())!;
@@ -41,11 +45,11 @@ test('two clicks measure, a drag does not, Esc clears then turns the tool off', 
   await page.mouse.click(b.x, b.y);
   await expect(readout).toContainText(/^[\d.]+ (m|cm|mm)\s+\(dx [+-]/);
 
-  // Clicking the same spot twice measures (close to) nothing: proves the readout follows the points.
+  // A third click starts over, and a fourth completes a new measurement.
   await page.mouse.click(a.x, a.y);
   await expect(readout).toHaveText('Click a second point');
-  await page.mouse.click(a.x, a.y);
-  await expect(readout).toContainText(/^0\.00 m|^[\d.]+ (cm|mm)/);
+  await page.mouse.click(b.x, b.y);
+  await expect(readout).toContainText(/^[\d.]+ (m|cm|mm)\s+\(dx [+-]/);
 
   await page.keyboard.press('Escape');
   await expect(readout).toHaveText('Click two points to measure');

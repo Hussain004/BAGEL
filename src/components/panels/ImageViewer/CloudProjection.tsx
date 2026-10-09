@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useMemo, useRef, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import { useDecodedCloud } from '../ThreeDScene/useDecodedPointCloud';
 import { composeTFChain } from '../ThreeDScene/tfTransform';
 import { useTFGraph } from '../TFTree/useTFGraph';
@@ -28,9 +29,11 @@ interface Props {
   imageSize: { width: number; height: number };
   /** The displayed frame is undistorted. */
   rectified: boolean;
+  /** Where the one-line status goes (the panel footer), so it never covers the picture. */
+  statusSlot: HTMLElement | null;
 }
 
-export function CloudProjection({ canvasRef, topic, bagId, timeNs, camera, imageSize, rectified }: Props) {
+export function CloudProjection({ canvasRef, topic, bagId, timeNs, camera, imageSize, rectified, statusSlot }: Props) {
   const rect = useCanvasRect(canvasRef, true, imageSize);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const { cloud } = useDecodedCloud({
@@ -71,14 +74,16 @@ export function CloudProjection({ canvasRef, topic, bagId, timeNs, camera, image
   }, [projected, imageSize.width, imageSize.height]);
 
   let status: string;
-  if (!cloud) status = 'waiting for a point cloud…';
+  let detail = `${cloudFrame || '?'} to ${camera.frameId || '?'}`;
+  if (!cloud) status = 'waiting for a point cloud...';
   else if (!cloudFrame) status = 'cloud has no frame_id, cannot place it';
   else if (!camera.frameId) status = 'CameraInfo has no frame_id, cannot place the camera';
   else if (!matrix) status = `no TF path from ${cloudFrame} to ${camera.frameId}`;
   else if (projected && projected.count === 0) {
     status = projected.inFront === 0 ? 'every point is behind the camera' : 'no point lands inside the image';
-  } else if (projected) status = `${projected.count.toLocaleString()} of ${projected.total.toLocaleString()} points  ${cloudFrame} → ${camera.frameId}`;
+  } else if (projected) status = `${projected.count.toLocaleString()} of ${projected.total.toLocaleString()} points`;
   else status = '';
+  if (cloud && matrix) detail = `${cloudFrame} to ${camera.frameId}`;
 
   return (
     <>
@@ -93,12 +98,7 @@ export function CloudProjection({ canvasRef, topic, bagId, timeNs, camera, image
           data-testid="cloud-projection"
         />
       )}
-      <div
-        className="pointer-events-none absolute left-2 bottom-2 mono text-[10px] px-1.5 py-0.5 rounded bg-bg-primary/80 text-text-secondary"
-        data-testid="cloud-projection-status"
-      >
-        {status}
-      </div>
+      {statusSlot && createPortal(<span data-testid="cloud-projection-status" title={detail}>{status}</span>, statusSlot)}
     </>
   );
 }

@@ -5,6 +5,7 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { zstdDecompressSync } from 'node:zlib';
 import { McapIndexedReader } from '@mcap/core';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -26,7 +27,11 @@ const readable = {
   },
 };
 
-const reader = await McapIndexedReader.Initialize({ readable });
+const reader = await McapIndexedReader.Initialize({
+  readable,
+  // The sample bag's chunks are zstd-compressed.
+  decompressHandlers: { zstd: (data, size) => new Uint8Array(zstdDecompressSync(data)) },
+});
 
 console.log(`File size: ${(buf.byteLength / 1024).toFixed(1)} KB`);
 console.log(`Profile  : ${reader.header?.profile ?? '(missing)'}`);

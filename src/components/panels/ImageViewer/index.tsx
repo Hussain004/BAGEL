@@ -287,6 +287,8 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
   const detectionStamp = detections.stampNs ?? detectionMsg?.timestamp ?? null;
   const freshness = detectionFreshness(detectionStamp, imageStamp, DETECTION_TOLERANCE_NS);
 
+  // The footer slot the LiDAR projection writes its one-line status into.
+  const [statusSlot, setStatusSlot] = useState<HTMLElement | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
   const [meta, setMeta] = useState<{ width: number; height: number; encoding: string } | null>(
     null,
@@ -582,7 +584,7 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
                   rectifyCamera={rectifyCamera}
                   projection={
                     cloudTopic && camera.info && meta
-                      ? { topic: cloudTopic, bagId, timeNs: message?.timestamp ?? playheadNs, camera: camera.info }
+                      ? { topic: cloudTopic, bagId, timeNs: message?.timestamp ?? playheadNs, camera: camera.info, statusSlot }
                       : null
                   }
                 />
@@ -637,6 +639,7 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
               {view.zoom !== 1 && (
                 <span>{Math.round(view.zoom * 100)}%</span>
               )}
+              <span ref={setStatusSlot} className="text-text-secondary" />
               {detectionTopic && (
                 <span
                   className={freshness.fresh ? 'text-text-secondary' : 'text-accent-amber'}
@@ -760,7 +763,7 @@ interface CanvasWithOverlayProps {
   /** When set, box corners are undistorted with these intrinsics to match a rectified frame. */
   rectifyCamera: CameraIntrinsics | null;
   /** LiDAR projection to draw over the image, or null for none. */
-  projection: { topic: string; bagId?: string; timeNs: bigint; camera: CameraIntrinsics } | null;
+  projection: { topic: string; bagId?: string; timeNs: bigint; camera: CameraIntrinsics; statusSlot: HTMLElement | null } | null;
 }
 
 /** Detection boxes as SVG in image-pixel space, laid exactly over the canvas. */
@@ -862,6 +865,7 @@ function CanvasWithOverlay({ canvasRef, showOverlay, camera, boxes, imageSize, r
           camera={projection.camera}
           imageSize={imageSize}
           rectified={!!rectifyCamera}
+          statusSlot={projection.statusSlot}
         />
       )}
       {showOverlay && reticle && (

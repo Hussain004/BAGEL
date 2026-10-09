@@ -21,7 +21,7 @@ test.describe('upright tablet', () => {
     const tabs = page.getByTestId('compact-tabs');
     await expect(tabs).toBeVisible({ timeout: 60_000 });
     const tab = tabs.getByRole('tab');
-    await expect(tab).toHaveCount(3);
+    await expect(tab).toHaveCount(4);
     // Exactly one panel is mounted at a time.
     await expect(page.locator('header[tabindex="0"]')).toHaveCount(1);
 
@@ -66,5 +66,5 @@ test('desktop keeps the split layout', async ({ page }) => {
   await page.locator(SAMPLE_BUTTON).click();
   await expect(badge(page, '3D Scene')).toBeVisible({ timeout: 60_000 });
   await expect(page.getByTestId('compact-tabs')).toHaveCount(0);
-  await expect(page.locator('header[tabindex="0"]')).toHaveCount(3);
+  await expect(page.locator('header[tabindex="0"]')).toHaveCount(4);
 });
