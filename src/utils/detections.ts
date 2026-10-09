@@ -56,7 +56,7 @@ export function stampNs(value: unknown): bigint | null {
   return BigInt(Math.round(sec)) * 1_000_000_000n + BigInt(Math.round(nsec));
 }
 
-function bestHypothesis(results: unknown): { label: string; score: number | null; classKey: string } {
+export function bestHypothesis(results: unknown): { label: string; score: number | null; classKey: string } {
   let best: { label: string; score: number | null; classKey: string } | null = null;
   if (Array.isArray(results)) {
     for (const r of results) {

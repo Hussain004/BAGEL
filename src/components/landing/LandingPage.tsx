@@ -277,7 +277,7 @@ function applyCuratedSampleLayout(): void {
 
   // Make the demo show off what is in the bag rather than leaving it to be discovered:
   // detection boxes and the LiDAR projected onto the camera image, colour by
-  // intensity, and the planned route and particle cloud over the 3D view.
+  // intensity, and the planned route, particle cloud and 3D detection boxes over the 3D view.
   // Plot the battery charge alone; the other fields are available as chips.
   useTimeSeriesPanelStore.getState().update(plotId, {
     visibility: Object.fromEntries(
@@ -288,7 +288,7 @@ function applyCuratedSampleLayout(): void {
   const bagId = useBagStore.getState().focusBagId ?? 'b1';
   useThreeDPanelStore.getState().update(panelLeafId('3d', '/lidar/points'), {
     colorMode: 'intensity',
-    spatialOverlayTopics: [overlayKey(bagId, '/plan'), overlayKey(bagId, '/particles')],
+    spatialOverlayTopics: [overlayKey(bagId, '/plan'), overlayKey(bagId, '/particles'), overlayKey(bagId, '/detections_3d')],
   });
 
   const playhead = usePlayheadStore.getState();

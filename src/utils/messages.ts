@@ -249,9 +249,14 @@ export function isPolygonType(type: string): boolean {
   );
 }
 
-/** Anything the Path overlay draws: a path, an array of poses, or a polygon outline. */
+/** `vision_msgs/Detection3DArray`: oriented 3D boxes with a class and score each. */
+export function isDetection3DArrayType(type: string): boolean {
+  return type === 'vision_msgs/Detection3DArray' || type === 'vision_msgs/msg/Detection3DArray';
+}
+
+/** Anything the Path overlay draws: a path, an array of poses, a polygon outline, or 3D detection boxes. */
 export function isPathLikeType(type: string): boolean {
-  return isPathType(type) || isPoseArrayType(type) || isPolygonType(type);
+  return isPathType(type) || isPoseArrayType(type) || isPolygonType(type) || isDetection3DArrayType(type);
 }
 
 /**
