@@ -1,12 +1,12 @@
 // Fails when a built chunk's gzipped size passes its budget. Run after `vite build`.
-// Budgets sit about 12% above today's sizes: they catch an accidental dependency
+// Budgets sit about 12-20% above today's sizes: they catch an accidental dependency
 // or a lost code split, not ordinary growth. Raise one deliberately in the PR that needs it.
 import { readdirSync, readFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 
 const KB = 1024;
 const budgets = [
-  { prefix: 'index-', max: 400 * KB, what: 'main entry' },
+  { prefix: 'index-', max: 220 * KB, what: 'main entry' },
   { prefix: 'three-', max: 190 * KB, what: 'three.js' },
   { prefix: 'parser.worker-', max: 160 * KB, what: 'parser worker' },
 ];
