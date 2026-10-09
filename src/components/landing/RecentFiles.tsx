@@ -62,7 +62,7 @@ export function RecentFiles({ onFile, onUrl, disabled }: RecentFilesProps) {
 
   return (
     <div className="recent-files" aria-label="Recently opened files">
-      <div className="recent-files__label">Recent</div>
+      <div className="recent-files__label">RECENT</div>
       <ul className="recent-files__list">
         {visible.map((entry) => (
           <li key={entry.id} className="recent-files__item">
