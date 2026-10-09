@@ -387,6 +387,32 @@ export function detect(pose, frame) {
   return out;
 }
 
+/**
+ * What a LiDAR detector would report: every car and person the sensor has a
+ * clear line to within 16 m, as an axis-aligned box in world (map) coordinates.
+ */
+export function detect3d(pose, frame) {
+  const o = mountWorld(pose, LIDAR_MOUNT);
+  const out = [];
+  WORLD.forEach((b, index) => {
+    const cls = DETECTABLE[b.label];
+    if (!cls) return;
+    const centre = [0, 1, 2].map((k) => (b.min[k] + b.max[k]) / 2);
+    const rel = centre.map((x, k) => x - o[k]);
+    const dist = Math.hypot(...rel);
+    if (dist > 16) return;
+    const hit = castRay(o, rel.map((x) => x / dist), dist + 1);
+    if (!hit || hit.index !== index) return;
+    out.push({
+      cls,
+      score: Math.round((0.98 - dist * 0.015 - hash01(frame, index, 11) * 0.04) * 100) / 100,
+      centre,
+      size: [0, 1, 2].map((k) => b.max[k] - b.min[k]),
+    });
+  });
+  return out;
+}
+
 // ── Occupancy ───────────────────────────────────────────────────────────
 /** Is the ground cell at (x, y) covered by an obstacle? Used to build the SLAM map. */
 export function occupiedAt(x, y) {

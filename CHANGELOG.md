@@ -9,6 +9,11 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- `vision_msgs/Detection3DArray` now draws in the 3D scene as wireframe boxes,
+  coloured by class (the same colour as the 2D boxes on the camera), placed
+  through TF. Open the topic on its own, or add it from the Display card's
+  layers list over any other 3D view. The sample bag has a `/detections_3d`
+  topic and its 3D view shows it by default.
 - Panels now load on demand. The first screen downloads about half as much
   JavaScript (the main chunk went from 346 KB to 185 KB gzipped); the 3D scene,
   Gaussian splat viewer, plot and the other panels download when you first open

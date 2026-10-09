@@ -49,7 +49,8 @@ import {
   type LineLayer,
   type PoseArrayLayer,
 } from './pathObjects';
-import { isPathType, isPoseArrayType } from '../../../utils/messages';
+import { isDetection3DArrayType, isPathType, isPoseArrayType } from '../../../utils/messages';
+import { createBoxLayer, extractBoxes, setBoxLayerColor, updateBoxLayer, type BoxLayer } from './boxObjects';
 import { useDecodedCloud } from './useDecodedPointCloud';
 import { applyTransform } from './tfTransform';
 import type { SceneRefs } from './useScene';
@@ -261,7 +262,10 @@ function MapOverlay({
  * are "geometry already expressed in the message's header frame", so one
  * component handles them: only the object built and the extractor differ.
  */
-type PathLayer = { kind: 'poses'; poses: PoseArrayLayer } | { kind: 'line'; line: LineLayer };
+type PathLayer =
+  | { kind: 'poses'; poses: PoseArrayLayer }
+  | { kind: 'line'; line: LineLayer }
+  | { kind: 'boxes'; boxes: BoxLayer };
 
 function PathOverlay({
   topic,
@@ -277,6 +281,9 @@ function PathOverlay({
   const color = style?.color ?? bagColor;
   const isPoses = isPoseArrayType(topic.type);
   const isPath = isPathType(topic.type);
+  const isBoxes = isDetection3DArrayType(topic.type);
+  // Boxes are coloured by class unless the user picks one colour for the layer.
+  const boxOverride = style?.color ?? null;
   const ownedRef = useRef<{ group: THREE.Group; layer: PathLayer } | null>(null);
   const transformCache = useRef<{ key: string; matrix: THREE.Matrix4 } | null>(null);
 
@@ -286,10 +293,14 @@ function PathOverlay({
     const group = new THREE.Group();
     group.name = `overlay:${topic.name}`;
     // Polygons close back on their first vertex; paths do not.
-    const layer: PathLayer = isPoses
-      ? { kind: 'poses', poses: createPoseArrayLayer(color) }
-      : { kind: 'line', line: createLineLayer(color, !isPath) };
-    group.add(layer.kind === 'poses' ? layer.poses.object : layer.line.object);
+    const layer: PathLayer = isBoxes
+      ? { kind: 'boxes', boxes: createBoxLayer(boxOverride) }
+      : isPoses
+        ? { kind: 'poses', poses: createPoseArrayLayer(color) }
+        : { kind: 'line', line: createLineLayer(color, !isPath) };
+    group.add(
+      layer.kind === 'boxes' ? layer.boxes.object : layer.kind === 'poses' ? layer.poses.object : layer.line.object,
+    );
     scene.scene.add(group);
     ownedRef.current = { group, layer };
     scene.renderOnce();
@@ -302,16 +313,17 @@ function PathOverlay({
     };
     // initial color only - the color effect below keeps it in sync afterward.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sceneRef, topic.name, isPoses, isPath]);
+  }, [sceneRef, topic.name, isPoses, isPath, isBoxes]);
 
   useEffect(() => {
     const scene = sceneRef.current;
     const owned = ownedRef.current;
     if (!scene || !owned) return;
-    if (owned.layer.kind === 'poses') setPoseArrayColor(owned.layer.poses, color);
+    if (owned.layer.kind === 'boxes') setBoxLayerColor(owned.layer.boxes, boxOverride);
+    else if (owned.layer.kind === 'poses') setPoseArrayColor(owned.layer.poses, color);
     else setLineLayerColor(owned.layer.line, color);
     scene.renderOnce();
-  }, [color, sceneRef]);
+  }, [color, boxOverride, sceneRef]);
 
   useEffect(() => {
     const scene = sceneRef.current;
@@ -321,7 +333,8 @@ function PathOverlay({
     const value = message?.value ?? null;
     // No message at the playhead yet: clear rather than leave the previous
     // topic's geometry on screen.
-    if (owned.layer.kind === 'poses') updatePoseArrayLayer(owned.layer.poses, extractPoseArray(value));
+    if (owned.layer.kind === 'boxes') updateBoxLayer(owned.layer.boxes, extractBoxes(value));
+    else if (owned.layer.kind === 'poses') updatePoseArrayLayer(owned.layer.poses, extractPoseArray(value));
     else {
       updateLineLayer(
         owned.layer.line,

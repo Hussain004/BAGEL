@@ -12,6 +12,7 @@
  *                                     distortion baked in ("undistort" works)
  *   /camera/camera_info (CameraInfo)  auto-pairs with the image; K, D, frame
  *   /detections (Detection2DArray)    2 Hz, boxes for cars and people
+ *   /detections_3d (Detection3DArray) 2 Hz, the same cars and people as 3D boxes
  *   /robot/mode (std_msgs/String)     IDLE / EXPLORING / AVOIDING / RETURNING
  *   /battery (BatteryState)           drains through 20% near the end
  *   /rosout (rcl_interfaces/Log)      the story in log lines
@@ -46,6 +47,7 @@ import {
   MODES,
   OPTICAL_QUAT,
   detect,
+  detect3d,
   figureEightPose,
   hash01,
   lidarSweep,
@@ -162,6 +164,9 @@ const EXTRA_DEFS = {
   'vision_msgs/ObjectHypothesis': { name: 'vision_msgs/ObjectHypothesis', definitions: [f('string', 'class_id'), f('float64', 'score')] },
   'vision_msgs/BoundingBox2D': { name: 'vision_msgs/BoundingBox2D', definitions: [f('vision_msgs/Pose2D', 'center'), f('float64', 'size_x'), f('float64', 'size_y')] },
   'vision_msgs/Pose2D': { name: 'vision_msgs/Pose2D', definitions: [f('vision_msgs/Point2D', 'position'), f('float64', 'theta')] },
+  'vision_msgs/Detection3DArray': { name: 'vision_msgs/Detection3DArray', definitions: [f('std_msgs/Header', 'header'), f('vision_msgs/Detection3D', 'detections', { isArray: true })] },
+  'vision_msgs/Detection3D': { name: 'vision_msgs/Detection3D', definitions: [f('std_msgs/Header', 'header'), f('vision_msgs/ObjectHypothesisWithPose', 'results', { isArray: true }), f('vision_msgs/BoundingBox3D', 'bbox'), f('string', 'id')] },
+  'vision_msgs/BoundingBox3D': { name: 'vision_msgs/BoundingBox3D', definitions: [f('geometry_msgs/Pose', 'center'), f('geometry_msgs/Vector3', 'size')] },
   'vision_msgs/Point2D': { name: 'vision_msgs/Point2D', definitions: [f('float64', 'x'), f('float64', 'y')] },
 };
 
@@ -691,6 +696,26 @@ function buildDetectionsMessage(timeNs) {
   };
 }
 
+function buildDetections3dMessage(timeNs) {
+  const boxes = detect3d(figureEightPose(secondsOf(timeNs)), frameOf(timeNs, DETECTION_HZ));
+  const zeroPose = {
+    pose: { position: { x: 0, y: 0, z: 0 }, orientation: { x: 0, y: 0, z: 0, w: 1 } },
+    covariance: new Array(36).fill(0),
+  };
+  return {
+    header: header('map', timeNs),
+    detections: boxes.map((b) => ({
+      header: header('map', timeNs),
+      results: [{ hypothesis: { class_id: b.cls, score: b.score }, pose: zeroPose }],
+      bbox: {
+        center: { position: { x: b.centre[0], y: b.centre[1], z: b.centre[2] }, orientation: { x: 0, y: 0, z: 0, w: 1 } },
+        size: { x: b.size[0], y: b.size[1], z: b.size[2] },
+      },
+      id: '',
+    })),
+  };
+}
+
 function modeAt(t) {
   return (MODES.find((m) => t >= m.from && t < m.to) ?? MODES[MODES.length - 1]).name;
 }
@@ -877,6 +902,7 @@ async function main() {
     },
     { topic: '/lidar/points', type: 'sensor_msgs/msg/PointCloud2', hz: POINTS_HZ, build: buildPointCloudMessage },
     { topic: '/detections', type: 'vision_msgs/msg/Detection2DArray', hz: DETECTION_HZ, build: buildDetectionsMessage },
+    { topic: '/detections_3d', type: 'vision_msgs/msg/Detection3DArray', hz: DETECTION_HZ, build: buildDetections3dMessage },
     { topic: '/robot/mode', type: 'std_msgs/msg/String', hz: MODE_HZ, build: buildModeMessage },
     { topic: '/battery', type: 'sensor_msgs/msg/BatteryState', hz: BATTERY_HZ, build: buildBatteryMessage },
     { topic: '/rosout', type: 'rcl_interfaces/msg/Log', times: LOG_LINES.map((l) => l[0]), build: buildLogMessage },

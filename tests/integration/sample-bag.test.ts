@@ -198,6 +198,7 @@ describeWithSample('integration/tour.mcap - the demo story', () => {
     const byName = new Map(summary.topics.map((t) => [t.name, t.type]));
     expect(byName.get('/lidar/points')).toBe('sensor_msgs/msg/PointCloud2');
     expect(byName.get('/detections')).toBe('vision_msgs/msg/Detection2DArray');
+    expect(byName.get('/detections_3d')).toBe('vision_msgs/msg/Detection3DArray');
     expect(byName.get('/robot/mode')).toBe('std_msgs/msg/String');
     expect(byName.get('/battery')).toBe('sensor_msgs/msg/BatteryState');
     expect(byName.get('/rosout')).toBe('rcl_interfaces/msg/Log');
@@ -247,6 +248,25 @@ describeWithSample('integration/tour.mcap - the demo story', () => {
       return `${s.sec}.${s.nanosec}`;
     };
     expect(dets.map(stamp)).toEqual(images.map(stamp));
+  });
+
+  it('3D detections are map-frame boxes of plausible size, with LiDAR returns on them', async () => {
+    const dets = await messages('/detections_3d');
+    const clouds = await messages('/lidar/points');
+    type Box = { results: Array<{ hypothesis: { class_id: string } }>; bbox: { center: { position: { x: number; y: number; z: number } }; size: { x: number; y: number; z: number } } };
+    const all = dets.flatMap((d) => (d.value as { detections: Box[] }).detections);
+    expect(all.length).toBeGreaterThan(10);
+    expect(new Set(all.map((b) => b.results[0]!.hypothesis.class_id))).toEqual(new Set(['car', 'person']));
+    for (const b of all) {
+      const { x, y, z } = b.bbox.size;
+      expect(Math.min(x, y, z)).toBeGreaterThan(0.2);
+      expect(Math.max(x, y, z)).toBeLessThan(8);
+    }
+    expect((dets[0]!.value as { header: { frame_id: string } }).header.frame_id).toBe('map');
+    // Same cadence as the 2D detector, so a 3D box and a 2D box describe the same instant.
+    const twoD = await messages('/detections');
+    expect(dets.length).toBe(twoD.length);
+    expect(clouds.length).toBeGreaterThan(0);
   });
 
   it('the map is revealed over time: more of it is known at the end than at the start', async () => {
