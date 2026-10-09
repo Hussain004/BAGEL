@@ -1,56 +1,53 @@
 /**
- * Build a small synthetic MCAP file bundled with BAGEL as "Try a sample bag".
+ * Build the sample MCAP bundled with BAGEL as "Explore sample data".
  *
- * The real test fixtures in test_files/ are 250 MB - 3.7 GB which is too big
- * to ship in the public web bundle. This script generates a self-contained
- * 30-second synthetic bag with:
+ * A 30 second synthetic robot run through a small street scene. Every sensor
+ * sees the SAME analytic world (scripts/sample-world.mjs), so the pieces agree
+ * with each other: LiDAR points land on the buildings and cars in the camera
+ * image, the detections box the cars and people you can see, and the map shows
+ * what the robot has scanned.
  *
- *   - /odom (nav_msgs/Odometry)             - 10 Hz figure-eight pose, gives
- *                                             the Trajectory + Plot panels
- *                                             something interesting to render.
- *   - /imu/data (sensor_msgs/Imu)           - 50 Hz angular velocity + accel,
- *                                             drives the Plot panel.
- *   - /scan (sensor_msgs/LaserScan)         - 10 Hz radial scan, exercises
- *                                             the LaserScan branch of the
- *                                             3D panel.
- *   - /tf (tf2_msgs/TFMessage)              - 10 Hz odom->base_link + static
- *                                             camera mounts, exercises the
- *                                             TF tree + TF-aware rendering.
- *   - /markers (visualization_msgs/MarkerArray) - 1 Hz set of debug primitives
- *                                             in two namespaces (`status` in
- *                                             base_link, `planning` in odom)
- *                                             to exercise the v0.8 marker
- *                                             renderer (cube/sphere/cylinder/
- *                                             arrow/line_strip/points/text).
- *   - /map (nav_msgs/OccupancyGrid)         - 0.5 Hz synthetic SLAM map that
- *                                             expands outward over the bag.
- *   - /gps/fix (sensor_msgs/NavSatFix)      - 1 Hz GPS trace, figure-eight
- *                                             projected onto lat/lon around
- *                                             Cambridge UK so the OSM tile
- *                                             underlay shows familiar streets.
- *   - /camera/image_raw (sensor_msgs/Image) - 2 Hz pre-distorted checkerboard
- *                                             (96x72 RGB8). Clicking "undistort"
- *                                             in the ImageViewer panel applies
- *                                             the v1.3.4 plumb-bob remap and
- *                                             straightens the grid lines.
- *   - /camera/camera_info (CameraInfo)      - 2 Hz, k1=-0.30 barrel distortion,
- *                                             auto-pairs with /camera/image_raw.
- *   - /camera_rear/camera_info (CameraInfo) - 1 Hz second camera (CameraInfo
- *                                             only, no image stream), exercises
- *                                             the v1.3.4 per-camera frustum
- *                                             hide toggle in the 3D panel.
+ *   /lidar/points (PointCloud2)       4 Hz, 16-beam sweep with intensity
+ *   /camera/image_raw (Image)         2 Hz, 192x144 rendered view with barrel
+ *                                     distortion baked in ("undistort" works)
+ *   /camera/camera_info (CameraInfo)  auto-pairs with the image; K, D, frame
+ *   /detections (Detection2DArray)    2 Hz, boxes for cars and people
+ *   /robot/mode (std_msgs/String)     IDLE / EXPLORING / AVOIDING / RETURNING
+ *   /battery (BatteryState)           drains through 20% near the end
+ *   /rosout (rcl_interfaces/Log)      the story in log lines
+ *   /plan (nav_msgs/Path)             the route ahead, in 3D
+ *   /particles (PoseArray)            a localisation particle cloud
+ *   /odom, /imu/data, /scan, /tf, /markers, /map, /gps/fix,
+ *   /camera_rear/camera_info          as before
+ *
+ * Things to try: play it; project /lidar/points onto the camera; use Find on
+ * /battery to jump to when it fell below 20%; open /robot/mode as a state
+ * timeline; plot /odom x against y.
  *
  * Run:    node scripts/build-sample-bag.mjs
- * Output: public/sample-bags/tour.mcap
- */
+ * Output: public/sample-bags/tour.mcap  (zstd-compressed chunks)
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { zstdCompressSync } from 'node:zlib';
+
 import { McapWriter } from '@mcap/core';
 import { MessageWriter } from '@foxglove/rosmsg2-serialization';
 import rosmsgCommon from '@foxglove/rosmsg-msgs-common';
+
+import {
+  CAM,
+  CAMERA_MOUNT,
+  LIDAR_MOUNT,
+  MODES,
+  detect,
+  figureEightPose,
+  lidarSweep,
+  occupiedAt,
+  renderCamera,
+} from './sample-world.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..');
@@ -75,21 +72,21 @@ const GPS_HZ = 1;
 // while giving the ImageViewer panel enough frames to scrub through.
 const CAMERA_HZ = 2;
 
-// ── Camera intrinsics (v1.3.4) ──────────────────────────────────────────
-// Front camera: 96x72 px, fx=fy=80, centred principal point.
-// D = [k1, k2, p1, p2, k3]. k1=-0.30 gives noticeable barrel distortion
-// (grid lines bow inward at edges); the v1.3.4 "undistort" button
-// straightens them using the plumb-bob remap.
-const CAM_W = 96;
-const CAM_H = 72;
-const CAM_FX = 80.0;
-const CAM_FY = 80.0;
-const CAM_CX = 48.0;
-const CAM_CY = 36.0;
-const CAM_D = [-0.30, 0.08, 0.0, 0.0, 0.0];
+// ── Camera intrinsics ───────────────────────────────────────────────────
+// Front camera: the rendered view in sample-world.mjs. D = [k1, k2, p1, p2, k3]
+// is applied when the image is rendered, so the raw frames are barrel
+// distorted exactly as a real lens would deliver them and the "undistort"
+// button straightens the building edges.
+const CAM_W = CAM.w;
+const CAM_H = CAM.h;
+const CAM_FX = CAM.fx;
+const CAM_FY = CAM.fy;
+const CAM_CX = CAM.cx;
+const CAM_CY = CAM.cy;
+const CAM_D = CAM.d;
 
-// Rear camera: CameraInfo only (no image stream). Placed 0.28m behind the
-// robot, slightly different intrinsics so the frustums look distinct.
+// Rear camera: CameraInfo only (no image stream), so the 3D panel has a second
+// frustum with different intrinsics.
 const CAM_REAR_W = 96;
 const CAM_REAR_H = 72;
 const CAM_REAR_FX = 65.0;
@@ -98,13 +95,13 @@ const CAM_REAR_CX = 48.0;
 const CAM_REAR_CY = 36.0;
 const CAM_REAR_D = [-0.15, 0.03, 0.0, 0.0, 0.0];
 
-// Occupancy grid sizing: 10 m × 10 m at 0.1 m / cell.
-// Origin at (-5, -5) so the figure-eight (radius ~5) fits inside.
-const MAP_RESOLUTION = 0.1;
-const MAP_WIDTH = 100;
-const MAP_HEIGHT = 100;
-const MAP_ORIGIN_X = -5.0;
-const MAP_ORIGIN_Y = -5.0;
+// Occupancy grid: 40 m x 40 m at 0.2 m / cell, centred on the start, big enough
+// for the buildings that ring the loop.
+const MAP_RESOLUTION = 0.2;
+const MAP_WIDTH = 200;
+const MAP_HEIGHT = 200;
+const MAP_ORIGIN_X = -20.0;
+const MAP_ORIGIN_Y = -20.0;
 
 // Anchor the GPS trace somewhere recognisable so the OSM tile underlay shows
 // familiar streets when toggled on. King's Parade, Cambridge UK - close enough
@@ -150,11 +147,23 @@ function makeMemoryWritable() {
 // ── Resolve message definitions ─────────────────────────────────────────
 const defs = rosmsgCommon.ros2galactic;
 
+// vision_msgs is not in the bundled registry; Humble layout.
+const f = (type, name, extra = {}) => ({ type, name, isComplex: !/^(string|float64|float32|bool|u?int(8|16|32|64))$/.test(type), ...extra });
+const EXTRA_DEFS = {
+  'vision_msgs/Detection2DArray': { name: 'vision_msgs/Detection2DArray', definitions: [f('std_msgs/Header', 'header'), f('vision_msgs/Detection2D', 'detections', { isArray: true })] },
+  'vision_msgs/Detection2D': { name: 'vision_msgs/Detection2D', definitions: [f('std_msgs/Header', 'header'), f('vision_msgs/ObjectHypothesisWithPose', 'results', { isArray: true }), f('vision_msgs/BoundingBox2D', 'bbox'), f('string', 'id')] },
+  'vision_msgs/ObjectHypothesisWithPose': { name: 'vision_msgs/ObjectHypothesisWithPose', definitions: [f('vision_msgs/ObjectHypothesis', 'hypothesis'), f('geometry_msgs/PoseWithCovariance', 'pose')] },
+  'vision_msgs/ObjectHypothesis': { name: 'vision_msgs/ObjectHypothesis', definitions: [f('string', 'class_id'), f('float64', 'score')] },
+  'vision_msgs/BoundingBox2D': { name: 'vision_msgs/BoundingBox2D', definitions: [f('vision_msgs/Pose2D', 'center'), f('float64', 'size_x'), f('float64', 'size_y')] },
+  'vision_msgs/Pose2D': { name: 'vision_msgs/Pose2D', definitions: [f('vision_msgs/Point2D', 'position'), f('float64', 'theta')] },
+  'vision_msgs/Point2D': { name: 'vision_msgs/Point2D', definitions: [f('float64', 'x'), f('float64', 'y')] },
+};
+
 function pickDef(typeName) {
   // The common-msg package uses ROS1-style names ("nav_msgs/Odometry") while
   // ROS2 type strings use "nav_msgs/msg/Odometry". Try both forms.
   const bare = typeName.replace('/msg/', '/');
-  return defs[typeName] ?? defs[bare];
+  return EXTRA_DEFS[bare] ?? defs[typeName] ?? defs[bare];
 }
 
 /**
@@ -240,126 +249,6 @@ function quatFromYaw(yaw) {
   const half = yaw / 2;
   return { x: 0, y: 0, z: Math.sin(half), w: Math.cos(half) };
 }
-
-function figureEightPose(t) {
-  // Lemniscate of Bernoulli - a friendly closed loop the trajectory panel
-  // can render at a glance.
-  const a = 5.0;
-  const k = 0.4; // angular velocity along the curve
-  const phi = t * k;
-  const denom = 1 + Math.sin(phi) * Math.sin(phi);
-  const x = (a * Math.cos(phi)) / denom;
-  const y = (a * Math.sin(phi) * Math.cos(phi)) / denom;
-  // Heading is the curve's tangent.
-  const dx = -a * Math.sin(phi) / denom - (a * Math.cos(phi) * Math.sin(2 * phi)) / (denom * denom);
-  const dy = (a * Math.cos(2 * phi)) / denom - (a * Math.sin(phi) * Math.cos(phi) * Math.sin(2 * phi)) / (denom * denom);
-  const yaw = Math.atan2(dy, dx);
-  return { x, y, yaw };
-}
-
-// ── Camera image generation (v1.3.4) ────────────────────────────────────
-
-/**
- * Generate an ideal (undistorted) grid / checkerboard in RGB8.
- * White grid lines on alternating blue/orange squares - easy to see
- * distortion at a glance because straight lines become obviously curved.
- */
-function buildIdealGridRgb(width, height, spacing = 12) {
-  const rgb = new Uint8Array(width * height * 3);
-  for (let v = 0; v < height; v++) {
-    for (let u = 0; u < width; u++) {
-      const onLine = (u % spacing < 2) || (v % spacing < 2);
-      const i = (v * width + u) * 3;
-      if (onLine) {
-        rgb[i] = 240; rgb[i + 1] = 240; rgb[i + 2] = 240;
-      } else {
-        const sq = Math.floor(u / spacing) + Math.floor(v / spacing);
-        if (sq % 2 === 0) {
-          rgb[i] = 30; rgb[i + 1] = 90; rgb[i + 2] = 180;
-        } else {
-          rgb[i] = 180; rgb[i + 1] = 70; rgb[i + 2] = 25;
-        }
-      }
-    }
-  }
-  return rgb;
-}
-
-/**
- * Given normalised *distorted* coordinates (xd_n, yd_n), find the
- * corresponding normalised *undistorted* coordinates (xu, yu) via a simple
- * fixed-point iteration. 5 iterations is enough for |k1| < 0.5.
- */
-function invertDistortion(xd_n, yd_n, k1, k2, p1, p2, k3) {
-  let xu = xd_n;
-  let yu = yd_n;
-  for (let iter = 0; iter < 5; iter++) {
-    const r2 = xu * xu + yu * yu;
-    const r4 = r2 * r2;
-    const r6 = r4 * r2;
-    const radial = 1 + k1 * r2 + k2 * r4 + k3 * r6;
-    const dx = 2 * p1 * xu * yu + p2 * (r2 + 2 * xu * xu);
-    const dy = p1 * (r2 + 2 * yu * yu) + 2 * p2 * xu * yu;
-    xu = (xd_n - dx) / radial;
-    yu = (yd_n - dy) / radial;
-  }
-  return { xu, yu };
-}
-
-/**
- * Apply forward distortion to an ideal RGB8 image, producing the "raw"
- * distorted image that would come off a real lens. For each pixel in the
- * distorted output, we invert the distortion to find its source in the
- * ideal image, then bilinearly interpolate.
- *
- * This means BAGEL's forward-remap undistortion (which does the same
- * forward remap but on the already-distorted input) will approximately
- * recover the ideal image.
- */
-function buildDistortedRgb(ideal, width, height, fx, fy, cx, cy, k1, k2, p1, p2, k3) {
-  const out = new Uint8Array(width * height * 3);
-  for (let v = 0; v < height; v++) {
-    for (let u = 0; u < width; u++) {
-      // Normalised distorted coords for this sensor pixel.
-      const xd_n = (u - cx) / fx;
-      const yd_n = (v - cy) / fy;
-      // Invert distortion to get normalised ideal coords.
-      const { xu, yu } = invertDistortion(xd_n, yd_n, k1, k2, p1, p2, k3);
-      // Back to pixel coords in the ideal image.
-      const srcX = xu * fx + cx;
-      const srcY = yu * fy + cy;
-      const x0 = Math.floor(srcX);
-      const y0 = Math.floor(srcY);
-      const x1 = x0 + 1;
-      const y1 = y0 + 1;
-      if (x0 < 0 || y0 < 0 || x1 >= width || y1 >= height) continue;
-      const fxf = srcX - x0;
-      const fyf = srcY - y0;
-      const w00 = (1 - fxf) * (1 - fyf);
-      const w10 = fxf * (1 - fyf);
-      const w01 = (1 - fxf) * fyf;
-      const w11 = fxf * fyf;
-      const p00 = (y0 * width + x0) * 3;
-      const p10 = (y0 * width + x1) * 3;
-      const p01 = (y1 * width + x0) * 3;
-      const p11 = (y1 * width + x1) * 3;
-      const di = (v * width + u) * 3;
-      out[di]     = w00 * ideal[p00]     + w10 * ideal[p10]     + w01 * ideal[p01]     + w11 * ideal[p11];
-      out[di + 1] = w00 * ideal[p00 + 1] + w10 * ideal[p10 + 1] + w01 * ideal[p01 + 1] + w11 * ideal[p11 + 1];
-      out[di + 2] = w00 * ideal[p00 + 2] + w10 * ideal[p10 + 2] + w01 * ideal[p01 + 2] + w11 * ideal[p11 + 2];
-    }
-  }
-  return out;
-}
-
-// Precompute the distorted image once - every frame is the same static
-// checkerboard so the ImageViewer demo works at any playhead position.
-const IDEAL_GRID = buildIdealGridRgb(CAM_W, CAM_H, 12);
-const DISTORTED_GRID = buildDistortedRgb(
-  IDEAL_GRID, CAM_W, CAM_H,
-  CAM_FX, CAM_FY, CAM_CX, CAM_CY,
-  CAM_D[0], CAM_D[1], CAM_D[2], CAM_D[3], CAM_D[4],
-);
 
 // ── Per-topic encoders ──────────────────────────────────────────────────
 function buildOdomMessage(timeNs) {
