@@ -30,52 +30,34 @@ import {
   isTrajectoryCapableType,
 } from './messages';
 
+/**
+ * Everything the UI says about a panel kind, in one place: add a kind to
+ * `PanelKind` and TypeScript points here, and to `PANEL_COMPONENTS` in
+ * `components/panels/registry.ts`, instead of at four scattered records.
+ */
+export const PANEL_META: Record<PanelKind, { label: string; paletteLabel: string; title: string }> = {
+  plot: { label: 'Plot', paletteLabel: 'Plot', title: 'Open time-series plot' },
+  image: { label: 'Image', paletteLabel: 'Image viewer', title: 'Open image viewer' },
+  raw: { label: 'Raw', paletteLabel: 'Raw inspector', title: 'Open raw inspector' },
+  trajectory: { label: 'Path', paletteLabel: 'Trajectory', title: 'Open 2D trajectory' },
+  tf: { label: 'TF', paletteLabel: 'TF tree', title: 'Open TF tree' },
+  '3d': { label: '3D', paletteLabel: '3D scene', title: 'Open 3D scene' },
+  diagnostic: { label: 'Diag', paletteLabel: 'Diagnostics', title: 'Open diagnostic timeline' },
+  log: { label: 'Log', paletteLabel: 'Log', title: 'Open log viewer' },
+  health: { label: 'Health', paletteLabel: 'Bag health', title: 'Open bag health dashboard' },
+  splat: { label: 'Splat', paletteLabel: 'Gaussian splat', title: 'Open gaussian splat viewer' },
+  state: { label: 'State', paletteLabel: 'State timeline', title: 'Open state timeline' },
+  search: { label: 'Find', paletteLabel: 'Find in messages', title: 'Find when a field meets a condition' },
+};
+
+const mapKinds = (pick: (m: (typeof PANEL_META)[PanelKind]) => string) =>
+  Object.fromEntries(Object.entries(PANEL_META).map(([k, m]) => [k, pick(m)])) as Record<PanelKind, string>;
+
 /** Short label for the sidebar quick buttons and palette rows. */
-export const KIND_BUTTON_LABEL: Record<PanelKind, string> = {
-  plot: 'Plot',
-  image: 'Image',
-  raw: 'Raw',
-  trajectory: 'Path',
-  tf: 'TF',
-  '3d': '3D',
-  diagnostic: 'Diag',
-  log: 'Log',
-  health: 'Health',
-  splat: 'Splat',
-  state: 'State',
-  search: 'Find',
-};
-
+export const KIND_BUTTON_LABEL = mapKinds((m) => m.label);
 /** Longer label used by the command palette, where there is room and no ambiguity. */
-export const KIND_PALETTE_LABEL: Record<PanelKind, string> = {
-  plot: 'Plot',
-  image: 'Image viewer',
-  raw: 'Raw inspector',
-  trajectory: 'Trajectory',
-  tf: 'TF tree',
-  '3d': '3D scene',
-  diagnostic: 'Diagnostics',
-  log: 'Log',
-  health: 'Bag health',
-  splat: 'Gaussian splat',
-  state: 'State timeline',
-  search: 'Find in messages',
-};
-
-export const KIND_BUTTON_TITLE: Record<PanelKind, string> = {
-  plot: 'Open time-series plot',
-  image: 'Open image viewer',
-  raw: 'Open raw inspector',
-  trajectory: 'Open 2D trajectory',
-  tf: 'Open TF tree',
-  '3d': 'Open 3D scene',
-  diagnostic: 'Open diagnostic timeline',
-  log: 'Open log viewer',
-  health: 'Open bag health dashboard',
-  splat: 'Open gaussian splat viewer',
-  state: 'Open state timeline',
-  search: 'Find when a field meets a condition',
-};
+export const KIND_PALETTE_LABEL = mapKinds((m) => m.paletteLabel);
+export const KIND_BUTTON_TITLE = mapKinds((m) => m.title);
 
 /**
  * Pick the panel kind to open when the user single-clicks a topic.

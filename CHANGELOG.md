@@ -9,6 +9,12 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Panels now load on demand. The first screen downloads about half as much
+  JavaScript (the main chunk went from 346 KB to 185 KB gzipped); the 3D scene,
+  Gaussian splat viewer, plot and the other panels download when you first open
+  one, and the offline cache still holds them all. Panel labels and tooltips now
+  come from one table (`PANEL_META`), so adding a panel kind is a type error until
+  every place that needs it is filled in.
 - Fixed: with the keyboard, pressing Enter or Space on a topic row's pin or
   panel buttons opened the row's default panel instead of using that button.
   There are now component tests (jsdom and Testing Library, in files that start

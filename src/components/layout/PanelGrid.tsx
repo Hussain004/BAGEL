@@ -1,6 +1,7 @@
-import { Fragment, useState } from 'react';
+import { Fragment, Suspense, useState } from 'react';
 import { useCompactLayout } from '../../hooks/useCompactLayout';
 import { KIND_PALETTE_LABEL } from '../../utils/panelOptions';
+import { PANEL_COMPONENTS } from '../panels/registry';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import {
   useLayoutStore,
@@ -13,18 +14,6 @@ import {
   type SplitOrientation,
 } from '../../store/layoutStore';
 import { useDragDockStore } from '../../store/dragDockStore';
-import { TimeSeriesPlot } from '../panels/TimeSeriesPlot';
-import { ImageViewer } from '../panels/ImageViewer';
-import { RawMessageInspector } from '../panels/RawMessageInspector';
-import { TrajectoryPlot } from '../panels/TrajectoryPlot';
-import { TFTree } from '../panels/TFTree';
-import { ThreeDScene } from '../panels/ThreeDScene';
-import { DiagnosticArray } from '../panels/DiagnosticArray';
-import { Log } from '../panels/Log';
-import { BagHealth } from '../panels/BagHealth';
-import { SplatViewer } from '../panels/SplatViewer';
-import { StateTransitions } from '../panels/StateTransitions';
-import { SearchPanel } from '../panels/Search';
 
 /**
  * PanelGrid - Recursive renderer for the layout tree.
@@ -190,32 +179,12 @@ function Visualisation({ leaf }: { leaf: PanelLeaf }) {
     type: leaf.type,
     bagId: leaf.bagId,
   };
-  switch (leaf.kind) {
-    case 'plot':
-      return <TimeSeriesPlot {...props} />;
-    case 'image':
-      return <ImageViewer {...props} />;
-    case 'raw':
-      return <RawMessageInspector {...props} />;
-    case 'trajectory':
-      return <TrajectoryPlot {...props} />;
-    case 'tf':
-      return <TFTree {...props} />;
-    case '3d':
-      return <ThreeDScene {...props} />;
-    case 'diagnostic':
-      return <DiagnosticArray {...props} />;
-    case 'log':
-      return <Log {...props} />;
-    case 'health':
-      return <BagHealth {...props} />;
-    case 'splat':
-      return <SplatViewer {...props} />;
-    case 'state':
-      return <StateTransitions {...props} />;
-    case 'search':
-      return <SearchPanel {...props} />;
-  }
+  const Component = PANEL_COMPONENTS[leaf.kind];
+  return (
+    <Suspense fallback={<div className="flex-1 flex items-center justify-center text-text-muted text-xs">Loading...</div>}>
+      <Component {...props} />
+    </Suspense>
+  );
 }
 
 function ResizeHandle({ orientation }: { orientation: SplitOrientation }) {
