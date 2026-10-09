@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "check:bundle": "node scripts/check-bundle-budget.mjs",
     "build:cli": "node scripts/build-cli.mjs",
     "test": "vitest run",
     "test:watch": "vitest",

@@ -9,6 +9,10 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- CI now fails if the main entry, three.js or parser-worker chunk grows past a
+  gzipped size budget (`pnpm check:bundle`), and a new stress test pushes 320
+  reads of differently shaped zstd chunks through the shared decoder, so a
+  repeat of the 1.6.4 to 1.6.6 corruption bug is caught before release.
 - The sample bag is now a street run worth playing, built on one shared 3D world
   so every sensor agrees with the others. It has a 16-beam LiDAR cloud with
   intensity, a rendered 320x240 camera view (barrel distortion included, so
