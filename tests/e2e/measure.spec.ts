@@ -18,6 +18,8 @@ test('two clicks measure, a drag does not, Esc clears then turns the tool off', 
   await page.locator(SAMPLE_BUTTON).click();
   await expect(page.locator('header[tabindex="0"] span.badge.badge-slate', { hasText: /^3D Scene$/ })).toBeVisible({ timeout: 60_000 });
 
+  // The scene is covered by a loading overlay until its first cloud has decoded; clicks before that miss the canvas.
+  await expect(page.getByText(/[\d,]+ pts/)).toBeVisible({ timeout: 60_000 });
   const canvas = page.locator('canvas').first();
   await expect(canvas).toBeVisible();
   const box = (await canvas.boundingBox())!;
