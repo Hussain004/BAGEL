@@ -9,6 +9,24 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- The sample bag is now a street run worth playing, built on one shared 3D world
+  so every sensor agrees with the others. It has a 16-beam LiDAR cloud with
+  intensity, a rendered 320x240 camera view (barrel distortion included, so
+  "undistort" works), boxes from a 2D detector for the cars and people in view,
+  a robot state machine (IDLE, EXPLORING, AVOIDING, RETURNING), a battery that
+  falls through 20% near the end, log lines telling the story, a planned route
+  and a particle cloud. "Explore sample data" now opens four panels: the 3D
+  view coloured by intensity with the route and particles over it, the camera
+  with the detections and the LiDAR projected onto it, the state timeline, and
+  the battery plot. The earlier topics (`/odom`, `/imu/data`, `/scan`, `/tf`,
+  `/markers`, `/map`, `/gps/fix`, camera info) are still there, and the 2D scan
+  and the map now come from the same world. The file is 3.7 MB with zstd-
+  compressed chunks. Regenerate it with `node scripts/build-sample-bag.mjs`.
+- The toolbar no longer lets the bag chip overlap the duration, message and
+  topic counts on windows around 1440 px wide: the counts keep their icons and
+  show their labels on wider screens (the label is still a tooltip).
+- The LiDAR projection note in the image panel moved to the panel footer, so it
+  no longer covers the picture.
 - Start page: the page itself is unchanged, but the three ways in are easier to
   find. "Browse files" is a solid button, "Open a folder" sits inside the drop
   zone, "Remote URL" and "Live robot" are side-by-side tabs instead of a
