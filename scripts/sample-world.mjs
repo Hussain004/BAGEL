@@ -227,7 +227,7 @@ export function lidarSweep(pose, frame) {
       if (!hit) continue;
       const r = hit.t + (hash01(frame, b, a) - 0.5) * 0.03;
       const checker = hit.kind === 'ground' ? ((Math.floor(hit.u) + Math.floor(hit.v)) & 1) * 0.12 : 0;
-      pts.push([lx * r, ly * r, lz * r, (INTENSITY[hit.kind] ?? 0.4) + checker]);
+      pts.push([lx * r, ly * r, lz * r, (INTENSITY[hit.kind] ?? 0.4) + checker, b]);
     }
   }
   return pts;

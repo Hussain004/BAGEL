@@ -663,18 +663,24 @@ const frameOf = (timeNs, hz) => Math.round(secondsOf(timeNs) * hz);
 
 function buildPointCloudMessage(timeNs) {
   const pts = lidarSweep(figureEightPose(secondsOf(timeNs)), frameOf(timeNs, POINTS_HZ));
-  const f32 = new Float32Array(pts.length * 4);
-  pts.forEach((p, i) => f32.set(p, i * 4));
+  // x, y, z, intensity as float32, then ring (the beam index) as uint16 plus 2 bytes of padding.
+  const STEP = 20;
+  const data = new Uint8Array(pts.length * STEP);
+  const view = new DataView(data.buffer);
+  pts.forEach((p, i) => {
+    for (let k = 0; k < 4; k++) view.setFloat32(i * STEP + k * 4, p[k], true);
+    view.setUint16(i * STEP + 16, p[4], true);
+  });
   const field = (name, offset) => ({ name, offset, datatype: 7, count: 1 });
   return {
     header: header('lidar_link', timeNs),
     height: 1,
     width: pts.length,
-    fields: [field('x', 0), field('y', 4), field('z', 8), field('intensity', 12)],
+    fields: [field('x', 0), field('y', 4), field('z', 8), field('intensity', 12), { name: 'ring', offset: 16, datatype: 4, count: 1 }],
     is_bigendian: false,
-    point_step: 16,
-    row_step: pts.length * 16,
-    data: new Uint8Array(f32.buffer),
+    point_step: STEP,
+    row_step: pts.length * STEP,
+    data,
     is_dense: true,
   };
 }

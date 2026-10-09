@@ -73,6 +73,10 @@ export interface PointCloudExtraction {
   bounds: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null;
   /** Frame this cloud was published in, from header.frame_id (or undefined). */
   frameId?: string;
+  /** Per-point `intensity` (or `i`) as read from the message, when the cloud has that field. One entry per point. */
+  intensity?: Float32Array;
+  /** Per-point `ring` as read from the message, when the cloud has that field. One entry per point. */
+  ring?: Float32Array;
 }
 
 /** Default cap on points per decode. Lower than the original 500k to keep
@@ -370,12 +374,10 @@ export function decodePointCloud2(
   let minRing = Infinity;
   let maxRing = -Infinity;
 
-  const intensities =
-    colorMode === 'intensity' && intensityReader ? new Float32Array(sampleCount) : null;
-  const rings =
-    colorMode === 'intensity' && !intensityReader && ringReader
-      ? new Float32Array(sampleCount)
-      : null;
+  // Kept for every colour mode (not only 'intensity'): the hover inspector reads
+  // them back per point. Costs one extra read per point and 4 bytes per field.
+  const intensities = intensityReader ? new Float32Array(sampleCount) : null;
+  const rings = ringReader ? new Float32Array(sampleCount) : null;
 
   let validCount = 0;
   if (f32) {
@@ -416,7 +418,8 @@ export function decodePointCloud2(
         intensities[validCount] = v;
         if (v < minIntensity) minIntensity = v;
         if (v > maxIntensity) maxIntensity = v;
-      } else if (rings && ringReader && ringField) {
+      }
+      if (rings && ringReader && ringField) {
         const v = ringReader.read(view, i * pointStep + ringField.offset);
         rings[validCount] = v;
         if (v < minRing) minRing = v;
@@ -470,7 +473,8 @@ export function decodePointCloud2(
         intensities[validCount] = v;
         if (v < minIntensity) minIntensity = v;
         if (v > maxIntensity) maxIntensity = v;
-      } else if (rings && ringReader && ringField) {
+      }
+      if (rings && ringReader && ringField) {
         const v = ringReader.read(view, base + ringField.offset);
         rings[validCount] = v;
         if (v < minRing) minRing = v;
@@ -513,7 +517,7 @@ export function decodePointCloud2(
   } else if (colorMode === 'intensity') {
     if (intensities && Number.isFinite(minIntensity) && maxIntensity > minIntensity) {
       fillColorsByScalar(finalColors, validCount, (i) => intensities[i], minIntensity, maxIntensity);
-    } else if (rings && Number.isFinite(minRing) && maxRing > minRing) {
+    } else if (!intensityReader && rings && Number.isFinite(minRing) && maxRing > minRing) {
       fillColorsByScalar(finalColors, validCount, (i) => rings[i], minRing, maxRing);
     } else {
       // No intensity / ring field - fall back to height, which also needs to
@@ -540,6 +544,8 @@ export function decodePointCloud2(
       max: { x: maxX, y: maxY, z: maxZ },
     },
     frameId: msg.header?.frame_id,
+    intensity: intensities ? (validCount === sampleCount ? intensities : intensities.slice(0, validCount)) : undefined,
+    ring: rings ? (validCount === sampleCount ? rings : rings.slice(0, validCount)) : undefined,
   };
 }
 

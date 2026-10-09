@@ -387,3 +387,92 @@ describe('pointcloud/Turbo colormap helpers', () => {
     expect(negY.max).toBe(2);
   });
 });
+
+describe('per-point intensity and ring (hover inspector)', () => {
+  /** x/y/z plus intensity and ring in a layout chosen by the test; xyz as FLOAT32 or FLOAT64 to hit both decode paths. */
+  function build(
+    pts: Array<{ x: number; y: number; z: number; intensity: number; ring: number }>,
+    opts: { xyz: 'f32' | 'f64'; intensity: 'f32' | 'u8'; ring: 'u16' | 'u8' | 'none'; intensityName?: string },
+  ): PointCloud2Message {
+    const xs = opts.xyz === 'f32' ? 4 : 8;
+    const fields: PointField[] = [];
+    let off = 0;
+    for (const n of ['x', 'y', 'z']) {
+      fields.push({ name: n, offset: off, datatype: opts.xyz === 'f32' ? POINT_FIELD_TYPE.FLOAT32 : POINT_FIELD_TYPE.FLOAT64, count: 1 });
+      off += xs;
+    }
+    const iOff = off;
+    fields.push({ name: opts.intensityName ?? 'intensity', offset: iOff, datatype: opts.intensity === 'f32' ? POINT_FIELD_TYPE.FLOAT32 : POINT_FIELD_TYPE.UINT8, count: 1 });
+    off += opts.intensity === 'f32' ? 4 : 1;
+    const rOff = off;
+    if (opts.ring !== 'none') {
+      fields.push({ name: 'ring', offset: rOff, datatype: opts.ring === 'u16' ? POINT_FIELD_TYPE.UINT16 : POINT_FIELD_TYPE.UINT8, count: 1 });
+      off += opts.ring === 'u16' ? 2 : 1;
+    }
+    const step = Math.ceil(off / 4) * 4;
+    const data = new Uint8Array(pts.length * step);
+    const v = new DataView(data.buffer);
+    pts.forEach((p, i) => {
+      const b = i * step;
+      const w = opts.xyz === 'f32' ? (o: number, x: number) => v.setFloat32(b + o, x, true) : (o: number, x: number) => v.setFloat64(b + o, x, true);
+      w(0, p.x); w(xs, p.y); w(2 * xs, p.z);
+      if (opts.intensity === 'f32') v.setFloat32(b + iOff, p.intensity, true);
+      else v.setUint8(b + iOff, p.intensity);
+      if (opts.ring === 'u16') v.setUint16(b + rOff, p.ring, true);
+      else if (opts.ring === 'u8') v.setUint8(b + rOff, p.ring);
+    });
+    return { header: { frame_id: 'lidar' }, width: pts.length, height: 1, fields, point_step: step, row_step: pts.length * step, data, is_bigendian: false, is_dense: false };
+  }
+
+  const pts = Array.from({ length: 40 }, (_, i) => ({ x: i, y: i * 2, z: 0.5, intensity: (i * 7) % 200, ring: i % 16 }));
+
+  for (const xyz of ['f32', 'f64'] as const) {
+    for (const intensity of ['f32', 'u8'] as const) {
+      for (const ring of ['u16', 'u8', 'none'] as const) {
+        it(`keeps both per point alongside positions (${xyz} xyz, ${intensity} intensity, ${ring} ring)`, () => {
+          const out = decodePointCloud2(build(pts, { xyz, intensity, ring }))!;
+          expect(out.pointCount).toBe(40);
+          expect(out.intensity).toHaveLength(40);
+          for (let i = 0; i < 40; i++) {
+            expect(out.positions[i * 3]).toBe(i);
+            expect(out.intensity![i]).toBe(pts[i]!.intensity);
+            if (ring !== 'none') expect(out.ring![i]).toBe(pts[i]!.ring);
+          }
+          if (ring === 'none') expect(out.ring).toBeUndefined();
+        });
+      }
+    }
+  }
+
+  it('stays aligned with the positions when invalid points are dropped and when sampling strides', () => {
+    const withBad = pts.map((p, i) => (i % 5 === 0 ? { ...p, x: NaN } : p));
+    const out = decodePointCloud2(build(withBad, { xyz: 'f32', intensity: 'u8', ring: 'u8' }))!;
+    expect(out.pointCount).toBe(32);
+    for (let i = 0; i < out.pointCount; i++) {
+      const src = pts[out.positions[i * 3]!]!;
+      expect(out.intensity![i]).toBe(src.intensity);
+      expect(out.ring![i]).toBe(src.ring);
+    }
+    const sampled = decodePointCloud2(build(pts, { xyz: 'f32', intensity: 'u8', ring: 'u8' }), { maxPoints: 10 })!;
+    expect(sampled.pointCount).toBeLessThanOrEqual(10);
+    for (let i = 0; i < sampled.pointCount; i++) {
+      expect(sampled.intensity![i]).toBe(pts[sampled.positions[i * 3]!]!.intensity);
+    }
+  });
+
+  it('accepts the short field name i, and omits both when the cloud has neither', () => {
+    const named = decodePointCloud2(build(pts, { xyz: 'f32', intensity: 'u8', ring: 'none', intensityName: 'i' }))!;
+    expect(named.intensity![3]).toBe(pts[3]!.intensity);
+    expect(decodePointCloud2(buildFloat32Cloud([[1, 2, 3], [4, 5, 6]]))!.intensity).toBeUndefined();
+  });
+
+  it('does not change the colours: intensity mode still shades by intensity, height mode by height', () => {
+    const msg = build(pts, { xyz: 'f32', intensity: 'u8', ring: 'u8' });
+    const byIntensity = decodePointCloud2(msg, { colorMode: 'intensity' })!;
+    const byHeight = decodePointCloud2(msg, { colorMode: 'height' })!;
+    // Point 0 has the lowest intensity, so it must differ from the brightest in intensity mode.
+    const brightest = pts.reduce((m, p, i) => (p.intensity > pts[m]!.intensity ? i : m), 0);
+    expect(Array.from(byIntensity.colors.slice(0, 3))).not.toEqual(Array.from(byIntensity.colors.slice(brightest * 3, brightest * 3 + 3)));
+    expect(byHeight.pointCount).toBe(40);
+  });
+});

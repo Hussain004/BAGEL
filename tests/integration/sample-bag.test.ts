@@ -209,7 +209,7 @@ describeWithSample('integration/tour.mcap - the demo story', () => {
   it('the point cloud has xyz plus intensity and thousands of points per sweep', async () => {
     const [first] = await messages('/lidar/points', 1);
     const cloud = first!.value as { fields: Array<{ name: string }>; width: number; point_step: number; data: Uint8Array; header: { frame_id: string } };
-    expect(cloud.fields.map((f) => f.name)).toEqual(['x', 'y', 'z', 'intensity']);
+    expect(cloud.fields.map((f) => f.name)).toEqual(['x', 'y', 'z', 'intensity', 'ring']);
     expect(cloud.header.frame_id).toBe('lidar_link');
     expect(cloud.width).toBeGreaterThan(1500);
     expect(cloud.data.byteLength).toBe(cloud.width * cloud.point_step);
