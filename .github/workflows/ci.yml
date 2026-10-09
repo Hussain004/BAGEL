@@ -104,3 +104,7 @@ jobs:
           name: playwright-traces
           path: test-results/
           retention-days: 7
+
+      # The e2e run above built dist/, so the size check needs no second build.
+      - name: Bundle budget
+        run: pnpm check:bundle
