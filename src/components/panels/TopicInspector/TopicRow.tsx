@@ -120,6 +120,9 @@ export function TopicRow({ topic, index, bagId }: TopicRowProps) {
       }
       onClick={() => handleOpen(defaultKind)}
       onKeyDown={(e) => {
+        // Keys pressed on the inline buttons belong to those buttons; handling
+        // them here would cancel the button's own click and open the default panel.
+        if (e.target !== e.currentTarget) return;
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           handleOpen(defaultKind);

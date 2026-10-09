@@ -9,6 +9,11 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Fixed: with the keyboard, pressing Enter or Space on a topic row's pin or
+  panel buttons opened the row's default panel instead of using that button.
+  There are now component tests (jsdom and Testing Library, in files that start
+  with `// @vitest-environment jsdom`) for the dialog focus trap and Escape
+  handling, the Escape layering hook, and topic row keyboard handling.
 - CI now fails if the main entry, three.js or parser-worker chunk grows past a
   gzipped size budget (`pnpm check:bundle`), and a new stress test pushes 320
   reads of differently shaped zstd chunks through the shared decoder, so a

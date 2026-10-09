@@ -19,9 +19,11 @@
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
+  // Component tests (*.test.tsx) use the same automatic JSX runtime as the app.
+  esbuild: { jsx: 'automatic' },
   test: {
     environment: 'node',
-    include: ['tests/**/*.test.ts'],
+    include: ['tests/**/*.test.{ts,tsx}'],
     // `tests/e2e` is Playwright, not Vitest, and runs in a real browser
     // against a built bundle. Excluded explicitly so `pnpm test` never tries
     // to collect a spec that needs `page`, `expect` from Playwright, and a
