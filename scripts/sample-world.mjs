@@ -34,6 +34,14 @@ export function figureEightPose(t) {
 // ── Sensor mounts in base_link (x forward, y left, z up) ────────────────
 export const LIDAR_MOUNT = { x: 0.0, y: 0.0, z: 0.95 };
 export const CAMERA_MOUNT = { x: 0.3, y: 0.0, z: 0.75 };
+/**
+ * Rotation from each camera's optical frame (x right, y down, z forward) to
+ * base_link, as quaternions. Front looks along +x, rear along -x.
+ */
+export const OPTICAL_QUAT = {
+  front: { x: -0.5, y: 0.5, z: -0.5, w: 0.5 },
+  rear: { x: -0.5, y: -0.5, z: 0.5, w: 0.5 },
+};
 
 // ── The world ───────────────────────────────────────────────────────────
 /** Mode timeline the robot's state machine follows; also decides where pedestrians stand. */
@@ -50,12 +58,33 @@ function box(label, cx, cy, sx, sy, h, color) {
   return { label, min: [cx - sx / 2, cy - sy / 2, 0], max: [cx + sx / 2, cy + sy / 2, h], color };
 }
 
-/** A person standing 3 m ahead of the robot and 1.2 m to its left at time t, so it is passed, never run over. */
+/** Smallest distance from (x, y) to the route over the whole run. */
+function distanceToRoute(x, y) {
+  let best = Infinity;
+  for (let t = 0; t <= 30; t += 0.1) {
+    const p = figureEightPose(t);
+    best = Math.min(best, Math.hypot(p.x - x, p.y - y));
+  }
+  return best;
+}
+
+/**
+ * A person standing about 3 m ahead of the robot at time t, off to one side so
+ * the robot passes it. The route doubles back on itself, so the side is chosen
+ * by checking the person is well clear of every part of the route.
+ */
 function pedestrianBeside(t) {
   const p = figureEightPose(t);
   const fx = Math.cos(p.yaw);
   const fy = Math.sin(p.yaw);
-  return box('person', p.x + 3 * fx - 1.2 * fy, p.y + 3 * fy + 1.2 * fx, 0.5, 0.5, 1.75, [236, 120, 34]);
+  for (const lateral of [1.4, -1.4, 1.8, -1.8, 2.2, -2.2]) {
+    for (const ahead of [3, 3.5, 2.5]) {
+      const x = p.x + ahead * fx - lateral * fy;
+      const y = p.y + ahead * fy + lateral * fx;
+      if (distanceToRoute(x, y) > 1.0) return box('person', x, y, 0.5, 0.5, 1.75, [236, 120, 34]);
+    }
+  }
+  throw new Error(`no clear spot for a pedestrian near t=${t}`);
 }
 
 function buildWorld() {
@@ -158,13 +187,13 @@ export function castRay(o, d, maxRange = Infinity) {
 
 // ── Pose helpers ────────────────────────────────────────────────────────
 /** Rotate a base_link vector into the odom frame. */
-function toWorldDir(yaw, x, y, z) {
+export function toWorldDir(yaw, x, y, z) {
   const c = Math.cos(yaw);
   const s = Math.sin(yaw);
   return [x * c - y * s, x * s + y * c, z];
 }
 
-function mountWorld(pose, mount) {
+export function mountWorld(pose, mount) {
   const c = Math.cos(pose.yaw);
   const s = Math.sin(pose.yaw);
   return [pose.x + mount.x * c - mount.y * s, pose.y + mount.x * s + mount.y * c, mount.z];
@@ -175,7 +204,7 @@ const BEAMS = 16;
 const AZIMUTHS = 125;
 const EL_MIN = (-22 * Math.PI) / 180;
 const EL_MAX = (8 * Math.PI) / 180;
-export const LIDAR_MAX_RANGE = 30;
+export const LIDAR_MAX_RANGE = 20;
 
 const INTENSITY = { ground: 0.2, building: 0.5, car: 0.95, person: 0.78, cone: 1.0 };
 
@@ -205,7 +234,7 @@ export function lidarSweep(pose, frame) {
 }
 
 // ── Camera ──────────────────────────────────────────────────────────────
-export const CAM = { w: 192, h: 144, fx: 150, fy: 150, cx: 96, cy: 72, d: [-0.12, 0.02, 0, 0, 0] };
+export const CAM = { w: 320, h: 240, fx: 250, fy: 250, cx: 160, cy: 120, d: [-0.12, 0.02, 0, 0, 0] };
 
 /** Optical (x right, y down, z forward) direction to base_link, then to the world. */
 function cameraDir(yaw, xo, yo) {

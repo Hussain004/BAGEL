@@ -153,7 +153,7 @@ test('points are carried through TF and land on the computed pixels', async ({ p
   await page.getByLabel('Project point cloud topic').selectOption('/lidar');
 
   await expect(page.getByTestId('cloud-projection-status')).toContainText('2 of 3 points', { timeout: 30_000 });
-  await expect(page.getByTestId('cloud-projection-status')).toContainText('lidar → cam');
+  await expect(page.getByTestId('cloud-projection-status')).toHaveAttribute('title', 'lidar to cam');
 
   // lidar x is shifted +0.5 into the camera frame: (0,0,5) -> u = 100 * 0.5/5 + 80 = 90, v = 60.
   expect(await alphaAt(page, 90, 60)).toBeGreaterThan(0);

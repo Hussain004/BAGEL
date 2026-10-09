@@ -5,6 +5,9 @@ import { useLiveStore } from '../../store/liveStore';
 import { useLayoutStore, panelLeafId } from '../../store/layoutStore';
 import { usePlayheadStore } from '../../store/playheadStore';
 import { useUiStore } from '../../store/uiStore';
+import { useImagePanelStore } from '../../store/panelUiStores';
+import { useThreeDPanelStore } from '../../store/threeDPanelStore';
+import { overlayKey } from '../panels/ThreeDScene/spatialOverlayTopics';
 import { CopyErrorButton } from '../panels/shared/CopyErrorButton';
 import { DATASET_HOSTING_DOC_URL } from '../../utils/actionableError';
 import { BrandLockup } from './Brand';
@@ -261,12 +264,23 @@ function NarrowViewportNotice() {
 
 function applyCuratedSampleLayout(): void {
   const layout = useLayoutStore.getState();
-  layout.openPanel({ kind: '3d', topicName: '/scan', type: 'sensor_msgs/msg/LaserScan' });
+  layout.openPanel({ kind: '3d', topicName: '/lidar/points', type: 'sensor_msgs/msg/PointCloud2' });
   layout.openPanel({ kind: 'image', topicName: '/camera/image_raw', type: 'sensor_msgs/msg/Image' });
-  layout.openPanel({ kind: 'plot', topicName: '/imu/data', type: 'sensor_msgs/msg/Imu' });
+  layout.openPanel({ kind: 'state', topicName: '/robot/mode', type: 'std_msgs/msg/String' });
   const imageId = panelLeafId('image', '/camera/image_raw');
-  const plotId = panelLeafId('plot', '/imu/data');
-  layout.dockPanel(plotId, imageId, 'bottom');
+  const stateId = panelLeafId('state', '/robot/mode');
+  layout.dockPanel(stateId, imageId, 'bottom');
+
+  // Make the demo show off what is in the bag rather than leaving it to be discovered:
+  // detection boxes and the LiDAR projected onto the camera image, colour by
+  // intensity, and the planned route and particle cloud over the 3D view.
+  useImagePanelStore.getState().update(imageId, { detectionTopic: '/detections', cloudTopic: '/lidar/points' });
+  const bagId = useBagStore.getState().focusBagId ?? 'b1';
+  useThreeDPanelStore.getState().update(panelLeafId('3d', '/lidar/points'), {
+    colorMode: 'intensity',
+    spatialOverlayTopics: [overlayKey(bagId, '/plan'), overlayKey(bagId, '/particles')],
+  });
+
   const playhead = usePlayheadStore.getState();
   playhead.seek(playhead.startNs + 3_000_000_000n);
   playhead.setPlaying(true);

@@ -8,7 +8,7 @@
  * what the robot has scanned.
  *
  *   /lidar/points (PointCloud2)       4 Hz, 16-beam sweep with intensity
- *   /camera/image_raw (Image)         2 Hz, 192x144 rendered view with barrel
+ *   /camera/image_raw (Image)         2 Hz, 320x240 rendered view with barrel
  *                                     distortion baked in ("undistort" works)
  *   /camera/camera_info (CameraInfo)  auto-pairs with the image; K, D, frame
  *   /detections (Detection2DArray)    2 Hz, boxes for cars and people
@@ -26,6 +26,7 @@
  *
  * Run:    node scripts/build-sample-bag.mjs
  * Output: public/sample-bags/tour.mcap  (zstd-compressed chunks)
+ */
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -41,12 +42,17 @@ import {
   CAM,
   CAMERA_MOUNT,
   LIDAR_MOUNT,
+  castRay,
   MODES,
+  OPTICAL_QUAT,
   detect,
   figureEightPose,
+  hash01,
   lidarSweep,
+  mountWorld,
   occupiedAt,
   renderCamera,
+  toWorldDir,
 } from './sample-world.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -295,19 +301,23 @@ function buildImuMessage(timeNs) {
   };
 }
 
+// The 2D scanner sits low on the robot and sees the same boxes as everything else.
+const SCAN_MOUNT = { x: 0.2, y: 0, z: 0.3 };
+const SCAN_RANGE_MAX = 12;
+
 function buildScanMessage(timeNs) {
   const t = Number(timeNs - START_TIME_NS) / 1e9;
+  const pose = figureEightPose(t);
+  const origin = mountWorld(pose, SCAN_MOUNT);
   const N = 360;
   const ranges = new Array(N);
+  const intensities = new Array(N);
   for (let i = 0; i < N; i++) {
     const angle = (i / N) * Math.PI * 2;
-    // A pulsing rectangular "room" plus a moving dot - gives the 3D panel
-    // something visually obvious to look at while scrubbing.
-    const baseRoom = 3.0 + 0.5 * Math.cos(2 * angle);
-    const wobble = 0.1 * Math.sin(t * 1.5 + angle * 3);
-    ranges[i] = baseRoom + wobble;
+    const hit = castRay(origin, toWorldDir(pose.yaw, Math.cos(angle), Math.sin(angle), 0), SCAN_RANGE_MAX);
+    ranges[i] = hit ? hit.t : Infinity;
+    intensities[i] = hit ? 100 : 0;
   }
-  const intensities = new Array(N).fill(100);
   return {
     header: header('laser', timeNs),
     angle_min: 0,
@@ -316,7 +326,7 @@ function buildScanMessage(timeNs) {
     time_increment: 0,
     scan_time: 1.0 / SCAN_HZ,
     range_min: 0.1,
-    range_max: 10.0,
+    range_max: SCAN_RANGE_MAX,
     ranges,
     intensities,
   };
@@ -325,50 +335,24 @@ function buildScanMessage(timeNs) {
 function buildTfMessage(timeNs) {
   const t = Number(timeNs - START_TIME_NS) / 1e9;
   const { x, y, yaw } = figureEightPose(t);
+  const still = { x: 0, y: 0, z: 0, w: 1 };
+  const tf = (parent, child, translation, rotation = still) => ({
+    header: header(parent, timeNs),
+    child_frame_id: child,
+    transform: { translation, rotation },
+  });
   return {
     transforms: [
-      {
-        header: header('odom', timeNs),
-        child_frame_id: 'base_link',
-        transform: {
-          translation: { x, y, z: 0 },
-          rotation: quatFromYaw(yaw),
-        },
-      },
-      {
-        header: header('base_link', timeNs),
-        child_frame_id: 'laser',
-        transform: {
-          translation: { x: 0.2, y: 0, z: 0.3 },
-          rotation: { x: 0, y: 0, z: 0, w: 1 },
-        },
-      },
-      {
-        header: header('base_link', timeNs),
-        child_frame_id: 'imu_link',
-        transform: {
-          translation: { x: 0, y: 0, z: 0.1 },
-          rotation: { x: 0, y: 0, z: 0, w: 1 },
-        },
-      },
-      {
-        header: header('base_link', timeNs),
-        child_frame_id: 'camera_optical_link',
-        transform: {
-          // Ry(+90): camera z points forward (+x in base_link).
-          translation: { x: 0.35, y: 0, z: 0.25 },
-          rotation: { x: 0, y: 0.7071, z: 0, w: 0.7071 },
-        },
-      },
-      {
-        header: header('base_link', timeNs),
-        child_frame_id: 'camera_rear_optical_link',
-        transform: {
-          // Ry(-90): camera z points backward (-x in base_link).
-          translation: { x: -0.28, y: 0, z: 0.25 },
-          rotation: { x: 0, y: -0.7071, z: 0, w: 0.7071 },
-        },
-      },
+      // map is the fixed world; odom coincides with it in this demo.
+      tf('map', 'odom', { x: 0, y: 0, z: 0 }),
+      tf('odom', 'base_link', { x, y, z: 0 }, quatFromYaw(yaw)),
+      tf('base_link', 'laser', SCAN_MOUNT),
+      tf('base_link', 'imu_link', { x: 0, y: 0, z: 0.1 }),
+      tf('base_link', 'lidar_link', LIDAR_MOUNT),
+      // Optical frames: x right, y down, z forward. Forward is +x in base_link.
+      tf('base_link', 'camera_optical_link', CAMERA_MOUNT, OPTICAL_QUAT.front),
+      // The rear camera looks backwards (-x).
+      tf('base_link', 'camera_rear_optical_link', { x: -0.28, y: 0, z: 0.75 }, OPTICAL_QUAT.rear),
     ],
   };
 }
@@ -547,44 +531,19 @@ function buildMarkerArrayMessage(timeNs) {
 function buildOccupancyGridMessage(timeNs) {
   const t = Number(timeNs - START_TIME_NS) / 1e9;
   const { x: robotX, y: robotY } = figureEightPose(t);
-  // Reveal a generous radius that fully covers the map by the end of the bag.
-  const exploredRadius = 1.5 + (t / DURATION_SEC) * 9.0;
+  // Reveal outwards from the robot as the run goes on.
+  const exploredRadius = 4 + (t / DURATION_SEC) * 20;
   const exploredR2 = exploredRadius * exploredRadius;
 
   const data = new Array(MAP_WIDTH * MAP_HEIGHT);
   for (let row = 0; row < MAP_HEIGHT; row++) {
     for (let col = 0; col < MAP_WIDTH; col++) {
-      const idx = row * MAP_WIDTH + col;
       const worldX = MAP_ORIGIN_X + (col + 0.5) * MAP_RESOLUTION;
       const worldY = MAP_ORIGIN_Y + (row + 0.5) * MAP_RESOLUTION;
       const dx = worldX - robotX;
       const dy = worldY - robotY;
-      // Cells the robot hasn't "seen" yet stay unknown.
-      if (dx * dx + dy * dy > exploredR2) {
-        data[idx] = -1;
-        continue;
-      }
-      // Outer walls of the room (2 cells thick on each edge so they're visible
-      // at the chosen resolution).
-      const onOuterWall =
-        col < 2 || col >= MAP_WIDTH - 2 || row < 2 || row >= MAP_HEIGHT - 2;
-      // Two rectangular pillars in the interior.
-      const inPillarA =
-        col >= 30 && col < 38 && row >= 30 && row < 38;
-      const inPillarB =
-        col >= 65 && col < 72 && row >= 60 && row < 68;
-      // A diagonal corridor wall - exercises the linear-cost ramp.
-      const corridorDist = Math.abs((col - 50) + (row - 50));
-      const onCorridorWall = corridorDist === 25 && col > 50 && row > 30 && row < 70;
-
-      if (onOuterWall || inPillarA || inPillarB) {
-        data[idx] = 100; // fully occupied
-      } else if (onCorridorWall) {
-        // Mid-cost ramp to demonstrate the 1-99 gradient in the renderer.
-        data[idx] = 70;
-      } else {
-        data[idx] = 0; // free
-      }
+      data[row * MAP_WIDTH + col] =
+        dx * dx + dy * dy > exploredR2 ? -1 : occupiedAt(worldX, worldY) ? 100 : 0;
     }
   }
 
@@ -642,6 +601,7 @@ function buildNavSatFixMessage(timeNs) {
 // ── Camera message builders (v1.3.4) ────────────────────────────────────
 
 function buildCameraImageMessage(timeNs) {
+  const t = Number(timeNs - START_TIME_NS) / 1e9;
   return {
     header: header('camera_optical_link', timeNs),
     height: CAM_H,
@@ -649,7 +609,7 @@ function buildCameraImageMessage(timeNs) {
     encoding: 'rgb8',
     is_bigendian: 0,
     step: CAM_W * 3,
-    data: Array.from(DISTORTED_GRID),
+    data: renderCamera(figureEightPose(t)),
   };
 }
 
@@ -685,6 +645,159 @@ function buildCameraRearInfoMessage(timeNs) {
   };
 }
 
+// ── The story: lidar, detections, state, battery, logs, plan ─────────────
+const POINTS_HZ = 4;
+const DETECTION_HZ = CAMERA_HZ;
+const MODE_HZ = 2;
+const BATTERY_HZ = 1;
+const PLAN_HZ = 1;
+const PARTICLES_HZ = 2;
+
+const secondsOf = (timeNs) => Number(timeNs - START_TIME_NS) / 1e9;
+const frameOf = (timeNs, hz) => Math.round(secondsOf(timeNs) * hz);
+
+function buildPointCloudMessage(timeNs) {
+  const pts = lidarSweep(figureEightPose(secondsOf(timeNs)), frameOf(timeNs, POINTS_HZ));
+  const f32 = new Float32Array(pts.length * 4);
+  pts.forEach((p, i) => f32.set(p, i * 4));
+  const field = (name, offset) => ({ name, offset, datatype: 7, count: 1 });
+  return {
+    header: header('lidar_link', timeNs),
+    height: 1,
+    width: pts.length,
+    fields: [field('x', 0), field('y', 4), field('z', 8), field('intensity', 12)],
+    is_bigendian: false,
+    point_step: 16,
+    row_step: pts.length * 16,
+    data: new Uint8Array(f32.buffer),
+    is_dense: true,
+  };
+}
+
+function buildDetectionsMessage(timeNs) {
+  const boxes = detect(figureEightPose(secondsOf(timeNs)), frameOf(timeNs, DETECTION_HZ));
+  const zeroPose = {
+    pose: { position: { x: 0, y: 0, z: 0 }, orientation: { x: 0, y: 0, z: 0, w: 1 } },
+    covariance: new Array(36).fill(0),
+  };
+  return {
+    header: header('camera_optical_link', timeNs),
+    detections: boxes.map((b) => ({
+      header: header('camera_optical_link', timeNs),
+      results: [{ hypothesis: { class_id: b.cls, score: b.score }, pose: zeroPose }],
+      bbox: { center: { position: { x: b.cx, y: b.cy }, theta: 0 }, size_x: b.w, size_y: b.h },
+      id: '',
+    })),
+  };
+}
+
+function modeAt(t) {
+  return (MODES.find((m) => t >= m.from && t < m.to) ?? MODES[MODES.length - 1]).name;
+}
+
+function buildModeMessage(timeNs) {
+  return { data: modeAt(secondsOf(timeNs)) };
+}
+
+// Battery drains from 90% to 12% over the run, crossing 20% near the end.
+const batteryAt = (t) => 0.9 - (0.78 * t) / DURATION_SEC;
+const BATTERY_LOW_T = ((0.9 - 0.2) / 0.78) * DURATION_SEC;
+
+function buildBatteryMessage(timeNs) {
+  const t = secondsOf(timeNs);
+  const pct = batteryAt(t);
+  return {
+    header: header('base_link', timeNs),
+    voltage: 21.0 + 4.2 * pct,
+    temperature: 31 + 0.08 * t,
+    current: -3.2 - 0.4 * Math.sin(t * 0.9),
+    charge: 20 * pct,
+    capacity: 20,
+    design_capacity: 20,
+    percentage: pct,
+    power_supply_status: 2, // discharging
+    power_supply_health: 1, // good
+    power_supply_technology: 3, // Li-ion
+    present: true,
+    cell_voltage: [],
+    cell_temperature: [],
+    location: 'base',
+    serial_number: '',
+  };
+}
+
+// Log lines tell the story of the run; times match MODES and the battery curve.
+const LOG_LEVEL = { INFO: 20, WARN: 30, ERROR: 40 };
+const LOG_LINES = [
+  [0.4, 'INFO', 'bagel_demo', 'Node started, map and costmaps loaded'],
+  [2.0, 'INFO', 'mode_manager', 'Mode IDLE -> EXPLORING'],
+  [6.0, 'INFO', 'localization', 'Pose converged, covariance 0.04 m'],
+  [11.9, 'WARN', 'perception', 'Person detected 3.1 m ahead, slowing down'],
+  [12.0, 'INFO', 'mode_manager', 'Mode EXPLORING -> AVOIDING'],
+  [14.5, 'INFO', 'mode_manager', 'Path clear, mode AVOIDING -> EXPLORING'],
+  [18.0, 'INFO', 'planner', 'Waypoint 3 of 5 reached'],
+  [21.4, 'WARN', 'perception', 'Person detected 3.0 m ahead, slowing down'],
+  [21.5, 'INFO', 'mode_manager', 'Mode EXPLORING -> AVOIDING'],
+  [23.5, 'INFO', 'mode_manager', 'Mode AVOIDING -> RETURNING, heading to the dock'],
+  [BATTERY_LOW_T, 'WARN', 'power', 'Battery at 20%, returning is now a priority'],
+  [28.0, 'ERROR', 'docking', 'Dock beacon not visible, falling back to odometry'],
+];
+
+function buildLogMessage(timeNs) {
+  const t = secondsOf(timeNs);
+  const line = LOG_LINES.reduce((best, l) => (Math.abs(l[0] - t) < Math.abs(best[0] - t) ? l : best));
+  return {
+    stamp: header('', timeNs).stamp,
+    level: LOG_LEVEL[line[1]],
+    name: line[2],
+    msg: line[3],
+    file: `${line[2]}.cpp`,
+    function: 'tick',
+    line: 100 + Math.round(line[0]),
+  };
+}
+
+function poseStamped(timeNs, x, y, yaw) {
+  return {
+    header: header('odom', timeNs),
+    pose: { position: { x, y, z: 0 }, orientation: quatFromYaw(yaw) },
+  };
+}
+
+// The route ahead: the next 12 seconds of the figure eight, 0.5 s apart.
+function buildPlanMessage(timeNs) {
+  const t = secondsOf(timeNs);
+  const poses = [];
+  for (let k = 0; k <= 24; k++) {
+    const p = figureEightPose(t + k * 0.5);
+    poses.push(poseStamped(timeNs, p.x, p.y, p.yaw));
+  }
+  return { header: header('odom', timeNs), poses };
+}
+
+// A localisation particle cloud around the robot, tightening as the run goes on.
+function buildParticlesMessage(timeNs) {
+  const t = secondsOf(timeNs);
+  const frame = frameOf(timeNs, PARTICLES_HZ);
+  const p = figureEightPose(t);
+  const spread = 0.5 * Math.exp(-t / 9) + 0.08;
+  const poses = [];
+  for (let i = 0; i < 40; i++) {
+    const gx = hashSigned(frame, i, 1) * spread;
+    const gy = hashSigned(frame, i, 2) * spread;
+    const gyaw = hashSigned(frame, i, 3) * spread * 0.8;
+    poses.push({
+      position: { x: p.x + gx, y: p.y + gy, z: 0 },
+      orientation: quatFromYaw(p.yaw + gyaw),
+    });
+  }
+  return { header: header('odom', timeNs), poses };
+}
+
+function hashSigned(a, b, c) {
+  return hash01(a, b, c) * 2 - 1;
+}
+
 // ── Drive the writer ────────────────────────────────────────────────────
 async function main() {
   const writable = makeMemoryWritable();
@@ -695,6 +808,8 @@ async function main() {
     useChunkIndex: true,
     useMessageIndex: true,
     useSummaryOffsets: true,
+    // Rendered frames and point clouds shrink a lot; BAGEL reads zstd chunks.
+    compressChunk: (chunkData) => ({ compression: 'zstd', compressedData: zstdCompressSync(chunkData) }),
   });
 
   await writer.start({ profile: 'ros2', library: 'bagel-sample-bag-generator' });
@@ -760,6 +875,13 @@ async function main() {
       hz: GPS_HZ,
       build: buildCameraRearInfoMessage,
     },
+    { topic: '/lidar/points', type: 'sensor_msgs/msg/PointCloud2', hz: POINTS_HZ, build: buildPointCloudMessage },
+    { topic: '/detections', type: 'vision_msgs/msg/Detection2DArray', hz: DETECTION_HZ, build: buildDetectionsMessage },
+    { topic: '/robot/mode', type: 'std_msgs/msg/String', hz: MODE_HZ, build: buildModeMessage },
+    { topic: '/battery', type: 'sensor_msgs/msg/BatteryState', hz: BATTERY_HZ, build: buildBatteryMessage },
+    { topic: '/rosout', type: 'rcl_interfaces/msg/Log', times: LOG_LINES.map((l) => l[0]), build: buildLogMessage },
+    { topic: '/plan', type: 'nav_msgs/msg/Path', hz: PLAN_HZ, build: buildPlanMessage },
+    { topic: '/particles', type: 'geometry_msgs/msg/PoseArray', hz: PARTICLES_HZ, build: buildParticlesMessage },
   ];
 
   // Register schemas + channels and stash encoders.
@@ -785,6 +907,10 @@ async function main() {
   // a float then round to integer ns - BigInt(0.5) throws.
   const events = [];
   for (const ch of channels) {
+    if (ch.times) {
+      for (const sec of ch.times) events.push({ ch, t: START_TIME_NS + BigInt(Math.round(sec * 1e9)) });
+      continue;
+    }
     const periodNs = BigInt(Math.round(1_000_000_000 / ch.hz));
     const count = Math.max(1, Math.floor(ch.hz * DURATION_SEC));
     for (let i = 0; i < count; i++) {

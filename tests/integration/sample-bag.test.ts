@@ -157,9 +157,9 @@ describeWithSample('integration/tour.mcap - message reads', () => {
     const decoded = await readDeserializedMessages(source, summary.format, '/map', 1);
     expect(decoded.length).toBeGreaterThan(0);
     const first = decoded[0].value as { info: { width: number; height: number; resolution: number } };
-    expect(first.info.width).toBe(100);
-    expect(first.info.height).toBe(100);
-    expect(first.info.resolution).toBeCloseTo(0.1, 3);
+    expect(first.info.width).toBe(200);
+    expect(first.info.height).toBe(200);
+    expect(first.info.resolution).toBeCloseTo(0.2, 3);
   });
 
   it('decodes a NavSatFix anchored around the configured lat/lon', async () => {
@@ -183,5 +183,75 @@ describeWithSample('integration/tour.mcap - error handling', () => {
     for (let i = 0; i < garbage.length; i++) garbage[i] = i;
     const source = createFileSource(new File([garbage], 'mystery.unknown'));
     await expect(parseBag(source)).rejects.toThrow(/Unsupported file format/);
+  });
+});
+
+describeWithSample('integration/tour.mcap - the demo story', () => {
+  async function messages(topic: string, limit = 100000) {
+    const source = sampleSource();
+    const summary = await parseBag(source);
+    return readDeserializedMessages(source, summary.format, topic, limit);
+  }
+
+  it('carries the new topics with their types', async () => {
+    const summary = await parseBag(sampleSource());
+    const byName = new Map(summary.topics.map((t) => [t.name, t.type]));
+    expect(byName.get('/lidar/points')).toBe('sensor_msgs/msg/PointCloud2');
+    expect(byName.get('/detections')).toBe('vision_msgs/msg/Detection2DArray');
+    expect(byName.get('/robot/mode')).toBe('std_msgs/msg/String');
+    expect(byName.get('/battery')).toBe('sensor_msgs/msg/BatteryState');
+    expect(byName.get('/rosout')).toBe('rcl_interfaces/msg/Log');
+    expect(byName.get('/plan')).toBe('nav_msgs/msg/Path');
+    expect(byName.get('/particles')).toBe('geometry_msgs/msg/PoseArray');
+  });
+
+  it('the point cloud has xyz plus intensity and thousands of points per sweep', async () => {
+    const [first] = await messages('/lidar/points', 1);
+    const cloud = first!.value as { fields: Array<{ name: string }>; width: number; point_step: number; data: Uint8Array; header: { frame_id: string } };
+    expect(cloud.fields.map((f) => f.name)).toEqual(['x', 'y', 'z', 'intensity']);
+    expect(cloud.header.frame_id).toBe('lidar_link');
+    expect(cloud.width).toBeGreaterThan(1500);
+    expect(cloud.data.byteLength).toBe(cloud.width * cloud.point_step);
+  });
+
+  it('the robot passes through every mode, in order, ending in RETURNING', async () => {
+    const modes = (await messages('/robot/mode')).map((m) => (m.value as { data: string }).data);
+    const runs = modes.filter((m, i) => i === 0 || m !== modes[i - 1]);
+    expect(runs).toEqual(['IDLE', 'EXPLORING', 'AVOIDING', 'EXPLORING', 'AVOIDING', 'RETURNING']);
+  });
+
+  it('the battery falls below 20% exactly once, late in the run, and a warning says so', async () => {
+    const battery = (await messages('/battery')).map((m) => (m.value as { percentage: number }).percentage);
+    const crossings = battery.filter((p, i) => i > 0 && battery[i - 1]! >= 0.2 && p < 0.2);
+    expect(crossings).toHaveLength(1);
+    expect(battery.findIndex((p) => p < 0.2)).toBeGreaterThan(battery.length * 0.8);
+    const logs = (await messages('/rosout')).map((m) => m.value as { level: number; msg: string });
+    expect(logs.some((l) => l.level === 30 && /Battery at 20%/.test(l.msg))).toBe(true);
+    expect(logs.some((l) => l.level === 40)).toBe(true);
+  });
+
+  it('detections are boxes for cars and people with scores, stamped like the image they describe', async () => {
+    const dets = await messages('/detections');
+    const images = await messages('/camera/image_raw');
+    const all = dets.flatMap((d) => (d.value as { detections: Array<{ results: Array<{ hypothesis: { class_id: string; score: number } }>; bbox: { size_x: number; size_y: number } }> }).detections);
+    expect(all.length).toBeGreaterThan(20);
+    const classes = new Set(all.map((d) => d.results[0]!.hypothesis.class_id));
+    expect([...classes].sort()).toEqual(['car', 'person']);
+    for (const d of all) {
+      expect(d.results[0]!.hypothesis.score).toBeGreaterThan(0.5);
+      expect(d.results[0]!.hypothesis.score).toBeLessThanOrEqual(1);
+      expect(d.bbox.size_x).toBeGreaterThan(0);
+    }
+    const stamp = (m: { value: unknown }) => {
+      const s = (m.value as { header: { stamp: { sec: number; nanosec: number } } }).header.stamp;
+      return `${s.sec}.${s.nanosec}`;
+    };
+    expect(dets.map(stamp)).toEqual(images.map(stamp));
+  });
+
+  it('the map is revealed over time: more of it is known at the end than at the start', async () => {
+    const maps = await messages('/map');
+    const known = (m: { value: unknown }) => (m.value as { data: ArrayLike<number> }).data.length - Array.from((m.value as { data: ArrayLike<number> }).data).filter((c) => c === -1).length;
+    expect(known(maps[maps.length - 1]!)).toBeGreaterThan(known(maps[0]!) * 3);
   });
 });

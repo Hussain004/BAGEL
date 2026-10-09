@@ -105,7 +105,7 @@ export function Toolbar() {
 
         <div className="w-px h-6 bg-border flex-shrink-0" />
 
-        <div className="flex items-center gap-1.5 flex-wrap">
+        <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
           {bagOrder.map((id) => {
             const entry = bags.get(id);
             if (!entry) return null;
@@ -142,7 +142,7 @@ export function Toolbar() {
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
             </svg>
-            <span className="hidden lg:inline">Add bag</span>
+            <span className="hidden 2xl:inline">Add bag</span>
           </button>
           <input
             ref={addInputRef}
@@ -158,7 +158,7 @@ export function Toolbar() {
       {/* Center: Stats - focused bag (or aggregate when >1 loaded).
           Hidden on narrow viewports - the data is still available in the
           empty panel-grid summary card. */}
-      <div className="hidden lg:flex items-center gap-6 flex-shrink-0">
+      <div className="hidden lg:flex items-center gap-5 flex-shrink-0">
         {multi ? (
           <MultiBagStats bags={bags} bagOrder={bagOrder} />
         ) : (
@@ -1109,11 +1109,12 @@ function MultiBagStats({
 /** Stat pill for the toolbar */
 function Stat({ label, value, icon }: { label: string; value: string; icon: string }) {
   return (
-    <div className="flex items-center gap-2 text-sm">
+    <div className="flex items-center gap-2 text-sm" title={label}>
       <StatIcon type={icon} />
       <div>
         <span className="text-text-primary font-medium tabular-nums">{value}</span>
-        <span className="text-text-muted ml-1.5">{label}</span>
+        {/* Labels only where there is room; the icon and the tooltip carry the meaning otherwise. */}
+        <span className="text-text-muted ml-1.5 hidden 2xl:inline">{label}</span>
       </div>
     </div>
   );
