@@ -38,6 +38,12 @@ class FakeSocket {
     this.readyState = 1;
     this.emit('message', { data: JSON.stringify({ op: 'serverInfo', name: 'fake', ...info }) });
   }
+  serverSendBinary(bytes: Uint8Array) {
+    this.emit('message', { data: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) });
+  }
+  serverSendText(obj: object) {
+    this.emit('message', { data: JSON.stringify(obj) });
+  }
   drop(code = 1006, reason = 'gone') {
     if (this.readyState === 3) return;
     this.readyState = 3;
@@ -93,7 +99,7 @@ describe('arming control', () => {
     const adv = sock().texts.find((t) => t.op === 'advertise') as { channels: Array<Record<string, unknown>> };
     expect(adv.channels).toHaveLength(1);
     expect(adv.channels[0]).toMatchObject({ id: 1, topic: '/cmd_vel', encoding: 'cdr', schemaName: 'geometry_msgs/msg/Twist', schemaEncoding: 'ros2msg' });
-    expect(view()).toEqual({ enabled: true, sendFailed: false });
+    expect(view()).toEqual({ enabled: true, sendFailed: false, services: [] });
   });
 
   it('refuses, and stays disarmed, when the server does not allow client publishing', () => {
@@ -187,7 +193,7 @@ describe('a dropped connection', () => {
     c.teleop.drive(0.1, 0);
     vi.advanceTimersByTime(2000);
     expect(second.sent).toEqual([]); // nothing, not even an advertise
-    expect(view()).toEqual({ enabled: false, sendFailed: false });
+    expect(view()).toEqual({ enabled: false, sendFailed: false, services: [] });
   });
 
   it('arming again after a reconnect works and advertises on the new socket', () => {
@@ -198,5 +204,134 @@ describe('a dropped connection', () => {
     sock().serverOpen({ capabilities: CAPS, supportedEncodings: ['cdr'] });
     expect(c.enableControl('/cmd_vel', 'Twist')).toBeNull();
     expect(sock().texts.some((t) => t.op === 'advertise')).toBe(true);
+  });
+});
+
+
+// ── Service calls ───────────────────────────────────────────────────────────
+
+const JSON_SERVICES = [
+  { id: 7, name: '/reset_odometry', type: 'std_srvs/srv/Empty', request: { encoding: 'json', schemaEncoding: 'ros2msg', schema: '' }, response: { encoding: 'json', schema: '' } },
+  { id: 8, name: '/set_speed', type: 'demo/srv/SetSpeed', request: { encoding: 'json', schemaEncoding: 'ros2msg', schema: 'float64 speed' }, response: { encoding: 'json', schema: 'bool ok' } },
+];
+
+/** [serviceId, callId, encoding, payload] for each service call the client sent. */
+function calls(s: FakeSocket) {
+  return s.sent.flatMap((f) => {
+    if (!('bytes' in f) || f.bytes[0] !== 2) return [];
+    const v = new DataView(f.bytes.buffer, f.bytes.byteOffset);
+    const n = v.getUint32(9, true);
+    return [[v.getUint32(1, true), v.getUint32(5, true), new TextDecoder().decode(f.bytes.slice(13, 13 + n)), f.bytes.slice(13 + n)] as const];
+  });
+}
+function respond(s: FakeSocket, serviceId: number, callId: number, encoding: string, payload: Uint8Array) {
+  const enc = new TextEncoder().encode(encoding);
+  const out = new Uint8Array(13 + enc.length + payload.length);
+  const v = new DataView(out.buffer);
+  out[0] = 3;
+  v.setUint32(1, serviceId, true);
+  v.setUint32(5, callId, true);
+  v.setUint32(9, enc.length, true);
+  out.set(enc, 13);
+  out.set(payload, 13 + enc.length);
+  s.serverSendBinary(out);
+}
+
+describe('service calls', () => {
+  const withServices = () => {
+    const c = connect({ capabilities: ['clientPublish', 'services'], supportedEncodings: ['json'] });
+    sock().serverSendText({ op: 'advertiseServices', services: JSON_SERVICES });
+    return c;
+  };
+
+  it('lists advertised services in the store, sorted, and drops unadvertised ones', () => {
+    withServices();
+    expect(view()!.services.map((s) => s.name)).toEqual(['/reset_odometry', '/set_speed']);
+    sock().serverSendText({ op: 'unadvertiseServices', serviceIds: [7] });
+    expect(view()!.services.map((s) => s.name)).toEqual(['/set_speed']);
+  });
+
+  it('offers no services when the server lacks the services capability', () => {
+    connect({ capabilities: ['clientPublish'], supportedEncodings: ['json'] });
+    sock().serverSendText({ op: 'advertiseServices', services: JSON_SERVICES });
+    expect(view()!.services).toEqual([]);
+  });
+
+  it('is refused until control is enabled, and sends nothing', async () => {
+    const c = withServices();
+    await expect(c.callService(7, {})).rejects.toThrow(/Enable control/);
+    expect(calls(sock())).toEqual([]);
+  });
+
+  it('sends the request in the service\'s encoding and resolves with the decoded answer', async () => {
+    const c = withServices();
+    c.enableControl('/cmd_vel', 'Twist');
+    const p = c.callService(8, { speed: 0.5 });
+    const [serviceId, callId, encoding, payload] = calls(sock())[0]!;
+    expect([serviceId, encoding]).toEqual([8, 'json']);
+    expect(JSON.parse(new TextDecoder().decode(payload))).toEqual({ speed: 0.5 });
+    respond(sock(), 8, callId, 'json', new TextEncoder().encode('{"ok":true}'));
+    await expect(p).resolves.toEqual({ ok: true });
+  });
+
+  it('gives each call its own id, and answers match their own call out of order', async () => {
+    const c = withServices();
+    c.enableControl('/cmd_vel', 'Twist');
+    const a = c.callService(8, { speed: 1 });
+    const b = c.callService(8, { speed: 2 });
+    const [first, second] = calls(sock());
+    expect(first![1]).not.toBe(second![1]);
+    respond(sock(), 8, second![1], 'json', new TextEncoder().encode('{"ok":"second"}'));
+    respond(sock(), 8, first![1], 'json', new TextEncoder().encode('{"ok":"first"}'));
+    await expect(Promise.all([a, b])).resolves.toEqual([{ ok: 'first' }, { ok: 'second' }]);
+  });
+
+  it('rejects with the server\'s message when the call fails', async () => {
+    const c = withServices();
+    c.enableControl('/cmd_vel', 'Twist');
+    const p = c.callService(7, {});
+    sock().serverSendText({ op: 'serviceCallFailure', serviceId: 7, callId: calls(sock())[0]![1], message: 'no such motor' });
+    await expect(p).rejects.toThrow('no such motor');
+  });
+
+  it('times out with a message that says the call may still have run', async () => {
+    const c = withServices();
+    c.enableControl('/cmd_vel', 'Twist');
+    const p = c.callService(7, {}, 2000);
+    const rejected = expect(p).rejects.toThrow(/may still have run/);
+    vi.advanceTimersByTime(2100);
+    await rejected;
+    respond(sock(), 7, calls(sock())[0]![1], 'json', new TextEncoder().encode('{}')); // a late answer is ignored
+  });
+
+  it('a dropped connection fails calls in flight instead of leaving them hanging', async () => {
+    const c = withServices();
+    c.enableControl('/cmd_vel', 'Twist');
+    const p = c.callService(7, {});
+    const rejected = expect(p).rejects.toThrow(/connection was lost/);
+    sock().drop();
+    await rejected;
+    expect(view()!.services).toEqual([]);
+  });
+
+  it('an answer to a call nobody made is ignored', () => {
+    const c = withServices();
+    c.enableControl('/cmd_vel', 'Twist');
+    expect(() => respond(sock(), 7, 999, 'json', new TextEncoder().encode('{}'))).not.toThrow();
+  });
+
+  it('a service that vanished cannot be called', async () => {
+    const c = withServices();
+    c.enableControl('/cmd_vel', 'Twist');
+    sock().serverSendText({ op: 'unadvertiseServices', serviceIds: [7] });
+    await expect(c.callService(7, {})).rejects.toThrow(/no longer advertised/);
+  });
+
+  it('a request that cannot be encoded rejects without sending', async () => {
+    const c = connect({ capabilities: ['clientPublish', 'services'], supportedEncodings: ['json'] });
+    sock().serverSendText({ op: 'advertiseServices', services: [{ id: 1, name: '/x', type: 'x/X', request: { encoding: 'protobuf', schema: '' }, response: { encoding: 'json', schema: '' } }] });
+    c.enableControl('/cmd_vel', 'Twist');
+    await expect(c.callService(1, {})).rejects.toThrow(/protobuf/);
+    expect(calls(sock())).toEqual([]);
   });
 });

@@ -5,10 +5,14 @@ import { create } from 'zustand';
  * connection's `TeleopController`; this mirrors it so React can render. Cleared
  * with the connection, and always starts disarmed.
  */
+import type { FoxgloveService } from '../live/foxgloveClient';
+
 export interface ControlView {
   enabled: boolean;
   /** The last send did not go out: the robot may not have received a stop. */
   sendFailed: boolean;
+  /** Services the server offers (empty unless it has the services capability). */
+  services: FoxgloveService[];
 }
 
 interface ControlState {
@@ -17,7 +21,7 @@ interface ControlState {
   clear: (bagId: string) => void;
 }
 
-export const DISARMED: ControlView = { enabled: false, sendFailed: false };
+export const DISARMED: ControlView = { enabled: false, sendFailed: false, services: [] };
 
 export const useControlStore = create<ControlState>((set) => ({
   views: new Map(),
