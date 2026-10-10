@@ -256,6 +256,14 @@ export function buildCommands(query = ''): Command[] {
       run: () => useUiStore.getState().setModal('labels'),
     },
     {
+      id: 'action:frames',
+      label: 'Export frames as images',
+      hint: 'a zip of PNG or JPEG files with a CSV of times',
+      group: 'Actions',
+      keywords: ['frames', 'images', 'export', 'dataset', 'training', 'png', 'jpeg', 'pcd'],
+      run: () => useUiStore.getState().openFrameExport(),
+    },
+    {
       id: 'action:labels-csv',
       label: 'Export labels as CSV',
       group: 'Actions',

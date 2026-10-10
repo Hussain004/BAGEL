@@ -19,6 +19,7 @@ import {
   readRawMessages,
   readDeserializedMessages,
   readMessageAtTime,
+  readMessagesInRange,
   readPointCloudAtTime,
   readLaserScanAtTime,
   readVideoChunkRange,
@@ -28,6 +29,7 @@ import {
   readAllMessageStats,
 } from '../parsers/core';
 import type { VideoChunksResult } from '../parsers/video';
+import type { RangeParams, RangeResult } from '../parsers/range';
 import {
   getSupportedTypes,
   setCustomSchemas,
@@ -51,6 +53,7 @@ type Method =
   | 'readRawMessages'
   | 'readDeserializedMessages'
   | 'readMessageAtTime'
+  | 'readMessagesInRange'
   | 'readPointCloudAtTime'
   | 'readLaserScanAtTime'
   | 'readVideoChunkRange'
@@ -86,6 +89,12 @@ interface ReadMessageAtTimeParams {
   format: BagFormat;
   topicName: string;
   timeNs: bigint;
+}
+interface ReadMessagesInRangeParams {
+  source: BagSource;
+  format: BagFormat;
+  topicName: string;
+  range: RangeParams;
 }
 interface ReadPointCloudAtTimeParams {
   source: BagSource;
@@ -162,6 +171,7 @@ type WorkerRequest =
   | BaseRequest<'readRawMessages', ReadRawMessagesParams>
   | BaseRequest<'readDeserializedMessages', ReadDeserializedMessagesParams>
   | BaseRequest<'readMessageAtTime', ReadMessageAtTimeParams>
+  | BaseRequest<'readMessagesInRange', ReadMessagesInRangeParams>
   | BaseRequest<'readPointCloudAtTime', ReadPointCloudAtTimeParams>
   | BaseRequest<'readLaserScanAtTime', ReadLaserScanAtTimeParams>
   | BaseRequest<'readVideoChunkRange', ReadVideoChunkRangeParams>
@@ -291,6 +301,24 @@ ctx.addEventListener('message', async (e: MessageEvent<WorkerRequest>) => {
       case 'readMessageAtTime': {
         const { source, format, topicName, timeNs } = req.params as ReadMessageAtTimeParams;
         respond(await readMessageAtTime(source, format, topicName, timeNs));
+        return;
+      }
+      case 'readMessagesInRange': {
+        const { source, format, topicName, range } = req.params as ReadMessagesInRangeParams;
+        const result: RangeResult = await readMessagesInRange(source, format, topicName, range);
+        // Image and cloud payloads are views into a decompressed chunk that the
+        // parser caches, so hand over standalone copies and transfer those: no
+        // second copy on the way out, and the cached chunk is left intact.
+        const transfer: ArrayBuffer[] = [];
+        for (const m of result.messages) {
+          const data = (m.value as { data?: unknown } | null)?.data;
+          if (data instanceof Uint8Array && data.byteLength > 4096) {
+            const own = data.slice();
+            (m.value as { data: Uint8Array }).data = own;
+            transfer.push(own.buffer as ArrayBuffer);
+          }
+        }
+        respond(result, transfer);
         return;
       }
       case 'readPointCloudAtTime': {

@@ -26,6 +26,7 @@ import type { AxisClip, ColorMode, HeightAxis, PointCloudExtraction } from '../u
 import type { LaserScanExtraction } from '../utils/laserscan';
 import type { BagSource } from '../parsers/source';
 import type { VideoChunksResult } from '../parsers/video';
+import type { RangeParams, RangeResult } from '../parsers/range';
 
 type DecodedMessage = { timestamp: bigint; value: Record<string, unknown> | null };
 type DecodedPointCloud = (PointCloudExtraction & { timestamp: bigint }) | null;
@@ -193,6 +194,15 @@ class ParserClient {
       { source, format, topicName, limit },
       { onProgress, onBatch, streamed: true },
     );
+  }
+
+  readMessagesInRange(
+    source: BagSource,
+    format: BagFormat,
+    topicName: string,
+    range: RangeParams,
+  ): Promise<RangeResult> {
+    return this.request<RangeResult>('readMessagesInRange', { source, format, topicName, range });
   }
 
   readMessageAtTime(

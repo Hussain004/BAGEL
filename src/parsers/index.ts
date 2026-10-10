@@ -26,6 +26,7 @@ import type { AxisClip, ColorMode, HeightAxis, PointCloudExtraction } from '../u
 import type { LaserScanExtraction } from '../utils/laserscan';
 import type { BagSource } from './source';
 import type { VideoChunksResult } from './video';
+import type { RangeParams, RangeResult } from './range';
 
 type DecodedMessage = { timestamp: bigint; value: Record<string, unknown> | null };
 
@@ -83,6 +84,17 @@ export async function readMessageAtTime(
   timeNs: bigint,
 ): Promise<DecodedMessage | null> {
   return getParserClient(bagId).readMessageAtTime(source, format, topicName, timeNs);
+}
+
+/** One bounded batch of a topic's messages between two times (see `range.ts`). */
+export async function readMessagesInRange(
+  bagId: string,
+  source: BagSource,
+  format: BagFormat,
+  topicName: string,
+  range: RangeParams,
+): Promise<RangeResult> {
+  return getParserClient(bagId).readMessagesInRange(source, format, topicName, range);
 }
 
 export async function readPointCloudAtTime(

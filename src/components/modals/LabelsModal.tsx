@@ -61,6 +61,16 @@ export function LabelsModal() {
                   >
                     Go
                   </button>
+                  {a.endNs !== undefined && (
+                    <button
+                      type="button"
+                      onClick={() => useUiStore.getState().openFrameExport(a.id)}
+                      className="px-2 py-1 rounded-md text-xs border border-border text-text-secondary hover:border-accent-blue/40"
+                      title="Export the camera frames in this range as image files with a CSV"
+                    >
+                      Frames
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => remove(a.id)}
@@ -87,6 +97,9 @@ export function LabelsModal() {
               {annotations.length} {annotations.length === 1 ? 'label' : 'labels'}. Times are on the bag's own clock, in nanoseconds.
             </span>
             <div className="flex gap-2">
+              <button type="button" onClick={() => useUiStore.getState().openFrameExport()} className="px-3 py-1.5 rounded-md text-xs border border-border text-text-secondary hover:border-accent-blue/40" title="Export camera frames as image files">
+                Export frames...
+              </button>
               <button type="button" onClick={() => exportLabels('csv')} className="px-3 py-1.5 rounded-md text-xs border border-border text-text-secondary hover:border-accent-blue/40">
                 Export CSV
               </button>

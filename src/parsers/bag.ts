@@ -39,6 +39,7 @@ import Bunzip from 'seek-bzip';
 import * as lz4 from 'lz4js';
 import type { AllTopicStats, BagSummary, RawMessage, TopicInfo } from '../types/bag';
 import { clearRos1ReaderCache, deserializeRos1Message } from './rosbag1';
+import { RangePicker, type RangeParams, type RangeResult } from './range';
 import {
   HttpFilelike,
   sourceDisplayName,
@@ -365,6 +366,47 @@ function rememberDecoded(
     perTopic.delete(oldest);
   }
   return value;
+}
+
+/** One bounded batch of a topic's messages between two times (see `range.ts`). */
+export async function readRangeBag(
+  source: SingleBagSource,
+  topicName: string,
+  params: RangeParams,
+): Promise<RangeResult> {
+  const meta = await loadBag(source);
+  const info = meta.topicMeta.get(topicName);
+  if (!info) return { messages: [], nextStartNs: null, phase: 0 };
+  const schemaText = info.messageDefinition;
+  const cacheKey = `ros1:${topicName}`;
+
+  const picker = new RangePicker(params);
+  const out: RangeResult['messages'] = [];
+  const iterator = meta.bag.messageIterator({
+    topics: [topicName],
+    // The iterator has a start bound only; the loop stops at the end of the range.
+    start: nsToTime(picker.params.startNs),
+  });
+  for await (const event of iterator as AsyncIterable<{
+    topic: string;
+    timestamp: { sec: number; nsec: number };
+    data: Uint8Array;
+  }>) {
+    const ts = timeToNs(event.timestamp);
+    if (ts > picker.params.endNs) break;
+    if (!picker.inRange(ts)) continue;
+    if (picker.offer(ts)) {
+      let value: Record<string, unknown> | null = null;
+      try {
+        value = deserializeRos1Message(schemaText, event.data instanceof Uint8Array ? event.data : new Uint8Array(event.data), cacheKey);
+      } catch {
+        // counted, like everywhere else
+      }
+      out.push({ timestamp: ts, value });
+    }
+    if (picker.done) break;
+  }
+  return picker.finish(out);
 }
 
 export async function readMessageAtTimeBag(

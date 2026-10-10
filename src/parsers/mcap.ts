@@ -22,6 +22,7 @@ import { BlobReadable } from '@mcap/browser';
 import { decompress as fzstdDecompress } from 'fzstd';
 import type { AllTopicStats, BagSummary, RawMessage, TopicInfo } from '../types/bag';
 import { deserializeWithSchema } from './cdr';
+import { RangePicker, rangeFromAll, type RangeParams, type RangeResult } from './range';
 import { deserializeRos1Message } from './rosbag1';
 import { translateFoxgloveMessage } from './foxgloveSchemas';
 import { coalesceAnnexBVideoChunks, hasH264AccessUnitDelimiter, hasH264SequenceParameterSet, isH264VideoFormat, isVideoFormat, isVideoKeyframe, type VideoChunk, type VideoChunksResult } from './video';
@@ -1375,6 +1376,45 @@ export async function readMessageAtTimeMcap(
     }
   }
   return null;
+}
+
+/**
+ * One bounded batch of a topic's messages between two times (see `range.ts`).
+ * Indexed files read only the chunks that overlap the range; the unindexed and
+ * stream fallbacks read the topic and filter, which is slower but correct.
+ */
+export async function readRangeMcap(
+  source: SingleBagSource,
+  topicName: string,
+  params: RangeParams,
+): Promise<RangeResult> {
+  const meta = await loadMcap(source);
+  const topicInfo = meta.topicMeta.get(topicName);
+  const decodeRaw = topicInfo ? makeMessageDecoder(topicInfo) : null;
+  if (!decodeRaw) return { messages: [], nextStartNs: null, phase: 0 };
+  if (!meta.reader) return rangeFromAll(await readDeserializedMessagesMcap(source, topicName), params);
+
+  const picker = new RangePicker(params);
+  const out: RangeResult['messages'] = [];
+  for await (const msg of meta.reader.readMessages({
+    topics: [topicName],
+    startTime: picker.params.startNs,
+    // The reader's end bound may be exclusive; inRange() below is the exact test.
+    endTime: picker.params.endNs + 1n,
+  })) {
+    if (!picker.inRange(msg.logTime)) continue;
+    if (picker.offer(msg.logTime)) {
+      let value: Record<string, unknown> | null = null;
+      try {
+        value = decodeRaw(msg.data);
+      } catch {
+        // an undecodable message still counts, as it does everywhere else
+      }
+      out.push({ timestamp: msg.logTime, value });
+    }
+    if (picker.done) break;
+  }
+  return picker.finish(out);
 }
 
 // ─── Video chunk reader ─────────────────────────────────────────────────────

@@ -8,6 +8,7 @@ import { ClipExportModal } from './ClipExportModal';
 import { ShareModal } from './ShareModal';
 import { CommandPalette } from './CommandPalette';
 import { LabelsModal } from './LabelsModal';
+import { FrameExportModal } from './FrameExportModal';
 
 /**
  * ModalHost - Renders whichever modal the UI store has selected. Mounted once
@@ -32,6 +33,7 @@ export function ModalHost() {
       {modal === 'share' && <ShareModal />}
       {modal === 'command-palette' && <CommandPalette />}
       {modal === 'labels' && <LabelsModal />}
+      {modal === 'frame-export' && <FrameExportModal />}
       {schemaPaste && <SchemaPasteModal />}
     </>
   );
