@@ -12,6 +12,7 @@
 
 import type { AllTopicStats, BagSummary, RawMessage, TopicInfo } from '../types/bag';
 import { deserializeByType } from './cdr';
+import { RangePicker, type RangeParams, type RangeResult } from './range';
 import {
   sourceDisplayName,
   sourceKey,
@@ -338,6 +339,47 @@ export async function readDeserializedMessagesDb3(
     onBatch(out.slice(lastFlushedIndex));
   }
   return out;
+}
+
+/** One bounded batch of a topic's messages between two times (see `range.ts`). */
+export async function readRangeDb3(
+  source: SingleBagSource,
+  topicName: string,
+  params: RangeParams,
+): Promise<RangeResult> {
+  const { db, topicTypeByName } = await loadDb(source);
+  const msgType = topicTypeByName.get(topicName);
+  if (!msgType) return { messages: [], nextStartNs: null, phase: 0 };
+
+  const picker = new RangePicker(params);
+  const stmt = db.prepare(`
+    SELECT m.timestamp, m.data
+    FROM messages m
+    JOIN topics t ON m.topic_id = t.id
+    WHERE t.name = ? AND m.timestamp >= ? AND m.timestamp <= ?
+    ORDER BY m.timestamp ASC
+  `);
+  stmt.bind([topicName, picker.params.startNs, picker.params.endNs] as unknown[]);
+  const out: RangeResult['messages'] = [];
+  try {
+    while (stmt.step()) {
+      const row = stmt.get();
+      const ts = typeof row[0] === 'bigint' ? row[0] : BigInt(row[0] as number);
+      if (picker.offer(ts)) {
+        let value: Record<string, unknown> | null = null;
+        try {
+          value = await deserializeByType(msgType, row[1] as Uint8Array);
+        } catch {
+          // counted, like everywhere else
+        }
+        out.push({ timestamp: ts, value });
+      }
+      if (picker.done) break;
+    }
+  } finally {
+    stmt.free();
+  }
+  return picker.finish(out);
 }
 
 /**

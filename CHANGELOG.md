@@ -9,6 +9,22 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Export frames: turn a stretch of a recording into a dataset. "Export frames"
+  (the Labels list, or `Ctrl/Cmd+K` then "frames") writes the images of one
+  camera topic over the whole bag or one labelled range into a zip, every Nth
+  frame if you like, with a `frames.csv` giving each file's time on the bag's
+  clock, the message's own header stamp and the labels covering it. JPEG and
+  PNG frames are the recorded bytes, untouched; raw images become lossless PNG
+  (BGR is swapped to RGB, 16-bit stays 16-bit, float depth becomes 16-bit
+  millimetres and is noted in the CSV). Optionally each frame is paired with
+  the nearest point cloud from a topic you pick, written as a binary `.pcd`
+  with intensity and ring. It reads the range in small batches so a long bag
+  does not fill memory, can be cancelled, stops at a frame limit you set (or
+  about 2 GB), and says which frames it left out and why.
+- Under it, a range reader (`readMessagesInRange`) for MCAP, ROS 1 and `.db3`
+  files that returns a time range in bounded batches.
+- The point cloud decoder keeps intensity and ring per point (it already did
+  for the hover inspector) and the PCD writer is its inverse.
 - Label ranges on the timeline, and export them. Shift+drag along the timeline
   (or press `[` at the start and `]` at the end) to label a stretch of the bag;
   double-click its start tick to rename it. The new Labels list (the button

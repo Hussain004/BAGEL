@@ -61,6 +61,7 @@ export type ModalKind =
   | 'share'
   | 'command-palette'
   | 'labels'
+  | 'frame-export'
   | null;
 
 /**
@@ -85,6 +86,9 @@ interface UiState {
   setModal: (m: ModalKind) => void;
   /** Active schema-paste modal target, or null when closed. */
   schemaPaste: SchemaPasteTarget | null;
+  /** The labelled range the frame-export dialog opens on, or null for the whole bag. */
+  frameExportLabelId: string | null;
+  openFrameExport: (labelId?: string) => void;
   openSchemaPaste: (target: SchemaPasteTarget) => void;
   closeSchemaPaste: () => void;
   /**
@@ -125,6 +129,8 @@ export const useUiStore = create<UiState>((set) => ({
   modal: null,
   setModal: (modal) => set({ modal }),
   schemaPaste: null,
+  frameExportLabelId: null,
+  openFrameExport: (labelId) => set({ frameExportLabelId: labelId ?? null, modal: 'frame-export' }),
   openSchemaPaste: (target) => set({ schemaPaste: target }),
   closeSchemaPaste: () => set({ schemaPaste: null }),
   showOnboardingHint: false,

@@ -12,6 +12,7 @@ import {
   readRawMessagesMcap,
   readDeserializedMessagesMcap,
   readMessageAtTimeMcap,
+  readRangeMcap,
   getTopicTypeMcap,
   disposeMcapCache,
   readAllMessageStatsMcap,
@@ -24,6 +25,7 @@ import {
   readRawMessagesDb3,
   readDeserializedMessagesDb3,
   readMessageAtTimeDb3,
+  readRangeDb3,
   getTopicTypeDb3,
   disposeDb3Cache,
   readAllMessageStatsDb3,
@@ -33,6 +35,7 @@ import {
   readRawMessagesBag,
   readDeserializedMessagesBag,
   readMessageAtTimeBag,
+  readRangeBag,
   getTopicTypeBag,
   disposeBagCache,
   readAllMessageStatsBag,
@@ -64,6 +67,7 @@ import { decodeLaserScan, type LaserScanExtraction, type LaserScanMessage } from
 import { decodeCustomCloud, looksLikeCustomCloud } from '../utils/customCloud';
 import { clearDefinitionCaches } from './typeRegistry';
 import * as multi from './multi';
+import { rangeFromAll, type RangeParams, type RangeResult } from './range';
 
 const MCAP_MAGIC = [0x89, 0x4d, 0x43, 0x41, 0x50, 0x30, 0x0d, 0x0a];
 const SQLITE_MAGIC = [0x53, 0x51, 0x4c, 0x69, 0x74, 0x65];
@@ -185,6 +189,26 @@ export async function readMessageAtTime(
   if (format === 'mcap') return readMessageAtTimeMcap(source, topicName, timeNs);
   if (format === 'bag') return readMessageAtTimeBag(source, topicName, timeNs);
   return readMessageAtTimeDb3(source, topicName, timeNs);
+}
+
+/**
+ * One bounded batch of a topic's messages between two times, taking every
+ * `stride`-th (see `range.ts`). The way to walk a long range of a heavy topic
+ * (images, clouds) without holding all of it at once.
+ */
+export async function readMessagesInRange(
+  source: BagSource,
+  format: BagFormat,
+  topicName: string,
+  params: RangeParams,
+): Promise<RangeResult> {
+  if (source.kind === 'multi') {
+    return rangeFromAll(await multi.readDeserializedMessagesMulti(source, format, topicName), params);
+  }
+  if (format === 'pcd' || format === 'ply' || format === 'splat') return { messages: [], nextStartNs: null, phase: 0 };
+  if (format === 'mcap') return readRangeMcap(source, topicName, params);
+  if (format === 'bag') return readRangeBag(source, topicName, params);
+  return readRangeDb3(source, topicName, params);
 }
 
 export async function getTopicType(
