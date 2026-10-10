@@ -33,6 +33,8 @@ export const SHORTCUTS: ShortcutDescription[] = [
   { keys: 'Home  End', description: 'Jump to bag start / end', group: 'Playback' },
   { keys: 'L', description: 'Toggle loop playback', group: 'Playback' },
   { keys: 'M', description: 'Add timeline bookmark at playhead', group: 'Playback' },
+  { keys: '[  ]', description: 'Mark the start, then the end, of a labelled range at the playhead', group: 'Playback' },
+  { keys: 'Shift + drag', description: 'Drag along the timeline to label a range', group: 'Playback' },
   { keys: 'T', description: 'Focus the topic search box', group: 'Navigation' },
   { keys: 'Esc', description: 'Restore a maximized panel, or close the most recently opened one', group: 'Panels' },
   { keys: 'Shift + Esc', description: 'Close every open panel', group: 'Panels' },
@@ -177,6 +179,23 @@ export function useKeyboardShortcuts(): void {
         const ann = useAnnotationStore.getState();
         const count = ann.annotations.length + 1;
         ann.addAnnotation(timeNs, `Mark ${count}`);
+        return;
+      }
+
+      // [ and ] mark the start and end of a labelled range at the playhead, the
+      // keyboard route to the same thing shift+drag does on the timeline.
+      if (e.key === '[' || e.key === ']') {
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        e.preventDefault();
+        const { timeNs } = usePlayheadStore.getState();
+        const ann = useAnnotationStore.getState();
+        if (e.key === '[') {
+          ann.setPendingRangeStart(timeNs);
+        } else if (ann.pendingRangeStartNs !== null) {
+          const count = ann.annotations.length + 1;
+          ann.addRange(ann.pendingRangeStartNs, timeNs, `Range ${count}`);
+          ann.setPendingRangeStart(null);
+        }
         return;
       }
 

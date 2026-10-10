@@ -3,10 +3,16 @@ import type { AutoMark } from '../utils/anomalies';
 
 export interface Annotation {
   id: string;
-  /** Aligned playhead time (ns). Aligned means same coordinate space as playheadStore.timeNs. */
+  /** Aligned playhead time (ns). Aligned means same coordinate space as playheadStore.timeNs. For a range, where it starts. */
   timeNs: bigint;
   label: string;
+  /** Aligned end of a labelled range (ns, after `timeNs`). Absent for a plain bookmark. */
+  endNs?: bigint;
+  /** Free text kept with the label. Stored locally and exported, never put in a shared link. */
+  note?: string;
 }
+
+export const isRange = (a: Annotation): a is Annotation & { endNs: bigint } => a.endNs !== undefined && a.endNs > a.timeNs;
 
 const STORAGE_PREFIX = 'bagel:annotations:v1:';
 
@@ -22,16 +28,27 @@ function readStorage(bagKey: string): Annotation[] {
     if (!Array.isArray(arr)) return [];
     return arr
       .filter(
-        (a): a is { id: string; timeNs: string; label: string } =>
+        (a): a is { id: string; timeNs: string; label: string; endNs?: unknown; note?: unknown } =>
           typeof a === 'object' &&
           a !== null &&
           typeof (a as Record<string, unknown>).id === 'string' &&
           typeof (a as Record<string, unknown>).timeNs === 'string' &&
           typeof (a as Record<string, unknown>).label === 'string',
       )
-      .map(({ id, timeNs, label }) => {
+      .map(({ id, timeNs, label, endNs, note }) => {
         try {
-          return { id, timeNs: BigInt(timeNs), label: label || 'Mark' };
+          const out: Annotation = { id, timeNs: BigInt(timeNs), label: label || 'Mark' };
+          // Stored entries from before ranges existed have neither field; a bad end is dropped, not the label.
+          if (typeof endNs === 'string') {
+            try {
+              const end = BigInt(endNs);
+              if (end > out.timeNs) out.endNs = end;
+            } catch {
+              // keep it as a point
+            }
+          }
+          if (typeof note === 'string' && note) out.note = note;
+          return out;
         } catch {
           return null;
         }
@@ -47,10 +64,12 @@ function writeStorage(bagKey: string, annotations: Annotation[]): void {
     globalThis.localStorage?.setItem(
       STORAGE_PREFIX + bagKey,
       JSON.stringify(
-        annotations.map(({ id, timeNs, label }) => ({
+        annotations.map(({ id, timeNs, label, endNs, note }) => ({
           id,
           timeNs: timeNs.toString(),
           label,
+          ...(endNs !== undefined ? { endNs: endNs.toString() } : {}),
+          ...(note ? { note } : {}),
         })),
       ),
     );
@@ -73,11 +92,18 @@ interface AnnotationState {
    * (see Timeline) copies it into `annotations`, which does persist.
    */
   autoMarks: Record<string, AutoMark[]>;
+  /** Where a keyboard-made range began (`[`), until `]` closes it. Not persisted. */
+  pendingRangeStartNs: bigint | null;
+  setPendingRangeStart: (timeNs: bigint | null) => void;
   setAutoMarks: (bagId: string, marks: AutoMark[]) => void;
   clearAutoMarks: (bagId?: string) => void;
 
   /** Add an annotation at aligned timeNs. Returns the new id for callers that want to enter edit mode. */
   addAnnotation: (timeNs: bigint, label: string) => string;
+  /** Add a labelled range. The ends may come in either order; a zero-length range becomes a plain bookmark. */
+  addRange: (aNs: bigint, bNs: bigint, label: string) => string;
+  /** Change a label's text, note or ends. A range cannot be made to end before it starts. */
+  updateAnnotation: (id: string, patch: { label?: string; note?: string; timeNs?: bigint; endNs?: bigint | null }) => void;
   removeAnnotation: (id: string) => void;
   updateLabel: (id: string, label: string) => void;
   /**
@@ -102,6 +128,8 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
   annotations: [],
   currentBagKey: null,
   autoMarks: {},
+  pendingRangeStartNs: null,
+  setPendingRangeStart: (timeNs) => set({ pendingRangeStartNs: timeNs }),
 
   setAutoMarks: (bagId, marks) => {
     set((state) => ({ autoMarks: { ...state.autoMarks, [bagId]: marks } }));
@@ -129,6 +157,39 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
     return id;
   },
 
+  addRange: (aNs, bNs, label) => {
+    const [startNs, endNs] = aNs <= bNs ? [aNs, bNs] : [bNs, aNs];
+    const id = nextId();
+    const entry: Annotation = endNs > startNs ? { id, timeNs: startNs, label, endNs } : { id, timeNs: startNs, label };
+    const next = sorted([...get().annotations, entry]);
+    set({ annotations: next });
+    const key = get().currentBagKey;
+    if (key) writeStorage(key, next);
+    return id;
+  },
+
+  updateAnnotation: (id, patch) => {
+    const next = get().annotations.map((a) => {
+      if (a.id !== id) return a;
+      const merged: Annotation = { ...a };
+      if (patch.label !== undefined) merged.label = patch.label;
+      if (patch.note !== undefined) {
+        if (patch.note) merged.note = patch.note;
+        else delete merged.note;
+      }
+      if (patch.timeNs !== undefined) merged.timeNs = patch.timeNs;
+      if (patch.endNs === null) delete merged.endNs;
+      else if (patch.endNs !== undefined) merged.endNs = patch.endNs;
+      // A range that no longer ends after it starts is a plain bookmark.
+      if (merged.endNs !== undefined && merged.endNs <= merged.timeNs) delete merged.endNs;
+      return merged;
+    });
+    const sortedNext = sorted(next);
+    set({ annotations: sortedNext });
+    const key = get().currentBagKey;
+    if (key) writeStorage(key, sortedNext);
+  },
+
   removeAnnotation: (id) => {
     const next = get().annotations.filter((a) => a.id !== id);
     set({ annotations: next });
@@ -153,7 +214,11 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
     const state = get();
     if (deltaNs === 0n || state.annotations.length === 0) return;
     const next = sorted(
-      state.annotations.map((a) => ({ ...a, timeNs: a.timeNs + deltaNs })),
+      state.annotations.map((a) => ({
+        ...a,
+        timeNs: a.timeNs + deltaNs,
+        ...(a.endNs !== undefined ? { endNs: a.endNs + deltaNs } : {}),
+      })),
     );
     set({ annotations: next });
     const key = state.currentBagKey;
