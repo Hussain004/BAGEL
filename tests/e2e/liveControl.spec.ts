@@ -11,20 +11,44 @@ interface Bridge {
   texts: Array<Record<string, unknown>>;
   /** [channelId, bytes] for each client publish. */
   published: Array<[number, number[]]>;
+  /** Service requests as [serviceId, json]. */
+  serviceCalls: Array<[number, unknown]>;
 }
 
+const SERVICES = [
+  { id: 7, name: '/reset_odometry', type: 'std_srvs/srv/Empty', request: { encoding: 'json', schemaEncoding: 'ros2msg', schema: '' }, response: { encoding: 'json', schema: '' } },
+  { id: 8, name: '/set_speed', type: 'demo/srv/SetSpeed', request: { encoding: 'json', schemaEncoding: 'ros2msg', schema: 'float64 speed\nstring mode' }, response: { encoding: 'json', schema: 'bool ok' } },
+  { id: 9, name: '/calibrate', type: 'std_srvs/srv/Trigger', request: { encoding: 'json', schemaEncoding: 'ros2msg', schema: '' }, response: { encoding: 'json', schema: '' } },
+];
+
 async function fakeBridge(page: Page, info: object): Promise<Bridge> {
-  const bridge: Bridge = { ws: null, texts: [], published: [] };
+  const bridge: Bridge = { ws: null, texts: [], published: [], serviceCalls: [] };
   await page.routeWebSocket('ws://robot.test:8765', (ws) => {
     bridge.ws = ws;
     ws.onMessage((m) => {
       if (typeof m === 'string') bridge.texts.push(JSON.parse(m) as Record<string, unknown>);
       else {
         const b = [...m];
+        if (b[0] === 2) {
+          const id = b[1]! | (b[2]! << 8);
+          const callId = b[5]! | (b[6]! << 8);
+          const encLen = b[9]!;
+          const req = JSON.parse(String.fromCharCode(...b.slice(13 + encLen))) as unknown;
+          bridge.serviceCalls.push([id, req]);
+          if (id === 9) {
+            ws.send(JSON.stringify({ op: 'serviceCallFailure', serviceId: id, callId, message: 'motor driver offline' }));
+          } else {
+            const body = JSON.stringify(id === 8 ? { ok: true, applied: (req as { speed: number }).speed } : {});
+            const enc = [...'json'].map((c) => c.charCodeAt(0));
+            const bytes = [3, id & 255, id >> 8, 0, 0, callId & 255, callId >> 8, 0, 0, enc.length, 0, 0, 0, ...enc, ...[...body].map((c) => c.charCodeAt(0))];
+            ws.send(Buffer.from(bytes));
+          }
+        }
         if (b[0] === 1) bridge.published.push([b[1]! | (b[2]! << 8) | (b[3]! << 16) | (b[4]! << 24), b.slice(5)]);
       }
     });
-    ws.send(JSON.stringify({ op: 'serverInfo', name: 'fake bridge', capabilities: ['clientPublish'], supportedEncodings: ['json'], ...info }));
+    ws.send(JSON.stringify({ op: 'serverInfo', name: 'fake bridge', capabilities: ['clientPublish', 'services'], supportedEncodings: ['json'], ...info }));
+    ws.send(JSON.stringify({ op: 'advertiseServices', services: SERVICES }));
   });
   return bridge;
 }
@@ -140,4 +164,47 @@ test('a server without client publishing says so and offers no way to arm', asyn
   await connect(page);
   await expect(page.getByText(/does not let clients publish/)).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole('button', { name: 'Enable control' })).toHaveCount(0);
+});
+
+test('services: hidden until armed, prefilled from the schema, answers and failures shown', async ({ page }) => {
+  const bridge = await fakeBridge(page, {});
+  await connect(page);
+  const card = page.getByTestId('control-card');
+  await expect(card.getByRole('button', { name: 'Enable control' })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId('service-caller')).toHaveCount(0);
+
+  await card.getByRole('button', { name: 'Enable control' }).click();
+  const callers = page.getByTestId('service-caller');
+  await expect(callers).toBeVisible();
+  expect(bridge.serviceCalls).toEqual([]);
+
+  // The request starts as the schema's fields, zeroed.
+  await callers.locator('select').selectOption({ label: '/set_speed' });
+  const box = callers.getByLabel('Service request (JSON)');
+  await expect(box).toHaveValue(/"speed": 0/);
+  await expect(box).toHaveValue(/"mode": ""/);
+  await box.fill('{"speed": 0.25, "mode": "slow"}');
+  await callers.getByRole('button', { name: 'Call service' }).click();
+  await expect(page.getByTestId('service-result')).toContainText('"applied": 0.25');
+  expect(bridge.serviceCalls).toEqual([[8, { speed: 0.25, mode: 'slow' }]]);
+
+  // Invalid JSON is caught before anything is sent.
+  await box.fill('{not json');
+  await callers.getByRole('button', { name: 'Call service' }).click();
+  await expect(page.getByTestId('service-result')).toContainText('not valid JSON');
+  expect(bridge.serviceCalls).toHaveLength(1);
+
+  // A failure from the server is shown as an error.
+  await callers.locator('select').selectOption({ label: '/calibrate' });
+  await callers.getByRole('button', { name: 'Call service' }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'motor driver offline' })).toBeVisible();
+});
+
+test('disarming hides the services again', async ({ page }) => {
+  await fakeBridge(page, {});
+  await connect(page);
+  await page.getByRole('button', { name: 'Enable control' }).click();
+  await expect(page.getByTestId('service-caller')).toBeVisible();
+  await page.getByRole('button', { name: 'Disable' }).click();
+  await expect(page.getByTestId('service-caller')).toHaveCount(0);
 });

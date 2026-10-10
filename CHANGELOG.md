@@ -9,6 +9,13 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Service calls from the robot control card. With control enabled and a bridge
+  that has the `services` capability, the card lists the services, prefills a
+  JSON request from the service's own schema, sends it in the encoding the
+  service advertises (CDR, ROS 1 or JSON) and shows the answer or the server's
+  failure message. Calls are refused until control is enabled, time out after
+  10 s (saying the call may still have run), and fail at once if the connection
+  drops. The card is also scrollable on short screens.
 - Robot control for live connections. With a Foxglove bridge that allows client
   publishing, the Control button on the toolbar (or "Robot control" in the
   palette) opens a card with a drag pad and W A S D / arrow keys that publish a

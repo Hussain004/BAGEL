@@ -5,6 +5,7 @@ import { useLiveStore } from '../../store/liveStore';
 import { useUiStore } from '../../store/uiStore';
 import { DRIVE_KEYS, keysToCommand, padToCommand } from '../../live/controlInput';
 import type { TwistKind } from '../../live/controlCodec';
+import { ServiceCaller } from './ServiceCaller';
 
 const PAD = 168;
 
@@ -128,7 +129,7 @@ export function ControlCard() {
       onBlur={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node | null)) stop();
       }}
-      className={`fixed z-[85] bottom-20 left-4 w-72 rounded-xl border bg-bg-secondary p-3 shadow-panel text-xs text-text-secondary focus:outline-none ${
+      className={`fixed z-[85] bottom-20 left-4 w-72 max-h-[80vh] overflow-y-auto rounded-xl border bg-bg-secondary p-3 shadow-panel text-xs text-text-secondary focus:outline-none ${
         view.enabled ? 'border-accent-rose' : 'border-border'
       }`}
     >
@@ -220,6 +221,7 @@ export function ControlCard() {
               Disable
             </button>
           </div>
+          {conn.canCallServices && <ServiceCaller conn={conn} services={view.services} />}
         </div>
       )}
     </section>

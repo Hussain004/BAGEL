@@ -19,15 +19,16 @@
  * Manual disconnect() cancels any pending reconnect.
  */
 
-import { FoxgloveClient, type FoxgloveChannel, type FoxgloveEvent } from './foxgloveClient';
+import { FoxgloveClient, type FoxgloveChannel, type FoxgloveEvent, type FoxgloveService } from './foxgloveClient';
 import { LiveRingBuffer } from './liveRingBuffer';
 import { LiveRecorder } from './liveRecorder';
 import { decodeLiveMessage } from './liveDecoder';
 import { useLiveStore, type LiveStatus } from '../store/liveStore';
 import { useControlStore } from '../store/controlStore';
-import { CAP_CLIENT_PUBLISH } from './clientProtocol';
+import { CAP_CLIENT_PUBLISH, CAP_SERVICES } from './clientProtocol';
 import { pickPublishCodec, type TwistKind } from './controlCodec';
 import { TeleopController } from './teleop';
+import { decodeResponse, encodeRequest } from './serviceCodec';
 import type { BagSummary, TopicInfo } from '../types/bag';
 
 export type SummaryCallback = (summary: BagSummary) => void;
@@ -70,6 +71,11 @@ export class LiveConnection {
   // What the server offered in serverInfo; empty until it connects.
   private capabilities: readonly string[] = [];
   private supportedEncodings: readonly string[] | undefined;
+
+  // Services the server offers, and calls waiting for an answer.
+  private services = new Map<number, FoxgloveService>();
+  private pendingCalls = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout>; service: FoxgloveService }>();
+  private nextCallId = 1;
 
   /** Driving the robot: disarmed on creation, on every connect, and on every drop. */
   readonly teleop: TeleopController;
@@ -205,7 +211,39 @@ export class LiveConnection {
         break;
       }
 
+      case 'services':
+        for (const svc of event.services) this.services.set(svc.id, svc);
+        this.mirrorControl();
+        break;
+
+      case 'unadvertiseServices':
+        for (const id of event.serviceIds) this.services.delete(id);
+        this.mirrorControl();
+        break;
+
+      case 'serviceResponse': {
+        const call = this.pendingCalls.get(event.callId);
+        if (!call) break;
+        this.settle(event.callId);
+        try {
+          call.resolve(decodeResponse(call.service, event.encoding, event.payload));
+        } catch (e) {
+          call.reject(e instanceof Error ? e : new Error(String(e)));
+        }
+        break;
+      }
+
+      case 'serviceFailure': {
+        const call = this.pendingCalls.get(event.callId);
+        if (!call) break;
+        this.settle(event.callId);
+        call.reject(new Error(event.message || 'The service call failed.'));
+        break;
+      }
+
       case 'close':
+        this.services.clear();
+        this.failPendingCalls('The connection was lost before the service answered.');
         this.teleop.connectionLost();
         this.mirrorControl();
         this.client = null;
@@ -392,7 +430,57 @@ export class LiveConnection {
 
   private mirrorControl(): void {
     if (this.destroyed) return;
-    useControlStore.getState().set(this.bagId, { enabled: this.teleop.enabled, sendFailed: this.teleop.sendFailed });
+    useControlStore.getState().set(this.bagId, {
+      enabled: this.teleop.enabled,
+      sendFailed: this.teleop.sendFailed,
+      services: this.canCallServices ? Array.from(this.services.values()).sort((a, b) => a.name.localeCompare(b.name)) : [],
+    });
+  }
+
+  get canCallServices(): boolean {
+    return this.capabilities.includes(CAP_SERVICES);
+  }
+
+  /**
+   * Call a service and wait for its answer. Counts as sending a command, so it
+   * is refused unless control has been enabled, exactly like driving.
+   */
+  callService(serviceId: number, request: unknown, timeoutMs = 10_000): Promise<unknown> {
+    if (!this.teleop.enabled) return Promise.reject(new Error('Enable control first: service calls can change what the robot does.'));
+    const service = this.services.get(serviceId);
+    if (!service) return Promise.reject(new Error('That service is no longer advertised.'));
+    return new Promise((resolve, reject) => {
+      let encoded;
+      try {
+        encoded = encodeRequest(service, request);
+      } catch (e) {
+        reject(e instanceof Error ? e : new Error(String(e)));
+        return;
+      }
+      const callId = this.nextCallId++;
+      if (!this.client?.callService(serviceId, callId, encoded.encoding, encoded.payload)) {
+        reject(new Error('The connection is not open.'));
+        return;
+      }
+      const timer = setTimeout(() => {
+        this.pendingCalls.delete(callId);
+        reject(new Error(`No answer from ${service.name} after ${Math.round(timeoutMs / 1000)} s. The call may still have run.`));
+      }, timeoutMs);
+      this.pendingCalls.set(callId, { resolve, reject, timer, service });
+    });
+  }
+
+  private settle(callId: number): void {
+    const call = this.pendingCalls.get(callId);
+    if (call) clearTimeout(call.timer);
+    this.pendingCalls.delete(callId);
+  }
+
+  private failPendingCalls(message: string): void {
+    for (const [id, call] of [...this.pendingCalls]) {
+      this.settle(id);
+      call.reject(new Error(message));
+    }
   }
 
   get isSimTime(): boolean {
@@ -403,6 +491,7 @@ export class LiveConnection {
     // Stop the robot first if it is being driven, while the socket can still carry it.
     this.teleop.disable();
     this.teleop.connectionLost();
+    this.failPendingCalls('Disconnected.');
     useControlStore.getState().clear(this.bagId);
     this.destroyed = true;
     this.recorder = null;
