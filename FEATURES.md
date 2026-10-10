@@ -71,7 +71,7 @@ The first two implementations of that cycle both passed build/lint/tests and *lo
 
 Explicitly out of scope for v1.7.0:
 - **True per-splat raycasting for pivot picking.** Would need either reimplementing the library's internal (unexported) splat-tree raycaster against its own undocumented data structures, or a released version of the library that exports it. The camera-facing-plane approximation is a deliberate, lower-risk substitute.
-- **Multi-scene composition** (loading more than one splat file into a single panel, or splats alongside a ROS point cloud in the same view). The library supports it internally; BAGEL only ever loads one scene per panel.
+- **Multi-scene composition** (loading more than one splat file into a single panel, or splats alongside a ROS point cloud in the same view). The library supports it internally; BAGEL only ever loaded one scene per panel in v1.7.0; adding more files to a panel came later (see the changelog), splats alongside a ROS point cloud did not.
 - **GPU-accelerated sort.** `sharedMemoryForWorkers` is enabled (conditionally, see above), but `gpuAcceleratedSort` stays off after it produced a blank panel with no error in this project's own test environment - not confirmed safe enough to ship. Worth revisiting with real-hardware testing if CPU-bound sort performance on very large scenes becomes the bottleneck.
 
 ---

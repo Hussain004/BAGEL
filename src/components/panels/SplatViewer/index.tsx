@@ -39,6 +39,7 @@
  * lets one splat balloon to nearly the size of the whole panel.
  */
 import { useEffect, useRef, useState } from 'react';
+import { SceneList, type SceneInfo, type SceneTransform } from './SceneList';
 import * as THREE from 'three';
 import * as GaussianSplats3D from '@mkkellogg/gaussian-splats-3d';
 import { useScene, type SceneRefs } from '../ThreeDScene/useScene';
@@ -299,6 +300,15 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
   const pivotMarkerRef = useRef<THREE.Mesh | null>(null);
   const isHoveringRef = useRef(false);
   const referenceGeometryRef = useRef<{ grid: THREE.GridHelper; axes: THREE.AxesHelper } | null>(null);
+  // Every splat file in the panel: the bag's own first, then any added by hand.
+  const [scenes, setScenes] = useState<SceneInfo[]>([]);
+  const [activeScene, setActiveScene] = useState(0);
+  const activeSceneRef = useRef(0);
+  // Bumped when a scene's transform changes outside React (the spin keys), so the fields re-read it.
+  const [transformVersion, setTransformVersion] = useState(0);
+  const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+  const extraUrlsRef = useRef<string[]>([]);
 
   useEffect(() => {
     const refs = sceneRef.current;
@@ -319,6 +329,10 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
     viewerRef.current = viewer;
     orientationIndexRef.current = 0;
     setOrientationIndex(0);
+    setScenes([]);
+    setActiveScene(0);
+    activeSceneRef.current = 0;
+    setAddError(null);
     setLoadState({ status: 'loading', percent: 0 });
 
     if (source.kind === 'multi') return;
@@ -343,6 +357,7 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
       .then((splatCount) => {
         if (cancelled) return;
         setLoadState({ status: 'loaded', splatCount });
+        setScenes([{ name: sourceFileName(source), count: splatCount }]);
         refs.renderOnce();
       })
       .catch((err: unknown) => {
@@ -357,6 +372,8 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
       refs.scene.remove(viewer);
       viewer.dispose().catch(() => {});
       if (objectUrl) URL.revokeObjectURL(objectUrl);
+      for (const url of extraUrlsRef.current) URL.revokeObjectURL(url);
+      extraUrlsRef.current = [];
       const ref = referenceGeometryRef.current;
       if (ref) {
         refs.worldGroup.remove(ref.grid);
@@ -466,7 +483,7 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
         const mesh = viewer?.splatMesh;
         if (!mesh || mesh.getSplatCount() === 0) return;
         const next = (orientationIndexRef.current + 1) % ORIENTATION_PRESETS.length;
-        const scene = mesh.getScene(0);
+        const scene = mesh.getScene(activeIndex(viewer));
         // Resets position too, not just quaternion: the spin keys (B/N/I/K/
         // U/J) can leave the scene's position offset from origin (they
         // rotate position along with quaternion to spin around the pivot
@@ -524,10 +541,15 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
     // instead of the pivot the user is actually looking at, so the position
     // is counter-rotated too: the point currently sitting at the pivot stays
     // there, everything else swings around it.
+    // The scene the spin keys and V act on: the one picked in the scene list (the first by default).
+    function activeIndex(viewer: GaussianSplats3D.DropInViewer | null): number {
+      return Math.min(activeSceneRef.current, Math.max((viewer?.getSceneCount() ?? 1) - 1, 0));
+    }
+
     function spinSplatAroundPivot(live: SceneRefs, axis: THREE.Vector3, angle: number) {
       const mesh = viewerRef.current?.splatMesh;
       if (!mesh || mesh.getSplatCount() === 0) return;
-      const scene = mesh.getScene(0);
+      const scene = mesh.getScene(activeIndex(viewerRef.current));
       spinQuat.setFromAxisAngle(axis, angle);
       spinOffset.copy(scene.position).sub(live.controls.target);
       spinOffset.applyQuaternion(spinQuat);
@@ -614,6 +636,7 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
       if (delta.lengthSq() > 0 || yaw !== 0) {
         setPivot(null);
       }
+      if (objectSpun) setTransformVersion((v) => v + 1);
       if (delta.lengthSq() > 0 || yaw !== 0 || orbit !== 0 || objectSpun) {
         live.controls.update();
         live.renderOnce();
@@ -666,6 +689,75 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
     sceneRef.current?.renderOnce();
   }, [pivot, sceneRef]);
 
+  const pickScene = (index: number) => {
+    activeSceneRef.current = index;
+    setActiveScene(index);
+  };
+
+  /** Add splat files to the scene beside the ones already open. They load at the same orientation and the origin; nudge them into place from the scene list. */
+  const addSplatFiles = async (files: File[]) => {
+    const viewer = viewerRef.current;
+    const refs = sceneRef.current;
+    if (!viewer || !refs || loadState.status !== 'loaded' || adding) return;
+    setAdding(true);
+    setAddError(null);
+    for (const file of files) {
+      if (!/\.(ply|splat|ksplat|spz)$/i.test(file.name)) {
+        setAddError(`${file.name} is not a splat file (.ply, .splat, .ksplat or .spz).`);
+        continue;
+      }
+      const url = URL.createObjectURL(file);
+      extraUrlsRef.current.push(url);
+      const before = viewer.splatMesh?.getSplatCount() ?? 0;
+      try {
+        await viewer.addSplatScene(url, {
+          format: sceneFormatFor(file.name),
+          showLoadingUI: false,
+          splatAlphaRemovalThreshold: SPLAT_ALPHA_REMOVAL_THRESHOLD,
+          rotation: ORIENTATION_PRESETS[orientationIndexRef.current].quaternion.toArray() as [number, number, number, number],
+        });
+      } catch (err) {
+        setAddError(`${file.name}: ${err instanceof Error ? err.message : 'could not be loaded.'}`);
+        continue;
+      }
+      // The panel was closed or reloaded while this was loading.
+      if (viewerRef.current !== viewer) return;
+      const count = (viewer.splatMesh?.getSplatCount() ?? before) - before;
+      setScenes((prev) => [...prev, { name: file.name, count }]);
+      refs.renderOnce();
+    }
+    setAdding(false);
+  };
+
+  const removeScene = async (index: number) => {
+    const viewer = viewerRef.current;
+    if (!viewer || index === 0 || index >= scenes.length) return;
+    await viewer.removeSplatScene(index, false);
+    if (viewerRef.current !== viewer) return;
+    setScenes((prev) => prev.filter((_, i) => i !== index));
+    const next = activeSceneRef.current === index ? 0 : activeSceneRef.current > index ? activeSceneRef.current - 1 : activeSceneRef.current;
+    pickScene(next);
+    sceneRef.current?.renderOnce();
+  };
+
+  /** A scene's transform, read from the viewer each render (`transformVersion` makes it re-read). */
+  const readSceneTransform = (index: number): SceneTransform | null => {
+    void transformVersion;
+    const mesh = viewerRef.current?.splatMesh;
+    if (!mesh || index >= scenes.length) return null;
+    const h = mesh.getScene(index);
+    return { x: h.position.x, y: h.position.y, z: h.position.z, scale: h.scale.x };
+  };
+
+  const moveScene = (index: number, change: (handle: GaussianSplats3D.SplatSceneHandle) => void) => {
+    const mesh = viewerRef.current?.splatMesh;
+    if (!mesh) return;
+    change(mesh.getScene(index));
+    mesh.updateTransforms();
+    sceneRef.current?.renderOnce();
+    setTransformVersion((v) => v + 1);
+  };
+
   const handleResetPivot = () => {
     const refs = sceneRef.current;
     const viewer = viewerRef.current;
@@ -697,6 +789,15 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
           className="flex-1 min-h-[260px] relative bg-bg-primary/60 overflow-hidden"
           onMouseEnter={() => { isHoveringRef.current = true; }}
           onMouseLeave={() => { isHoveringRef.current = false; }}
+          // Dropping splat files here adds them as further scenes beside the open one.
+          onDragOver={(e) => {
+            if (loadState.status === 'loaded' && e.dataTransfer.types.includes('Files')) e.preventDefault();
+          }}
+          onDrop={(e) => {
+            if (loadState.status !== 'loaded' || e.dataTransfer.files.length === 0) return;
+            e.preventDefault();
+            void addSplatFiles(Array.from(e.dataTransfer.files));
+          }}
         >
           <div ref={containerRef} className="absolute inset-0" />
 
@@ -727,6 +828,26 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
                 Fit
               </button>
             </div>
+            {loadState.status === 'loaded' && (
+              <SceneList
+                scenes={scenes}
+                active={activeScene}
+                onPick={pickScene}
+                onRemove={(i) => void removeScene(i)}
+                onAddFiles={(files) => void addSplatFiles(files)}
+                adding={adding}
+                error={addError}
+                readTransform={readSceneTransform}
+                onTransform={(i, patch) =>
+                  moveScene(i, (h) => {
+                    if (patch.x !== undefined) h.position.x = patch.x;
+                    if (patch.y !== undefined) h.position.y = patch.y;
+                    if (patch.z !== undefined) h.position.z = patch.z;
+                    if (patch.scale !== undefined) h.scale.set(patch.scale, patch.scale, patch.scale);
+                  })
+                }
+              />
+            )}
           </div>
 
           {loadState.status === 'loading' && (
@@ -755,8 +876,12 @@ export function SplatViewer({ panelId, topicName, type, bagId }: SplatViewerProp
 
           {loadState.status === 'loaded' && (
             <div className="absolute bottom-2 left-2 flex items-center gap-2 px-2 py-1 rounded-md text-xs mono bg-surface/80 border border-border text-text-secondary pointer-events-none">
-              <span>{loadState.splatCount.toLocaleString()} splats</span>
-              <span className="text-text-tertiary">· {ORIENTATION_PRESETS[orientationIndex].label} (V to cycle)</span>
+              <span>{scenes.reduce((n, s) => n + s.count, 0).toLocaleString()} splats</span>
+              {scenes.length > 1 ? (
+                <span className="text-text-tertiary">· {scenes.length} scenes</span>
+              ) : (
+                <span className="text-text-tertiary">· {ORIENTATION_PRESETS[orientationIndex].label} (V to cycle)</span>
+              )}
             </div>
           )}
         </div>

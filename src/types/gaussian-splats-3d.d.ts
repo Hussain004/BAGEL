@@ -60,6 +60,8 @@ declare module '@mkkellogg/gaussian-splats-3d' {
     addSplatScene(path: string, options?: Omit<SplatSceneOptions, 'path'>): Promise<void>;
     addSplatScenes(sceneOptions: SplatSceneOptions[], showLoadingUI?: boolean): Promise<void>;
     getSceneCount(): number;
+    /** Drops one scene; later scenes shift down by one. */
+    removeSplatScene(index: number, showLoadingUI?: boolean): Promise<void>;
     dispose(): Promise<void>;
   }
 
