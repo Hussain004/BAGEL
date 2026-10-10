@@ -187,3 +187,34 @@ describe('readSnapshotOnce (first-commit capture)', () => {
     expect(hasRestoreContent(parsed)).toBe(false);
   });
 });
+
+describe('bookmark ranges in the hash', () => {
+  it('round-trips a range next to a point, keeping the order', () => {
+    const encoded = encodeHash(0, null, null, null, [
+      { timeSec: 1.5, label: 'point' },
+      { timeSec: 2, endSec: 4.25, label: 'a, "range"' },
+    ]);
+    expect(encoded).toContain('bm=1.500%2Cpoint%7C2.000%7E4.250%2C');
+    const { bookmarks } = parseHash(`#${encoded}`);
+    expect(bookmarks).toMatchObject([{ timeSec: 1.5, label: 'point' }, { timeSec: 2, endSec: 4.25, label: 'a, "range"' }]);
+    expect(bookmarks![0]!.endSec).toBeUndefined();
+  });
+
+  it('keeps the label as a point when the end is missing, backwards or nonsense', () => {
+    for (const time of ['3.000~', '3.000~1.000', '3.000~abc', '3.000~3.000']) {
+      const { bookmarks } = parseHash(`#bm=${time},Keep`);
+      expect(bookmarks, time).toMatchObject([{ timeSec: 3, label: 'Keep' }]);
+      expect(bookmarks![0]!.endSec, time).toBeUndefined();
+    }
+  });
+
+  it('what an older BAGEL does with a range link: reads the start as a bookmark', () => {
+    // The old parser took parseFloat of the whole time field.
+    expect(parseFloat('2.000~4.250')).toBe(2);
+  });
+
+  it('notes never travel in the link', () => {
+    const encoded = encodeHash(0, null, null, null, [{ timeSec: 1, endSec: 2, label: 'x' }]);
+    expect(encoded).not.toMatch(/note/i);
+  });
+});

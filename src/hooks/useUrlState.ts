@@ -83,9 +83,10 @@ export interface ParsedHash {
   /**
    * Timeline bookmarks from the `bm=` hash segment (v1.4.3).
    * timeNs is a placeholder (0n) here - it's resolved to aligned ns in the
-   * restore effect once the bag's playhead range is known.
+   * restore effect once the bag's playhead range is known. `endSec` is set
+   * for a labelled range.
    */
-  bookmarks?: { id: string; timeSec: number; label: string }[];
+  bookmarks?: { id: string; timeSec: number; endSec?: number; label: string }[];
 }
 
 /**
@@ -273,15 +274,22 @@ export function parseHash(hash: string): ParsedHash {
 
   // `bm=` encodes timeline bookmarks (v1.4.3).
   // Format: pipe-separated `timeSec.3f,label` tuples with label URL-encoded.
+  // A labelled range writes `start~end` as the time: `bm=1.500~4.250,Turn`.
+  // An older BAGEL reads `parseFloat('1.500~4.250')` as 1.5, so it shows the
+  // range as a bookmark at its start rather than dropping it.
   // e.g. `bm=1.500,Mark+1|12.300,TF%20jump`
   const bm = params.get('bm');
   if (bm) {
-    const bookmarks: { id: string; timeSec: number; label: string }[] = [];
+    const bookmarks: { id: string; timeSec: number; endSec?: number; label: string }[] = [];
     for (const seg of bm.split('|')) {
       const comma = seg.indexOf(',');
       if (comma < 1) continue;
-      const timeSec = parseFloat(seg.slice(0, comma));
+      const [startText, endText] = seg.slice(0, comma).split('~');
+      const timeSec = parseFloat(startText!);
       if (!Number.isFinite(timeSec) || timeSec < 0) continue;
+      const endParsed = endText !== undefined ? parseFloat(endText) : NaN;
+      // A bad or backwards end keeps the label as a point instead of dropping it.
+      const endSec = Number.isFinite(endParsed) && endParsed > timeSec ? endParsed : undefined;
       let label: string;
       try {
         label = decodeURIComponent(seg.slice(comma + 1));
@@ -292,6 +300,7 @@ export function parseHash(hash: string): ParsedHash {
       bookmarks.push({
         id: `bm-${Math.random().toString(36).slice(2, 8)}`,
         timeSec,
+        ...(endSec !== undefined ? { endSec } : {}),
         label,
       });
     }
@@ -351,7 +360,7 @@ export function encodeHash(
   root: LayoutNode | null,
   bagUrl: string | null,
   anchors: Map<string, bigint> | null,
-  bookmarks: { timeSec: number; label: string }[] | null,
+  bookmarks: { timeSec: number; endSec?: number; label: string }[] | null,
   /** Extra validated key/values appended last (embed mode params), so a rewrite does not drop them. */
   extras: Record<string, string> = {},
 ): string {
@@ -380,7 +389,7 @@ export function encodeHash(
     params.set(
       'bm',
       bookmarks
-        .map((b) => `${b.timeSec.toFixed(3)},${encodeURIComponent(b.label)}`)
+        .map((b) => `${b.timeSec.toFixed(3)}${b.endSec !== undefined ? `~${b.endSec.toFixed(3)}` : ''},${encodeURIComponent(b.label)}`)
         .join('|'),
     );
   }
@@ -542,7 +551,14 @@ export function useUrlState(): void {
         const hydrated: Annotation[] = snapshot.bookmarks.map((b) => {
           const ns = phStart + BigInt(Math.round(b.timeSec * 1e9));
           const clamped = ns < phStart ? phStart : ns > phEnd ? phEnd : ns;
-          return { id: b.id, timeNs: clamped, label: b.label };
+          const endTarget = b.endSec !== undefined ? phStart + BigInt(Math.round(b.endSec * 1e9)) : undefined;
+          const endClamped = endTarget === undefined ? undefined : endTarget > phEnd ? phEnd : endTarget;
+          return {
+            id: b.id,
+            timeNs: clamped,
+            label: b.label,
+            ...(endClamped !== undefined && endClamped > clamped ? { endNs: endClamped } : {}),
+          };
         });
         useAnnotationStore.getState().loadForBag(bagKey, hydrated);
       } else {
@@ -609,6 +625,7 @@ export function useUrlState(): void {
         annotations.length > 0
           ? annotations.map((a) => ({
               timeSec: Math.max(0, Number(a.timeNs - playhead.startNs) / 1e9),
+              ...(a.endNs !== undefined ? { endSec: Math.max(0, Number(a.endNs - playhead.startNs) / 1e9) } : {}),
               label: a.label,
             }))
           : null;

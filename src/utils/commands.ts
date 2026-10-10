@@ -16,6 +16,7 @@ import { useUiStore } from '../store/uiStore';
 import { useAnnotationStore } from '../store/annotationStore';
 import { usePresetStore } from '../store/presetStore';
 import { panelOptionsFor, KIND_PALETTE_LABEL } from '../utils/panelOptions';
+import { exportLabels } from './labelsExport';
 import { BUNDLED_TOURS, SAMPLE_FILE_NAME, startTourFromUrl } from './tourRunner';
 
 export type CommandGroup = 'Topics' | 'Actions' | 'Go to' | 'Tours';
@@ -244,6 +245,31 @@ export function buildCommands(query = ''): Command[] {
     keywords: ['load', 'file', 'browse'],
     run: () => useBagStore.getState().clearAll(),
   });
+
+  commands.push(
+    {
+      id: 'action:labels',
+      label: 'Labels: list, annotate and export',
+      hint: 'bookmarks and ranges',
+      group: 'Actions',
+      keywords: ['label', 'annotate', 'bookmark', 'range', 'note', 'training'],
+      run: () => useUiStore.getState().setModal('labels'),
+    },
+    {
+      id: 'action:labels-csv',
+      label: 'Export labels as CSV',
+      group: 'Actions',
+      keywords: ['label', 'export', 'spreadsheet', 'annotations'],
+      run: () => exportLabels('csv'),
+    },
+    {
+      id: 'action:labels-json',
+      label: 'Export labels as JSON',
+      group: 'Actions',
+      keywords: ['label', 'export', 'annotations'],
+      run: () => exportLabels('json'),
+    },
+  );
 
   if (!bagIsLive) {
     commands.push({

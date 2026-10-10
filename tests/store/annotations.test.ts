@@ -280,3 +280,66 @@ describe('annotationStore auto marks', () => {
     expect(store['bagel:annotations:v1:bag-key']).toContain('Gap 1.00 s on /scan');
   });
 });
+
+describe('annotationStore ranges and notes', () => {
+  beforeEach(freshStore);
+  const state = () => useAnnotationStore.getState();
+
+  it('addRange stores the ends in order whichever way they were dragged', () => {
+    state().addRange(9n, 4n, 'dragged backwards');
+    expect(state().annotations[0]).toMatchObject({ timeNs: 4n, endNs: 9n, label: 'dragged backwards' });
+  });
+
+  it('a zero-length range is a plain bookmark', () => {
+    state().addRange(5n, 5n, 'point');
+    expect(state().annotations[0]!.endNs).toBeUndefined();
+  });
+
+  it('updateAnnotation sets and clears a note, and re-sorts when the start moves', () => {
+    const a = state().addRange(10n, 20n, 'a');
+    state().addRange(30n, 40n, 'b');
+    state().updateAnnotation(a, { note: 'hello', timeNs: 35n, endNs: 50n });
+    expect(state().annotations.map((x) => x.label)).toEqual(['b', 'a']);
+    expect(state().annotations[1]).toMatchObject({ note: 'hello', timeNs: 35n, endNs: 50n });
+    state().updateAnnotation(a, { note: '' });
+    expect(state().annotations[1]!.note).toBeUndefined();
+  });
+
+  it('a range cannot end at or before its start; it falls back to a point', () => {
+    const a = state().addRange(10n, 20n, 'a');
+    state().updateAnnotation(a, { endNs: 10n });
+    expect(state().annotations[0]!.endNs).toBeUndefined();
+    const b = state().addRange(10n, 20n, 'b');
+    state().updateAnnotation(b, { endNs: null });
+    expect(state().annotations.find((x) => x.id === b)!.endNs).toBeUndefined();
+  });
+
+  it('persists ranges and notes, and still reads entries saved before they existed', () => {
+    state().loadForBag('run');
+    state().addRange(10n, 20n, 'turn');
+    state().updateAnnotation(state().annotations[0]!.id, { note: 'tight' });
+    useAnnotationStore.setState({ annotations: [] });
+    state().loadForBag('run');
+    expect(state().annotations[0]).toMatchObject({ timeNs: 10n, endNs: 20n, label: 'turn', note: 'tight' });
+
+    // An old entry: no endNs, no note. A damaged one: a nonsense end keeps the label as a point.
+    store['bagel:annotations:v1:old'] = JSON.stringify([
+      { id: 'o1', timeNs: '5', label: 'old mark' },
+      { id: 'o2', timeNs: '7', label: 'bad end', endNs: 'not a number', note: 3 },
+      { id: 'o3', timeNs: '9', label: 'backwards', endNs: '2' },
+    ]);
+    state().loadForBag('old');
+    expect(state().annotations.map((a) => [a.label, a.endNs, a.note])).toEqual([
+      ['old mark', undefined, undefined],
+      ['bad end', undefined, undefined],
+      ['backwards', undefined, undefined],
+    ]);
+  });
+
+  it('shiftAllBy moves both ends of a range', () => {
+    state().addRange(10n, 20n, 'a');
+    state().addAnnotation(5n, 'p');
+    state().shiftAllBy(100n);
+    expect(state().annotations.map((a) => [a.timeNs, a.endNs])).toEqual([[105n, undefined], [110n, 120n]]);
+  });
+});

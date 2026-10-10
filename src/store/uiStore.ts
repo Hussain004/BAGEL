@@ -60,6 +60,7 @@ export type ModalKind =
   | 'clip-export'
   | 'share'
   | 'command-palette'
+  | 'labels'
   | null;
 
 /**

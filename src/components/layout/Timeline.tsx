@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useCallback, useState } from 'react';
 import { alignedTimeFor, useBagStore } from '../../store/bagStore';
 import { useLiveStore } from '../../store/liveStore';
 import { usePlayheadStore } from '../../store/playheadStore';
+import { useUiStore } from '../../store/uiStore';
 import { useAnnotationStore, type Annotation } from '../../store/annotationStore';
 import { usePinnedTopicsStore } from '../../store/pinnedTopicsStore';
 import { useMessageDensity } from '../../hooks/useMessageDensity';
@@ -53,7 +54,8 @@ export function Timeline() {
     tick,
     discreteSeekId,
   } = usePlayheadStore();
-  const { annotations, addAnnotation, removeAnnotation, updateLabel } = useAnnotationStore();
+  const { annotations, addAnnotation, addRange, removeAnnotation, updateLabel } = useAnnotationStore();
+  const pendingRangeStartNs = useAnnotationStore((s) => s.pendingRangeStartNs);
   const autoMarks = useAnnotationStore((s) => s.autoMarks);
   const bagsMap = useBagStore((s) => s.bags);
   const alignmentMode = useBagStore((s) => s.alignment);
@@ -171,9 +173,23 @@ export function Timeline() {
     [seekFraction],
   );
 
+  // Shift+drag on the track marks a labelled range instead of scrubbing. The draft is
+  // in track fractions, 0 to 1.
+  const [rangeDraft, setRangeDraft] = useState<{ a: number; b: number } | null>(null);
+  const fractionOf = (clientX: number): number => {
+    const rect = trackRef.current?.getBoundingClientRect();
+    return rect && rect.width > 0 ? Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) : 0;
+  };
+
   const handlePointerDown = (e: React.PointerEvent) => {
     setIsDragging(true);
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    if (e.shiftKey && !pageEmbedConfig().embed) {
+      const f = fractionOf(e.clientX);
+      setRangeDraft({ a: f, b: f });
+      updateHoverFromEvent(e.clientX);
+      return;
+    }
     seekFromEvent(e.clientX);
     updateHoverFromEvent(e.clientX);
   };
@@ -182,11 +198,32 @@ export function Timeline() {
     // only feeds the playhead while an actual drag is in progress.
     updateHoverFromEvent(e.clientX);
     if (!isDragging) return;
+    if (rangeDraft) {
+      setRangeDraft({ a: rangeDraft.a, b: fractionOf(e.clientX) });
+      return;
+    }
     seekFromEvent(e.clientX);
   };
   const handlePointerUp = (e: React.PointerEvent) => {
     setIsDragging(false);
     (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    if (!rangeDraft) return;
+    const draft = { a: rangeDraft.a, b: fractionOf(e.clientX) };
+    setRangeDraft(null);
+    const rect = trackRef.current?.getBoundingClientRect();
+    // A shift+click that barely moved is not a range.
+    if (!rect || Math.abs(draft.b - draft.a) * rect.width < 4) return;
+    const ph = usePlayheadStore.getState();
+    const span = Number(ph.endNs - ph.startNs);
+    const at = (f: number) => ph.startNs + BigInt(Math.round(span * f));
+    const count = useAnnotationStore.getState().annotations.length + 1;
+    const lo = Math.min(draft.a, draft.b);
+    const id = addRange(at(draft.a), at(draft.b), `Range ${count}`);
+    setEditingLabel(`Range ${count}`);
+    setEditingX(lo * rect.width);
+    setEditingTrackWidth(rect.width);
+    setEditingIsNew(true);
+    setEditingId(id);
   };
   const handlePointerLeave = () => {
     // Keep the tooltip while actively dragging even if the cursor strays
@@ -344,7 +381,7 @@ export function Timeline() {
         // comes from the global shortcuts, which act on the playhead
         // regardless of focus.
         tabIndex={0}
-        title="Click or drag to seek. Double-click to add a bookmark."
+        title="Click or drag to seek. Double-click to add a bookmark. Shift+drag to label a range."
         aria-label="Playhead - drag or use arrow keys to scrub"
         aria-valuemin={0}
         aria-valuemax={Math.round(duration * 1000) / 1000}
@@ -375,6 +412,38 @@ export function Timeline() {
           >
             {formatRelativeTime(BigInt(Math.max(0, Math.round(hoverInfo.timeSec * 1e9))))}
           </div>
+        )}
+
+        {/* Labelled ranges: a band under the ticks, so the start tick still hovers and renames. */}
+        {annotations.map((ann) => {
+          if (ann.endNs === undefined || endNs <= startNs) return null;
+          const span = Number(endNs - startNs);
+          const f1 = Math.max(0, Math.min(1, Number(ann.timeNs - startNs) / span));
+          const f2 = Math.max(0, Math.min(1, Number(ann.endNs - startNs) / span));
+          if (f2 <= f1) return null;
+          return (
+            <div
+              key={`band-${ann.id}`}
+              data-testid="range-band"
+              className="absolute top-1/2 -translate-y-1/2 h-3 rounded-sm bg-accent-amber/20 border-y border-accent-amber/50 pointer-events-none"
+              style={{ left: `${f1 * 100}%`, width: `${(f2 - f1) * 100}%` }}
+            />
+          );
+        })}
+        {rangeDraft && (
+          <div
+            data-testid="range-draft"
+            className="absolute top-1/2 -translate-y-1/2 h-4 rounded-sm bg-accent-blue/25 border border-accent-blue/60 pointer-events-none"
+            style={{ left: `${Math.min(rangeDraft.a, rangeDraft.b) * 100}%`, width: `${Math.abs(rangeDraft.b - rangeDraft.a) * 100}%` }}
+          />
+        )}
+        {pendingRangeStartNs !== null && endNs > startNs && (
+          <div
+            data-testid="range-pending"
+            title="Range start set. Press ] at the end."
+            className="absolute top-1 bottom-1 w-0 border-l-2 border-dashed border-accent-amber pointer-events-none"
+            style={{ left: `${Math.max(0, Math.min(1, Number(pendingRangeStartNs - startNs) / Number(endNs - startNs))) * 100}%` }}
+          />
         )}
 
         {/* Annotation ticks */}
@@ -481,6 +550,24 @@ export function Timeline() {
         id="timeline-bookmark-btn"
       >
         <BookmarkIcon />
+      </button>
+      )}
+      {!pageEmbedConfig().embed && (
+      <button
+        onClick={() => useUiStore.getState().setModal('labels')}
+        className="relative w-8 h-8 rounded-md flex items-center justify-center border border-border text-text-secondary hover:border-accent-amber/40 hover:text-accent-amber transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-amber/60"
+        title="Labels: list, annotate and export bookmarks and ranges"
+        aria-label={`Open labels (${annotations.length})`}
+        id="timeline-labels-btn"
+      >
+        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" aria-hidden="true">
+          <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" />
+        </svg>
+        {annotations.length > 0 && (
+          <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 rounded-full bg-accent-amber text-[9px] leading-[14px] text-bg-primary text-center font-semibold">
+            {annotations.length}
+          </span>
+        )}
       </button>
       )}
 
@@ -815,6 +902,9 @@ function AnnotationTick({ annotation, fraction, isEditing, onSeek, onRemove, onR
             <span className="text-xs text-text-secondary max-w-[160px] truncate">
               {annotation.label}
             </span>
+            {annotation.endNs !== undefined && (
+              <span className="text-[10px] mono text-text-muted">{(Number(annotation.endNs - annotation.timeNs) / 1e9).toFixed(2)} s</span>
+            )}
             <button
               onClick={(e) => { e.stopPropagation(); onRemove(); }}
               onPointerDown={(e) => e.stopPropagation()}

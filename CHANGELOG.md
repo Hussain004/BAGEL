@@ -9,6 +9,15 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Label ranges on the timeline, and export them. Shift+drag along the timeline
+  (or press `[` at the start and `]` at the end) to label a stretch of the bag;
+  double-click its start tick to rename it. The new Labels list (the button
+  beside the bookmark one, or `Ctrl/Cmd+K` then "labels") shows every bookmark
+  and range with a note each, and exports them as JSON or CSV:
+  `bag, start_ns, end_ns, label, note`, on the bag's own clock, with times as
+  exact strings. CSV cells that a spreadsheet would run as a formula are kept
+  as text. Ranges ride along in shared links (`bm=1.500~4.250,Turn`; an older
+  BAGEL shows them as a bookmark at the start); notes stay on your device.
 - Guided tours: a JSON file of steps, each with some text, a panel layout and a
   moment in the bag. A card walks you through them with Back and Next, and the
   panels change under the words. Three ship on the sample data ("What is TF?",
