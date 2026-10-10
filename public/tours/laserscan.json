@@ -1,0 +1,25 @@
+{
+  "title": "Reading a LaserScan",
+  "description": "What the ranges array holds, and how it becomes points on screen.",
+  "bag": "sample",
+  "steps": [
+    {
+      "title": "A list of distances",
+      "layout": "Praw:%2Fscan",
+      "timeSec": 6,
+      "body": "A `LaserScan` is mostly one array: **`ranges`**, a distance in metres for each direction the scanner looked, one after another.\n\nHere there are 360 of them, one per degree, starting at `angle_min` and stepping by `angle_increment`. `range_max` is how far it can see. A value of `inf` means \"nothing came back\"."
+    },
+    {
+      "title": "Distances become points",
+      "layout": "H(Praw:%2Fscan,P3d:%2Fscan)",
+      "timeSec": 6,
+      "body": "Entry number `i` points in the direction `angle_min + i * angle_increment`. A distance `r` in that direction is the point `(r cos a, r sin a)`.\n\nThe 3D view does exactly that for all 360 entries, in the scanner's own frame, then places the ring with TF."
+    },
+    {
+      "title": "One slice versus many",
+      "layout": "H(P3d:%2Fscan,P3d:%2Flidar%2Fpoints)",
+      "timeSec": 10,
+      "body": "The 2D scanner sees one flat ring, low on the robot. The 3D LiDAR on the left of this pair sweeps 16 rings at different heights.\n\nBoth are LiDARs. A `LaserScan` is the compact form for a flat scanner; a `PointCloud2` is the general form."
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "title": "What is TF?",
+  "description": "Coordinate frames, and how one sensor reading is placed in the world.",
+  "bag": "sample",
+  "steps": [
+    {
+      "title": "Every part of the robot has its own frame",
+      "layout": "Ptf:%2Ftf",
+      "timeSec": 3,
+      "body": "A **frame** is a coordinate system attached to something: the world, the robot's body, one sensor. The `/tf` topic says where each frame is relative to another.\n\nThe tree shows the chain here: `map` to `odom` to `base_link`, and then every sensor hangs off `base_link`: `lidar_link`, `laser`, `imu_link` and the camera."
+    },
+    {
+      "title": "The robot moves; its sensors do not",
+      "layout": "H(Ptf:%2Ftf,P3d:%2Flidar%2Fpoints)",
+      "timeSec": 8,
+      "highlight": "#timeline-track",
+      "body": "Press play, or drag the timeline. Only one link in the tree changes over time: **`odom` to `base_link`**, the robot driving its figure-eight.\n\nThe LiDAR is bolted to the robot, so `base_link` to `lidar_link` never changes. That fixed offset is called an **extrinsic**."
+    },
+    {
+      "title": "One reading, placed in the world",
+      "layout": "P3d:%2Flidar%2Fpoints",
+      "timeSec": 12,
+      "body": "Each LiDAR sweep is published in the **`lidar_link`** frame: distances from the sensor, nothing more.\n\nLook at the label at the top left of the 3D view. It says the cloud is shown as `lidar_link` to `map`. BAGEL multiplies the transforms along the path to put every point where it really was in the world."
+    },
+    {
+      "title": "Choose which frame is the world",
+      "layout": "P3d:%2Flidar%2Fpoints",
+      "timeSec": 12,
+      "body": "Open **Display** in the 3D view and look for the coordinate frame setting. With `map` as the world, the robot drives around. With `base_link`, the robot stays put and the world moves past it.\n\nNeither is wrong. A fixed frame (`map`) is best for judging where things are; the robot frame is best for judging what the robot sees."
+    },
+    {
+      "title": "Why it matters",
+      "layout": "H(P3d:%2Flidar%2Fpoints,Pimage:%2Fcamera%2Fimage_raw)",
+      "timeSec": 14,
+      "body": "If a sensor's extrinsic is wrong, its data lands in the wrong place and nothing lines up. A quick check: in the image view, pick `/lidar/points` as the LiDAR overlay. The dots should sit on the edges of the buildings and cars.\n\nThat is the same TF chain at work, from `lidar_link` to `camera_optical_link`."
+    }
+  ]
+}

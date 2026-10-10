@@ -575,3 +575,18 @@ select:focus-visible {
     row-gap: 0.5rem;
   }
 }
+
+
+/* A guided-tour step can point at an element: a steady ring that pulses once or twice. */
+[data-tour-highlight] {
+  outline: 2px solid var(--color-accent-blue);
+  outline-offset: 3px;
+  border-radius: 6px;
+  animation: tour-pulse 1.4s ease-in-out 3;
+}
+@keyframes tour-pulse {
+  50% { outline-offset: 6px; outline-color: transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-tour-highlight] { animation: none; }
+}

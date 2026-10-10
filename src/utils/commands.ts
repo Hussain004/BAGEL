@@ -16,8 +16,9 @@ import { useUiStore } from '../store/uiStore';
 import { useAnnotationStore } from '../store/annotationStore';
 import { usePresetStore } from '../store/presetStore';
 import { panelOptionsFor, KIND_PALETTE_LABEL } from '../utils/panelOptions';
+import { BUNDLED_TOURS, SAMPLE_FILE_NAME, startTourFromUrl } from './tourRunner';
 
-export type CommandGroup = 'Topics' | 'Actions' | 'Go to';
+export type CommandGroup = 'Topics' | 'Actions' | 'Go to' | 'Tours';
 
 export interface Command {
   id: string;
@@ -253,6 +254,22 @@ export function buildCommands(query = ''): Command[] {
       keywords: ['websocket', 'live', 'bridge', 'rosbridge'],
       run: () => requestLiveTab(),
     });
+  }
+
+  // Guided tours run on the sample bag, so offer them only where that is safe:
+  // with the sample open, or with nothing open (the tour then opens the sample).
+  // Never over a bag the person opened themselves.
+  if (!bag || bag.fileName === SAMPLE_FILE_NAME) {
+    for (const tour of BUNDLED_TOURS) {
+      commands.push({
+        id: `tour:${tour.id}`,
+        label: `Guided tour: ${tour.title}`,
+        hint: tour.description,
+        group: 'Tours',
+        keywords: ['tour', 'learn', 'tutorial', 'teach', 'guide', tour.title],
+        run: () => void startTourFromUrl(tour.id),
+      });
+    }
   }
 
   return commands;
