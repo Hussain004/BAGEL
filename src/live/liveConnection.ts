@@ -188,7 +188,7 @@ export class LiveConnection {
         const ch = this.channels.get(event.channelId);
         if (!ch) break;
 
-        const value = decodeLiveMessage(ch.encoding, ch.schemaEncoding, ch.schema, event.data);
+        const value = decodeLiveMessage(ch.encoding, ch.schemaEncoding, ch.schema, event.data, ch.schemaName);
         if (value === null) break;
 
         // Track sim time from /clock so messages with no logTimeNs header

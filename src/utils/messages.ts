@@ -267,6 +267,8 @@ export function isPathLikeType(type: string): boolean {
  */
 export function isMarkerArrayType(type: string): boolean {
   if (!type) return false;
+  // A foxglove.SceneUpdate is rewritten into a MarkerArray when it is decoded.
+  if (type === 'foxglove.SceneUpdate') return true;
   return type.includes('visualization_msgs') && type.endsWith('/MarkerArray');
 }
 

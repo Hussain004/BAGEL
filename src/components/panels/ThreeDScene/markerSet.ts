@@ -104,6 +104,12 @@ export class MarkerSet {
       this.removeMarker(m.ns, m.id);
       return;
     }
+    if (m.action === MARKER_ACTION.REPLACE_NAMESPACE) {
+      for (const entry of [...this.rendered.values()]) {
+        if (entry.data.ns === m.ns) this.removeMarker(entry.data.ns, entry.data.id);
+      }
+      return;
+    }
     if (m.action === MARKER_ACTION.DELETEALL) {
       this.clear();
       return;

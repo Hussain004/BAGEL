@@ -18,6 +18,7 @@
 import { parse as parseRosMsgDefinition } from '@foxglove/rosmsg';
 import { MessageReader as Ros2MessageReader } from '@foxglove/rosmsg2-serialization';
 import { MessageReader as Ros1MessageReader } from '@foxglove/rosmsg-serialization';
+import { translateFoxgloveMessage } from '../parsers/foxgloveSchemas';
 
 // Cache readers by schema text so we parse the .msg definition once per unique
 // channel type, not once per message. ROS1 and ROS2 caches are separate because
@@ -38,6 +39,7 @@ function schemaKey(schema: string): string {
  * @param schemaEncoding - Channel schemaEncoding field (e.g. 'ros2msg', 'ros1msg').
  * @param schema - Channel schema field (raw .msg text for ros2msg/ros1msg).
  * @param data - Raw message bytes from the Foxglove server.
+ * @param schemaName - Channel schemaName, used to reshape Foxglove-schema JSON.
  * @returns Decoded JS object, or null on unsupported/malformed input.
  */
 export function decodeLiveMessage(
@@ -45,11 +47,13 @@ export function decodeLiveMessage(
   schemaEncoding: string | undefined,
   schema: string,
   data: Uint8Array,
+  schemaName = '',
 ): Record<string, unknown> | null {
   try {
     if (encoding === 'json') {
       const text = new TextDecoder().decode(data);
-      return JSON.parse(text) as Record<string, unknown>;
+      // Foxglove-schema JSON (images, scene updates) is reshaped like the MCAP path does.
+      return translateFoxgloveMessage(schemaName, JSON.parse(text) as Record<string, unknown>);
     }
 
     if (encoding === 'cdr') {

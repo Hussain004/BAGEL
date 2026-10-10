@@ -180,6 +180,102 @@ function translateTfMessage(msg: Record<string, unknown>): Record<string, unknow
   return { transforms: transforms.map(translateFrameTransform) };
 }
 
+// ── foxglove.SceneUpdate -> visualization_msgs/MarkerArray ─────────────────
+//
+// A SceneUpdate is a set of entities, each holding primitives (cubes, spheres,
+// lines, ...). The marker renderer already handles TF frames, lifetimes,
+// namespaces and filtering, so the update is rewritten as a MarkerArray:
+//   - each entity is a namespace (its id), each primitive a marker in it;
+//   - a Foxglove entity replaces its previous self wholesale, which ROS markers
+//     cannot say, so every entity starts with a REPLACE_NAMESPACE marker
+//     (action 100, BAGEL-internal) that clears the namespace first;
+//   - deletions become the same action (one entity) or DELETEALL (everything).
+// Models (3D meshes) are not drawn.
+
+/** Internal marker action: remove every marker in this namespace. */
+export const MARKER_ACTION_REPLACE_NAMESPACE = 100;
+
+const MARKER = { ARROW: 0, CUBE: 1, SPHERE: 2, CYLINDER: 3, LINE_STRIP: 4, LINE_LIST: 5, TEXT: 9, TRIANGLE_LIST: 11 } as const;
+
+type Obj = Record<string, unknown>;
+const objs = (v: unknown): Obj[] => (Array.isArray(v) ? (v.filter((x) => x && typeof x === 'object') as Obj[]) : []);
+const pts = (v: unknown): Obj[] => objs(v);
+const n = (v: unknown, d = 0): number => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+/**
+ * Lines and text marked scale-invariant are sized in screen pixels, which a
+ * world-space marker cannot be; draw them at a fixed modest size instead.
+ */
+const SCALE_INVARIANT_LINE_M = 0.03;
+const SCALE_INVARIANT_TEXT_M = 0.25;
+const IDENTITY_POSE = { position: { x: 0, y: 0, z: 0 }, orientation: { x: 0, y: 0, z: 0, w: 1 } };
+const pose = (v: unknown) => (v && typeof v === 'object' ? v : IDENTITY_POSE);
+const color = (v: unknown) => (v && typeof v === 'object' ? v : { r: 1, g: 1, b: 1, a: 1 });
+
+function toDuration(d: unknown): { sec: number; nanosec: number } {
+  const o = (d && typeof d === 'object' ? d : {}) as Obj;
+  return { sec: n(o['sec']), nanosec: n(o['nsec'] ?? o['nanosec']) };
+}
+
+/** Vertices in draw order: via `indices` when the primitive has them, else as listed. */
+function indexed(points: Obj[], colors: Obj[], indices: unknown): { points: Obj[]; colors: Obj[] } {
+  const idx = Array.isArray(indices) ? (indices as unknown[]).filter((i): i is number => Number.isInteger(i) && (i as number) >= 0 && (i as number) < points.length) : [];
+  if (idx.length === 0) return { points, colors: colors.length === points.length ? colors : [] };
+  return { points: idx.map((i) => points[i]!), colors: colors.length === points.length ? idx.map((i) => colors[i]!) : [] };
+}
+
+function translateEntity(e: Obj): Obj[] {
+  const ns = typeof e['id'] === 'string' ? e['id'] : '';
+  const header = { stamp: toStamp(e['timestamp']), frame_id: typeof e['frame_id'] === 'string' ? e['frame_id'] : '' };
+  const lifetime = toDuration(e['lifetime']);
+  const frame_locked = e['frame_locked'] === true;
+  let id = 0;
+  const marker = (type: number, extra: Obj): Obj => ({
+    header, ns, id: id++, type, action: 0, lifetime, frame_locked,
+    pose: IDENTITY_POSE, scale: { x: 1, y: 1, z: 1 }, color: { r: 1, g: 1, b: 1, a: 1 }, points: [], colors: [], text: '', ...extra,
+  });
+  const out: Obj[] = [{ header, ns, id: 0, type: 0, action: MARKER_ACTION_REPLACE_NAMESPACE }];
+
+  for (const c of objs(e['cubes'])) out.push(marker(MARKER.CUBE, { pose: pose(c['pose']), scale: c['size'] ?? { x: 1, y: 1, z: 1 }, color: color(c['color']) }));
+  for (const c of objs(e['spheres'])) out.push(marker(MARKER.SPHERE, { pose: pose(c['pose']), scale: c['size'] ?? { x: 1, y: 1, z: 1 }, color: color(c['color']) }));
+  for (const c of objs(e['cylinders'])) out.push(marker(MARKER.CYLINDER, { pose: pose(c['pose']), scale: c['size'] ?? { x: 1, y: 1, z: 1 }, color: color(c['color']) }));
+  for (const a of objs(e['arrows'])) {
+    const head = n(a['head_diameter'], 0.1);
+    out.push(marker(MARKER.ARROW, { pose: pose(a['pose']), scale: { x: n(a['shaft_length'], 1) + n(a['head_length'], 0.2), y: head, z: head }, color: color(a['color']) }));
+  }
+  for (const l of objs(e['lines'])) {
+    // type: 0 strip, 1 loop, 2 list (numbers, or the enum names)
+    const kind = String(l['type']);
+    const isList = kind === '2' || kind === 'LINE_LIST';
+    const isLoop = kind === '1' || kind === 'LINE_LOOP';
+    const { points, colors } = indexed(pts(l['points']), objs(l['colors']), l['indices']);
+    if (points.length < 2) continue;
+    out.push(marker(isList ? MARKER.LINE_LIST : MARKER.LINE_STRIP, {
+      pose: pose(l['pose']), scale: { x: l['scale_invariant'] === true ? SCALE_INVARIANT_LINE_M : n(l['thickness'], 1), y: 1, z: 1 }, color: color(l['color']),
+      points: isLoop ? [...points, points[0]!] : points, colors: isLoop && colors.length ? [...colors, colors[0]!] : colors,
+    }));
+  }
+  for (const t of objs(e['triangles'])) {
+    const { points, colors } = indexed(pts(t['points']), objs(t['colors']), t['indices']);
+    if (points.length < 3) continue;
+    out.push(marker(MARKER.TRIANGLE_LIST, { pose: pose(t['pose']), color: color(t['color']), points: points.slice(0, points.length - (points.length % 3)), colors }));
+  }
+  for (const t of objs(e['texts'])) {
+    out.push(marker(MARKER.TEXT, { pose: pose(t['pose']), scale: { x: 1, y: 1, z: t['scale_invariant'] === true ? SCALE_INVARIANT_TEXT_M : n(t['font_size'], 1) }, color: color(t['color']), text: typeof t['text'] === 'string' ? t['text'] : '' }));
+  }
+  return out;
+}
+
+function translateSceneUpdate(msg: Record<string, unknown>): Record<string, unknown> {
+  const markers: Obj[] = [];
+  for (const d of objs(msg['deletions'])) {
+    const kind = String(d['type']);
+    if (kind === '1' || kind === 'ALL') markers.push({ ns: '', id: 0, type: 0, action: 3 });
+    else markers.push({ ns: typeof d['id'] === 'string' ? d['id'] : '', id: 0, type: 0, action: MARKER_ACTION_REPLACE_NAMESPACE });
+  }
+  for (const e of objs(msg['entities'])) markers.push(...translateEntity(e));
+  return { markers };
+}
+
 type Translator = (msg: Record<string, unknown>) => Record<string, unknown>;
 
 const TRANSLATORS: Record<string, Translator> = {
@@ -190,6 +286,7 @@ const TRANSLATORS: Record<string, Translator> = {
   'foxglove.LaserScan': translateLaserScan,
   'foxglove.FrameTransform': translateFrameTransform,
   'foxglove.TFMessage': translateTfMessage,
+  'foxglove.SceneUpdate': translateSceneUpdate,
 };
 
 /** True if we have a translation registered for this Foxglove schema name. */

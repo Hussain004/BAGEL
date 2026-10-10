@@ -242,6 +242,8 @@ export interface ImagePanelSettings {
   depthMax: number | null;
   /** `vision_msgs/Detection2DArray` topic drawn over the image; '' means off. */
   detectionTopic: string;
+  /** `foxglove.ImageAnnotations` topic drawn over the image; '' means off. */
+  annotationsTopic: string;
   /** `PointCloud2` topic projected onto the image; '' means off. */
   cloudTopic: string;
 }
@@ -254,6 +256,7 @@ export const DEFAULT_IMAGE_SETTINGS: ImagePanelSettings = {
   depthMin: null,
   depthMax: null,
   detectionTopic: '',
+  annotationsTopic: '',
   cloudTopic: '',
 };
 

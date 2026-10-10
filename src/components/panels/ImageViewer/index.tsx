@@ -35,6 +35,7 @@ import {
   stampNs,
   type Detection2D,
 } from '../../../utils/detections';
+import { isImageAnnotationsType, parseImageAnnotations, type Annotation } from '../../../utils/imageAnnotations';
 import {
   DEPTH_COLORMAPS,
   colorizeDepth,
@@ -268,6 +269,14 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
         .sort(),
     [bag],
   );
+  const annotationCandidates = useMemo(
+    () =>
+      (bag?.topics ?? [])
+        .filter((t) => isImageAnnotationsType(t.type))
+        .map((t) => t.name)
+        .sort(),
+    [bag],
+  );
   const cloudCandidates = useMemo(
     () =>
       (bag?.topics ?? [])
@@ -280,12 +289,16 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
   const detectionTopic = detectionCandidates.includes(settings.detectionTopic) ? settings.detectionTopic : '';
   const detectionMsg = useMessageAtTime(detectionTopic, message?.timestamp ?? playheadNs, bagId).message;
   const detections = useMemo(() => parseDetection2DArray(detectionMsg?.value), [detectionMsg]);
+  const annotationsTopic = annotationCandidates.includes(settings.annotationsTopic) ? settings.annotationsTopic : '';
+  const annotationsMsg = useMessageAtTime(annotationsTopic, message?.timestamp ?? playheadNs, bagId).message;
+  const annotations = useMemo(() => parseImageAnnotations(annotationsMsg?.value), [annotationsMsg]);
   const imageStamp = useMemo(
     () => stampNs(message?.value) ?? message?.timestamp ?? null,
     [message],
   );
   const detectionStamp = detections.stampNs ?? detectionMsg?.timestamp ?? null;
   const freshness = detectionFreshness(detectionStamp, imageStamp, DETECTION_TOLERANCE_NS);
+  const annotationFreshness = detectionFreshness(annotations.stampNs ?? annotationsMsg?.timestamp ?? null, imageStamp, DETECTION_TOLERANCE_NS);
 
   // The footer slot the LiDAR projection writes its one-line status into.
   const [statusSlot, setStatusSlot] = useState<HTMLElement | null>(null);
@@ -491,6 +504,22 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
           ))}
         </select>
       )}
+      {annotationCandidates.length > 0 && (
+        <select
+          value={annotationsTopic}
+          onChange={(e) => updateSettings(panelId, { annotationsTopic: e.target.value })}
+          aria-label="Annotations topic"
+          title="Draw circles, lines and text (foxglove.ImageAnnotations) on this image"
+          className="text-[10px] mono px-1 py-0.5 rounded border border-border bg-bg-secondary text-text-secondary max-w-[140px]"
+        >
+          <option value="">annotations: off</option>
+          {annotationCandidates.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+      )}
       {cloudCandidates.length > 0 && camera.info && (
         <select
           value={cloudTopic}
@@ -580,6 +609,7 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
                   showOverlay={overlayOn}
                   camera={camera.info}
                   boxes={detectionTopic && freshness.fresh ? detections.detections : []}
+                  annotations={annotationsTopic && annotationFreshness.fresh ? annotations.shapes : []}
                   imageSize={meta ? { width: meta.width, height: meta.height } : null}
                   rectifyCamera={rectifyCamera}
                   projection={
@@ -655,6 +685,20 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
                 <span>{Math.round(view.zoom * 100)}%</span>
               )}
               <span ref={setStatusSlot} className="text-text-secondary" />
+              {annotationsTopic && (
+                <span
+                  className={annotationFreshness.fresh ? 'text-text-secondary' : 'text-accent-amber'}
+                  title={
+                    annotationFreshness.deltaNs === null
+                      ? 'Annotations and image carry no comparable stamp'
+                      : `Annotation stamp minus image stamp: ${Number(annotationFreshness.deltaNs) / 1e6} ms`
+                  }
+                >
+                  {annotationFreshness.fresh
+                    ? `${annotations.shapes.length} annotations`
+                    : `annotations hidden: ${Math.abs(Number(annotationFreshness.deltaNs ?? 0n) / 1e6).toFixed(0)} ms off`}
+                </span>
+              )}
               {detectionTopic && (
                 <span
                   className={freshness.fresh ? 'text-text-secondary' : 'text-accent-amber'}
@@ -774,6 +818,7 @@ interface CanvasWithOverlayProps {
   showOverlay: boolean;
   camera: CameraIntrinsics | null;
   boxes: Detection2D[];
+  annotations: Annotation[];
   imageSize: { width: number; height: number } | null;
   /** When set, box corners are undistorted with these intrinsics to match a rectified frame. */
   rectifyCamera: CameraIntrinsics | null;
@@ -834,7 +879,79 @@ function DetectionBoxes({
   );
 }
 
-function CanvasWithOverlay({ canvasRef, showOverlay, camera, boxes, imageSize, rectifyCamera, projection }: CanvasWithOverlayProps) {
+/** foxglove.ImageAnnotations as SVG in image-pixel space, laid exactly over the canvas. */
+function AnnotationShapes({
+  canvasRef,
+  shapes,
+  imageSize,
+  rectifyCamera,
+}: {
+  canvasRef: React.RefObject<HTMLCanvasElement | null>;
+  shapes: Annotation[];
+  imageSize: { width: number; height: number } | null;
+  rectifyCamera: CameraIntrinsics | null;
+}) {
+  const rect = useCanvasRect(canvasRef, shapes.length > 0, imageSize);
+  if (shapes.length === 0 || !rect || !imageSize) return null;
+  // Annotated points are in the raw image; a rectified frame needs them moved the same way.
+  const at = (x: number, y: number) => (rectifyCamera ? undistortPixel(rectifyCamera, x, y) : { x, y });
+  const stroke = { vectorEffect: 'non-scaling-stroke' } as const;
+  return (
+    <svg
+      className="pointer-events-none absolute"
+      style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }}
+      viewBox={`0 0 ${imageSize.width} ${imageSize.height}`}
+      preserveAspectRatio="none"
+      aria-hidden
+      data-testid="image-annotations"
+    >
+      {shapes.map((s, i) => {
+        if (s.kind === 'circle') {
+          const c = at(s.x, s.y);
+          return <circle key={i} cx={c.x} cy={c.y} r={s.diameter / 2} fill={s.fill ?? 'none'} stroke={s.outline ?? 'none'} strokeWidth={Math.max(1, s.thickness)} {...stroke} />;
+        }
+        if (s.kind === 'text') {
+          const p = at(s.x, s.y);
+          const w = s.text.length * s.fontSize * 0.6;
+          return (
+            <g key={i}>
+              {s.background && <rect x={p.x} y={p.y - s.fontSize} width={w} height={s.fontSize * 1.2} fill={s.background} />}
+              <text x={p.x} y={p.y} fontSize={s.fontSize} fill={s.color} fontFamily="monospace">{s.text}</text>
+            </g>
+          );
+        }
+        const pts = s.points.map((p) => at(p.x, p.y));
+        const sw = Math.max(1, s.thickness);
+        if (s.kind === 'points') {
+          return (
+            <g key={i}>
+              {pts.map((p, j) => (
+                <circle key={j} cx={p.x} cy={p.y} r={sw} fill={s.outlines[j] ?? s.outline ?? s.fill ?? 'white'} />
+              ))}
+            </g>
+          );
+        }
+        if (s.kind === 'list') {
+          return (
+            <g key={i}>
+              {pts.slice(0, pts.length - (pts.length % 2)).map((p, j) =>
+                j % 2 === 0 ? <line key={j} x1={p.x} y1={p.y} x2={pts[j + 1]!.x} y2={pts[j + 1]!.y} stroke={s.outlines[j] ?? s.outline ?? 'white'} strokeWidth={sw} {...stroke} /> : null,
+              )}
+            </g>
+          );
+        }
+        const d = pts.map((p) => `${p.x},${p.y}`).join(' ');
+        return s.kind === 'loop' ? (
+          <polygon key={i} points={d} fill={s.fill ?? 'none'} stroke={s.outline ?? 'none'} strokeWidth={sw} {...stroke} />
+        ) : (
+          <polyline key={i} points={d} fill="none" stroke={s.outline ?? 'white'} strokeWidth={sw} {...stroke} />
+        );
+      })}
+    </svg>
+  );
+}
+
+function CanvasWithOverlay({ canvasRef, showOverlay, camera, boxes, annotations, imageSize, rectifyCamera, projection }: CanvasWithOverlayProps) {
   // The reticle sits over the canvas in absolute coords. We compute its CSS
   // position from (cx, cy) and the rendered canvas size, kept in sync via
   // ResizeObserver so a resize from a panel drag doesn't drift it.
@@ -871,6 +988,7 @@ function CanvasWithOverlay({ canvasRef, showOverlay, camera, boxes, imageSize, r
         className="max-w-full max-h-full object-contain rounded-md border border-border"
       />
       <DetectionBoxes canvasRef={canvasRef} boxes={boxes} imageSize={imageSize} rectifyCamera={rectifyCamera} />
+      <AnnotationShapes canvasRef={canvasRef} shapes={annotations} imageSize={imageSize} rectifyCamera={rectifyCamera} />
       {projection && imageSize && (
         <CloudProjection
           canvasRef={canvasRef}

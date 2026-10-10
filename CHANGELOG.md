@@ -9,6 +9,18 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Foxglove `ImageAnnotations` and `SceneUpdate`. Annotations (circles,
+  polylines, loops, points and text, in image pixels) draw over a camera image
+  when chosen from the image panel's new `annotations` dropdown, and are hidden,
+  with the time gap shown, when they belong to a different frame than the one on
+  screen. A `SceneUpdate` opens in the 3D panel and is drawn through the marker
+  renderer (so frames, lifetimes, namespaces and the filter all work); each
+  entity replaces its previous self, and deletions are honoured. Models are not
+  drawn, and lines or text sized in screen pixels are drawn at a fixed modest
+  world size. These work for JSON-encoded messages (MCAP files and live JSON
+  bridges); protobuf-encoded Foxglove messages are not decoded yet.
+- Live JSON messages with Foxglove schemas (images, point clouds, scene
+  updates) are now reshaped the same way MCAP ones are.
 - 2D goal tool for live connections. In a 3D panel's top-down (2D) view, "Goal"
   lets you drag on the floor to place a navigation goal and aim it; it appears
   as an arrow with its position and heading in words, and is sent only when you
