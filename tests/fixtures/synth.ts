@@ -23,7 +23,7 @@ import rosmsgCommon from '@foxglove/rosmsg-msgs-common';
 import { md5, parse as parseMessageDefinition } from '@foxglove/rosmsg';
 
 // ── Memory-backed writable (lifted from scripts/build-sample-bag.mjs) ─────
-function makeMemoryWritable() {
+export function makeMemoryWritable() {
   let buffer = new Uint8Array(16 * 1024);
   let size = 0;
   return {

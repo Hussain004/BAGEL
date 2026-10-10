@@ -71,6 +71,8 @@ export const MARKER_ACTION = {
   MODIFY: 0,
   DELETE: 2,
   DELETEALL: 3,
+  /** BAGEL-internal: remove every marker in the namespace (used for foxglove.SceneUpdate entities). */
+  REPLACE_NAMESPACE: 100,
 } as const;
 
 export interface Vec3 {

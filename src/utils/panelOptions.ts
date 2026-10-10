@@ -29,6 +29,7 @@ import {
   isTfTopic,
   isTrajectoryCapableType,
 } from './messages';
+import { isImageAnnotationsType } from './imageAnnotations';
 
 /**
  * Everything the UI says about a panel kind, in one place: add a kind to
@@ -68,6 +69,8 @@ export const KIND_BUTTON_TITLE = mapKinds((m) => m.title);
 export function suggestPanelKind(topic: TopicInfo): PanelKind {
   if (isTfTopic(topic.name, topic.type)) return 'tf';
   if (isImageType(topic.type)) return 'image';
+  // Annotations draw on an image panel (pick them there); on their own they are just data.
+  if (isImageAnnotationsType(topic.type)) return 'raw';
   if (isSplatType(topic.type)) return 'splat';
   // Bool / String carry no number to plot; a state lane is the only useful view.
   if (/^std_msgs\/(msg\/)?(Bool|String)$/.test(topic.type)) return 'state';
@@ -98,6 +101,7 @@ export function suggestPanelKind(topic: TopicInfo): PanelKind {
 export function panelOptionsFor(topic: TopicInfo): PanelKind[] {
   if (isTfTopic(topic.name, topic.type)) return ['tf', 'raw'];
   if (isImageType(topic.type)) return ['image', 'raw'];
+  if (isImageAnnotationsType(topic.type)) return ['raw', 'search'];
   if (isSplatType(topic.type)) return ['splat', 'raw'];
   // Integers are usually enums (a mode, a status code): offer both views.
   if (/^std_msgs\/(msg\/)?String$/.test(topic.type)) return ['state', 'raw', 'search'];

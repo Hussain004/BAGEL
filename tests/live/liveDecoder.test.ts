@@ -162,3 +162,23 @@ describe('clearLiveDecoderCache', () => {
     expect(r1).toMatchObject({ flag: true });
   });
 });
+
+describe('decodeLiveMessage: Foxglove-schema JSON', () => {
+  const enc = (v: unknown) => new TextEncoder().encode(JSON.stringify(v));
+
+  it('turns a SceneUpdate into a MarkerArray when given the schema name', () => {
+    const update = { entities: [{ id: 'e', frame_id: 'map', timestamp: { sec: 1, nsec: 0 }, cubes: [{ pose: { position: { x: 0, y: 0, z: 0 }, orientation: { x: 0, y: 0, z: 0, w: 1 } }, size: { x: 1, y: 1, z: 1 }, color: { r: 1, g: 0, b: 0, a: 1 } }] }] };
+    const v = decodeLiveMessage('json', 'jsonschema', '', enc(update), 'foxglove.SceneUpdate') as { markers: Array<{ ns: string; action: number }> };
+    expect(v.markers.map((m) => [m.ns, m.action])).toEqual([['e', 100], ['e', 0]]);
+  });
+
+  it('plain JSON on other schemas is returned unchanged, and without a schema name nothing is reshaped', () => {
+    expect(decodeLiveMessage('json', undefined, '', enc({ a: 1 }), 'std_msgs/msg/Foo')).toEqual({ a: 1 });
+    expect(decodeLiveMessage('json', undefined, '', enc({ entities: [] }))).toEqual({ entities: [] });
+  });
+
+  it('a Foxglove RawImage arriving as JSON is decoded to bytes', () => {
+    const v = decodeLiveMessage('json', 'jsonschema', '', enc({ width: 1, height: 1, encoding: 'rgb8', step: 3, data: btoa('\x01\x02\x03') }), 'foxglove.RawImage') as { data: Uint8Array };
+    expect(Array.from(v.data)).toEqual([1, 2, 3]);
+  });
+});
