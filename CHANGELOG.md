@@ -9,6 +9,11 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Hover a point in the 3D view to read its coordinates, intensity and ring (and
+  which topic it came from). The decoder now keeps intensity and ring for each
+  point whatever the colour mode, so there is no extra trip to the worker. The
+  tooltip is off while you measure or drag, and follows the pointer across
+  frames during playback. The sample bag's LiDAR now carries a `ring` field.
 - `vision_msgs/Detection3DArray` now draws in the 3D scene as wireframe boxes,
   coloured by class (the same colour as the 2D boxes on the camera), placed
   through TF. Open the topic on its own, or add it from the Display card's

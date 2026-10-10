@@ -85,6 +85,7 @@ import { registerCapture } from '../../../utils/captureRegistry';
 import { RobotMarker } from './robotMarker';
 import { ControlsCard } from './DisplayCard';
 import { useMeasureTool } from './useMeasureTool';
+import { usePointInspector } from './usePointInspector';
 import { useCameraFrustums } from './useCameraFrustums';
 import { CameraInfoFeed } from './CameraInfoFeed';
 import {
@@ -730,6 +731,13 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
   // sibling panel would silently null out the user's pivot.
   // Measure tool state lives up here because the coordinate-change effect below clears it.
   const { measureOn, setMeasureOn, measurePts, setMeasurePts, measureReadout } = useMeasureTool(sceneRef, objectsRef);
+
+  const hoveredPoint = usePointInspector({
+    sceneRef,
+    getCloudObject: () => objectsRef.current?.cloud?.object ?? null,
+    cloud,
+    enabled: sceneKind === 'pointcloud' && !measureOn,
+  });
 
   const prevCoordDepsRef = useRef({ worldFrame, topicName, upAxis });
   useEffect(() => {
@@ -1624,6 +1632,23 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
             />
           </div>
 
+          {hoveredPoint && (
+            <div
+              className="pointer-events-none absolute z-10 rounded-md border border-border bg-surface/95 px-2 py-1 text-[10px] mono leading-tight text-text-secondary shadow-panel"
+              style={{ left: hoveredPoint.x + 12, top: hoveredPoint.y + 12 }}
+              data-testid="point-inspector"
+              role="status"
+            >
+              <div className="text-text-primary">point {hoveredPoint.index.toLocaleString()}</div>
+              <div>
+                x {hoveredPoint.position.x.toFixed(3)}  y {hoveredPoint.position.y.toFixed(3)}  z{' '}
+                {hoveredPoint.position.z.toFixed(3)} m
+              </div>
+              {hoveredPoint.intensity !== null && <div>intensity {Number(hoveredPoint.intensity.toPrecision(5))}</div>}
+              {hoveredPoint.ring !== null && <div>ring {hoveredPoint.ring}</div>}
+              <div className="text-text-muted">{topicName}</div>
+            </div>
+          )}
           {measureOn && (
             <div
               className="absolute bottom-2 left-2 right-2 rounded-md border border-accent-amber/40 bg-surface/90 px-2 py-1 text-[10px] mono text-text-secondary"

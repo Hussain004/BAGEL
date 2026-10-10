@@ -310,7 +310,12 @@ ctx.addEventListener('message', async (e: MessageEvent<WorkerRequest>) => {
         // Transfer the Float32Array backing buffers - zero copy to the main
         // thread. positions / colors are unique per decode, never shared.
         const transfer = result
-          ? [result.positions.buffer, result.colors.buffer]
+          ? [
+              result.positions.buffer,
+              result.colors.buffer,
+              ...(result.intensity ? [result.intensity.buffer] : []),
+              ...(result.ring ? [result.ring.buffer] : []),
+            ]
           : undefined;
         respond(result, transfer as Transferable[] | undefined);
         return;
