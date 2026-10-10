@@ -9,6 +9,14 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- 2D goal tool for live connections. In a 3D panel's top-down (2D) view, "Goal"
+  lets you drag on the floor to place a navigation goal and aim it; it appears
+  as an arrow with its position and heading in words, and is sent only when you
+  press "Send goal", as a `PoseStamped` on a topic you can change (default
+  `/goal_pose`) in the panel's fixed frame. It needs Robot control enabled, and
+  its channel is withdrawn when control is turned off or the connection drops.
+- Fixed: a ROS 1 `TwistStamped` from the control card was missing the header's
+  sequence number, so a ROS 1 bridge would have read it wrongly.
 - Service calls from the robot control card. With control enabled and a bridge
   that has the `services` capability, the card lists the services, prefills a
   JSON request from the service's own schema, sends it in the encoding the
