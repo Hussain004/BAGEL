@@ -22,7 +22,7 @@
 
 ## What is BAGEL?
 
-**BAGEL** is a fully static web application that lets you explore ROS bag files (`.mcap`, `.db3`, `.bag`), standalone point cloud files (`.pcd`, `.ply`), and 3D Gaussian Splat scenes (`.ply`, `.splat`, `.ksplat`) entirely in your browser needing no server, no installation, no account. Just drag and drop!
+**BAGEL** is a fully static web application that lets you explore ROS bag files (`.mcap`, `.db3`, `.bag`), PX4 flight logs (`.ulg`), standalone point cloud files (`.pcd`, `.ply`), and 3D Gaussian Splat scenes (`.ply`, `.splat`, `.ksplat`) entirely in your browser needing no server, no installation, no account. Just drag and drop!
 
 Robotics engineers and researchers frequently generate bag files during experiments, SLAM runs, and sensor calibration. Inspecting these files currently requires a full ROS1 or ROS2 installation, Foxglove Studio (increasingly commercial), or writing custom Python scripts for every inspection task.
 
