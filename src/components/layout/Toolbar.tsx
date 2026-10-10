@@ -223,6 +223,17 @@ export function Toolbar() {
         <CopyLinkButton />
         <ShareButton />
         <PresetsMenu />
+        {focusedBagIsLive && (
+          <button
+            onClick={() => useUiStore.getState().setControlOpen(!useUiStore.getState().controlOpen)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-text-secondary hover:text-text-primary hover:bg-surface-hover border border-border hover:border-accent-rose/40 transition-colors"
+            title="Drive the robot (publishes to the bridge; off until you enable it)"
+            aria-label="Robot control"
+          >
+            <span className="hidden xl:inline">Control</span>
+            <span className="xl:hidden" aria-hidden>⌖</span>
+          </button>
+        )}
         {focusedBagIsLive && focusBagId && (
           <RecordButton
             bagId={focusBagId}

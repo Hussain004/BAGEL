@@ -8,6 +8,7 @@ import { Toolbar } from './components/layout/Toolbar';
 import { Timeline } from './components/layout/Timeline';
 import { UndoToast } from './components/layout/UndoToast';
 import { TourCard } from './components/layout/TourCard';
+import { ControlCard } from './components/live/ControlCard';
 import { startTourFromUrl } from './utils/tourRunner';
 import { PanelGrid } from './components/layout/PanelGrid';
 import { TopicInspector } from './components/panels/TopicInspector';
@@ -137,6 +138,7 @@ function AppInner() {
       )}
       <ModalHost />
       <TourCard />
+      <ControlCard />
     </>
   );
 }

@@ -246,6 +246,18 @@ export function buildCommands(query = ''): Command[] {
     run: () => useBagStore.getState().clearAll(),
   });
 
+  // Driving only makes sense for a live connection, so it is offered only then.
+  if (bagState.bags.get(bagState.focusBagId ?? '')?.kind === 'live') {
+    commands.push({
+      id: 'action:control',
+      label: 'Robot control: drive from the browser',
+      hint: 'off until you enable it',
+      group: 'Actions',
+      keywords: ['teleop', 'drive', 'joystick', 'cmd_vel', 'publish', 'twist'],
+      run: () => useUiStore.getState().setControlOpen(true),
+    });
+  }
+
   commands.push(
     {
       id: 'action:labels',
