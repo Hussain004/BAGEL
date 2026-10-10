@@ -182,6 +182,15 @@ export function pickPairedCameraInfo(
   return null;
 }
 
+/**
+ * Should an image panel offer to pair a CameraInfo by hand? Yes when the bag has
+ * some but none matched this camera's name: undistort and LiDAR projection both
+ * need the pair, and without a nudge nobody knows they are one pick away.
+ */
+export function shouldOfferCameraInfoPairing(candidates: readonly string[], pairedTopic: string | null): boolean {
+  return candidates.length > 0 && pairedTopic === null;
+}
+
 export function useCameraInfo(
   imageTopic: string,
   bagId: string | undefined,

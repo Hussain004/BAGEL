@@ -193,3 +193,12 @@ describe('ImagePanelSettings - manual pair persistence', () => {
     expect(state[b].cameraInfoManualPair).toBe('');
   });
 });
+
+describe('shouldOfferCameraInfoPairing', () => {
+  it('offers only when the bag has CameraInfo topics and none is paired', async () => {
+    const { shouldOfferCameraInfoPairing } = await import('../../src/hooks/useCameraInfo');
+    expect(shouldOfferCameraInfoPairing(['/a/info', '/b/info'], null)).toBe(true);
+    expect(shouldOfferCameraInfoPairing(['/a/info', '/b/info'], '/a/info')).toBe(false);
+    expect(shouldOfferCameraInfoPairing([], null)).toBe(false);
+  });
+});
