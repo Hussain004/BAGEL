@@ -7,6 +7,8 @@ import { LandingPage } from './components/landing/LandingPage';
 import { Toolbar } from './components/layout/Toolbar';
 import { Timeline } from './components/layout/Timeline';
 import { UndoToast } from './components/layout/UndoToast';
+import { TourCard } from './components/layout/TourCard';
+import { startTourFromUrl } from './utils/tourRunner';
 import { PanelGrid } from './components/layout/PanelGrid';
 import { TopicInspector } from './components/panels/TopicInspector';
 import { ModalHost } from './components/modals/ModalHost';
@@ -53,6 +55,13 @@ class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryStat
  * Global cross-cutting hooks (keyboard shortcuts, URL hash sync) live here
  * so they survive bag changes and are torn down only when the app unmounts.
  */
+/**
+ * A `#tour=<id or url>` link starts a guided tour. Read once at load: the hash is
+ * rewritten as soon as a bag opens, so waiting for an effect would find it gone.
+ */
+const tourFromLink = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('tour');
+let tourFromLinkStarted = false;
+
 function AppInner() {
   const bag = useBagStore((s) => s.bag);
   const bagCount = useBagStore((s) => s.bags.size);
@@ -63,6 +72,11 @@ function AppInner() {
   useKeyboardShortcuts();
   useUrlState();
   useCustomSchemaSync();
+  useEffect(() => {
+    if (!tourFromLink || tourFromLinkStarted) return;
+    tourFromLinkStarted = true;
+    void startTourFromUrl(tourFromLink);
+  }, []);
   // Keep the playhead range / cursor in sync with the live ring buffer.
   useLivePlayhead();
 
@@ -122,6 +136,7 @@ function AppInner() {
         </div>
       )}
       <ModalHost />
+      <TourCard />
     </>
   );
 }

@@ -93,7 +93,7 @@ export interface ParsedHash {
  * `pos` as it consumes characters. Returns null on malformed input rather
  * than throwing so a bad hash just falls back to "no restore."
  */
-function parseTreeEncoding(input: string): LayoutNode | null {
+export function parseTreeEncoding(input: string): LayoutNode | null {
   let pos = 0;
   let splitCounter = 0;
 
@@ -397,7 +397,7 @@ export function encodeHash(
  * with stale bagIds (from a prior page session) thus degrade gracefully
  * rather than dropping every leaf.
  */
-function attachTypesAndPrune(
+export function attachTypesAndPrune(
   node: LayoutNode | null,
   bagTopicTypes: Map<string, Map<string, string>>,
   focusBagId: string | null,

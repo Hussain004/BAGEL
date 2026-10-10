@@ -9,6 +9,14 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Guided tours: a JSON file of steps, each with some text, a panel layout and a
+  moment in the bag. A card walks you through them with Back and Next, and the
+  panels change under the words. Three ship on the sample data ("What is TF?",
+  "Reading a LaserScan", "Why timestamps disagree"); start one from the command
+  palette (`Ctrl/Cmd+K`, type "tour") or with a link such as `#tour=tf`. Anyone
+  can write their own and host it anywhere. A tour never replaces a bag you
+  opened yourself, and a mistake in a tour file is reported by step and field.
+  See `docs/TOURS.md`.
 - Splat panels can hold more than one splat file. "Add splat" (or dropping files
   on the panel) loads further `.ply`, `.splat`, `.ksplat` or `.spz` files beside
   the one that is open; a scene list lets you pick one, move it (x, y, z),

@@ -14,6 +14,9 @@ const OFFLINE_PUBLIC = [
   '/icons/icon-512.png',
   '/sample-bags/tour.mcap',
   '/sample-bags/sample-robot.urdf',
+  '/tours/tf.json',
+  '/tours/laserscan.json',
+  '/tours/timestamps.json',
 ];
 
 // Lists every built asset so the service worker can precache the whole app for

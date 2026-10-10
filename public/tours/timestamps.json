@@ -1,0 +1,27 @@
+{
+  "title": "Why timestamps disagree",
+  "description": "Sensors run at different rates; header stamps, log time and the playhead.",
+  "bag": "sample",
+  "steps": [
+    {
+      "title": "Every sensor has its own rhythm",
+      "layout": "H(Pplot:%2Fimu%2Fdata,Pimage:%2Fcamera%2Fimage_raw)",
+      "timeSec": 5,
+      "body": "In the topic list, look at the **Hz** column. The IMU runs at 50 Hz, the 2D scanner at 10 Hz, the LiDAR at 4 Hz and the camera at only 2 Hz.\n\nThere is no moment when all of them speak at once, so \"what the robot saw at 5.0 s\" is always a little approximate."
+    },
+    {
+      "title": "Two clocks on every message",
+      "layout": "Praw:%2Fdetections",
+      "timeSec": 7,
+      "body": "Each message carries a **`header.stamp`**: when the data was measured. The recorder also notes its own **log time**: when it wrote the message down.\n\nA detector copies the stamp of the image it processed, so its boxes belong to that image even if they were computed later. Look at the stamp in this message and compare it with the camera's."
+    },
+    {
+      "title": "The playhead shows the latest at or before now",
+      "layout": "H(Pimage:%2Fcamera%2Fimage_raw,P3d:%2Flidar%2Fpoints)",
+      "timeSec": 9,
+      "play": true,
+      "highlight": "#timeline-track",
+      "body": "Each panel shows the **most recent message at or before the playhead**. The camera changes twice a second and the LiDAR four times, so between updates a panel simply holds its last frame.\n\nPause, then step with the arrow keys and watch which panel changes on each step. That is the difference in rates, made visible."
+    }
+  ]
+}
