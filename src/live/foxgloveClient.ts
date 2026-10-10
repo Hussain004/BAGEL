@@ -13,6 +13,16 @@
  * JSON text frames from client: op in { subscribe, unsubscribe }
  */
 
+import {
+  advertiseClientFrame,
+  decodeServiceResponse,
+  encodeClientPublish,
+  encodeServiceCall,
+  unadvertiseClientFrame,
+  OP_SERVICE_CALL_RESPONSE,
+  type ClientChannel,
+} from './clientProtocol';
+
 export interface FoxgloveChannel {
   id: number;
   topic: string;
@@ -24,12 +34,55 @@ export interface FoxgloveChannel {
 
 type ServerTextOp =
   | { op: 'serverInfo'; name: string; capabilities: string[]; supportedEncodings?: string[] }
+  | { op: 'advertiseServices'; services: RawService[] }
+  | { op: 'unadvertiseServices'; serviceIds: number[] }
+  | { op: 'serviceCallFailure'; serviceId: number; callId: number; message: string }
   | { op: 'advertise'; channels: FoxgloveChannel[] }
   | { op: 'unadvertise'; channelIds: number[] }
   | { op: 'status'; level: number; message: string };
 
+/** A service as the server advertises it: newer servers nest request/response, older ones use flat schema fields. */
+interface RawService {
+  id: number;
+  name: string;
+  type: string;
+  request?: { encoding?: string; schemaName?: string; schemaEncoding?: string; schema?: string };
+  response?: { encoding?: string; schemaName?: string; schemaEncoding?: string; schema?: string };
+  requestSchema?: string;
+  responseSchema?: string;
+}
+
+export interface FoxgloveService {
+  id: number;
+  name: string;
+  type: string;
+  requestSchema: string;
+  requestEncoding: string;
+  responseSchema: string;
+  responseEncoding: string;
+  /** 'ros2msg' | 'ros1msg' | other; how the request schema text is written. */
+  schemaEncoding: string;
+}
+
+export function normalizeService(raw: RawService): FoxgloveService {
+  return {
+    id: raw.id,
+    name: raw.name,
+    type: raw.type ?? raw.request?.schemaName ?? '',
+    requestSchema: raw.request?.schema ?? raw.requestSchema ?? '',
+    requestEncoding: raw.request?.encoding ?? 'json',
+    responseSchema: raw.response?.schema ?? raw.responseSchema ?? '',
+    responseEncoding: raw.response?.encoding ?? raw.request?.encoding ?? 'json',
+    schemaEncoding: raw.request?.schemaEncoding ?? 'ros2msg',
+  };
+}
+
 export type FoxgloveEvent =
-  | { type: 'open'; serverName: string; capabilities: string[] }
+  | { type: 'open'; serverName: string; capabilities: string[]; supportedEncodings: string[] | undefined }
+  | { type: 'services'; services: FoxgloveService[] }
+  | { type: 'unadvertiseServices'; serviceIds: number[] }
+  | { type: 'serviceResponse'; serviceId: number; callId: number; encoding: string; payload: Uint8Array }
+  | { type: 'serviceFailure'; serviceId: number; callId: number; message: string }
   | { type: 'close'; code: number; reason: string }
   | { type: 'advertise'; channels: FoxgloveChannel[] }
   | { type: 'unadvertise'; channelIds: number[] }
@@ -101,7 +154,20 @@ export class FoxgloveClient {
           type: 'open',
           serverName: msg.name,
           capabilities: msg.capabilities,
+          supportedEncodings: msg.supportedEncodings,
         });
+        break;
+
+      case 'advertiseServices':
+        this.onEvent({ type: 'services', services: (msg.services ?? []).map(normalizeService) });
+        break;
+
+      case 'unadvertiseServices':
+        this.onEvent({ type: 'unadvertiseServices', serviceIds: msg.serviceIds ?? [] });
+        break;
+
+      case 'serviceCallFailure':
+        this.onEvent({ type: 'serviceFailure', serviceId: msg.serviceId, callId: msg.callId, message: msg.message });
         break;
 
       case 'advertise':
@@ -143,6 +209,12 @@ export class FoxgloveClient {
       return;
     }
 
+    if (op === OP_SERVICE_CALL_RESPONSE) {
+      const r = decodeServiceResponse(buf);
+      if (r) this.onEvent({ type: 'serviceResponse', ...r });
+      return;
+    }
+
     if (op === OP_TIME) {
       if (buf.byteLength < 9) return;
       const lo = BigInt(view.getUint32(1, true));
@@ -172,6 +244,38 @@ export class FoxgloveClient {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     for (const id of subIds) this.subIdToChannelId.delete(id);
     this.ws.send(JSON.stringify({ op: 'unsubscribe', subscriptionIds: subIds }));
+  }
+
+  // ── Client to server: publishing and service calls ──────────────────────
+  // Each returns false when the socket is not open, so a caller never believes
+  // a command went out that did not.
+
+  advertiseClientChannel(channel: ClientChannel): boolean {
+    if (!this.isOpen()) return false;
+    this.ws!.send(advertiseClientFrame([channel]));
+    return true;
+  }
+
+  unadvertiseClientChannel(channelId: number): boolean {
+    if (!this.isOpen()) return false;
+    this.ws!.send(unadvertiseClientFrame([channelId]));
+    return true;
+  }
+
+  publish(channelId: number, payload: Uint8Array): boolean {
+    if (!this.isOpen()) return false;
+    this.ws!.send(encodeClientPublish(channelId, payload));
+    return true;
+  }
+
+  callService(serviceId: number, callId: number, encoding: string, payload: Uint8Array): boolean {
+    if (!this.isOpen()) return false;
+    this.ws!.send(encodeServiceCall({ serviceId, callId, encoding, payload }));
+    return true;
+  }
+
+  private isOpen(): boolean {
+    return !!this.ws && this.ws.readyState === WebSocket.OPEN;
   }
 
   dispose(): void {

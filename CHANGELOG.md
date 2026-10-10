@@ -9,6 +9,19 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Robot control for live connections. With a Foxglove bridge that allows client
+  publishing, the Control button on the toolbar (or "Robot control" in the
+  palette) opens a card with a drag pad and W A S D / arrow keys that publish a
+  `geometry_msgs/Twist` or `TwistStamped` at 10 Hz in the encoding the server
+  accepts (CDR, ROS 1 or JSON). It is off until you press "Enable control", then
+  a red banner shows. Speeds are capped by two sliders and by hard ceilings
+  (2 m/s, 3 rad/s). Letting go in any way sends a stop: releasing the pad or a
+  key, the page losing focus, the tab being hidden, Esc, closing the card,
+  disconnecting. A dropped connection disarms without sending, and a reconnect
+  starts disarmed. BAGEL adds no authentication; that is the bridge's job.
+- Under it, the client side of the Foxglove protocol: advertising a client
+  channel, publishing, and service call frames (service calls themselves come
+  in a later release).
 - PX4 flight logs: drop a `.ulg` file in like any other recording. Every
   logged uORB message becomes a topic (`/vehicle_attitude`, and
   `/sensor_gyro_1` for a second instance), so the plot, raw, state and search

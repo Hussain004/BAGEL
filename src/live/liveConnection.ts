@@ -24,6 +24,10 @@ import { LiveRingBuffer } from './liveRingBuffer';
 import { LiveRecorder } from './liveRecorder';
 import { decodeLiveMessage } from './liveDecoder';
 import { useLiveStore, type LiveStatus } from '../store/liveStore';
+import { useControlStore } from '../store/controlStore';
+import { CAP_CLIENT_PUBLISH } from './clientProtocol';
+import { pickPublishCodec, type TwistKind } from './controlCodec';
+import { TeleopController } from './teleop';
 import type { BagSummary, TopicInfo } from '../types/bag';
 
 export type SummaryCallback = (summary: BagSummary) => void;
@@ -63,11 +67,38 @@ export class LiveConnection {
   private clockChannelId: number | null = null;
   private simClockNs: bigint | null = null;
 
+  // What the server offered in serverInfo; empty until it connects.
+  private capabilities: readonly string[] = [];
+  private supportedEncodings: readonly string[] | undefined;
+
+  /** Driving the robot: disarmed on creation, on every connect, and on every drop. */
+  readonly teleop: TeleopController;
+  private static readonly TELEOP_CHANNEL_ID = 1;
+
   constructor(bagId: string, wsUrl: string, onSummaryUpdate: SummaryCallback) {
     this.bagId = bagId;
     this.wsUrl = wsUrl;
     this.onSummaryUpdate = onSummaryUpdate;
     this.cachedSummary = buildSummary(wsUrl, [], 0n, 0n, 0);
+    this.teleop = new TeleopController(
+      {
+        advertise: (topic, codec) =>
+          this.client?.advertiseClientChannel({
+            id: LiveConnection.TELEOP_CHANNEL_ID,
+            topic,
+            encoding: codec.encoding,
+            schemaName: codec.schemaName,
+            ...(codec.schema ? { schema: codec.schema, schemaEncoding: codec.schemaEncoding } : {}),
+          }) ?? false,
+        unadvertise: () => {
+          this.client?.unadvertiseClientChannel(LiveConnection.TELEOP_CHANNEL_ID);
+        },
+        send: (payload) => this.client?.publish(LiveConnection.TELEOP_CHANNEL_ID, payload) ?? false,
+        setInterval: (fn, ms) => setInterval(fn, ms),
+        clearInterval: (h) => clearInterval(h as ReturnType<typeof setInterval>),
+      },
+      () => this.mirrorControl(),
+    );
     this.connect();
     // Flush summary stats to bagStore at 1 Hz so toolbar numbers stay fresh
     // without a re-render per message.
@@ -103,6 +134,11 @@ export class LiveConnection {
 
     switch (event.type) {
       case 'open':
+        // A new connection is never armed, whatever the last one was doing.
+        this.teleop.connectionLost();
+        this.capabilities = event.capabilities;
+        this.supportedEncodings = event.supportedEncodings;
+        this.mirrorControl();
         this.reconnectAttempt = 0;
         this.setStatus('connected', event.serverName);
         // Fresh connection: nothing has been subscribed on it yet, then
@@ -170,6 +206,8 @@ export class LiveConnection {
       }
 
       case 'close':
+        this.teleop.connectionLost();
+        this.mirrorControl();
         this.client = null;
         this.subscribedChannelIds.clear();
         if (!this.destroyed) {
@@ -330,11 +368,42 @@ export class LiveConnection {
     return r.finish();
   }
 
+  // ── Control (publishing) ────────────────────────────────────────────────
+
+  /** Whether the server allows clients to publish. */
+  get canPublish(): boolean {
+    return this.capabilities.includes(CAP_CLIENT_PUBLISH);
+  }
+
+  /**
+   * Arm control on `topic`. Returns an error message when it cannot be done,
+   * and stays disarmed in that case.
+   */
+  enableControl(topic: string, kind: TwistKind): string | null {
+    if (!this.client || this.status !== 'connected') return 'Not connected.';
+    if (!this.canPublish) return 'This server does not allow clients to publish (no clientPublish capability).';
+    if (!/^\/[A-Za-z0-9_/~]+$/.test(topic)) return 'Enter a topic name such as /cmd_vel.';
+    const ros2Names = Array.from(this.channels.values()).some((c) => c.schemaName.includes('/msg/')) || this.channels.size === 0;
+    const codec = pickPublishCodec({ supportedEncodings: this.supportedEncodings, kind, ros2Names });
+    if (!codec) return 'The server accepts none of the encodings BAGEL can write (cdr, ros1, json).';
+    if (!this.teleop.enable(topic, codec)) return 'The connection is not open.';
+    return null;
+  }
+
+  private mirrorControl(): void {
+    if (this.destroyed) return;
+    useControlStore.getState().set(this.bagId, { enabled: this.teleop.enabled, sendFailed: this.teleop.sendFailed });
+  }
+
   get isSimTime(): boolean {
     return this.simClockNs !== null;
   }
 
   disconnect(): void {
+    // Stop the robot first if it is being driven, while the socket can still carry it.
+    this.teleop.disable();
+    this.teleop.connectionLost();
+    useControlStore.getState().clear(this.bagId);
     this.destroyed = true;
     this.recorder = null;
     this.simClockNs = null;
