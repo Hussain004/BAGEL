@@ -26,7 +26,7 @@ import { decodeLiveMessage } from './liveDecoder';
 import { useLiveStore, type LiveStatus } from '../store/liveStore';
 import { useControlStore } from '../store/controlStore';
 import { CAP_CLIENT_PUBLISH, CAP_SERVICES } from './clientProtocol';
-import { pickPublishCodec, type TwistKind } from './controlCodec';
+import { pickGoalCodec, pickPublishCodec, type Goal2D, type GoalCodec, type TwistKind } from './controlCodec';
 import { TeleopController } from './teleop';
 import { decodeResponse, encodeRequest } from './serviceCodec';
 import type { BagSummary, TopicInfo } from '../types/bag';
@@ -80,6 +80,9 @@ export class LiveConnection {
   /** Driving the robot: disarmed on creation, on every connect, and on every drop. */
   readonly teleop: TeleopController;
   private static readonly TELEOP_CHANNEL_ID = 1;
+  private static readonly GOAL_CHANNEL_ID = 2;
+  /** The goal topic currently advertised on this connection, with its codec. */
+  private goalChannel: { topic: string; codec: GoalCodec } | null = null;
 
   constructor(bagId: string, wsUrl: string, onSummaryUpdate: SummaryCallback) {
     this.bagId = bagId;
@@ -428,8 +431,44 @@ export class LiveConnection {
     return null;
   }
 
+  /**
+   * Send a navigation goal (a `PoseStamped`) to `topic` in `frameId`. Counts as a
+   * command, so it needs control enabled; returns an error message or null.
+   */
+  publishGoal(topic: string, goal: Goal2D, frameId: string): string | null {
+    if (!this.teleop.enabled) return 'Enable control first: a goal makes the robot move.';
+    if (!this.client || this.status !== 'connected') return 'Not connected.';
+    if (!frameId) return 'Pick a fixed frame for the 3D view first (Display > Coordinate frame); a goal needs one.';
+    if (!/^\/[A-Za-z0-9_/~]+$/.test(topic)) return 'Enter a topic name such as /goal_pose.';
+    if (![goal.x, goal.y, goal.yaw].every(Number.isFinite)) return 'The goal is not a valid pose.';
+    if (!this.goalChannel || this.goalChannel.topic !== topic) {
+      const ros2Names = Array.from(this.channels.values()).some((c) => c.schemaName.includes('/msg/')) || this.channels.size === 0;
+      const codec = pickGoalCodec({ supportedEncodings: this.supportedEncodings, ros2Names });
+      if (!codec) return 'The server accepts none of the encodings BAGEL can write (cdr, ros1, json).';
+      if (this.goalChannel) this.client.unadvertiseClientChannel(LiveConnection.GOAL_CHANNEL_ID);
+      const ok = this.client.advertiseClientChannel({
+        id: LiveConnection.GOAL_CHANNEL_ID,
+        topic,
+        encoding: codec.encoding,
+        schemaName: codec.schemaName,
+        ...(codec.schema ? { schema: codec.schema, schemaEncoding: codec.schemaEncoding } : {}),
+      });
+      if (!ok) return 'The connection is not open.';
+      this.goalChannel = { topic, codec };
+    }
+    return this.client.publish(LiveConnection.GOAL_CHANNEL_ID, this.goalChannel.codec.encode(goal, frameId)) ? null : 'The goal could not be sent.';
+  }
+
+  /** Withdraw the goal channel (on disarm and on a drop) so nothing can publish to it unarmed. */
+  private dropGoalChannel(): void {
+    if (!this.goalChannel) return;
+    this.client?.unadvertiseClientChannel(LiveConnection.GOAL_CHANNEL_ID);
+    this.goalChannel = null;
+  }
+
   private mirrorControl(): void {
     if (this.destroyed) return;
+    if (!this.teleop.enabled) this.dropGoalChannel();
     useControlStore.getState().set(this.bagId, {
       enabled: this.teleop.enabled,
       sendFailed: this.teleop.sendFailed,

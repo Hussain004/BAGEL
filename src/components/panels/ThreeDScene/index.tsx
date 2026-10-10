@@ -85,6 +85,9 @@ import { registerCapture } from '../../../utils/captureRegistry';
 import { RobotMarker } from './robotMarker';
 import { ControlsCard } from './DisplayCard';
 import { useMeasureTool } from './useMeasureTool';
+import { useGoalTool } from './useGoalTool';
+import { formatGoal } from './goalTool';
+import { useControlStore } from '../../../store/controlStore';
 import { usePointInspector } from './usePointInspector';
 import { useCameraFrustums } from './useCameraFrustums';
 import { CameraInfoFeed } from './CameraInfoFeed';
@@ -731,6 +734,10 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
   // sibling panel would silently null out the user's pivot.
   // Measure tool state lives up here because the coordinate-change effect below clears it.
   const { measureOn, setMeasureOn, measurePts, setMeasurePts, measureReadout } = useMeasureTool(sceneRef, objectsRef);
+
+  const liveConn = bagEntry?.kind === 'live' ? bagEntry.liveConn : null;
+  const controlArmed = useControlStore((s) => s.views.get(resolvedBagId ?? '')?.enabled ?? false);
+  const goal = useGoalTool({ sceneRef, conn: liveConn, worldFrame, projectionMode });
 
   const hoveredPoint = usePointInspector({
     sceneRef,
@@ -1515,6 +1522,21 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
               >
                 Measure
               </button>
+              {liveConn && projectionMode === 'orthographic' && (
+                <button
+                  type="button"
+                  aria-pressed={goal.goalOn}
+                  onClick={() => goal.setGoalOn(!goal.goalOn)}
+                  className={
+                    goal.goalOn
+                      ? 'px-2 py-1 rounded-md text-xs mono border border-accent-rose/60 bg-accent-rose/15 text-accent-rose'
+                      : 'px-2 py-1 rounded-md text-xs mono bg-surface/80 border border-border hover:border-accent-rose/40 hover:text-accent-rose text-text-secondary transition-colors'
+                  }
+                  title="Send the robot a navigation goal: drag on the floor to place it and aim it (needs Robot control enabled)"
+                >
+                  Goal
+                </button>
+              )}
             </div>
             <label className="flex items-center gap-2 rounded-md border border-border bg-surface/80 px-2 py-1 text-[10px] mono text-text-tertiary">
               <span>zoom</span>
@@ -1647,6 +1669,39 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
               {hoveredPoint.intensity !== null && <div>intensity {Number(hoveredPoint.intensity.toPrecision(5))}</div>}
               {hoveredPoint.ring !== null && <div>ring {hoveredPoint.ring}</div>}
               <div className="text-text-muted">{topicName}</div>
+            </div>
+          )}
+          {goal.goalOn && (
+            <div
+              className="absolute bottom-2 left-2 right-2 rounded-md border border-accent-rose/50 bg-surface/90 px-2 py-1 text-[10px] mono text-text-secondary space-y-1"
+              data-testid="goal-bar"
+              role="status"
+            >
+              {!controlArmed ? (
+                <div>Turn on Robot control (toolbar) to send goals.</div>
+              ) : goal.pending ? (
+                <>
+                  <div data-testid="goal-text">{formatGoal(goal.pending)}</div>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      value={goal.topic}
+                      onChange={(e) => goal.setTopic(e.target.value)}
+                      aria-label="Goal topic"
+                      spellCheck={false}
+                      className="flex-1 min-w-0 bg-bg-primary border border-border rounded px-1.5 py-0.5 text-text-primary"
+                    />
+                    <button type="button" onClick={goal.send} className="px-2 py-0.5 rounded border border-accent-rose/60 bg-accent-rose/20 text-text-primary">
+                      Send goal
+                    </button>
+                    <button type="button" onClick={goal.cancel} className="px-2 py-0.5 rounded border border-border hover:border-accent-blue/40">
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div>Drag on the floor from where the robot should go toward the way it should face.</div>
+              )}
+              {goal.message && <div className={goal.message.ok ? 'text-accent-emerald' : 'text-accent-amber'} data-testid="goal-message">{goal.message.text}</div>}
             </div>
           )}
           {measureOn && (
