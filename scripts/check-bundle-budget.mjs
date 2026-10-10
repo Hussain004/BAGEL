@@ -6,7 +6,7 @@ import { gzipSync } from 'node:zlib';
 
 const KB = 1024;
 const budgets = [
-  { prefix: 'index-', max: 220 * KB, what: 'main entry' },
+  { prefix: 'index-', max: 200 * KB, what: 'main entry' },
   { prefix: 'three-', max: 190 * KB, what: 'three.js' },
   { prefix: 'parser.worker-', max: 160 * KB, what: 'parser worker' },
 ];

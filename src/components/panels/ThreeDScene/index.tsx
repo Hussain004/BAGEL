@@ -1675,8 +1675,10 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
                 )}
               </div>
             )}
-            {!stats.sourceFrame && noTf && (
-              <div className="text-text-tertiary">no /tf - rendering in topic frame</div>
+            {noTf && (
+              <div className="text-text-tertiary" data-testid="no-tf-note">
+                no /tf in this bag: drawn in its own frame
+              </div>
             )}
             {isCloud && (
               <div className="text-text-tertiary mt-0.5">

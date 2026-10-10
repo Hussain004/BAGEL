@@ -9,6 +9,14 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Two small hints. A 3D view over a bag with no `/tf` now says so ("no /tf in
+  this bag: drawn in its own frame"), whether or not the frame is known. An
+  image panel whose bag has CameraInfo topics but none that matches the camera
+  by name offers "Choose one" instead of leaving undistort and LiDAR projection
+  mysteriously unavailable.
+- The heavier dialogs (bag editing, clip export, frame export, share, URDF and
+  schema paste) now download when first opened: the first screen is about 24 KB
+  gzipped lighter, and the size budget for the main chunk is now 200 KB.
 - Export frames: turn a stretch of a recording into a dataset. "Export frames"
   (the Labels list, or `Ctrl/Cmd+K` then "frames") writes the images of one
   camera topic over the whole bag or one labelled range into a zip, every Nth

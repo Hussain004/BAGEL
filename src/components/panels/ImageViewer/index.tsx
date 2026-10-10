@@ -13,7 +13,7 @@ import { PanelLoadingState, PanelErrorState, PanelEmptyState } from '../shared/P
 import { openInActions } from '../../../utils/emptyActions';
 import { OverlayCard } from '../shared/OverlayCard';
 import { getTopicColor } from '../../../utils/color';
-import { useCameraInfo, type CameraIntrinsics } from '../../../hooks/useCameraInfo';
+import { shouldOfferCameraInfoPairing, useCameraInfo, type CameraIntrinsics } from '../../../hooks/useCameraInfo';
 import {
   DEFAULT_IMAGE_SETTINGS,
   useImagePanelStore,
@@ -609,6 +609,21 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
             )}
           </div>
 
+          {!settings.cameraInfoOverlay && shouldOfferCameraInfoPairing(camera.candidates, camera.pairedTopic) && (
+            <div className="px-4 py-1 border-t border-border flex items-center gap-2 text-[10px] mono" data-testid="camera-info-offer">
+              <span className="text-text-tertiary">
+                {camera.candidates.length === 1 ? 'This bag has a CameraInfo topic' : `This bag has ${camera.candidates.length} CameraInfo topics`}, but none matches this camera by name.
+              </span>
+              <button
+                type="button"
+                onClick={() => updateSettings(panelId, { cameraInfoOverlay: true })}
+                className="text-accent-blue hover:underline decoration-dotted"
+                title="Choose which CameraInfo goes with this image (needed for undistort and LiDAR projection)"
+              >
+                Choose one
+              </button>
+            </div>
+          )}
           {settings.cameraInfoOverlay && camera.candidates.length > 0 && (
             <CameraInfoPairBar
               pairedTopic={camera.pairedTopic}

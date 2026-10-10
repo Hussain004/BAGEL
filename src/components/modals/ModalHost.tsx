@@ -1,14 +1,21 @@
+import { lazy, Suspense } from 'react';
 import { useUiStore } from '../../store/uiStore';
 import { AboutModal } from './AboutModal';
 import { ShortcutsModal } from './ShortcutsModal';
-import { SchemaPasteModal } from './SchemaPasteModal';
-import { BagEditModal } from './BagEditModal';
-import { UrdfLoadModal } from './UrdfLoadModal';
-import { ClipExportModal } from './ClipExportModal';
-import { ShareModal } from './ShareModal';
 import { CommandPalette } from './CommandPalette';
 import { LabelsModal } from './LabelsModal';
-import { FrameExportModal } from './FrameExportModal';
+
+// The heavier dialogs (editing and exporting bags, clips and frames, sharing, URDF and
+// schema paste) download when first opened rather than with the first screen.
+const named = <K extends string>(load: () => Promise<Record<K, React.ComponentType>>, name: K) =>
+  lazy(async () => ({ default: (await load())[name] }));
+
+const SchemaPasteModal = named(() => import('./SchemaPasteModal'), 'SchemaPasteModal');
+const BagEditModal = named(() => import('./BagEditModal'), 'BagEditModal');
+const UrdfLoadModal = named(() => import('./UrdfLoadModal'), 'UrdfLoadModal');
+const ClipExportModal = named(() => import('./ClipExportModal'), 'ClipExportModal');
+const FrameExportModal = named(() => import('./FrameExportModal'), 'FrameExportModal');
+const ShareModal = named(() => import('./ShareModal'), 'ShareModal');
 
 /**
  * ModalHost - Renders whichever modal the UI store has selected. Mounted once
@@ -24,7 +31,7 @@ export function ModalHost() {
   const modal = useUiStore((s) => s.modal);
   const schemaPaste = useUiStore((s) => s.schemaPaste);
   return (
-    <>
+    <Suspense fallback={null}>
       {modal === 'about' && <AboutModal />}
       {modal === 'shortcuts' && <ShortcutsModal />}
       {modal === 'bag-edit' && <BagEditModal />}
@@ -35,6 +42,6 @@ export function ModalHost() {
       {modal === 'labels' && <LabelsModal />}
       {modal === 'frame-export' && <FrameExportModal />}
       {schemaPaste && <SchemaPasteModal />}
-    </>
+    </Suspense>
   );
 }
