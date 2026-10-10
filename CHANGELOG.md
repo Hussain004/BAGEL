@@ -9,6 +9,11 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Splat panels can hold more than one splat file. "Add splat" (or dropping files
+  on the panel) loads further `.ply`, `.splat`, `.ksplat` or `.spz` files beside
+  the one that is open; a scene list lets you pick one, move it (x, y, z),
+  scale it, or remove it. The spin keys and V act on the selected scene. Added
+  files live for the session only (a shared link carries the bag, not them).
 - Hover a point in the 3D view to read its coordinates, intensity and ring (and
   which topic it came from). The decoder now keeps intensity and ring for each
   point whatever the colour mode, so there is no extra trip to the worker. The
