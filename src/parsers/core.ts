@@ -68,6 +68,16 @@ import { decodeCustomCloud, looksLikeCustomCloud } from '../utils/customCloud';
 import { clearDefinitionCaches } from './typeRegistry';
 import * as multi from './multi';
 import { rangeFromAll, type RangeParams, type RangeResult } from './range';
+import {
+  ULOG_MAGIC,
+  disposeUlogCache,
+  getTopicTypeUlog,
+  parseUlog,
+  readAllMessageStatsUlog,
+  readDeserializedMessagesUlog,
+  readMessageAtTimeUlog,
+  readRangeUlog,
+} from './ulog';
 
 const MCAP_MAGIC = [0x89, 0x4d, 0x43, 0x41, 0x50, 0x30, 0x0d, 0x0a];
 const SQLITE_MAGIC = [0x53, 0x51, 0x4c, 0x69, 0x74, 0x65];
@@ -86,6 +96,7 @@ export async function detectFormat(source: BagSource): Promise<BagFormat | 'unkn
   if (ext === 'db3') return 'db3';
   if (ext === 'bag') return 'bag';
   if (ext === 'pcd') return 'pcd';
+  if (ext === 'ulg') return 'ulog';
   if (ext === 'splat' || ext === 'ksplat' || ext === 'spz') return 'splat';
   if (ext === 'ply') {
     // A splat-flavored PLY (SH color / opacity / scale / rotation
@@ -100,6 +111,7 @@ export async function detectFormat(source: BagSource): Promise<BagFormat | 'unkn
   if (checkMagicBytes(header, MCAP_MAGIC)) return 'mcap';
   if (checkMagicBytes(header, SQLITE_MAGIC)) return 'db3';
   if (checkMagicBytes(header, ROSBAG_V2_MAGIC)) return 'bag';
+  if (checkMagicBytes(header, ULOG_MAGIC)) return 'ulog';
 
   // PCD: first line starts with "# .PCD"
   const headerText = new TextDecoder('ascii').decode(header);
@@ -129,10 +141,12 @@ export async function parseBag(source: BagSource): Promise<BagSummary> {
       return parsePly(source);
     case 'splat':
       return parseSplat(source);
+    case 'ulog':
+      return parseUlog(source);
     default:
       throw new Error(
         `Unsupported file format: "${sourceDisplayName(source)}". ` +
-          'BAGEL supports .mcap, .db3, .bag, .pcd, .ply, .splat, .ksplat, and .spz files.',
+          'BAGEL supports .mcap, .db3, .bag, .ulg, .pcd, .ply, .splat, .ksplat, and .spz files.',
       );
   }
 }
@@ -145,7 +159,7 @@ export async function readRawMessages(
   limit?: number,
 ): Promise<RawMessage[]> {
   if (source.kind === 'multi') return multi.readRawMessagesMulti(source, format, topicName, limit);
-  if (format === 'pcd' || format === 'ply' || format === 'splat') return [];
+  if (format === 'pcd' || format === 'ply' || format === 'splat' || format === 'ulog') return [];
   if (format === 'mcap') return readRawMessagesMcap(source, topicName, limit);
   if (format === 'bag') return readRawMessagesBag(source, topicName, limit);
   return readRawMessagesDb3(source, topicName, limit);
@@ -164,6 +178,7 @@ export async function readDeserializedMessages(
     return multi.readDeserializedMessagesMulti(source, format, topicName, limit, onProgress, onBatch);
   }
   if (format === 'pcd' || format === 'ply' || format === 'splat') return [];
+  if (format === 'ulog') return readDeserializedMessagesUlog(source, topicName, limit, onProgress, onBatch);
   if (format === 'mcap')
     return readDeserializedMessagesMcap(source, topicName, limit, onProgress, onBatch);
   if (format === 'bag')
@@ -186,6 +201,7 @@ export async function readMessageAtTime(
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null } | null> {
   if (source.kind === 'multi') return multi.readMessageAtTimeMulti(source, format, topicName, timeNs);
   if (format === 'pcd' || format === 'ply' || format === 'splat') return null;
+  if (format === 'ulog') return readMessageAtTimeUlog(source, topicName, timeNs);
   if (format === 'mcap') return readMessageAtTimeMcap(source, topicName, timeNs);
   if (format === 'bag') return readMessageAtTimeBag(source, topicName, timeNs);
   return readMessageAtTimeDb3(source, topicName, timeNs);
@@ -206,6 +222,7 @@ export async function readMessagesInRange(
     return rangeFromAll(await multi.readDeserializedMessagesMulti(source, format, topicName), params);
   }
   if (format === 'pcd' || format === 'ply' || format === 'splat') return { messages: [], nextStartNs: null, phase: 0 };
+  if (format === 'ulog') return readRangeUlog(source, topicName, params);
   if (format === 'mcap') return readRangeMcap(source, topicName, params);
   if (format === 'bag') return readRangeBag(source, topicName, params);
   return readRangeDb3(source, topicName, params);
@@ -219,6 +236,7 @@ export async function getTopicType(
   if (source.kind === 'multi') return multi.getTopicTypeMulti(source, format, topicName);
   if (format === 'pcd' || format === 'ply') return 'sensor_msgs/PointCloud2';
   if (format === 'splat') return SPLAT_TYPE;
+  if (format === 'ulog') return getTopicTypeUlog(source, topicName);
   if (format === 'mcap') return getTopicTypeMcap(source, topicName);
   if (format === 'bag') return getTopicTypeBag(source, topicName);
   return getTopicTypeDb3(source, topicName);
@@ -231,6 +249,7 @@ export function disposeParserCaches(): void {
   disposePcdCache();
   disposePlyCache();
   disposeSplatCache();
+  disposeUlogCache();
   multi.disposeMultiCache();
   clearDefinitionCaches();
 }
@@ -241,6 +260,7 @@ export async function readAllMessageStats(
 ): Promise<AllTopicStats> {
   if (source.kind === 'multi') return multi.readAllMessageStatsMulti(source, format);
   if (format === 'pcd' || format === 'ply' || format === 'splat') return {};
+  if (format === 'ulog') return readAllMessageStatsUlog(source);
   if (format === 'mcap') return readAllMessageStatsMcap(source);
   if (format === 'bag') return readAllMessageStatsBag(source);
   return readAllMessageStatsDb3(source);
@@ -278,7 +298,7 @@ export async function readPointCloudAtTime(
   }
   // Splats never go through the point-cloud decoder - SplatViewer reads the
   // raw file/URL directly and hands it to the splat-rendering library.
-  if (format === 'splat') return null;
+  if (format === 'splat' || format === 'ulog') return null;
 
   const message =
     format === 'mcap'
@@ -321,7 +341,7 @@ export async function readLaserScanAtTime(
   timeNs: bigint,
 ): Promise<(LaserScanExtraction & { timestamp: bigint }) | null> {
   if (source.kind === 'multi') return multi.readLaserScanAtTimeMulti(source, format, topicName, timeNs);
-  if (format === 'pcd' || format === 'ply' || format === 'splat') return null;
+  if (format === 'pcd' || format === 'ply' || format === 'splat' || format === 'ulog') return null;
   const message =
     format === 'mcap'
       ? await readMessageAtTimeMcap(source, topicName, timeNs)

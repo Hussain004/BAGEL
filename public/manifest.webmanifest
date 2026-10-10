@@ -18,7 +18,7 @@
     {
       "action": "/",
       "accept": {
-        "application/octet-stream": [".mcap", ".bag", ".db3", ".pcd", ".ply", ".splat", ".ksplat", ".spz"]
+        "application/octet-stream": [".mcap", ".bag", ".db3", ".ulg", ".pcd", ".ply", ".splat", ".ksplat", ".spz"]
       }
     }
   ]

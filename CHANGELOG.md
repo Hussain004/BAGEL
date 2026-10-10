@@ -9,6 +9,17 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- PX4 flight logs: drop a `.ulg` file in like any other recording. Every
+  logged uORB message becomes a topic (`/vehicle_attitude`, and
+  `/sensor_gyro_1` for a second instance), so the plot, raw, state and search
+  panels work on them directly. GPS topics also carry latitude, longitude and
+  altitude in the NavSatFix shape, so the path view and map tiles work;
+  logged text opens in the Log panel at its proper severity; parameters, the
+  changes made in flight, the log's info and dropout markers are topics too
+  (`/parameters`, `/parameter_changes`, `/info`, `/ulog_dropouts`). Logs from
+  crashes are cut off mid-message and still open with everything before the
+  cut; a damaged stretch is skipped from the next sync marker rather than
+  ending the log. Log editing and the 3D panel do not apply to ULog.
 - Two small hints. A 3D view over a bag with no `/tf` now says so ("no /tf in
   this bag: drawn in its own frame"), whether or not the frame is known. An
   image panel whose bag has CameraInfo topics but none that matches the camera

@@ -4166,8 +4166,8 @@ var require_CdrReader = __commonJS({
       }
       /** Reads the delimiter header which contains and returns the object size */
       dHeader() {
-        const header = this.uint32();
-        return header;
+        const header2 = this.uint32();
+        return header2;
       }
       /**
        * Reads the member header (EMHEADER) and returns the member ID, mustUnderstand flag, and object size with optional length code
@@ -4226,8 +4226,8 @@ var require_CdrReader = __commonJS({
       sentinelHeader() {
         if (!this.isCDR2) {
           this.align(4);
-          const header = this.uint16();
-          const sentinelPIDFlag = (header & 16383) === reservedPIDs_1.SENTINEL_PID;
+          const header2 = this.uint16();
+          const sentinelPIDFlag = (header2 & 16383) === reservedPIDs_1.SENTINEL_PID;
           if (!sentinelPIDFlag) {
             return false;
           }
@@ -4238,10 +4238,10 @@ var require_CdrReader = __commonJS({
         }
       }
       memberHeaderV2() {
-        const header = this.uint32();
-        const mustUnderstand = Math.abs((header & 2147483648) >> 31) === 1;
-        const lengthCode = (header & 1879048192) >> 28;
-        const id = header & 268435455;
+        const header2 = this.uint32();
+        const mustUnderstand = Math.abs((header2 & 2147483648) >> 31) === 1;
+        const lengthCode = (header2 & 1879048192) >> 28;
+        const id = header2 & 268435455;
         const objectSize = this.emHeaderObjectSize(lengthCode);
         return { mustUnderstand, id, objectSize, lengthCode };
       }
@@ -4617,8 +4617,8 @@ var require_CdrWriter = __commonJS({
        * NOTE: changing endian-ness with a single CDR message is not supported
        */
       dHeader(objectSize) {
-        const header = objectSize;
-        this.uint32(header);
+        const header2 = objectSize;
+        this.uint32(header2);
         return this;
       }
       /**
@@ -4691,8 +4691,8 @@ var require_CdrWriter = __commonJS({
         }
         const mustUnderstandFlag = mustUnderstand ? 1 << 31 : 0;
         const finalLengthCode = lengthCode ?? (0, lengthCodes_1.getLengthCodeForObjectSize)(objectSize);
-        const header = mustUnderstandFlag | finalLengthCode << 28 | id;
-        this.uint32(header);
+        const header2 = mustUnderstandFlag | finalLengthCode << 28 | id;
+        this.uint32(header2);
         switch (finalLengthCode) {
           case 0:
           case 1:
@@ -14333,7 +14333,7 @@ function parseChannel(reader, recordLength) {
   const startOffset = reader.offset;
   const channelId = reader.uint16();
   const schemaId = reader.uint16();
-  const topicName = reader.string();
+  const topicName2 = reader.string();
   const messageEncoding = reader.string();
   const metadata = reader.map((r) => r.string(), (r) => r.string());
   reader.offset = startOffset + recordLength;
@@ -14341,7 +14341,7 @@ function parseChannel(reader, recordLength) {
     type: "Channel",
     id: channelId,
     schemaId,
-    topic: topicName,
+    topic: topicName2,
     messageEncoding,
     metadata
   };
@@ -14801,7 +14801,7 @@ var McapIndexedReader = class _McapIndexedReader {
   }
   static async Initialize({ readable, decompressHandlers, messageIndexCacheSizeBytes }) {
     const size = await readable.size();
-    let header;
+    let header2;
     let headerEndOffset;
     {
       const headerPrefix = await readable.read(0n, BigInt(MCAP_MAGIC.length + /* Opcode.HEADER */
@@ -14826,10 +14826,10 @@ var McapIndexedReader = class _McapIndexedReader {
       if (headerReader.bytesRemaining() !== 0) {
         throw new Error(`${headerReader.bytesRemaining()} bytes remaining after parsing header`);
       }
-      header = headerResult;
+      header2 = headerResult;
     }
     function errorWithLibrary(message) {
-      return new Error(`${message} [library=${header.library}]`);
+      return new Error(`${message} [library=${header2.library}]`);
     }
     let footerOffset;
     let footerAndMagicView;
@@ -14972,7 +14972,7 @@ var McapIndexedReader = class _McapIndexedReader {
       channelsById,
       schemasById,
       summaryOffsetsByOpcode,
-      header,
+      header: header2,
       footer,
       dataEndOffset,
       dataSectionCrc,
@@ -15225,9 +15225,9 @@ var McapStreamReader = class {
         yield;
       }
     }
-    let header;
+    let header2;
     function errorWithLibrary(message) {
-      return new Error(`${message} ${header ? `[library=${header.library}]` : "[no header]"}`);
+      return new Error(`${message} ${header2 ? `[library=${header2.library}]` : "[no header]"}`);
     }
     for (; ; ) {
       let record;
@@ -15236,10 +15236,10 @@ var McapStreamReader = class {
       }
       switch (record.type) {
         case "Header":
-          if (header) {
-            throw new Error(`Duplicate Header record: library=${header.library} profile=${header.profile} vs. library=${record.library} profile=${record.profile}`);
+          if (header2) {
+            throw new Error(`Duplicate Header record: library=${header2.library} profile=${header2.profile} vs. library=${record.library} profile=${record.profile}`);
           }
-          header = record;
+          header2 = record;
           yield record;
           break;
         case "Unknown":
@@ -15493,10 +15493,10 @@ var McapRecordBuilder = class {
   writeMagic() {
     this.#bufferBuilder.bytes(new Uint8Array(MCAP_MAGIC));
   }
-  writeHeader(header) {
+  writeHeader(header2) {
     this.#bufferBuilder.uint8(Opcode.HEADER);
     const startPosition = this.#bufferBuilder.length;
-    this.#bufferBuilder.uint64(0n).string(header.profile).string(header.library);
+    this.#bufferBuilder.uint64(0n).string(header2.profile).string(header2.library);
     if (this.options?.padRecords === true) {
       this.#bufferBuilder.uint8(1).uint8(255).uint8(255);
     }
@@ -16590,7 +16590,7 @@ async function scanUnindexedMcap(readable, size, decompressHandlers, channelById
   streamReader.append(magic);
   while (streamReader.nextRecord()) {
   }
-  let header = null;
+  let header2 = null;
   const channelRecords = /* @__PURE__ */ new Map();
   const refsByChannel = /* @__PURE__ */ new Map();
   const messageCounts = /* @__PURE__ */ new Map();
@@ -16635,7 +16635,7 @@ async function scanUnindexedMcap(readable, size, decompressHandlers, channelById
     let chunkRef = null;
     for (let record; record = streamReader.nextRecord(); ) {
       if (record.type === "Header") {
-        header = { profile: record.profile, library: record.library };
+        header2 = { profile: record.profile, library: record.library };
       } else if (record.type === "Schema") {
         schemaById.set(record.id, {
           name: record.name,
@@ -16683,7 +16683,7 @@ async function scanUnindexedMcap(readable, size, decompressHandlers, channelById
   }
   const builder = new McapRecordBuilder();
   builder.writeMagic();
-  builder.writeHeader(header ?? { profile: "", library: "BAGEL range reader" });
+  builder.writeHeader(header2 ?? { profile: "", library: "BAGEL range reader" });
   for (const [id, schema] of schemaById) {
     builder.writeSchema({ id, ...schema });
   }
@@ -16699,10 +16699,10 @@ async function scanUnindexedMcap(readable, size, decompressHandlers, channelById
     preamble: builder.buffer.slice(0, builder.length)
   };
 }
-function channelIdsForTopic(meta, topicName) {
+function channelIdsForTopic(meta, topicName2) {
   const ids = /* @__PURE__ */ new Set();
   for (const [id, channel] of meta.channelById) {
-    if (channel.topic === topicName) ids.add(id);
+    if (channel.topic === topicName2) ids.add(id);
   }
   return ids;
 }
@@ -16732,8 +16732,8 @@ async function readUnindexedRef(source, meta, ref, channelIds) {
   }
   return out;
 }
-async function readRawMessagesUnindexed(source, meta, topicName, limit, startNs, endNs) {
-  const channelIds = channelIdsForTopic(meta, topicName);
+async function readRawMessagesUnindexed(source, meta, topicName2, limit, startNs, endNs) {
+  const channelIds = channelIdsForTopic(meta, topicName2);
   const refs = /* @__PURE__ */ new Map();
   for (const channelId of channelIds) {
     for (const ref of meta.unindexed?.refsByChannel.get(channelId) ?? []) {
@@ -16759,7 +16759,7 @@ async function readRawMessagesUnindexed(source, meta, topicName, limit, startNs,
       for (const message of messages) {
         if (startNs !== void 0 && message.timestamp < startNs) continue;
         if (endNs !== void 0 && message.timestamp > endNs) continue;
-        message.topicName = topicName;
+        message.topicName = topicName2;
         out.push(message);
         if (limit && out.length >= limit) return out;
       }
@@ -16788,7 +16788,7 @@ async function readRawMessagesUnindexed(source, meta, topicName, limit, startNs,
     for (const messageRef of batchRefs) {
       const localStart = messageRef.dataOffset - batchStart;
       out.push({
-        topicName,
+        topicName: topicName2,
         timestamp: messageRef.logTime,
         data: batch.slice(localStart, localStart + messageRef.dataLength)
       });
@@ -17421,10 +17421,10 @@ async function parseBagFile(source) {
     countByTopic.set(conn.topic, (countByTopic.get(conn.topic) ?? 0) + c);
   }
   const topics = [];
-  for (const [topicName, info] of meta.topicMeta) {
-    const messageCount = countByTopic.get(topicName) ?? 0;
+  for (const [topicName2, info] of meta.topicMeta) {
+    const messageCount = countByTopic.get(topicName2) ?? 0;
     topics.push({
-      name: topicName,
+      name: topicName2,
       type: info.type,
       messageCount,
       serializationFormat: "ros1",
@@ -17555,7 +17555,7 @@ function parsePcdHeader(bytes) {
   for (; ; ) {
     const text = decoder.decode(bytes.subarray(0, windowSize));
     const atEof = windowSize >= bytes.length;
-    const header = {};
+    const header2 = {};
     let dataByteOffset = 0;
     let dataFound = false;
     let grow = false;
@@ -17574,25 +17574,25 @@ function parsePcdHeader(bytes) {
       const values = parts.slice(1);
       switch (keyword) {
         case "FIELDS":
-          header.fields = values.map((v) => v.toLowerCase());
+          header2.fields = values.map((v) => v.toLowerCase());
           break;
         case "SIZE":
-          header.sizes = values.map(Number);
+          header2.sizes = values.map(Number);
           break;
         case "TYPE":
-          header.types = values;
+          header2.types = values;
           break;
         case "COUNT":
-          header.counts = values.map(Number);
+          header2.counts = values.map(Number);
           break;
         case "WIDTH":
-          header.width = Number(values[0]);
+          header2.width = Number(values[0]);
           break;
         case "HEIGHT":
-          header.height = Number(values[0]);
+          header2.height = Number(values[0]);
           break;
         case "POINTS":
-          header.points = Number(values[0]);
+          header2.points = Number(values[0]);
           break;
         case "DATA": {
           const crAtWindowEdge = ch === "\r" && i + 1 >= text.length;
@@ -17601,7 +17601,7 @@ function parsePcdHeader(bytes) {
             break;
           }
           const enc = (values[0] ?? "ascii").toLowerCase();
-          header.dataEncoding = enc === "binary_compressed" ? "binary_compressed" : enc === "binary" ? "binary" : "ascii";
+          header2.dataEncoding = enc === "binary_compressed" ? "binary_compressed" : enc === "binary" ? "binary" : "ascii";
           if (atSyntheticEnd) dataByteOffset = text.length;
           else if (ch === "\n") dataByteOffset = i + 1;
           else if (i + 1 < text.length && text[i + 1] === "\n") dataByteOffset = i + 2;
@@ -17617,10 +17617,10 @@ function parsePcdHeader(bytes) {
       windowSize = Math.min(windowSize * 2, bytes.length);
       continue;
     }
-    if (!header.fields || !header.sizes || !header.types || !header.counts || header.points === void 0 || header.dataEncoding === void 0) {
+    if (!header2.fields || !header2.sizes || !header2.types || !header2.counts || header2.points === void 0 || header2.dataEncoding === void 0) {
       throw new Error("PCD file has an incomplete header (missing FIELDS / SIZE / TYPE / POINTS / DATA).");
     }
-    const completeHeader = header;
+    const completeHeader = header2;
     if (!completeHeader.width) completeHeader.width = completeHeader.points;
     if (!completeHeader.height) completeHeader.height = 1;
     return { header: completeHeader, dataByteOffset };
@@ -17650,14 +17650,14 @@ function lzfDecompress(compressed, outputLen) {
   }
   return out;
 }
-function buildBinaryCloud(rawData, header) {
+function buildBinaryCloud(rawData, header2) {
   const fields = [];
   let offset = 0;
-  for (let i = 0; i < header.fields.length; i++) {
-    const name = header.fields[i];
-    const size = header.sizes[i] ?? 4;
-    const type = header.types[i] ?? "F";
-    const count = header.counts[i] ?? 1;
+  for (let i = 0; i < header2.fields.length; i++) {
+    const name = header2.fields[i];
+    const size = header2.sizes[i] ?? 4;
+    const type = header2.types[i] ?? "F";
+    const count = header2.counts[i] ?? 1;
     for (let c = 0; c < count; c++) {
       fields.push({
         name: count === 1 ? name : `${name}_${c}`,
@@ -17669,9 +17669,9 @@ function buildBinaryCloud(rawData, header) {
     }
   }
   const pointStep = offset;
-  const width = header.width || header.points;
-  const height = header.height || 1;
-  const dataBuf = header.points === 0 ? new Uint8Array(0) : rawData.slice(0, header.points * pointStep);
+  const width = header2.width || header2.points;
+  const height = header2.height || 1;
+  const dataBuf = header2.points === 0 ? new Uint8Array(0) : rawData.slice(0, header2.points * pointStep);
   return {
     height,
     width,
@@ -17682,15 +17682,15 @@ function buildBinaryCloud(rawData, header) {
     data: dataBuf
   };
 }
-function buildAsciiCloud(text, header) {
+function buildAsciiCloud(text, header2) {
   const fields = [];
   let totalFields = 0;
-  for (let i = 0; i < header.fields.length; i++) {
-    const count = header.counts[i] ?? 1;
+  for (let i = 0; i < header2.fields.length; i++) {
+    const count = header2.counts[i] ?? 1;
     totalFields += count;
     for (let c = 0; c < count; c++) {
       fields.push({
-        name: count === 1 ? header.fields[i] : `${header.fields[i]}_${c}`,
+        name: count === 1 ? header2.fields[i] : `${header2.fields[i]}_${c}`,
         offset: fields.length * 4,
         datatype: POINT_FIELD_TYPE.FLOAT32,
         count: 1
@@ -17698,7 +17698,7 @@ function buildAsciiCloud(text, header) {
     }
   }
   const pointStep = totalFields * 4;
-  const points = header.points;
+  const points = header2.points;
   const data = new Uint8Array(points * pointStep);
   const view = new DataView(data.buffer);
   const lines = text.split("\n");
@@ -17724,10 +17724,10 @@ function buildAsciiCloud(text, header) {
     data: data.subarray(0, validPt * pointStep)
   };
 }
-function pcdPointStep(header) {
+function pcdPointStep(header2) {
   let step = 0;
-  for (let i = 0; i < header.fields.length; i++) {
-    step += (header.sizes[i] ?? 4) * (header.counts[i] ?? 1);
+  for (let i = 0; i < header2.fields.length; i++) {
+    step += (header2.sizes[i] ?? 4) * (header2.counts[i] ?? 1);
   }
   return step;
 }
@@ -17736,10 +17736,10 @@ async function loadPcdCloud(source) {
   const cached3 = pcdCloudCache.get(key);
   if (cached3) return cached3;
   const bytes = await sourceReadAll(source);
-  const { header, dataByteOffset } = parsePcdHeader(bytes);
-  const expectedBytes = header.points * pcdPointStep(header);
+  const { header: header2, dataByteOffset } = parsePcdHeader(bytes);
+  const expectedBytes = header2.points * pcdPointStep(header2);
   let cloud;
-  if (header.dataEncoding === "binary_compressed") {
+  if (header2.dataEncoding === "binary_compressed") {
     const remaining = bytes.length - dataByteOffset;
     if (remaining < 8) {
       throw new Error(`PCD: truncated binary_compressed payload (missing 8-byte size header, have ${remaining} bytes).`);
@@ -17753,18 +17753,18 @@ async function loadPcdCloud(source) {
     const compressed = bytes.subarray(dataByteOffset + 8, dataByteOffset + 8 + compressedSize);
     const uncompressed = lzfDecompress(compressed, uncompressedSize);
     if (uncompressed.length < expectedBytes) {
-      throw new Error(`PCD: truncated binary_compressed payload (declares ${uncompressedSize} uncompressed bytes, need ${expectedBytes} for ${header.points} points).`);
+      throw new Error(`PCD: truncated binary_compressed payload (declares ${uncompressedSize} uncompressed bytes, need ${expectedBytes} for ${header2.points} points).`);
     }
-    cloud = buildBinaryCloud(uncompressed, header);
-  } else if (header.dataEncoding === "binary") {
+    cloud = buildBinaryCloud(uncompressed, header2);
+  } else if (header2.dataEncoding === "binary") {
     const rawData = bytes.subarray(dataByteOffset);
     if (rawData.length < expectedBytes) {
-      throw new Error(`PCD: truncated binary payload (need ${expectedBytes} bytes for ${header.points} points, have ${rawData.length}).`);
+      throw new Error(`PCD: truncated binary payload (need ${expectedBytes} bytes for ${header2.points} points, have ${rawData.length}).`);
     }
-    cloud = buildBinaryCloud(rawData, header);
+    cloud = buildBinaryCloud(rawData, header2);
   } else {
     const dataText = new TextDecoder("ascii").decode(bytes.subarray(dataByteOffset));
-    cloud = buildAsciiCloud(dataText, header);
+    cloud = buildAsciiCloud(dataText, header2);
   }
   pcdCloudCache.set(key, cloud);
   return cloud;
@@ -17889,8 +17889,8 @@ function packRgb(r, g, b) {
   tmp.setUint32(0, packed, true);
   return tmp.getFloat32(0, true);
 }
-function buildPlyCloud(bytes, header) {
-  const { format, vertexCount, props, dataByteOffset } = header;
+function buildPlyCloud(bytes, header2) {
+  const { format, vertexCount, props, dataByteOffset } = header2;
   const littleEndian = format !== "binary_big_endian";
   const hasX = props.some((p) => p.name === "x");
   const hasY = props.some((p) => p.name === "y");
@@ -18034,8 +18034,8 @@ async function loadPlyCloud(source) {
   const cached3 = plyCloudCache.get(key);
   if (cached3) return cached3;
   const bytes = await sourceReadAll(source);
-  const header = parsePlyHeader(bytes);
-  const cloud = buildPlyCloud(bytes, header);
+  const header2 = parsePlyHeader(bytes);
+  const cloud = buildPlyCloud(bytes, header2);
   plyCloudCache.set(key, cloud);
   return cloud;
 }
@@ -18524,8 +18524,8 @@ var SPLAT_RECORD_BYTES = 32;
 var splatSummaryCache = /* @__PURE__ */ new Map();
 function isSplatPly(bytes) {
   try {
-    const header = parsePlyHeader(bytes);
-    return header.props.some((p) => p.name === "f_dc_0" || p.name === "opacity" || p.name === "scale_0" || p.name === "rot_0");
+    const header2 = parsePlyHeader(bytes);
+    return header2.props.some((p) => p.name === "f_dc_0" || p.name === "opacity" || p.name === "scale_0" || p.name === "rot_0");
   } catch {
     return false;
   }
@@ -18708,6 +18708,385 @@ async function readAllMessageStatsMulti(multi, format) {
   return result;
 }
 
+// src/parsers/ulog.ts
+var ULOG_MAGIC = [85, 76, 111, 103, 1, 18, 53];
+var PRIMITIVE_SIZE = {
+  int8_t: 1,
+  uint8_t: 1,
+  int16_t: 2,
+  uint16_t: 2,
+  int32_t: 4,
+  uint32_t: 4,
+  int64_t: 8,
+  uint64_t: 8,
+  float: 4,
+  double: 8,
+  bool: 1,
+  char: 1
+};
+function parseFormat(text) {
+  const colon = text.indexOf(":");
+  if (colon < 1) return null;
+  const name = text.slice(0, colon);
+  const fields = [];
+  for (const part of text.slice(colon + 1).split(";")) {
+    if (!part) continue;
+    const space2 = part.indexOf(" ");
+    if (space2 < 1) return null;
+    const rawType = part.slice(0, space2);
+    const fieldName = part.slice(space2 + 1);
+    const bracket = rawType.indexOf("[");
+    if (bracket < 0) {
+      fields.push({ type: rawType, name: fieldName, count: null });
+    } else {
+      const count = Number(rawType.slice(bracket + 1, rawType.indexOf("]")));
+      if (!Number.isInteger(count) || count < 1) return null;
+      fields.push({ type: rawType.slice(0, bracket), name: fieldName, count });
+    }
+  }
+  return fields.length > 0 ? { name, fields, size: -1 } : null;
+}
+function formatSize(format, formats, stack = []) {
+  if (format.size !== -1) return format.size;
+  if (stack.includes(format.name)) return format.size = -2;
+  let total = 0;
+  for (const f2 of format.fields) {
+    const unit = PRIMITIVE_SIZE[f2.type];
+    let each;
+    if (unit !== void 0) each = unit;
+    else {
+      const nested = formats.get(f2.type);
+      each = nested ? formatSize(nested, formats, [...stack, format.name]) : -2;
+    }
+    if (each < 0) return format.size = -2;
+    total += each * (f2.count ?? 1);
+  }
+  return format.size = total;
+}
+function readPrimitive(view, at, type) {
+  switch (type) {
+    case "int8_t":
+      return view.getInt8(at);
+    case "uint8_t":
+      return view.getUint8(at);
+    case "int16_t":
+      return view.getInt16(at, true);
+    case "uint16_t":
+      return view.getUint16(at, true);
+    case "int32_t":
+      return view.getInt32(at, true);
+    case "uint32_t":
+      return view.getUint32(at, true);
+    // 64-bit integers become numbers: exact up to 2^53, which covers microsecond
+    // timestamps for 285 years. Larger values lose their low bits.
+    case "int64_t":
+      return Number(view.getBigInt64(at, true));
+    case "uint64_t":
+      return Number(view.getBigUint64(at, true));
+    case "float":
+      return view.getFloat32(at, true);
+    case "double":
+      return view.getFloat64(at, true);
+    case "bool":
+      return view.getUint8(at) !== 0;
+    default:
+      return view.getUint8(at);
+  }
+}
+var Series = class {
+  times = new Float64Array(256);
+  // microseconds
+  offsets = new Uint32Array(256);
+  // where the message's data starts in the file
+  count = 0;
+  push(timeUs, offset) {
+    if (this.count === this.times.length) {
+      const t = new Float64Array(this.count * 2);
+      t.set(this.times);
+      this.times = t;
+      const o = new Uint32Array(this.count * 2);
+      o.set(this.offsets);
+      this.offsets = o;
+    }
+    this.times[this.count] = timeUs;
+    this.offsets[this.count] = offset;
+    this.count++;
+  }
+};
+var cache = /* @__PURE__ */ new Map();
+var GPS_TOPICS = /* @__PURE__ */ new Set(["vehicle_global_position", "vehicle_gps_position", "sensor_gps"]);
+function topicName(name, multiId) {
+  return multiId === 0 ? `/${name}` : `/${name}_${multiId}`;
+}
+var MSG_TYPES = new Set("BFIMPQARDLCSO".split("").map((c) => c.charCodeAt(0)));
+var SYNC = [47, 115, 19, 32, 37, 12, 187, 18];
+function findSync(bytes, from) {
+  outer: for (let i = Math.max(from, 3); i + SYNC.length <= bytes.length; i++) {
+    for (let k = 0; k < SYNC.length; k++) if (bytes[i + k] !== SYNC[k]) continue outer;
+    return i - 3;
+  }
+  return -1;
+}
+function textOf(bytes, start, end) {
+  return new TextDecoder().decode(bytes.subarray(start, end));
+}
+function keyedValue(view, bytes, at, keyLen, end) {
+  const key = textOf(bytes, at, at + keyLen);
+  const space2 = key.indexOf(" ");
+  if (space2 < 1) return null;
+  const rawType = key.slice(0, space2);
+  const name = key.slice(space2 + 1);
+  const valueAt = at + keyLen;
+  const bracket = rawType.indexOf("[");
+  const type = bracket < 0 ? rawType : rawType.slice(0, bracket);
+  const count = bracket < 0 ? null : Number(rawType.slice(bracket + 1, rawType.indexOf("]")));
+  const unit = PRIMITIVE_SIZE[type];
+  if (unit === void 0) return null;
+  if (type === "char" && count !== null) {
+    const raw = bytes.subarray(valueAt, Math.min(end, valueAt + count));
+    const nul = raw.indexOf(0);
+    return { name, value: new TextDecoder().decode(nul < 0 ? raw : raw.subarray(0, nul)) };
+  }
+  const n = count ?? 1;
+  if (valueAt + unit * n > end) return null;
+  if (count === null) return { name, value: readPrimitive(view, valueAt, type) };
+  return { name, value: Array.from({ length: n }, (_, i) => readPrimitive(view, valueAt + i * unit, type)) };
+}
+var ROS_LEVEL = [50, 50, 50, 40, 30, 20, 20, 10];
+function header(timeUs, frame = "") {
+  const sec = Math.floor(timeUs / 1e6);
+  return { stamp: { sec, nanosec: Math.round((timeUs - sec * 1e6) * 1e3) }, frame_id: frame };
+}
+async function load2(source) {
+  const key = sourceKey(source);
+  const hit = cache.get(key);
+  if (hit) return hit;
+  const bytes = await sourceReadAll(source);
+  if (bytes.length < 16 || !ULOG_MAGIC.every((b, i) => bytes[i] === b)) {
+    throw new Error("Not a ULog file: the header is missing or damaged.");
+  }
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const headerTimeUs = Number(view.getBigUint64(8, true));
+  const fileName = source.kind === "file" ? source.file.name : source.displayName;
+  const formats = /* @__PURE__ */ new Map();
+  const subs = /* @__PURE__ */ new Map();
+  const topics = /* @__PURE__ */ new Map();
+  const warnings = [];
+  const info = {};
+  const params = {};
+  const paramChanges = [];
+  const dropouts = [];
+  const logs = [];
+  let lastTimeUs = headerTimeUs;
+  let inData = false;
+  let minUs = Infinity;
+  let maxUs = -Infinity;
+  const see = (t) => {
+    if (t < minUs) minUs = t;
+    if (t > maxUs) maxUs = t;
+  };
+  const synthetic = (name, type, list) => {
+    const t = { name, type, format: null, series: new Series(), synthetic: list, bytes: 0 };
+    return t;
+  };
+  let pos = 16;
+  while (pos + 3 <= bytes.length) {
+    const size = view.getUint16(pos, true);
+    const type = bytes[pos + 2];
+    const body = pos + 3;
+    const end = body + size;
+    if (!MSG_TYPES.has(type) || end > bytes.length) {
+      const next = findSync(bytes, pos + 4);
+      if (next < 0) break;
+      warnings.push(`skipped ${next - pos} damaged bytes at ${pos}`);
+      pos = next;
+      continue;
+    }
+    const kind = String.fromCharCode(type);
+    if (kind === "A" || kind === "R" || kind === "D" || kind === "L" || kind === "C" || kind === "O") inData = true;
+    switch (kind) {
+      case "B": {
+        if (size >= 16) {
+          const incompat = bytes.subarray(body + 8, body + 16);
+          if ((incompat[0] & ~1) !== 0 || incompat.slice(1).some((b) => b !== 0)) {
+            throw new Error("This ULog uses features this version of BAGEL cannot read.");
+          }
+        }
+        break;
+      }
+      case "F": {
+        const f2 = parseFormat(textOf(bytes, body, end));
+        if (f2) formats.set(f2.name, f2);
+        break;
+      }
+      case "I": {
+        const keyLen = bytes[body];
+        const kv = keyedValue(view, bytes, body + 1, keyLen, end);
+        if (kv) info[kv.name] = kv.value;
+        break;
+      }
+      case "M": {
+        const keyLen = bytes[body + 1];
+        const kv = keyedValue(view, bytes, body + 2, keyLen, end);
+        if (kv) {
+          const prev = info[kv.name];
+          info[kv.name] = Array.isArray(prev) && typeof kv.value === "string" ? [...prev, kv.value] : typeof kv.value === "string" ? [kv.value] : kv.value;
+        }
+        break;
+      }
+      case "P": {
+        const keyLen = bytes[body];
+        const kv = keyedValue(view, bytes, body + 1, keyLen, end);
+        if (kv) {
+          if (!inData) params[kv.name] = kv.value;
+          else paramChanges.push({ timestamp: BigInt(Math.round(lastTimeUs)) * 1000n, value: { name: kv.name, value: kv.value } });
+        }
+        break;
+      }
+      case "Q":
+        break;
+      // default values for parameters: not shown
+      case "A": {
+        const multiId = bytes[body];
+        const msgId = view.getUint16(body + 1, true);
+        const name = textOf(bytes, body + 3, end);
+        const format = formats.get(name);
+        if (!format || formatSize(format, formats) < 0) {
+          warnings.push(`no usable format for "${name}"`);
+          break;
+        }
+        const tn = topicName(name, multiId);
+        let topic = topics.get(tn);
+        if (!topic) {
+          topic = {
+            name: tn,
+            type: GPS_TOPICS.has(name) ? "sensor_msgs/msg/NavSatFix" : `px4/${name}`,
+            format,
+            series: new Series(),
+            synthetic: null,
+            bytes: 0
+          };
+          topics.set(tn, topic);
+        }
+        subs.set(msgId, { topic });
+        break;
+      }
+      case "R":
+        subs.delete(view.getUint16(body, true));
+        break;
+      case "D": {
+        const sub = subs.get(view.getUint16(body, true));
+        if (sub && sub.topic.format) {
+          const data = body + 2;
+          const need = formatSize(sub.topic.format, formats);
+          const first = sub.topic.format.fields[0];
+          if (first?.name === "timestamp" && first.type === "uint64_t" && end - data >= need) {
+            const t = Number(view.getBigUint64(data, true));
+            sub.topic.series.push(t, data);
+            sub.topic.bytes += size;
+            lastTimeUs = t;
+            see(t);
+          }
+        }
+        break;
+      }
+      case "L":
+      case "C": {
+        const tagged = type === "C".charCodeAt(0);
+        const level = bytes[body];
+        const tag = tagged ? view.getUint16(body + 1, true) : 0;
+        const tAt = body + (tagged ? 3 : 1);
+        const t = Number(view.getBigUint64(tAt, true));
+        const text = textOf(bytes, tAt + 8, end);
+        logs.push({
+          timestamp: BigInt(Math.round(t)) * 1000n,
+          value: { stamp: header(t).stamp, level: ROS_LEVEL[level] ?? 20, name: tagged ? `tag ${tag}` : "px4", msg: text, file: "", function: "", line: 0 }
+        });
+        see(t);
+        break;
+      }
+      case "O":
+        dropouts.push({ timestamp: BigInt(Math.round(lastTimeUs)) * 1000n, value: { duration_ms: view.getUint16(body, true) } });
+        break;
+      default:
+        break;
+    }
+    pos = end;
+  }
+  const startUs = Number.isFinite(minUs) ? minUs : headerTimeUs;
+  const endUs = Number.isFinite(maxUs) ? maxUs : startUs;
+  const at0 = BigInt(Math.round(startUs)) * 1000n;
+  const extras = [];
+  if (logs.length > 0) extras.push(synthetic("/rosout", "rcl_interfaces/msg/Log", logs));
+  if (Object.keys(params).length > 0) extras.push(synthetic("/parameters", "px4/Parameters", [{ timestamp: at0, value: { params } }]));
+  if (paramChanges.length > 0) extras.push(synthetic("/parameter_changes", "px4/ParameterChange", paramChanges));
+  if (dropouts.length > 0) extras.push(synthetic("/ulog_dropouts", "px4/Dropout", dropouts));
+  if (Object.keys(info).length > 0) extras.push(synthetic("/info", "px4/LogInfo", [{ timestamp: at0, value: { info } }]));
+  for (const t of extras) topics.set(t.name, t);
+  const durationSec = Math.max(0, (endUs - startUs) / 1e6);
+  const topicInfos = [];
+  let total = 0;
+  for (const t of [...topics.values()].filter((x) => (x.synthetic ? x.synthetic.length : x.series.count) > 0).sort((a, b) => a.name.localeCompare(b.name))) {
+    const count = t.synthetic ? t.synthetic.length : t.series.count;
+    total += count;
+    const first = t.synthetic ? Number(t.synthetic[0].timestamp) / 1e3 : t.series.times[0];
+    const last = t.synthetic ? Number(t.synthetic[count - 1].timestamp) / 1e3 : t.series.times[count - 1];
+    topicInfos.push({
+      name: t.name,
+      type: t.type,
+      messageCount: count,
+      serializationFormat: "ulog",
+      frequency: count > 1 && last > first ? (count - 1) / ((last - first) / 1e6) : void 0
+    });
+  }
+  for (const [name, t] of [...topics]) if ((t.synthetic ? t.synthetic.length : t.series.count) === 0) topics.delete(name);
+  const parsed = {
+    bytes,
+    view,
+    formats,
+    topics,
+    warnings,
+    summary: {
+      format: "ulog",
+      fileName,
+      fileSize: bytes.length,
+      startTime: at0,
+      endTime: BigInt(Math.round(endUs)) * 1000n,
+      duration: durationSec,
+      totalMessageCount: total,
+      topics: topicInfos
+    }
+  };
+  cache.set(key, parsed);
+  return parsed;
+}
+function countOf(topic) {
+  return topic.synthetic ? topic.synthetic.length : topic.series.count;
+}
+function timeNsAt(topic, i) {
+  return topic.synthetic ? topic.synthetic[i].timestamp : BigInt(Math.round(topic.series.times[i])) * 1000n;
+}
+async function parseUlog(source) {
+  return (await load2(source)).summary;
+}
+async function readAllMessageStatsUlog(source) {
+  const p = await load2(source);
+  const start = Number(p.summary.startTime);
+  const out = {};
+  for (const topic of p.topics.values()) {
+    const n = countOf(topic);
+    const times = new Float64Array(n);
+    const sizes = new Uint32Array(n);
+    const each = topic.synthetic ? 0 : n > 0 ? Math.round(topic.bytes / n) : 0;
+    for (let i = 0; i < n; i++) {
+      times[i] = Number(timeNsAt(topic, i)) - start;
+      sizes[i] = each;
+    }
+    out[topic.name] = { times, sizes };
+  }
+  return out;
+}
+
 // src/parsers/core.ts
 var MCAP_MAGIC2 = [137, 77, 67, 65, 80, 48, 13, 10];
 var SQLITE_MAGIC = [83, 81, 76, 105, 116, 101];
@@ -18734,16 +19113,18 @@ async function detectFormat(source) {
   if (ext === "db3") return "db3";
   if (ext === "bag") return "bag";
   if (ext === "pcd") return "pcd";
+  if (ext === "ulg") return "ulog";
   if (ext === "splat" || ext === "ksplat" || ext === "spz") return "splat";
   if (ext === "ply") {
     const head = await sourceReadSlice(source, 0, 8192);
     return isSplatPly(head) ? "splat" : "ply";
   }
-  const header = await sourceReadSlice(source, 0, 16);
-  if (checkMagicBytes(header, MCAP_MAGIC2)) return "mcap";
-  if (checkMagicBytes(header, SQLITE_MAGIC)) return "db3";
-  if (checkMagicBytes(header, ROSBAG_V2_MAGIC)) return "bag";
-  const headerText = new TextDecoder("ascii").decode(header);
+  const header2 = await sourceReadSlice(source, 0, 16);
+  if (checkMagicBytes(header2, MCAP_MAGIC2)) return "mcap";
+  if (checkMagicBytes(header2, SQLITE_MAGIC)) return "db3";
+  if (checkMagicBytes(header2, ROSBAG_V2_MAGIC)) return "bag";
+  if (checkMagicBytes(header2, ULOG_MAGIC)) return "ulog";
+  const headerText = new TextDecoder("ascii").decode(header2);
   if (headerText.startsWith(PCD_MAGIC)) return "pcd";
   if (headerText.startsWith(PLY_MAGIC)) {
     const fullHead = await sourceReadSlice(source, 0, 8192);
@@ -18767,15 +19148,18 @@ async function parseBag(source) {
       return parsePly(source);
     case "splat":
       return parseSplat(source);
+    case "ulog":
+      return parseUlog(source);
     default:
       throw new Error(
-        `Unsupported file format: "${sourceDisplayName(source)}". BAGEL supports .mcap, .db3, .bag, .pcd, .ply, .splat, .ksplat, and .spz files.`
+        `Unsupported file format: "${sourceDisplayName(source)}". BAGEL supports .mcap, .db3, .bag, .ulg, .pcd, .ply, .splat, .ksplat, and .spz files.`
       );
   }
 }
 async function readAllMessageStats(source, format) {
   if (source.kind === "multi") return readAllMessageStatsMulti(source, format);
   if (format === "pcd" || format === "ply" || format === "splat") return {};
+  if (format === "ulog") return readAllMessageStatsUlog(source);
   if (format === "mcap") return readAllMessageStatsMcap(source);
   if (format === "bag") return readAllMessageStatsBag(source);
   return readAllMessageStatsDb3(source);
@@ -18783,7 +19167,7 @@ async function readAllMessageStats(source, format) {
 
 // src/utils/bagGroups.ts
 var SPLITTABLE_EXTENSIONS = ["mcap", "db3", "bag"];
-var INGEST_EXTENSIONS = [...SPLITTABLE_EXTENSIONS, "pcd", "ply", "splat", "ksplat", "spz"];
+var INGEST_EXTENSIONS = [...SPLITTABLE_EXTENSIONS, "pcd", "ply", "ulg", "splat", "ksplat", "spz"];
 function extOf(name) {
   const dot = name.lastIndexOf(".");
   return dot < 0 ? "" : name.slice(dot + 1).toLowerCase();
