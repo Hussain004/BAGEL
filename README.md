@@ -164,7 +164,7 @@ Known limitations and ideas that are not yet scheduled:
 |---|---|
 | [Fisheye / equidistant undistortion](https://github.com/Hussain004/BAGEL/issues/120) | v1.3.4 covers plumb-bob (~95% of bags). `fisheye` and `equidistant` (Kalibr) need different remap math. |
 | [Collada texture resolution](https://github.com/Hussain004/BAGEL/issues/119) | `.dae` files reference textures by relative path; the mesh loader handles the mesh but not its textures. |
-| [Zstd-compressed edit output](https://github.com/Hussain004/BAGEL/issues/121) | Edited bags are always uncompressed since `fzstd` is decompress-only, so output is 2-4x larger than the source. |
+| [Zstd-compressed edit output](https://github.com/Hussain004/BAGEL/issues/121) | Edited bags are written with lz4 chunks since `fzstd` is decompress-only. That is far smaller than uncompressed, but an edit of a zstd bag still comes out about 1.4x the size per message. |
 | [Plugin panels](https://github.com/Hussain004/BAGEL/issues/122) | User-built views against a stable panel API. Gated on the panel registry landing first. |
 | [Cloud-hosted shareable URLs](https://github.com/Hussain004/BAGEL/issues/123) | The URL hash is self-contained today, so a link breaks if the bag moves. |
 | [Streaming `.db3` over HTTP Range](https://github.com/Hussain004/BAGEL/issues/124) | `.db3` eager-fetches the whole file because sql.js wants it in memory; a custom VFS would allow partial reads. |

@@ -9,6 +9,11 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Edited and trimmed bags are written with lz4-compressed chunks instead of
+  uncompressed ones, so a 5 s trim of the sample is 4.4 MB instead of 18.8 MB.
+  Every MCAP reader supports lz4 (checked against the official Python `mcap`
+  reader with CRC checks on). BAGEL also now opens MCAP files with lz4 chunks
+  written by other tools; before, they failed with "Unsupported compression lz4".
 - A richer sample recording. The camera is now 480x360 at 5 Hz (was 320x240 at
   2 Hz), the LiDAR has 32 beams (about 11,000 points a sweep, was about 1,900),
   and two Foxglove topics recorded as protobuf join the ROS 2 ones:

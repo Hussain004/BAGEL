@@ -20,6 +20,7 @@ import {
 } from '@mcap/core';
 import { BlobReadable } from '@mcap/browser';
 import { decompress as fzstdDecompress } from 'fzstd';
+import * as lz4 from 'lz4js';
 import type { AllTopicStats, BagSummary, RawMessage, TopicInfo } from '../types/bag';
 import { deserializeWithSchema } from './cdr';
 import { RangePicker, rangeFromAll, type RangeParams, type RangeResult } from './range';
@@ -70,8 +71,9 @@ function readableFor(source: SingleBagSource): IReadable {
  * package) still doesn't bundle under Vite 8's Rolldown (CJS require()).
  * A WASM decoder may be worth revisiting with a more mature package or a
  * custom build with the missing export, but not under time pressure with
- * a corrupting dependency. lz4 and bz2 are not implemented; an
- * unsupported compression will surface a clear error at read time.
+ * a corrupting dependency. lz4 chunks go through `lz4js` (the same decoder
+ * ROS1 bags use). bz2 is not implemented; an unsupported compression will
+ * surface a clear error at read time.
  *
  * Chunk caching: every call to `readMessages({ startTime })` from the
  * IndexedReader causes the chunk containing that timestamp to be
@@ -181,6 +183,24 @@ function makeDecompressHandlers(chunkCache: ChunkCache): DecompressHandlers {
         buffer,
         new Uint8Array(Number(decompressedSize)),
       );
+      chunkCache.set(key, out);
+      return out;
+    },
+    // lz4 frames: what BAGEL's own editor writes, and what `mcap` and other
+    // tools write with lz4 compression.
+    lz4: (buffer, decompressedSize) => {
+      const key = `lz4|${fingerprintBuffer(buffer)}`;
+      const hit = chunkCache.get(key);
+      if (hit) return hit;
+      let out: Uint8Array;
+      try {
+        out = lz4.decompress(buffer, Number(decompressedSize));
+      } catch (err) {
+        throw new Error(`An lz4 chunk could not be decompressed (${err instanceof Error ? err.message : String(err)}). The file may be damaged.`, { cause: err });
+      }
+      if (out.length !== Number(decompressedSize)) {
+        throw new Error(`lz4 chunk decompressed to ${out.length} bytes, but the chunk says ${decompressedSize}.`);
+      }
       chunkCache.set(key, out);
       return out;
     },

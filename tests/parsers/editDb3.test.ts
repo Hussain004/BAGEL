@@ -10,6 +10,10 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { McapIndexedReader } from '@mcap/core';
+import * as lz4 from 'lz4js';
+
+/** Edited bags are written with lz4 chunks; a bare reader needs to be told how to open them. */
+const LZ4 = { lz4: (buf: Uint8Array, size: bigint) => lz4.decompress(buf, Number(size)) };
 import { MessageWriter } from '@foxglove/rosmsg2-serialization';
 import {
   editDb3Bag,
@@ -194,6 +198,7 @@ describe('editDb3/editDb3Bag', () => {
     });
     const reader = await McapIndexedReader.Initialize({
       readable: makeReadable(result.bytes),
+      decompressHandlers: LZ4,
     });
     expect(reader.channelsById.size).toBeGreaterThan(0);
     for (const channel of reader.channelsById.values()) {
@@ -237,6 +242,7 @@ describe('editDb3/editDb3Bag', () => {
 
     const reader = await McapIndexedReader.Initialize({
       readable: makeReadable(result.bytes),
+      decompressHandlers: LZ4,
     });
     // Find the /mystery channel and confirm it has schemaId 0.
     let mysteryChannel: { schemaId: number } | undefined;
@@ -263,6 +269,7 @@ describe('editDb3/editDb3Bag', () => {
 
     const reader = await McapIndexedReader.Initialize({
       readable: makeReadable(result.bytes),
+      decompressHandlers: LZ4,
     });
     let intsSchemaText: string | undefined;
     for (const channel of reader.channelsById.values()) {
@@ -283,6 +290,7 @@ describe('editDb3/editDb3Bag', () => {
     });
     const reader = await McapIndexedReader.Initialize({
       readable: makeReadable(result.bytes),
+      decompressHandlers: LZ4,
     });
     expect(reader.header.library).toBe('bagel-edit/db3');
     expect(reader.header.profile).toBe('ros2');
@@ -296,6 +304,7 @@ describe('editDb3/editDb3Bag', () => {
     });
     const reader = await McapIndexedReader.Initialize({
       readable: makeReadable(result.bytes),
+      decompressHandlers: LZ4,
     });
     const sequences: number[] = [];
     for await (const msg of reader.readMessages({ topics: ['/chatter'] })) {
@@ -316,6 +325,7 @@ describe('editDb3/editDb3Bag', () => {
 
     const reader = await McapIndexedReader.Initialize({
       readable: makeReadable(result.bytes),
+      decompressHandlers: LZ4,
     });
     const sequences: number[] = [];
     for await (const msg of reader.readMessages({ topics: ['/ints'] })) {

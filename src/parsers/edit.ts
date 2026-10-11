@@ -20,13 +20,16 @@
  *     registry, not the bag itself) plus message-encoding round-tripping
  *     for ROS1 (`ros1msg` schemas + `ros1` message encoding), which is
  *     enough surface area to deserve its own pass.
- *   - **Uncompressed output.** `fzstd` is decompress-only; we don't bundle
- *     a zstd encoder yet. Output bags are written with the default chunk
- *     size and no chunk compression. They reload identically; only the
- *     on-disk size differs from a zstd-compressed equivalent.
+ *   - **lz4 chunks.** `fzstd` is decompress-only and there is no zstd
+ *     encoder in the bundle, so output chunks are lz4 frames (MCAP's `lz4`
+ *     compression, which every MCAP reader supports) via the `lz4js` that
+ *     already decodes ROS1 bags. lz4 compresses less than zstd, so an edit
+ *     of a zstd bag can still be somewhat larger per message than its
+ *     source, but far smaller than writing chunks uncompressed.
  */
 
 import { McapWriter, type IWritable } from '@mcap/core';
+import { compressChunkLz4 } from './chunkCompression';
 import { assertSingleSource, type BagSource, type SingleBagSource } from './source';
 import type { BagFormat } from '../types/bag';
 import {
@@ -185,6 +188,7 @@ export function estimateMessageCount(
  *     512 MB stream fallback limit anyway, so users with huge un-indexed
  *     bags see a clearer error than "writer threw").
  */
+
 export async function editMcapBag(
   source: SingleBagSource,
   options: EditOptions,
@@ -213,6 +217,7 @@ export async function editMcapBag(
     useChunkIndex: true,
     useMessageIndex: true,
     useSummaryOffsets: true,
+    compressChunk: compressChunkLz4,
   });
 
   await writer.start({
