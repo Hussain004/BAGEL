@@ -4,6 +4,8 @@ import type { FoxgloveChannel } from '../../src/live/foxgloveClient';
 import { parseMcap, readRawMessagesMcap, loadMcapForEdit, disposeMcapCache } from '../../src/parsers/mcap';
 import { createFileSource } from '../../src/parsers/source';
 import { bytesToFile } from '../fixtures/synth';
+import { encodeFoxglove, foxgloveDescriptorSet, ts } from '../fixtures/protobuf';
+import { readDeserializedMessagesMcap } from '../../src/parsers/mcap';
 
 // MCAP files always start with this 8-byte magic sequence.
 const MCAP_MAGIC = new Uint8Array([0x89, 0x4d, 0x43, 0x41, 0x50, 0x30, 0x0d, 0x0a]);
@@ -155,6 +157,22 @@ describe('LiveRecorder', () => {
       expect(raws[i].timestamp >= raws[i - 1].timestamp).toBe(true);
     }
     expect(raws.map((m) => m.data.byteLength)).toEqual([12, 12, 12, 12, 12]);
+  });
+
+  it('stores a protobuf channel schema as raw descriptor bytes, so the recording reads back', async () => {
+    const descriptor = foxgloveDescriptorSet();
+    const ch: FoxgloveChannel = {
+      id: 1, topic: '/cam', encoding: 'protobuf', schemaName: 'foxglove.CompressedImage', schemaEncoding: 'protobuf',
+      schema: btoa(String.fromCharCode(...descriptor)), // how a bridge sends it
+    };
+    const r = new LiveRecorder();
+    r.addMessage(ch, 5n, encodeFoxglove('foxglove.CompressedImage', { timestamp: ts(1), frame_id: 'c', data: Uint8Array.from([7, 8]), format: 'png' }));
+    const source = recordingSource(await r.finish());
+    const { reader } = await loadMcapForEdit(source);
+    expect([...reader!.schemasById.values()][0]!.data).toEqual(descriptor);
+    await parseMcap(source);
+    const [m] = await readDeserializedMessagesMcap(source, '/cam');
+    expect(m!.value).toMatchObject({ format: 'png', header: { frame_id: 'c' } });
   });
 
   it('finish() handles multiple channels with different schemas', async () => {

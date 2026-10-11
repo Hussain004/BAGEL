@@ -1,10 +1,12 @@
 /**
  * Foxglove annotations in a real browser: ImageAnnotations drawn over a camera
- * image, and a SceneUpdate drawn in the 3D view, from a JSON-encoded MCAP.
+ * image, and a SceneUpdate drawn in the 3D view, from a JSON-encoded MCAP and
+ * from the same recording written with protobuf.
  */
 
 import { test, expect } from '@playwright/test';
 import { writeJsonMcap } from '../fixtures/jsonMcap';
+import { encodeFoxglove, writeProtobufMcap } from '../fixtures/protobuf';
 
 const T = (s: number) => BigInt(s) * 1_000_000_000n;
 const stamp = (sec: number, nsec = 0) => ({ sec, nsec });
@@ -27,6 +29,37 @@ const annotations = (sec: number, nsec = 0) => ({
 
 const cube = (i: number) => ({ pose: { position: { x: i * 2, y: 0, z: 0 }, orientation: { x: 0, y: 0, z: 0, w: 1 } }, size: { x: 1, y: 1, z: 1 }, color: RED });
 const entity = (id: string, n: number, sec: number) => ({ timestamp: stamp(sec), frame_id: 'map', id, lifetime: stamp(0), cubes: Array.from({ length: n }, (_, i) => cube(i)) });
+
+const sec = (s: number, nsec = 0) => ({ seconds: s, nanos: nsec });
+const pbShape = (a: ReturnType<typeof annotations>, s: number, nsec: number) => ({
+  circles: a.circles.map((c) => ({ ...c, timestamp: sec(s, nsec) })),
+  points: a.points.map((p) => ({ ...p, timestamp: sec(s, nsec) })),
+  texts: a.texts.map((t) => ({ ...t, timestamp: sec(s, nsec) })),
+});
+const pbEntity = (id: string, n: number, s: number) => {
+  const e = entity(id, n, s);
+  return { ...e, timestamp: sec(s), lifetime: sec(0) };
+};
+
+async function protobufBag() {
+  const at = (s: number) => T(s);
+  return Buffer.from(
+    await writeProtobufMcap([
+      {
+        topic: '/camera', schemaName: 'foxglove.RawImage',
+        messages: [1, 2, 3].map((s) => ({ logTime: at(s), data: encodeFoxglove('foxglove.RawImage', { timestamp: sec(s), frame_id: 'camera', width: W, height: H, encoding: 'rgb8', step: W * 3, data: new Uint8Array(W * H * 3).fill(90) }) })),
+      },
+      {
+        topic: '/annotations', schemaName: 'foxglove.ImageAnnotations',
+        messages: [[1, 0], [2, 0], [3, 500_000_000]].map(([s, n]) => ({ logTime: at(s!), data: encodeFoxglove('foxglove.ImageAnnotations', pbShape(annotations(s!, n!), s!, n!)) })),
+      },
+      {
+        topic: '/scene', schemaName: 'foxglove.SceneUpdate',
+        messages: [[1, 4], [2, 2]].map(([s, n]) => ({ logTime: at(s!), data: encodeFoxglove('foxglove.SceneUpdate', { entities: [pbEntity('boxes', n!, s!)] }) })),
+      },
+    ]),
+  );
+}
 
 async function bag() {
   return Buffer.from(
@@ -53,11 +86,11 @@ async function bag() {
   );
 }
 
-test('annotations draw over the image, go away when stale, and 3D shows the scene update', async ({ page }) => {
+for (const [encoding, make] of [['JSON', bag], ['protobuf', protobufBag]] as const) test(`${encoding}: annotations draw over the image, go away when stale, and 3D shows the scene update`, async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/');
-  await page.locator('[data-testid="file-input"]').setInputFiles({ name: 'annotated.mcap', mimeType: 'application/octet-stream', buffer: await bag() });
+  await page.locator('[data-testid="file-input"]').setInputFiles({ name: 'annotated.mcap', mimeType: 'application/octet-stream', buffer: await make() });
   for (const t of ['/camera', '/annotations', '/scene']) await expect(page.locator('.topic-row', { hasText: t }).first()).toBeVisible({ timeout: 60_000 });
 
   // The annotations topic itself opens as raw data, not an empty plot.

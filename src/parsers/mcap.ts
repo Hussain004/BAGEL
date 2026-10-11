@@ -25,6 +25,7 @@ import { deserializeWithSchema } from './cdr';
 import { RangePicker, rangeFromAll, type RangeParams, type RangeResult } from './range';
 import { deserializeRos1Message } from './rosbag1';
 import { translateFoxgloveMessage } from './foxgloveSchemas';
+import { createProtobufDecoder } from './protobuf';
 import { coalesceAnnexBVideoChunks, hasH264AccessUnitDelimiter, hasH264SequenceParameterSet, isH264VideoFormat, isVideoFormat, isVideoKeyframe, type VideoChunk, type VideoChunksResult } from './video';
 import {
   HttpReadable,
@@ -198,7 +199,7 @@ interface CachedMcap {
   unindexed: UnindexedMcap | null;
   channelById: Map<number, { topic: string; schemaId: number; messageEncoding: string }>;
   schemaById: Map<number, { name: string; encoding: string; data: Uint8Array }>;
-  topicMeta: Map<string, { schemaName: string; schemaText: string | null; messageEncoding: string }>;
+  topicMeta: Map<string, McapTopicInfo>;
   decompressHandlers: DecompressHandlers;
   chunkCache: ChunkCache;
   /** Per-topic LRU of the most recently returned decoded messages. Keyed
@@ -240,6 +241,15 @@ interface UnindexedMcap {
 }
 
 let cached: CachedMcap | null = null;
+
+/** What a topic's channel and schema say about how to decode its messages. */
+interface McapTopicInfo {
+  schemaName: string;
+  schemaText: string | null;
+  messageEncoding: string;
+  /** Raw schema bytes; protobuf schemas are binary descriptor sets, not text. */
+  schemaData?: Uint8Array | null;
+}
 
 function decodeSchemaText(data: Uint8Array): string {
   return new TextDecoder().decode(data);
@@ -676,7 +686,7 @@ async function loadMcap(source: SingleBagSource): Promise<CachedMcap> {
   let unindexed: UnindexedMcap | null = null;
   const channelById = new Map<number, { topic: string; schemaId: number; messageEncoding: string }>();
   const schemaById = new Map<number, { name: string; encoding: string; data: Uint8Array }>();
-  const topicMeta = new Map<string, { schemaName: string; schemaText: string | null; messageEncoding: string }>();
+  const topicMeta = new Map<string, McapTopicInfo>();
 
   let indexedError: unknown = null;
   try {
@@ -698,6 +708,7 @@ async function loadMcap(source: SingleBagSource): Promise<CachedMcap> {
       topicMeta.set(channel.topic, {
         schemaName: schema?.name ?? 'unknown',
         schemaText: schema ? decodeSchemaText(schema.data) : null,
+        schemaData: schema?.data ?? null,
         messageEncoding: channel.messageEncoding,
       });
     }
@@ -732,6 +743,7 @@ async function loadMcap(source: SingleBagSource): Promise<CachedMcap> {
     topicMeta.set(ch.topic, {
       schemaName: schema?.name ?? 'unknown',
       schemaText: schema ? decodeSchemaText(schema.data) : null,
+      schemaData: schema?.data ?? null,
       messageEncoding: ch.messageEncoding,
     });
   }
@@ -961,7 +973,7 @@ const YIELD_EVERY = 500;
  * touching any decode cache.
  */
 function makeMessageDecoder(
-  topicInfo: { schemaName: string; schemaText: string | null; messageEncoding: string },
+  topicInfo: McapTopicInfo,
 ): ((raw: Uint8Array) => Record<string, unknown> | null) | null {
   const encoding = topicInfo.messageEncoding.toLowerCase();
   const schemaText = topicInfo.schemaText;
@@ -971,6 +983,11 @@ function makeMessageDecoder(
       const parsed = JSON.parse(new TextDecoder().decode(raw)) as Record<string, unknown>;
       return translateFoxgloveMessage(topicInfo.schemaName, parsed);
     };
+  }
+  if (encoding === 'protobuf') {
+    if (!topicInfo.schemaData) return null;
+    const decode = createProtobufDecoder(topicInfo.schemaData, topicInfo.schemaName);
+    return (raw) => translateFoxgloveMessage(topicInfo.schemaName, decode(raw));
   }
   if (!schemaText) return null;
   if (encoding === 'ros1') {
@@ -1432,13 +1449,12 @@ function bytesFromField(value: unknown): Uint8Array {
 }
 
 function decodeVideoMessage(
-  topicInfo: { schemaName: string; schemaText: string | null; messageEncoding: string },
+  topicInfo: McapTopicInfo,
   raw: Uint8Array,
   fallbackFormat: string,
 ): { data: Uint8Array; format: string } {
-  if (topicInfo.messageEncoding === 'json') {
-    const parsed = JSON.parse(TEXT_DEC.decode(raw)) as Record<string, unknown>;
-    const xlated = translateFoxgloveMessage(topicInfo.schemaName, parsed);
+  if (topicInfo.messageEncoding === 'json' || topicInfo.messageEncoding === 'protobuf') {
+    const xlated = makeMessageDecoder(topicInfo)?.(raw) ?? {};
     return {
       data: bytesFromField(xlated['data']),
       format: typeof xlated['format'] === 'string' && xlated['format']
@@ -1466,7 +1482,7 @@ function decodeVideoMessage(
  * CDR payloads.
  */
 function extractVideoChunk(
-  topicInfo: { schemaName: string; schemaText: string | null; messageEncoding: string },
+  topicInfo: McapTopicInfo,
   logTime: bigint,
   raw: Uint8Array,
   format: string,
@@ -1488,7 +1504,7 @@ async function readRosCompressedH264ChunksMcap(
   meta: CachedMcap,
   source: SingleBagSource,
   topicName: string,
-  topicInfo: { schemaName: string; schemaText: string | null; messageEncoding: string },
+  topicInfo: McapTopicInfo,
   timeNs: bigint,
 ): Promise<VideoChunksResult | null> {
   let format = 'h264';
@@ -1728,7 +1744,7 @@ async function getOrBuildVideoIndex(
 async function readVideoChunkRangeMcapImpl(
   meta: CachedMcap,
   topicName: string,
-  topicInfo: { schemaName: string; schemaText: string | null; messageEncoding: string },
+  topicInfo: McapTopicInfo,
   startNs: bigint,
   endNs: bigint,
 ): Promise<VideoChunksResult | null> {

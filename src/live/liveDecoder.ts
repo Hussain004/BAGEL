@@ -11,14 +11,14 @@
  *   cdr  + ros1msg  (some bridges use CDR framing with ROS1 schema defs)
  *   ros1 + ros1msg  (ROS1 CDR without RTPS header - standard ROS1 bridge)
  *   json + *        (raw JSON.parse)
- *
- * Protobuf is not supported; it would need a generated codec per schema.
+ *   protobuf + protobuf  (descriptor-driven, see parsers/protobuf.ts)
  */
 
 import { parse as parseRosMsgDefinition } from '@foxglove/rosmsg';
 import { MessageReader as Ros2MessageReader } from '@foxglove/rosmsg2-serialization';
 import { MessageReader as Ros1MessageReader } from '@foxglove/rosmsg-serialization';
 import { translateFoxgloveMessage } from '../parsers/foxgloveSchemas';
+import { createProtobufDecoderFromBase64 } from '../parsers/protobuf';
 
 // Cache readers by schema text so we parse the .msg definition once per unique
 // channel type, not once per message. ROS1 and ROS2 caches are separate because
@@ -54,6 +54,11 @@ export function decodeLiveMessage(
       const text = new TextDecoder().decode(data);
       // Foxglove-schema JSON (images, scene updates) is reshaped like the MCAP path does.
       return translateFoxgloveMessage(schemaName, JSON.parse(text) as Record<string, unknown>);
+    }
+
+    if (encoding === 'protobuf') {
+      // The bridge sends the schema as a base64 FileDescriptorSet.
+      return translateFoxgloveMessage(schemaName, createProtobufDecoderFromBase64(schema, schemaName)(data));
     }
 
     if (encoding === 'cdr') {

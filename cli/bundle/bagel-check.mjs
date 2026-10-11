@@ -7852,7 +7852,7 @@ var require_sql_wasm = __commonJS({
           if (!a) throw new N(63);
           return a;
         }
-        function T(a) {
+        function T2(a) {
           a = Eb[a];
           if (!a) throw new N(8);
           return a;
@@ -8100,7 +8100,7 @@ var require_sql_wasm = __commonJS({
         var X = {};
         function Y(a, b, c) {
           if ("/" === b.charAt(0)) return b;
-          a = -100 === a ? "/" : T(a).path;
+          a = -100 === a ? "/" : T2(a).path;
           if (0 == b.length) {
             if (!c) throw new N(44);
             return a;
@@ -8247,7 +8247,7 @@ var require_sql_wasm = __commonJS({
             b.Ma = { Va: O.Ma.Va };
             b.La = { lookup(c, d) {
               c = +d;
-              var e = T(c);
+              var e = T2(c);
               c = { parent: null, Xa: { Db: "fake" }, La: { readlink: () => e.path }, id: c + 1 };
               return c.parent = c;
             }, readdir() {
@@ -8305,7 +8305,7 @@ var require_sql_wasm = __commonJS({
           },
           j: function(a, b) {
             try {
-              var c = T(a);
+              var c = T2(a);
               Yb(c, c.node, b, false);
               return 0;
             } catch (d) {
@@ -8315,7 +8315,7 @@ var require_sql_wasm = __commonJS({
           },
           h: function(a) {
             try {
-              var b = T(a);
+              var b = T2(a);
               Rb(b, b.node, { timestamp: Date.now(), Lb: false });
               return 0;
             } catch (c) {
@@ -8326,7 +8326,7 @@ var require_sql_wasm = __commonJS({
           b: function(a, b, c) {
             Cc = c;
             try {
-              var d = T(a);
+              var d = T2(a);
               switch (b) {
                 case 0:
                   var e = Ec();
@@ -8354,7 +8354,7 @@ var require_sql_wasm = __commonJS({
           },
           g: function(a, b) {
             try {
-              var c = T(a), d = c.node, e = c.Ma.Ta;
+              var c = T2(a), d = c.node, e = c.Ma.Ta;
               a = e ? c : d;
               e ??= d.La.Ta;
               Ob(e);
@@ -8369,7 +8369,7 @@ var require_sql_wasm = __commonJS({
             b = -9007199254740992 > b || 9007199254740992 < b ? NaN : Number(b);
             try {
               if (isNaN(b)) return -61;
-              var c = T(a);
+              var c = T2(a);
               if (0 > b || 0 === (c.flags & 2097155)) throw new N(28);
               Zb(c, c.node, b);
               return 0;
@@ -8530,7 +8530,7 @@ var require_sql_wasm = __commonJS({
           y: function(a, b, c, d, e, g, h) {
             e = -9007199254740992 > e || 9007199254740992 < e ? NaN : Number(e);
             try {
-              var q = T(d);
+              var q = T2(d);
               if (0 !== (b & 2) && 0 === (c & 2) && 2 !== (q.flags & 2097155)) throw new N(2);
               if (1 === (q.flags & 2097155)) throw new N(2);
               if (!q.Ma.jb) throw new N(43);
@@ -8548,7 +8548,7 @@ var require_sql_wasm = __commonJS({
           z: function(a, b, c, d, e, g) {
             g = -9007199254740992 > g || 9007199254740992 < g ? NaN : Number(g);
             try {
-              var h = T(e);
+              var h = T2(e);
               if (c & 2) {
                 c = g;
                 if (32768 !== (h.node.mode & 61440)) throw new N(43);
@@ -8633,7 +8633,7 @@ var require_sql_wasm = __commonJS({
           },
           e: function(a) {
             try {
-              var b = T(a);
+              var b = T2(a);
               oa(b);
               return 0;
             } catch (c) {
@@ -8643,7 +8643,7 @@ var require_sql_wasm = __commonJS({
           },
           p: function(a, b) {
             try {
-              var c = T(a);
+              var c = T2(a);
               m[b] = c.tty ? 2 : P(c.mode) ? 3 : 40960 === (c.mode & 61440) ? 7 : 4;
               Ha[b + 2 >> 1] = 0;
               G[b + 8 >> 3] = BigInt(0);
@@ -8657,7 +8657,7 @@ var require_sql_wasm = __commonJS({
           w: function(a, b, c, d) {
             try {
               a: {
-                var e = T(a);
+                var e = T2(a);
                 a = b;
                 for (var g, h = b = 0; h < c; h++) {
                   var q = F[a >> 2], w = F[a + 4 >> 2];
@@ -8684,7 +8684,7 @@ var require_sql_wasm = __commonJS({
             b = -9007199254740992 > b || 9007199254740992 < b ? NaN : Number(b);
             try {
               if (isNaN(b)) return 61;
-              var e = T(a);
+              var e = T2(a);
               $b(e, b, c);
               G[d >> 3] = BigInt(e.position);
               e.rb && 0 === b && 0 === c && (e.rb = null);
@@ -8696,7 +8696,7 @@ var require_sql_wasm = __commonJS({
           },
           I: function(a) {
             try {
-              var b = T(a);
+              var b = T2(a);
               return b.Ma?.fsync?.(b);
             } catch (c) {
               if ("undefined" == typeof X || "ErrnoError" !== c.name) throw c;
@@ -8706,7 +8706,7 @@ var require_sql_wasm = __commonJS({
           t: function(a, b, c, d) {
             try {
               a: {
-                var e = T(a);
+                var e = T2(a);
                 a = b;
                 for (var g, h = b = 0; h < c; h++) {
                   var q = F[a >> 2], w = F[a + 4 >> 2];
@@ -16299,6 +16299,53 @@ var import_rosmsg = __toESM(require_dist(), 1);
 var import_rosmsg3 = __toESM(require_dist(), 1);
 var import_rosmsg_serialization = __toESM(require_cjs(), 1);
 
+// src/parsers/protobuf.ts
+var T = {
+  DOUBLE: 1,
+  FLOAT: 2,
+  INT64: 3,
+  UINT64: 4,
+  INT32: 5,
+  FIXED64: 6,
+  FIXED32: 7,
+  BOOL: 8,
+  STRING: 9,
+  GROUP: 10,
+  MESSAGE: 11,
+  BYTES: 12,
+  UINT32: 13,
+  ENUM: 14,
+  SFIXED32: 15,
+  SFIXED64: 16,
+  SINT32: 17,
+  SINT64: 18
+};
+var TEXT = new TextDecoder();
+var PACKABLE = /* @__PURE__ */ new Set([
+  T.DOUBLE,
+  T.FLOAT,
+  T.INT64,
+  T.UINT64,
+  T.INT32,
+  T.FIXED64,
+  T.FIXED32,
+  T.BOOL,
+  T.UINT32,
+  T.ENUM,
+  T.SFIXED32,
+  T.SFIXED64,
+  T.SINT32,
+  T.SINT64
+]);
+var WELL_KNOWN_TIME = {
+  fullName: ".google.protobuf.Timestamp",
+  isMapEntry: false,
+  fields: /* @__PURE__ */ new Map([
+    [1, { name: "seconds", number: 1, type: T.INT64, repeated: false, typeName: "" }],
+    [2, { name: "nanos", number: 2, type: T.INT32, repeated: false, typeName: "" }]
+  ])
+};
+
 // src/parsers/source.ts
 function sourceKey(source) {
   if (source.kind === "multi") return `multi:${source.parts.map(sourceKey).sort().join("|")}`;
@@ -16836,6 +16883,7 @@ async function loadMcap(source) {
       topicMeta.set(channel.topic, {
         schemaName: schema?.name ?? "unknown",
         schemaText: schema ? decodeSchemaText(schema.data) : null,
+        schemaData: schema?.data ?? null,
         messageEncoding: channel.messageEncoding
       });
     }
@@ -16865,6 +16913,7 @@ async function loadMcap(source) {
     topicMeta.set(ch.topic, {
       schemaName: schema?.name ?? "unknown",
       schemaText: schema ? decodeSchemaText(schema.data) : null,
+      schemaData: schema?.data ?? null,
       messageEncoding: ch.messageEncoding
     });
   }
