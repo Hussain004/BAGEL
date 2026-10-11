@@ -1079,10 +1079,13 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     const liveCount = markerSet.size();
     setMarkerCount((prev) => (prev === liveCount ? prev : liveCount));
 
-    // Bounds for autofit: derive a generous box from the first message's
-    // markers' positions, so the camera at least frames the scene.
-    if (!stats.bounds && targetIndex >= 0) {
-      const bounds = computeMarkerBounds(messages, targetIndex);
+    // Bounds for autofit: where the markers are actually drawn, after their TF
+    // (a zone in base_link sits wherever the robot is, not at the origin). Falls
+    // back to the raw message positions when nothing is drawn yet.
+    // Waits for the TF graph (or for knowing there is none): before it loads, every frame
+    // is drawn at the origin and a fit there would stick.
+    if (!stats.bounds && targetIndex >= 0 && (graph || noTf)) {
+      const bounds = drawnBounds(markerSet.root, refs.userGroup) ?? computeMarkerBounds(messages, targetIndex);
       if (bounds) {
         setStats({
           points: liveCount,
@@ -1105,6 +1108,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
     markerStream.messages,
     playheadNs,
     graph,
+    noTf,
     worldFrame,
     upFixMatrix,
     sceneRef,
@@ -1829,4 +1833,16 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
       </div>
     </PanelShell>
   );
+}
+
+/** Bounds of what `object` draws, in `space`'s local coordinates, or null when it draws nothing. */
+function drawnBounds(
+  object: THREE.Object3D,
+  space: THREE.Object3D,
+): { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null {
+  space.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(object);
+  if (box.isEmpty()) return null;
+  box.applyMatrix4(space.matrixWorld.clone().invert());
+  return { min: { x: box.min.x, y: box.min.y, z: box.min.z }, max: { x: box.max.x, y: box.max.y, z: box.max.z } };
 }

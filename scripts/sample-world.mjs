@@ -200,8 +200,8 @@ export function mountWorld(pose, mount) {
 }
 
 // ── LiDAR ───────────────────────────────────────────────────────────────
-const BEAMS = 16;
-const AZIMUTHS = 125;
+const BEAMS = 32;
+const AZIMUTHS = 360;
 const EL_MIN = (-22 * Math.PI) / 180;
 const EL_MAX = (8 * Math.PI) / 180;
 export const LIDAR_MAX_RANGE = 20;
@@ -234,7 +234,7 @@ export function lidarSweep(pose, frame) {
 }
 
 // ── Camera ──────────────────────────────────────────────────────────────
-export const CAM = { w: 320, h: 240, fx: 250, fy: 250, cx: 160, cy: 120, d: [-0.12, 0.02, 0, 0, 0] };
+export const CAM = { w: 480, h: 360, fx: 375, fy: 375, cx: 240, cy: 180, d: [-0.12, 0.02, 0, 0, 0] };
 
 /** Optical (x right, y down, z forward) direction to base_link, then to the world. */
 function cameraDir(yaw, xo, yo) {
@@ -323,6 +323,22 @@ export function renderCamera(pose) {
   return out;
 }
 
+/** Pixel where the camera sees world point p, or null when it is behind or beside the camera. */
+export function projectWorldPoint(pose, p) {
+  const o = mountWorld(pose, CAMERA_MOUNT);
+  const c = Math.cos(pose.yaw);
+  const s = Math.sin(pose.yaw);
+  const w = [p[0] - o[0], p[1] - o[1], p[2] - o[2]];
+  const forward = w[0] * c + w[1] * s;
+  const left = -w[0] * s + w[1] * c;
+  if (forward <= 0.5) return null;
+  const xn = -left / forward;
+  const yn = -w[2] / forward;
+  // Outside the lens's useful field the distortion model folds back on itself.
+  if (Math.abs(xn) > 0.85 || Math.abs(yn) > 0.65) return null;
+  return projectToPixel(xn, yn);
+}
+
 // ── Detector ────────────────────────────────────────────────────────────
 /**
  * What a 2D detector would report for this view: one box per car or person
@@ -377,6 +393,7 @@ export function detect(pose, frame) {
     if (x1 - x0 < 4 || y1 - y0 < 4) return;
     out.push({
       cls,
+      dist,
       score: Math.round((0.99 - dist * 0.018 - hash01(frame, index, 9) * 0.05) * 100) / 100,
       cx: (x0 + x1) / 2,
       cy: (y0 + y1) / 2,

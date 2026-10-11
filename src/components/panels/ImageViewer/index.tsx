@@ -597,7 +597,10 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
                 <div className="text-text-muted text-xs">{renderError}</div>
               </div>
             ) : (
+              // Full size, so the canvas's max-height has a height to resolve against and a tall
+              // frame is scaled down to fit rather than cropped at the bottom.
               <div
+                className="w-full h-full flex items-center justify-center"
                 style={{
                   transform: `translate(${view.panX}px, ${view.panY}px) scale(${view.zoom})`,
                   transformOrigin: 'center',
@@ -853,8 +856,11 @@ function DetectionBoxes({
         });
         const color = classColor(d.classKey);
         const tag = `${d.label}${d.score !== null ? ` ${Math.round(d.score * 100)}%` : ''}`.trim();
-        const [lx, ly] = corners[0]!;
         const tagW = tag.length * fs * 0.58 + fs * 0.6;
+        // The tag sits above the box's top-left corner, but is kept inside the image: a box at the
+        // right edge pulls its tag left, and one touching the top puts it just inside the box.
+        const lx = Math.max(0, Math.min(corners[0]![0], imageSize.width - tagW));
+        const ly = corners[0]![1] - fs * 1.3 < 0 ? corners[0]![1] + fs * 1.3 : corners[0]![1];
         return (
           <g key={i}>
             <polygon
@@ -982,7 +988,7 @@ function CanvasWithOverlay({ canvasRef, showOverlay, camera, boxes, annotations,
   }, [showOverlay, camera, canvasRef]);
 
   return (
-    <div ref={wrapperRef} className="relative max-w-full max-h-full flex items-center justify-center">
+    <div ref={wrapperRef} className="relative w-full h-full flex items-center justify-center">
       <canvas
         ref={canvasRef}
         className="max-w-full max-h-full object-contain rounded-md border border-border"

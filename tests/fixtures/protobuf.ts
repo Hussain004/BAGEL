@@ -247,7 +247,7 @@ const FILES: FileSpec[] = [
         name: 'SceneEntity',
         fields: [
           msg('timestamp', TIMESTAMP, 1), f('frame_id', 2, TYPE.STRING), f('id', 3, TYPE.STRING), msg('lifetime', DURATION, 4),
-          f('frame_locked', 5, TYPE.BOOL), msg('lines', '.foxglove.LinePrimitive', 7, true), msg('cubes', '.foxglove.CubePrimitive', 8, true),
+          f('frame_locked', 5, TYPE.BOOL), msg('cubes', '.foxglove.CubePrimitive', 8, true), msg('lines', '.foxglove.LinePrimitive', 11, true),
         ],
       },
       {

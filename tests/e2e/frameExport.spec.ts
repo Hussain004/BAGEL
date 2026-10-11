@@ -36,7 +36,7 @@ test('export the frames of a labelled range, with paired point clouds', async ({
   await page.getByRole('button', { name: 'Frames', exact: true }).click();
 
   await expect(page.getByRole('dialog', { name: 'Export frames' })).toBeVisible();
-  // The dialog opens on that range, so the estimate is for about 6 s of a 2 Hz camera.
+  // The dialog opens on that range, so the estimate is for about 6 s of a 5 Hz camera.
   await expect(page.getByLabel('Range')).toHaveValue(/ann-/);
   await expect(page.getByTestId('frame-estimate')).toContainText(/About \d+ frames over 6\.\d s/);
 
@@ -49,8 +49,9 @@ test('export the frames of a labelled range, with paired point clouds', async ({
   const files = unzipSync(new Uint8Array(await readFile((await download.path())!)));
   const pngs = Object.keys(files).filter((n) => n.endsWith('.png'));
   const pcds = Object.keys(files).filter((n) => n.endsWith('.pcd'));
-  expect(pngs.length).toBeGreaterThanOrEqual(11);
-  expect(pngs.length).toBeLessThanOrEqual(14);
+  // About 6 s of a 5 Hz camera.
+  expect(pngs.length).toBeGreaterThanOrEqual(27);
+  expect(pngs.length).toBeLessThanOrEqual(33);
   expect(pcds.length).toBeGreaterThan(5);
   expect(Array.from(files[pngs[0]!]!.subarray(1, 4))).toEqual([0x50, 0x4e, 0x47]);
 
@@ -69,5 +70,5 @@ test('with no labels the dialog offers the whole bag and an honest estimate', as
   await page.getByRole('dialog').getByText('Export frames as images').click();
   await expect(page.getByLabel('Range')).toHaveValue('');
   await page.getByLabel('Every Nth frame').fill('4');
-  await expect(page.getByTestId('frame-estimate')).toContainText(/About 15 frames over 30\.0 s/);
+  await expect(page.getByTestId('frame-estimate')).toContainText(/About 3[78] frames over 30\.0 s/);
 });

@@ -225,8 +225,11 @@ describeWithSample('edit/editMcapBag - tour.mcap round trip', () => {
     // Output bounds should fit inside the requested window.
     expect(result.startNs).toBeGreaterThanOrEqual(startNs);
     expect(result.endNs).toBeLessThanOrEqual(endNs);
-    // And it should be substantially smaller than the source.
-    expect(result.bytes.byteLength).toBeLessThan(summary.fileSize);
+    // And it keeps only that slice of the messages. (Not necessarily fewer bytes: the
+    // editor writes uncompressed chunks, and the sample's are zstd.)
+    disposeMcapCache();
+    const sliced = await parseMcap(createFileSource(new File([new Uint8Array(result.bytes)], 'tour.slice.mcap')));
+    expect(sliced.totalMessageCount).toBeLessThan(summary.totalMessageCount / 4);
 
     // Re-parse and confirm the duration is ~5s (allow slack for the gap
     // between the trim bounds and the actual nearest messages).
