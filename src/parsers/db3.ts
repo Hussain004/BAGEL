@@ -10,6 +10,7 @@
  * first parseDb3() call so subsequent reads avoid re-parsing the WASM file.
  */
 
+import { decompress as fzstdDecompress } from 'fzstd';
 import type { AllTopicStats, BagSummary, RawMessage, TopicInfo } from '../types/bag';
 import { deserializeByType } from './cdr';
 import { RangePicker, type RangeParams, type RangeResult } from './range';
@@ -130,6 +131,25 @@ async function loadDb(source: SingleBagSource): Promise<CachedDb> {
   return cachedDb;
 }
 
+/**
+ * A message blob as CDR bytes. rosbag2 recorded with `compression_mode:
+ * message` stores each blob as its own zstd frame, and that setting lives only
+ * in `metadata.yaml`, which a dropped `.db3` arrives without. So detect it per
+ * blob: a CDR blob opens with its encapsulation header (`00 01 00 00` and
+ * kin), never the zstd magic `28 B5 2F FD`. (`compression_mode: file`, a
+ * whole `.db3.zstd`, is not a SQLite file and is not handled here.)
+ * A frame that will not decompress comes back as it is, so that one row fails
+ * to decode like any other bad message instead of failing its whole topic.
+ */
+export function db3MessageBytes(data: Uint8Array): Uint8Array {
+  if (!(data[0] === 0x28 && data[1] === 0xb5 && data[2] === 0x2f && data[3] === 0xfd)) return data;
+  try {
+    return fzstdDecompress(data);
+  } catch {
+    return data;
+  }
+}
+
 /** Per-topic decoded-message LRU bound. */
 const DB3_MESSAGE_CACHE_MAX_PER_TOPIC = 6;
 
@@ -153,7 +173,7 @@ async function rememberDecodedDb3(
   }
   let value: Record<string, unknown> | null;
   try {
-    value = await deserializeByType(msgType, data);
+    value = await deserializeByType(msgType, db3MessageBytes(data));
   } catch {
     value = null;
   }
@@ -282,11 +302,10 @@ export async function readRawMessagesDb3(
     while (stmt.step()) {
       const row = stmt.get();
       const ts = row[0] as number | bigint;
-      const data = row[1] as Uint8Array;
       out.push({
         topicName,
         timestamp: typeof ts === 'bigint' ? ts : BigInt(ts),
-        data,
+        data: db3MessageBytes(row[1] as Uint8Array),
       });
     }
   } finally {
@@ -368,7 +387,7 @@ export async function readRangeDb3(
       if (picker.offer(ts)) {
         let value: Record<string, unknown> | null = null;
         try {
-          value = await deserializeByType(msgType, row[1] as Uint8Array);
+          value = await deserializeByType(msgType, db3MessageBytes(row[1] as Uint8Array));
         } catch {
           // counted, like everywhere else
         }
