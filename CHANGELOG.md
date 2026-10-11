@@ -17,8 +17,17 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
   renderer (so frames, lifetimes, namespaces and the filter all work); each
   entity replaces its previous self, and deletions are honoured. Models are not
   drawn, and lines or text sized in screen pixels are drawn at a fixed modest
-  world size. These work for JSON-encoded messages (MCAP files and live JSON
-  bridges); protobuf-encoded Foxglove messages are not decoded yet.
+  world size.
+- Protobuf-encoded MCAP channels and live bridge channels are now decoded, using
+  the descriptor set carried in the file or sent by the bridge (no
+  `.proto` files needed). This is what Foxglove writes by default, so recordings
+  made with it now show images, point clouds, annotations and scene updates, and
+  any custom protobuf message plots and shows as raw data like any other. Field
+  names are kept as written, `Timestamp` and `Duration` read as `sec`/`nsec`, and
+  64-bit values stay exact (a bigint only when they exceed 53 bits).
+- Fixed: recording a live protobuf channel stored its schema as base64 text
+  instead of the raw descriptor bytes, which made the saved MCAP unreadable by
+  other tools.
 - Live JSON messages with Foxglove schemas (images, point clouds, scene
   updates) are now reshaped the same way MCAP ones are.
 - 2D goal tool for live connections. In a 3D panel's top-down (2D) view, "Goal"

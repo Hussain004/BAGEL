@@ -23,6 +23,12 @@ interface RecordedMsg {
   data: Uint8Array;
 }
 
+/** The bridge sends binary schemas (protobuf descriptor sets) as base64; MCAP stores the raw bytes. */
+function base64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  return Uint8Array.from(bin, (c) => c.charCodeAt(0));
+}
+
 export class LiveRecorder {
   private readonly messages: RecordedMsg[] = [];
   private readonly channelMap = new Map<number, FoxgloveChannel>();
@@ -111,7 +117,7 @@ export class LiveRecorder {
         schemaId = await writer.registerSchema({
           name: ch.schemaName,
           encoding: ch.schemaEncoding ?? 'ros2msg',
-          data: enc.encode(ch.schema),
+          data: ch.schemaEncoding === 'protobuf' ? base64ToBytes(ch.schema) : enc.encode(ch.schema),
         });
         schemaIdByKey.set(schemaKey, schemaId);
       }
