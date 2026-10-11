@@ -33,3 +33,19 @@ test('new panels fill three columns, then stack, without remounting the ones alr
   expect(Math.min(...widths)).toBeGreaterThan(250);
   expect(errors).toEqual([]);
 });
+
+test('a panel menu closes on a click anywhere outside it, including outside the panel', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  await page.locator('button:has-text("EXPLORE SAMPLE DATA")').click();
+  await expect(page.locator('header[tabindex="0"]')).toHaveCount(4, { timeout: 60_000 });
+  const exportButton = page.getByRole('button', { name: 'Export topic data' }).first();
+  await exportButton.click();
+  await expect(page.getByRole('menu')).toBeVisible();
+  await page.mouse.click(200, 500); // the sidebar, outside every panel
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  // A press on one of its own items does not count as outside, so the item's click still lands.
+  await exportButton.click();
+  await page.getByRole('menuitem').first().dispatchEvent('pointerdown');
+  await expect(page.getByRole('menu')).toBeVisible();
+});
