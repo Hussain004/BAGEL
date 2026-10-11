@@ -7,12 +7,17 @@
  * image, the detections box the cars and people you can see, and the map shows
  * what the robot has scanned.
  *
- *   /lidar/points (PointCloud2)       4 Hz, 16-beam sweep with intensity
- *   /camera/image_raw (Image)         2 Hz, 320x240 rendered view with barrel
+ *   /lidar/points (PointCloud2)       4 Hz, 32-beam sweep with intensity
+ *   /camera/image_raw (Image)         5 Hz, 480x360 rendered view with barrel
  *                                     distortion baked in ("undistort" works)
  *   /camera/camera_info (CameraInfo)  auto-pairs with the image; K, D, frame
- *   /detections (Detection2DArray)    2 Hz, boxes for cars and people
- *   /detections_3d (Detection3DArray) 2 Hz, the same cars and people as 3D boxes
+ *   /detections (Detection2DArray)    5 Hz, boxes for cars and people
+ *   /detections_3d (Detection3DArray) 5 Hz, the same cars and people as 3D boxes
+ *   /camera/annotations               5 Hz, foxglove.ImageAnnotations (protobuf):
+ *                                     the planned route drawn on the camera
+ *                                     image, seconds ahead, distance to people
+ *   /safety_zone                      5 Hz, foxglove.SceneUpdate (protobuf): the
+ *                                     zone around the robot, coloured by mode
  *   /robot/mode (std_msgs/String)     IDLE / EXPLORING / AVOIDING / RETURNING
  *   /battery (BatteryState)           drains through 20% near the end
  *   /rosout (rcl_interfaces/Log)      the story in log lines
@@ -20,6 +25,9 @@
  *   /particles (PoseArray)            a localisation particle cloud
  *   /odom, /imu/data, /scan, /tf, /markers, /map, /gps/fix,
  *   /camera_rear/camera_info          as before
+ *
+ * The two Foxglove topics are protobuf, as the Foxglove SDKs record them, so
+ * the sample shows a recording that mixes ROS 2 CDR and protobuf channels.
  *
  * Things to try: play it; project /lidar/points onto the camera; use Find on
  * /battery to jump to when it fell below 20%; open /robot/mode as a state
@@ -55,7 +63,9 @@ import {
   occupiedAt,
   renderCamera,
   toWorldDir,
+  projectWorldPoint,
 } from './sample-world.mjs';
+import { encodeFoxglove, foxgloveSchema } from './foxglove-protobuf.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..');
@@ -76,9 +86,9 @@ const MARKER_HZ = 1;
 const MAP_HZ = 0.5;
 // GPS receivers are usually 1 Hz commodity units - match that.
 const GPS_HZ = 1;
-// Camera image stream: 2 Hz keeps the bag size reasonable (~1.3 MB total)
-// while giving the ImageViewer panel enough frames to scrub through.
-const CAMERA_HZ = 2;
+// Camera image stream: 5 Hz plays back smoothly; the rendered frames compress
+// well, so the whole bag stays in the tens of megabytes.
+const CAMERA_HZ = 5;
 
 // ── Camera intrinsics ───────────────────────────────────────────────────
 // Front camera: the rendered view in sample-world.mjs. D = [k1, k2, p1, p2, k3]
@@ -830,6 +840,82 @@ function hashSigned(a, b, c) {
 }
 
 // ── Drive the writer ────────────────────────────────────────────────────
+// ── Foxglove topics (protobuf) ───────────────────────────────────────────
+const stampPb = (ns) => ({ seconds: Number(ns / 1_000_000_000n), nanos: Number(ns % 1_000_000_000n) });
+const rgba = (r, g, b, a = 1) => ({ r, g, b, a });
+const ROUTE = rgba(0.2, 0.9, 0.6, 0.95);
+
+/**
+ * What a planner would draw on the camera image: the route the robot is about
+ * to drive (projected onto the ground), a tick and label for each second
+ * ahead, and how far away each person in view is.
+ */
+function buildImageAnnotations(timeNs) {
+  const t = secondsOf(timeNs);
+  const pose = figureEightPose(t);
+  const stamp = stampPb(timeNs);
+  const route = [];
+  const circles = [];
+  const texts = [];
+  for (let k = 1; k <= 40; k++) {
+    const ahead = figureEightPose(t + k * 0.15);
+    const px = projectWorldPoint(pose, [ahead.x, ahead.y, 0]);
+    if (!px) {
+      if (route.length) break; // the route has left the view; do not jump back in later
+      continue;
+    }
+    route.push({ x: px[0], y: px[1] });
+    if (k % 7 === 0 && px[0] > 0 && px[0] < CAM_W && px[1] > 0 && px[1] < CAM_H) {
+      const sec = Math.round(k * 0.15);
+      circles.push({ timestamp: stamp, position: { x: px[0], y: px[1] }, diameter: 12, thickness: 2, fill_color: ROUTE, outline_color: rgba(0.05, 0.1, 0.1, 0.9) });
+      texts.push({ timestamp: stamp, position: { x: px[0] + 10, y: px[1] - 6 }, text: `${sec} s`, font_size: 17, text_color: rgba(0.9, 1, 0.95), background_color: rgba(0.05, 0.1, 0.12, 0.7) });
+    }
+  }
+  const points = route.length >= 2 ? [{ timestamp: stamp, type: 3, points: route, outline_color: ROUTE, thickness: 5 }] : [];
+  for (const d of detect(pose, frameOf(timeNs, DETECTION_HZ))) {
+    if (d.cls !== 'person') continue;
+    texts.push({
+      timestamp: stamp,
+      position: { x: Math.max(2, d.cx - d.w / 2), y: Math.min(CAM_H - 4, d.cy + d.h / 2 + 18) },
+      text: `${d.dist.toFixed(1)} m`,
+      font_size: 17,
+      text_color: rgba(1, 0.85, 0.55),
+      background_color: rgba(0.1, 0.06, 0.02, 0.75),
+    });
+  }
+  return { circles, points, texts };
+}
+
+const MODE_COLOUR = {
+  IDLE: rgba(0.6, 0.65, 0.7),
+  EXPLORING: rgba(0.2, 0.85, 0.55),
+  AVOIDING: rgba(1, 0.62, 0.15),
+  RETURNING: rgba(0.35, 0.6, 1),
+};
+
+/** The robot's safety zone, drawn in its own frame and coloured by what it is doing. */
+function buildSafetyZone(timeNs) {
+  const mode = modeAt(secondsOf(timeNs));
+  const c = MODE_COLOUR[mode] ?? MODE_COLOUR.IDLE;
+  const identity = { position: { x: 0, y: 0, z: 0 }, orientation: { x: 0, y: 0, z: 0, w: 1 } };
+  const radius = mode === 'AVOIDING' ? 1.9 : 1.4;
+  const ring = Array.from({ length: 32 }, (_, i) => {
+    const a = (i / 32) * Math.PI * 2;
+    return { x: radius * Math.cos(a), y: radius * Math.sin(a), z: 0.03 };
+  });
+  return {
+    entities: [{
+      timestamp: stampPb(timeNs),
+      frame_id: 'base_link',
+      id: 'safety_zone',
+      frame_locked: true,
+      cylinders: [{ pose: { ...identity, position: { x: 0, y: 0, z: 0.01 } }, size: { x: radius * 2, y: radius * 2, z: 0.02 }, bottom_scale: 1, top_scale: 1, color: { ...c, a: 0.18 } }],
+      lines: [{ type: 1, pose: identity, thickness: 0.05, points: ring, color: { ...c, a: 0.95 } }],
+      texts: [{ pose: { ...identity, position: { x: 0, y: 0, z: 1.7 } }, billboard: true, font_size: 0.35, color: { ...c, a: 1 }, text: mode }],
+    }],
+  };
+}
+
 async function main() {
   const writable = makeMemoryWritable();
   const writer = new McapWriter({
@@ -914,11 +1000,19 @@ async function main() {
     { topic: '/rosout', type: 'rcl_interfaces/msg/Log', times: LOG_LINES.map((l) => l[0]), build: buildLogMessage },
     { topic: '/plan', type: 'nav_msgs/msg/Path', hz: PLAN_HZ, build: buildPlanMessage },
     { topic: '/particles', type: 'geometry_msgs/msg/PoseArray', hz: PARTICLES_HZ, build: buildParticlesMessage },
+    { topic: '/camera/annotations', type: 'foxglove.ImageAnnotations', protobuf: true, hz: CAMERA_HZ, build: buildImageAnnotations },
+    { topic: '/safety_zone', type: 'foxglove.SceneUpdate', protobuf: true, hz: CAMERA_HZ, build: buildSafetyZone },
   ];
 
   // Register schemas + channels and stash encoders.
   const channels = [];
   for (const t of topics) {
+    if (t.protobuf) {
+      const schemaId = await writer.registerSchema({ name: t.type, encoding: 'protobuf', data: foxgloveSchema(t.type) });
+      const channelId = await writer.registerChannel({ schemaId, topic: t.topic, messageEncoding: 'protobuf', metadata: new Map() });
+      channels.push({ ...t, mw: { writeMessage: (v) => encodeFoxglove(t.type, v) }, channelId });
+      continue;
+    }
     const { writer: mw, def } = loadWriter(t.type);
     const schemaId = await writer.registerSchema({
       name: t.type,

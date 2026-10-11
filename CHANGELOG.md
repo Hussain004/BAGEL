@@ -9,6 +9,18 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- A richer sample recording. The camera is now 480x360 at 5 Hz (was 320x240 at
+  2 Hz), the LiDAR has 32 beams (about 11,000 points a sweep, was about 1,900),
+  and two Foxglove topics recorded as protobuf join the ROS 2 ones:
+  `/camera/annotations` draws the route ahead on the camera image, with a mark
+  for each second and the distance to each person (shown by default), and
+  `/safety_zone` is a `SceneUpdate` of the zone around the robot, coloured by
+  what it is doing. The file grows from 3.9 MB to 17 MB.
+- Fixed: a camera frame taller than its panel was cropped at the bottom instead
+  of scaled to fit.
+- Fixed: a marker topic in a moving frame (a `SceneUpdate` in `base_link`, say)
+  opened its 3D view framed on the map origin instead of on the markers.
+- Detection labels stay inside the image when a box touches its edge.
 - Opening a topic fills the grid evenly. The first three panels sit side by
   side; after that each new one stacks at the bottom of the column with the
   fewest panels, instead of adding another, ever thinner column. Panels that

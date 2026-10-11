@@ -48,14 +48,14 @@ const ihdr = (png: Uint8Array) => {
 };
 
 describe('exporting frames from the sample bag', () => {
-  it('writes the 2 Hz camera frames in a 5 s range as 320x240 RGB PNGs, with a matching csv', async () => {
+  it('writes the 5 Hz camera frames in a 5 s range as 480x360 RGB PNGs, with a matching csv', async () => {
     const { result, files, summary } = await exportSample();
-    // 2 Hz over [5 s, 10 s] inclusive: 10 or 11 frames depending on the phase of the stream.
-    expect(result.frames).toBeGreaterThanOrEqual(10);
-    expect(result.frames).toBeLessThanOrEqual(11);
+    // 5 Hz over [5 s, 10 s] inclusive: 25 or 26 frames depending on the phase of the stream.
+    expect(result.frames).toBeGreaterThanOrEqual(25);
+    expect(result.frames).toBeLessThanOrEqual(26);
     const pngs = Object.keys(files).filter((n) => n.endsWith('.png')).sort();
     expect(pngs).toHaveLength(result.frames);
-    expect(ihdr(files[pngs[0]!]!)).toEqual({ width: 320, height: 240, depth: 8, color: 2 });
+    expect(ihdr(files[pngs[0]!]!)).toEqual({ width: 480, height: 360, depth: 8, color: 2 });
 
     const rows = new TextDecoder().decode(files['frames.csv']).split('\r\n').filter(Boolean).slice(1).map((l) => l.split(','));
     expect(rows).toHaveLength(result.frames);
@@ -81,20 +81,21 @@ describe('exporting frames from the sample bag', () => {
     expect(result.clouds).toBeGreaterThan(1);
     const pcds = Object.keys(files).filter((n) => n.endsWith('.pcd'));
     expect(pcds).toHaveLength(result.clouds);
-    // 4 Hz sweeps against 2 Hz frames: every frame is within 125 ms of a sweep, and sweeps are not shared.
+    // 4 Hz sweeps against 5 Hz frames: each frame takes the sweep at or before it, so it is
+    // never more than one sweep period (250 ms) older.
     const rows = new TextDecoder().decode(files['frames.csv']).split('\r\n').filter(Boolean).slice(1).map((l) => l.split(','));
     for (const row of rows) {
       expect(row[5]).toMatch(/^lidar_points\/\d+\.pcd$/);
-      expect(Math.abs(Number(row[6]))).toBeLessThanOrEqual(130_000_000);
+      expect(Math.abs(Number(row[6]))).toBeLessThanOrEqual(250_000_000);
     }
     const pcd = files[pcds[0]!]!;
     const source = createFileSource(new File([pcd], 'sweep.pcd'));
     await parsePcd(source);
     const cloud = await readPointCloudAtTimePcd(source);
-    expect(cloud!.pointCount).toBeGreaterThan(1500);
+    expect(cloud!.pointCount).toBeGreaterThan(5000);
     expect(cloud!.fieldNames).toEqual(['x', 'y', 'z', 'intensity', 'ring']);
-    // The sample's LiDAR has 16 beams, numbered 0 to 15.
-    expect(Math.max(...cloud!.ring!)).toBe(15);
+    // The sample's LiDAR has 32 beams, numbered 0 to 31.
+    expect(Math.max(...cloud!.ring!)).toBe(31);
     expect(Math.min(...cloud!.ring!)).toBe(0);
   });
 

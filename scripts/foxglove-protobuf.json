@@ -1,0 +1,735 @@
+{
+ "generator": "foxglove-schemas-protobuf (python), see scripts/build-sample-bag.mjs",
+ "messages": {
+  "foxglove.ArrowPrimitive": {
+   "color": [
+    6,
+    11,
+    1,
+    "foxglove.Color"
+   ],
+   "head_diameter": [
+    5,
+    1,
+    1,
+    null
+   ],
+   "head_length": [
+    4,
+    1,
+    1,
+    null
+   ],
+   "pose": [
+    1,
+    11,
+    1,
+    "foxglove.Pose"
+   ],
+   "shaft_diameter": [
+    3,
+    1,
+    1,
+    null
+   ],
+   "shaft_length": [
+    2,
+    1,
+    1,
+    null
+   ]
+  },
+  "foxglove.CircleAnnotation": {
+   "diameter": [
+    3,
+    1,
+    1,
+    null
+   ],
+   "fill_color": [
+    5,
+    11,
+    1,
+    "foxglove.Color"
+   ],
+   "metadata": [
+    7,
+    11,
+    3,
+    "foxglove.KeyValuePair"
+   ],
+   "outline_color": [
+    6,
+    11,
+    1,
+    "foxglove.Color"
+   ],
+   "position": [
+    2,
+    11,
+    1,
+    "foxglove.Point2"
+   ],
+   "thickness": [
+    4,
+    1,
+    1,
+    null
+   ],
+   "timestamp": [
+    1,
+    11,
+    1,
+    "google.protobuf.Timestamp"
+   ]
+  },
+  "foxglove.Color": {
+   "a": [
+    4,
+    1,
+    1,
+    null
+   ],
+   "b": [
+    3,
+    1,
+    1,
+    null
+   ],
+   "g": [
+    2,
+    1,
+    1,
+    null
+   ],
+   "r": [
+    1,
+    1,
+    1,
+    null
+   ]
+  },
+  "foxglove.CubePrimitive": {
+   "color": [
+    3,
+    11,
+    1,
+    "foxglove.Color"
+   ],
+   "pose": [
+    1,
+    11,
+    1,
+    "foxglove.Pose"
+   ],
+   "size": [
+    2,
+    11,
+    1,
+    "foxglove.Vector3"
+   ]
+  },
+  "foxglove.CylinderPrimitive": {
+   "bottom_scale": [
+    3,
+    1,
+    1,
+    null
+   ],
+   "color": [
+    5,
+    11,
+    1,
+    "foxglove.Color"
+   ],
+   "pose": [
+    1,
+    11,
+    1,
+    "foxglove.Pose"
+   ],
+   "size": [
+    2,
+    11,
+    1,
+    "foxglove.Vector3"
+   ],
+   "top_scale": [
+    4,
+    1,
+    1,
+    null
+   ]
+  },
+  "foxglove.ImageAnnotations": {
+   "circles": [
+    1,
+    11,
+    3,
+    "foxglove.CircleAnnotation"
+   ],
+   "metadata": [
+    4,
+    11,
+    3,
+    "foxglove.KeyValuePair"
+   ],
+   "points": [
+    2,
+    11,
+    3,
+    "foxglove.PointsAnnotation"
+   ],
+   "texts": [
+    3,
+    11,
+    3,
+    "foxglove.TextAnnotation"
+   ],
+   "timestamp": [
+    5,
+    11,
+    1,
+    "google.protobuf.Timestamp"
+   ]
+  },
+  "foxglove.KeyValuePair": {
+   "key": [
+    1,
+    9,
+    1,
+    null
+   ],
+   "value": [
+    2,
+    9,
+    1,
+    null
+   ]
+  },
+  "foxglove.LinePrimitive": {
+   "color": [
+    6,
+    11,
+    1,
+    "foxglove.Color"
+   ],
+   "colors": [
+    7,
+    11,
+    3,
+    "foxglove.Color"
+   ],
+   "indices": [
+    8,
+    7,
+    3,
+    null
+   ],
+   "points": [
+    5,
+    11,
+    3,
+    "foxglove.Point3"
+   ],
+   "pose": [
+    2,
+    11,
+    1,
+    "foxglove.Pose"
+   ],
+   "scale_invariant": [
+    4,
+    8,
+    1,
+    null
+   ],
+   "thickness": [
+    3,
+    1,
+    1,
+    null
+   ],
+   "type": [
+    1,
+    14,
+    1,
+    null
+   ]
+  },
+  "foxglove.ModelPrimitive": {
+   "color": [
+    3,
+    11,
+    1,
+    "foxglove.Color"
+   ],
+   "data": [
+    7,
+    12,
+    1,
+    null
+   ],
+   "media_type": [
+    6,
+    9,
+    1,
+    null
+   ],
+   "override_color": [
+    4,
+    8,
+    1,
+    null
+   ],
+   "pose": [
+    1,
+    11,
+    1,
+    "foxglove.Pose"
+   ],
+   "scale": [
+    2,
+    11,
+    1,
+    "foxglove.Vector3"
+   ],
+   "url": [
+    5,
+    9,
+    1,
+    null
+   ]
+  },
+  "foxglove.Point2": {
+   "x": [
+    1,
+    1,
+    1,
+    null
+   ],
+   "y": [
+    2,
+    1,
+    1,
+    null
+   ]
+  },
+  "foxglove.Point3": {
+   "x": [
+    1,
+    1,
+    1,
+    null
+   ],
+   "y": [
+    2,
+    1,
+    1,
+    null
+   ],
+   "z": [
+    3,
+    1,
+    1,
+    null
+   ]
+  },
+  "foxglove.PointsAnnotation": {
+   "fill_color": [
+    6,
+    11,
+    1,
+    "foxglove.Color"
+   ],
+   "metadata": [
+    8,
+    11,
+    3,
+    "foxglove.KeyValuePair"
+   ],
+   "outline_color": [
+    4,
+    11,
+    1,
+    "foxglove.Color"
+   ],
+   "outline_colors": [
+    5,
+    11,
+    3,
+    "foxglove.Color"
+   ],
+   "points": [
+    3,
+    11,
+    3,
+    "foxglove.Point2"
+   ],
+   "thickness": [
+    7,
+    1,
+    1,
+    null
+   ],
+   "timestamp": [
+    1,
+    11,
+    1,
+    "google.protobuf.Timestamp"
+   ],
+   "type": [
+    2,
+    14,
+    1,
+    null
+   ]
+  },
+  "foxglove.Pose": {
+   "orientation": [
+    2,
+    11,
+    1,
+    "foxglove.Quaternion"
+   ],
+   "position": [
+    1,
+    11,
+    1,
+    "foxglove.Vector3"
+   ]
+  },
+  "foxglove.Quaternion": {
+   "w": [
+    4,
+    1,
+    1,
+    null
+   ],
+   "x": [
+    1,
+    1,
+    1,
+    null
+   ],
+   "y": [
+    2,
+    1,
+    1,
+    null
+   ],
+   "z": [
+    3,
+    1,
+    1,
+    null
+   ]
+  },
+  "foxglove.SceneEntity": {
+   "arrows": [
+    7,
+    11,
+    3,
+    "foxglove.ArrowPrimitive"
+   ],
+   "cubes": [
+    8,
+    11,
+    3,
+    "foxglove.CubePrimitive"
+   ],
+   "cylinders": [
+    10,
+    11,
+    3,
+    "foxglove.CylinderPrimitive"
+   ],
+   "frame_id": [
+    2,
+    9,
+    1,
+    null
+   ],
+   "frame_locked": [
+    5,
+    8,
+    1,
+    null
+   ],
+   "id": [
+    3,
+    9,
+    1,
+    null
+   ],
+   "lifetime": [
+    4,
+    11,
+    1,
+    "google.protobuf.Duration"
+   ],
+   "lines": [
+    11,
+    11,
+    3,
+    "foxglove.LinePrimitive"
+   ],
+   "metadata": [
+    6,
+    11,
+    3,
+    "foxglove.KeyValuePair"
+   ],
+   "models": [
+    14,
+    11,
+    3,
+    "foxglove.ModelPrimitive"
+   ],
+   "spheres": [
+    9,
+    11,
+    3,
+    "foxglove.SpherePrimitive"
+   ],
+   "texts": [
+    13,
+    11,
+    3,
+    "foxglove.TextPrimitive"
+   ],
+   "timestamp": [
+    1,
+    11,
+    1,
+    "google.protobuf.Timestamp"
+   ],
+   "triangles": [
+    12,
+    11,
+    3,
+    "foxglove.TriangleListPrimitive"
+   ]
+  },
+  "foxglove.SceneEntityDeletion": {
+   "id": [
+    3,
+    9,
+    1,
+    null
+   ],
+   "timestamp": [
+    1,
+    11,
+    1,
+    "google.protobuf.Timestamp"
+   ],
+   "type": [
+    2,
+    14,
+    1,
+    null
+   ]
+  },
+  "foxglove.SceneUpdate": {
+   "deletions": [
+    1,
+    11,
+    3,
+    "foxglove.SceneEntityDeletion"
+   ],
+   "entities": [
+    2,
+    11,
+    3,
+    "foxglove.SceneEntity"
+   ]
+  },
+  "foxglove.SpherePrimitive": {
+   "color": [
+    3,
+    11,
+    1,
+    "foxglove.Color"
+   ],
+   "pose": [
+    1,
+    11,
+    1,
+    "foxglove.Pose"
+   ],
+   "size": [
+    2,
+    11,
+    1,
+    "foxglove.Vector3"
+   ]
+  },
+  "foxglove.TextAnnotation": {
+   "background_color": [
+    6,
+    11,
+    1,
+    "foxglove.Color"
+   ],
+   "font_size": [
+    4,
+    1,
+    1,
+    null
+   ],
+   "metadata": [
+    7,
+    11,
+    3,
+    "foxglove.KeyValuePair"
+   ],
+   "position": [
+    2,
+    11,
+    1,
+    "foxglove.Point2"
+   ],
+   "text": [
+    3,
+    9,
+    1,
+    null
+   ],
+   "text_color": [
+    5,
+    11,
+    1,
+    "foxglove.Color"
+   ],
+   "timestamp": [
+    1,
+    11,
+    1,
+    "google.protobuf.Timestamp"
+   ]
+  },
+  "foxglove.TextPrimitive": {
+   "billboard": [
+    2,
+    8,
+    1,
+    null
+   ],
+   "color": [
+    5,
+    11,
+    1,
+    "foxglove.Color"
+   ],
+   "font_size": [
+    3,
+    1,
+    1,
+    null
+   ],
+   "pose": [
+    1,
+    11,
+    1,
+    "foxglove.Pose"
+   ],
+   "scale_invariant": [
+    4,
+    8,
+    1,
+    null
+   ],
+   "text": [
+    6,
+    9,
+    1,
+    null
+   ]
+  },
+  "foxglove.TriangleListPrimitive": {
+   "color": [
+    3,
+    11,
+    1,
+    "foxglove.Color"
+   ],
+   "colors": [
+    4,
+    11,
+    3,
+    "foxglove.Color"
+   ],
+   "indices": [
+    5,
+    7,
+    3,
+    null
+   ],
+   "points": [
+    2,
+    11,
+    3,
+    "foxglove.Point3"
+   ],
+   "pose": [
+    1,
+    11,
+    1,
+    "foxglove.Pose"
+   ]
+  },
+  "foxglove.Vector3": {
+   "x": [
+    1,
+    1,
+    1,
+    null
+   ],
+   "y": [
+    2,
+    1,
+    1,
+    null
+   ],
+   "z": [
+    3,
+    1,
+    1,
+    null
+   ]
+  },
+  "google.protobuf.Duration": {
+   "nanos": [
+    2,
+    5,
+    1,
+    null
+   ],
+   "seconds": [
+    1,
+    3,
+    1,
+    null
+   ]
+  },
+  "google.protobuf.Timestamp": {
+   "nanos": [
+    2,
+    5,
+    1,
+    null
+   ],
+   "seconds": [
+    1,
+    3,
+    1,
+    null
+   ]
+  }
+ },
+ "schemas": {
+  "foxglove.ImageAnnotations": "Cl0KFGZveGdsb3ZlL0NvbG9yLnByb3RvEghmb3hnbG92ZSIzCgVDb2xvchIJCgFyGAEgASgBEgkKAWcYAiABKAESCQoBYhgDIAEoARIJCgFhGAQgASgBYgZwcm90bzMKWwobZm94Z2xvdmUvS2V5VmFsdWVQYWlyLnByb3RvEghmb3hnbG92ZSIqCgxLZXlWYWx1ZVBhaXISCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJYgZwcm90bzMKSQoVZm94Z2xvdmUvUG9pbnQyLnByb3RvEghmb3hnbG92ZSIeCgZQb2ludDISCQoBeBgBIAEoARIJCgF5GAIgASgBYgZwcm90bzMK/wEKH2dvb2dsZS9wcm90b2J1Zi90aW1lc3RhbXAucHJvdG8SD2dvb2dsZS5wcm90b2J1ZiI7CglUaW1lc3RhbXASGAoHc2Vjb25kcxgBIAEoA1IHc2Vjb25kcxIUCgVuYW5vcxgCIAEoBVIFbmFub3NChQEKE2NvbS5nb29nbGUucHJvdG9idWZCDlRpbWVzdGFtcFByb3RvUAFaMmdvb2dsZS5nb2xhbmcub3JnL3Byb3RvYnVmL3R5cGVzL2tub3duL3RpbWVzdGFtcHBi+AEBogIDR1BCqgIeR29vZ2xlLlByb3RvYnVmLldlbGxLbm93blR5cGVzYgZwcm90bzMKogMKH2ZveGdsb3ZlL0NpcmNsZUFubm90YXRpb24ucHJvdG8SCGZveGdsb3ZlGhRmb3hnbG92ZS9Db2xvci5wcm90bxobZm94Z2xvdmUvS2V5VmFsdWVQYWlyLnByb3RvGhVmb3hnbG92ZS9Qb2ludDIucHJvdG8aH2dvb2dsZS9wcm90b2J1Zi90aW1lc3RhbXAucHJvdG8igQIKEENpcmNsZUFubm90YXRpb24SLQoJdGltZXN0YW1wGAEgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIiCghwb3NpdGlvbhgCIAEoCzIQLmZveGdsb3ZlLlBvaW50MhIQCghkaWFtZXRlchgDIAEoARIRCgl0aGlja25lc3MYBCABKAESIwoKZmlsbF9jb2xvchgFIAEoCzIPLmZveGdsb3ZlLkNvbG9yEiYKDW91dGxpbmVfY29sb3IYBiABKAsyDy5mb3hnbG92ZS5Db2xvchIoCghtZXRhZGF0YRgHIAMoCzIWLmZveGdsb3ZlLktleVZhbHVlUGFpcmIGcHJvdG8zCrUECh9mb3hnbG92ZS9Qb2ludHNBbm5vdGF0aW9uLnByb3RvEghmb3hnbG92ZRoUZm94Z2xvdmUvQ29sb3IucHJvdG8aG2ZveGdsb3ZlL0tleVZhbHVlUGFpci5wcm90bxoVZm94Z2xvdmUvUG9pbnQyLnByb3RvGh9nb29nbGUvcHJvdG9idWYvdGltZXN0YW1wLnByb3RvIpQDChBQb2ludHNBbm5vdGF0aW9uEi0KCXRpbWVzdGFtcBgBIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLQoEdHlwZRgCIAEoDjIfLmZveGdsb3ZlLlBvaW50c0Fubm90YXRpb24uVHlwZRIgCgZwb2ludHMYAyADKAsyEC5mb3hnbG92ZS5Qb2ludDISJgoNb3V0bGluZV9jb2xvchgEIAEoCzIPLmZveGdsb3ZlLkNvbG9yEicKDm91dGxpbmVfY29sb3JzGAUgAygLMg8uZm94Z2xvdmUuQ29sb3ISIwoKZmlsbF9jb2xvchgGIAEoCzIPLmZveGdsb3ZlLkNvbG9yEhEKCXRoaWNrbmVzcxgHIAEoARIoCghtZXRhZGF0YRgIIAMoCzIWLmZveGdsb3ZlLktleVZhbHVlUGFpciJNCgRUeXBlEgsKB1VOS05PV04QABIKCgZQT0lOVFMQARINCglMSU5FX0xPT1AQAhIOCgpMSU5FX1NUUklQEAMSDQoJTElORV9MSVNUEARiBnByb3RvMwqdAwodZm94Z2xvdmUvVGV4dEFubm90YXRpb24ucHJvdG8SCGZveGdsb3ZlGhRmb3hnbG92ZS9Db2xvci5wcm90bxobZm94Z2xvdmUvS2V5VmFsdWVQYWlyLnByb3RvGhVmb3hnbG92ZS9Qb2ludDIucHJvdG8aH2dvb2dsZS9wcm90b2J1Zi90aW1lc3RhbXAucHJvdG8i/gEKDlRleHRBbm5vdGF0aW9uEi0KCXRpbWVzdGFtcBgBIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASIgoIcG9zaXRpb24YAiABKAsyEC5mb3hnbG92ZS5Qb2ludDISDAoEdGV4dBgDIAEoCRIRCglmb250X3NpemUYBCABKAESIwoKdGV4dF9jb2xvchgFIAEoCzIPLmZveGdsb3ZlLkNvbG9yEikKEGJhY2tncm91bmRfY29sb3IYBiABKAsyDy5mb3hnbG92ZS5Db2xvchIoCghtZXRhZGF0YRgHIAMoCzIWLmZveGdsb3ZlLktleVZhbHVlUGFpcmIGcHJvdG8zCtUDCh9mb3hnbG92ZS9JbWFnZUFubm90YXRpb25zLnByb3RvEghmb3hnbG92ZRofZm94Z2xvdmUvQ2lyY2xlQW5ub3RhdGlvbi5wcm90bxobZm94Z2xvdmUvS2V5VmFsdWVQYWlyLnByb3RvGh9mb3hnbG92ZS9Qb2ludHNBbm5vdGF0aW9uLnByb3RvGh1mb3hnbG92ZS9UZXh0QW5ub3RhdGlvbi5wcm90bxofZ29vZ2xlL3Byb3RvYnVmL3RpbWVzdGFtcC5wcm90byKAAgoQSW1hZ2VBbm5vdGF0aW9ucxIyCgl0aW1lc3RhbXAYBSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wSACIAQESKwoHY2lyY2xlcxgBIAMoCzIaLmZveGdsb3ZlLkNpcmNsZUFubm90YXRpb24SKgoGcG9pbnRzGAIgAygLMhouZm94Z2xvdmUuUG9pbnRzQW5ub3RhdGlvbhInCgV0ZXh0cxgDIAMoCzIYLmZveGdsb3ZlLlRleHRBbm5vdGF0aW9uEigKCG1ldGFkYXRhGAQgAygLMhYuZm94Z2xvdmUuS2V5VmFsdWVQYWlyQgwKCl90aW1lc3RhbXBiBnByb3RvMw==",
+  "foxglove.SceneUpdate": "Cl0KFGZveGdsb3ZlL0NvbG9yLnByb3RvEghmb3hnbG92ZSIzCgVDb2xvchIJCgFyGAEgASgBEgkKAWcYAiABKAESCQoBYhgDIAEoARIJCgFhGAQgASgBYgZwcm90bzMKZwoZZm94Z2xvdmUvUXVhdGVybmlvbi5wcm90bxIIZm94Z2xvdmUiOAoKUXVhdGVybmlvbhIJCgF4GAEgASgBEgkKAXkYAiABKAESCQoBehgDIAEoARIJCgF3GAQgASgBYgZwcm90bzMKVgoWZm94Z2xvdmUvVmVjdG9yMy5wcm90bxIIZm94Z2xvdmUiKgoHVmVjdG9yMxIJCgF4GAEgASgBEgkKAXkYAiABKAESCQoBehgDIAEoAWIGcHJvdG8zCrIBChNmb3hnbG92ZS9Qb3NlLnByb3RvEghmb3hnbG92ZRoZZm94Z2xvdmUvUXVhdGVybmlvbi5wcm90bxoWZm94Z2xvdmUvVmVjdG9yMy5wcm90byJWCgRQb3NlEiMKCHBvc2l0aW9uGAEgASgLMhEuZm94Z2xvdmUuVmVjdG9yMxIpCgtvcmllbnRhdGlvbhgCIAEoCzIULmZveGdsb3ZlLlF1YXRlcm5pb25iBnByb3RvMwqHAgodZm94Z2xvdmUvQXJyb3dQcmltaXRpdmUucHJvdG8SCGZveGdsb3ZlGhRmb3hnbG92ZS9Db2xvci5wcm90bxoTZm94Z2xvdmUvUG9zZS5wcm90byKoAQoOQXJyb3dQcmltaXRpdmUSHAoEcG9zZRgBIAEoCzIOLmZveGdsb3ZlLlBvc2USFAoMc2hhZnRfbGVuZ3RoGAIgASgBEhYKDnNoYWZ0X2RpYW1ldGVyGAMgASgBEhMKC2hlYWRfbGVuZ3RoGAQgASgBEhUKDWhlYWRfZGlhbWV0ZXIYBSABKAESHgoFY29sb3IYBiABKAsyDy5mb3hnbG92ZS5Db2xvcmIGcHJvdG8zCuMBChxmb3hnbG92ZS9DdWJlUHJpbWl0aXZlLnByb3RvEghmb3hnbG92ZRoUZm94Z2xvdmUvQ29sb3IucHJvdG8aE2ZveGdsb3ZlL1Bvc2UucHJvdG8aFmZveGdsb3ZlL1ZlY3RvcjMucHJvdG8ibgoNQ3ViZVByaW1pdGl2ZRIcCgRwb3NlGAEgASgLMg4uZm94Z2xvdmUuUG9zZRIfCgRzaXplGAIgASgLMhEuZm94Z2xvdmUuVmVjdG9yMxIeCgVjb2xvchgDIAEoCzIPLmZveGdsb3ZlLkNvbG9yYgZwcm90bzMKlQIKIGZveGdsb3ZlL0N5bGluZGVyUHJpbWl0aXZlLnByb3RvEghmb3hnbG92ZRoUZm94Z2xvdmUvQ29sb3IucHJvdG8aE2ZveGdsb3ZlL1Bvc2UucHJvdG8aFmZveGdsb3ZlL1ZlY3RvcjMucHJvdG8imwEKEUN5bGluZGVyUHJpbWl0aXZlEhwKBHBvc2UYASABKAsyDi5mb3hnbG92ZS5Qb3NlEh8KBHNpemUYAiABKAsyES5mb3hnbG92ZS5WZWN0b3IzEhQKDGJvdHRvbV9zY2FsZRgDIAEoARIRCgl0b3Bfc2NhbGUYBCABKAESHgoFY29sb3IYBSABKAsyDy5mb3hnbG92ZS5Db2xvcmIGcHJvdG8zClsKG2ZveGdsb3ZlL0tleVZhbHVlUGFpci5wcm90bxIIZm94Z2xvdmUiKgoMS2V5VmFsdWVQYWlyEgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCWIGcHJvdG8zClQKFWZveGdsb3ZlL1BvaW50My5wcm90bxIIZm94Z2xvdmUiKQoGUG9pbnQzEgkKAXgYASABKAESCQoBeRgCIAEoARIJCgF6GAMgASgBYgZwcm90bzMKpAMKHGZveGdsb3ZlL0xpbmVQcmltaXRpdmUucHJvdG8SCGZveGdsb3ZlGhRmb3hnbG92ZS9Db2xvci5wcm90bxoVZm94Z2xvdmUvUG9pbnQzLnByb3RvGhNmb3hnbG92ZS9Qb3NlLnByb3RvIq8CCg1MaW5lUHJpbWl0aXZlEioKBHR5cGUYASABKA4yHC5mb3hnbG92ZS5MaW5lUHJpbWl0aXZlLlR5cGUSHAoEcG9zZRgCIAEoCzIOLmZveGdsb3ZlLlBvc2USEQoJdGhpY2tuZXNzGAMgASgBEhcKD3NjYWxlX2ludmFyaWFudBgEIAEoCBIgCgZwb2ludHMYBSADKAsyEC5mb3hnbG92ZS5Qb2ludDMSHgoFY29sb3IYBiABKAsyDy5mb3hnbG92ZS5Db2xvchIfCgZjb2xvcnMYByADKAsyDy5mb3hnbG92ZS5Db2xvchIPCgdpbmRpY2VzGAggAygHIjQKBFR5cGUSDgoKTElORV9TVFJJUBAAEg0KCUxJTkVfTE9PUBABEg0KCUxJTkVfTElTVBACYgZwcm90bzMKrgIKHWZveGdsb3ZlL01vZGVsUHJpbWl0aXZlLnByb3RvEghmb3hnbG92ZRoUZm94Z2xvdmUvQ29sb3IucHJvdG8aE2ZveGdsb3ZlL1Bvc2UucHJvdG8aFmZveGdsb3ZlL1ZlY3RvcjMucHJvdG8itwEKDk1vZGVsUHJpbWl0aXZlEhwKBHBvc2UYASABKAsyDi5mb3hnbG92ZS5Qb3NlEiAKBXNjYWxlGAIgASgLMhEuZm94Z2xvdmUuVmVjdG9yMxIeCgVjb2xvchgDIAEoCzIPLmZveGdsb3ZlLkNvbG9yEhYKDm92ZXJyaWRlX2NvbG9yGAQgASgIEgsKA3VybBgFIAEoCRISCgptZWRpYV90eXBlGAYgASgJEgwKBGRhdGEYByABKAxiBnByb3RvMwrnAQoeZm94Z2xvdmUvU3BoZXJlUHJpbWl0aXZlLnByb3RvEghmb3hnbG92ZRoUZm94Z2xvdmUvQ29sb3IucHJvdG8aE2ZveGdsb3ZlL1Bvc2UucHJvdG8aFmZveGdsb3ZlL1ZlY3RvcjMucHJvdG8icAoPU3BoZXJlUHJpbWl0aXZlEhwKBHBvc2UYASABKAsyDi5mb3hnbG92ZS5Qb3NlEh8KBHNpemUYAiABKAsyES5mb3hnbG92ZS5WZWN0b3IzEh4KBWNvbG9yGAMgASgLMg8uZm94Z2xvdmUuQ29sb3JiBnByb3RvMwr4AQocZm94Z2xvdmUvVGV4dFByaW1pdGl2ZS5wcm90bxIIZm94Z2xvdmUaFGZveGdsb3ZlL0NvbG9yLnByb3RvGhNmb3hnbG92ZS9Qb3NlLnByb3RvIpoBCg1UZXh0UHJpbWl0aXZlEhwKBHBvc2UYASABKAsyDi5mb3hnbG92ZS5Qb3NlEhEKCWJpbGxib2FyZBgCIAEoCBIRCglmb250X3NpemUYAyABKAESFwoPc2NhbGVfaW52YXJpYW50GAQgASgIEh4KBWNvbG9yGAUgASgLMg8uZm94Z2xvdmUuQ29sb3ISDAoEdGV4dBgGIAEoCWIGcHJvdG8zCqYCCiRmb3hnbG92ZS9UcmlhbmdsZUxpc3RQcmltaXRpdmUucHJvdG8SCGZveGdsb3ZlGhRmb3hnbG92ZS9Db2xvci5wcm90bxoVZm94Z2xvdmUvUG9pbnQzLnByb3RvGhNmb3hnbG92ZS9Qb3NlLnByb3RvIqkBChVUcmlhbmdsZUxpc3RQcmltaXRpdmUSHAoEcG9zZRgBIAEoCzIOLmZveGdsb3ZlLlBvc2USIAoGcG9pbnRzGAIgAygLMhAuZm94Z2xvdmUuUG9pbnQzEh4KBWNvbG9yGAMgASgLMg8uZm94Z2xvdmUuQ29sb3ISHwoGY29sb3JzGAQgAygLMg8uZm94Z2xvdmUuQ29sb3ISDwoHaW5kaWNlcxgFIAMoB2IGcHJvdG8zCvsBCh5nb29nbGUvcHJvdG9idWYvZHVyYXRpb24ucHJvdG8SD2dvb2dsZS5wcm90b2J1ZiI6CghEdXJhdGlvbhIYCgdzZWNvbmRzGAEgASgDUgdzZWNvbmRzEhQKBW5hbm9zGAIgASgFUgVuYW5vc0KDAQoTY29tLmdvb2dsZS5wcm90b2J1ZkINRHVyYXRpb25Qcm90b1ABWjFnb29nbGUuZ29sYW5nLm9yZy9wcm90b2J1Zi90eXBlcy9rbm93bi9kdXJhdGlvbnBi+AEBogIDR1BCqgIeR29vZ2xlLlByb3RvYnVmLldlbGxLbm93blR5cGVzYgZwcm90bzMK/wEKH2dvb2dsZS9wcm90b2J1Zi90aW1lc3RhbXAucHJvdG8SD2dvb2dsZS5wcm90b2J1ZiI7CglUaW1lc3RhbXASGAoHc2Vjb25kcxgBIAEoA1IHc2Vjb25kcxIUCgVuYW5vcxgCIAEoBVIFbmFub3NChQEKE2NvbS5nb29nbGUucHJvdG9idWZCDlRpbWVzdGFtcFByb3RvUAFaMmdvb2dsZS5nb2xhbmcub3JnL3Byb3RvYnVmL3R5cGVzL2tub3duL3RpbWVzdGFtcHBi+AEBogIDR1BCqgIeR29vZ2xlLlByb3RvYnVmLldlbGxLbm93blR5cGVzYgZwcm90bzMKsgcKGmZveGdsb3ZlL1NjZW5lRW50aXR5LnByb3RvEghmb3hnbG92ZRodZm94Z2xvdmUvQXJyb3dQcmltaXRpdmUucHJvdG8aHGZveGdsb3ZlL0N1YmVQcmltaXRpdmUucHJvdG8aIGZveGdsb3ZlL0N5bGluZGVyUHJpbWl0aXZlLnByb3RvGhtmb3hnbG92ZS9LZXlWYWx1ZVBhaXIucHJvdG8aHGZveGdsb3ZlL0xpbmVQcmltaXRpdmUucHJvdG8aHWZveGdsb3ZlL01vZGVsUHJpbWl0aXZlLnByb3RvGh5mb3hnbG92ZS9TcGhlcmVQcmltaXRpdmUucHJvdG8aHGZveGdsb3ZlL1RleHRQcmltaXRpdmUucHJvdG8aJGZveGdsb3ZlL1RyaWFuZ2xlTGlzdFByaW1pdGl2ZS5wcm90bxoeZ29vZ2xlL3Byb3RvYnVmL2R1cmF0aW9uLnByb3RvGh9nb29nbGUvcHJvdG9idWYvdGltZXN0YW1wLnByb3RvIqMECgtTY2VuZUVudGl0eRItCgl0aW1lc3RhbXAYASABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhAKCGZyYW1lX2lkGAIgASgJEgoKAmlkGAMgASgJEisKCGxpZmV0aW1lGAQgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uEhQKDGZyYW1lX2xvY2tlZBgFIAEoCBIoCghtZXRhZGF0YRgGIAMoCzIWLmZveGdsb3ZlLktleVZhbHVlUGFpchIoCgZhcnJvd3MYByADKAsyGC5mb3hnbG92ZS5BcnJvd1ByaW1pdGl2ZRImCgVjdWJlcxgIIAMoCzIXLmZveGdsb3ZlLkN1YmVQcmltaXRpdmUSKgoHc3BoZXJlcxgJIAMoCzIZLmZveGdsb3ZlLlNwaGVyZVByaW1pdGl2ZRIuCgljeWxpbmRlcnMYCiADKAsyGy5mb3hnbG92ZS5DeWxpbmRlclByaW1pdGl2ZRImCgVsaW5lcxgLIAMoCzIXLmZveGdsb3ZlLkxpbmVQcmltaXRpdmUSMgoJdHJpYW5nbGVzGAwgAygLMh8uZm94Z2xvdmUuVHJpYW5nbGVMaXN0UHJpbWl0aXZlEiYKBXRleHRzGA0gAygLMhcuZm94Z2xvdmUuVGV4dFByaW1pdGl2ZRIoCgZtb2RlbHMYDiADKAsyGC5mb3hnbG92ZS5Nb2RlbFByaW1pdGl2ZWIGcHJvdG8zCv4BCiJmb3hnbG92ZS9TY2VuZUVudGl0eURlbGV0aW9uLnByb3RvEghmb3hnbG92ZRofZ29vZ2xlL3Byb3RvYnVmL3RpbWVzdGFtcC5wcm90byKkAQoTU2NlbmVFbnRpdHlEZWxldGlvbhItCgl0aW1lc3RhbXAYASABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjAKBHR5cGUYAiABKA4yIi5mb3hnbG92ZS5TY2VuZUVudGl0eURlbGV0aW9uLlR5cGUSCgoCaWQYAyABKAkiIAoEVHlwZRIPCgtNQVRDSElOR19JRBAAEgcKA0FMTBABYgZwcm90bzMK2AEKGmZveGdsb3ZlL1NjZW5lVXBkYXRlLnByb3RvEghmb3hnbG92ZRoaZm94Z2xvdmUvU2NlbmVFbnRpdHkucHJvdG8aImZveGdsb3ZlL1NjZW5lRW50aXR5RGVsZXRpb24ucHJvdG8iaAoLU2NlbmVVcGRhdGUSMAoJZGVsZXRpb25zGAEgAygLMh0uZm94Z2xvdmUuU2NlbmVFbnRpdHlEZWxldGlvbhInCghlbnRpdGllcxgCIAMoCzIVLmZveGdsb3ZlLlNjZW5lRW50aXR5YgZwcm90bzM="
+ }
+}

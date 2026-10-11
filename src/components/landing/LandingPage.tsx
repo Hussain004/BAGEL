@@ -284,7 +284,8 @@ function applyCuratedSampleLayout(): void {
       ['header.stamp.sec', 'header.stamp.nanosec', 'voltage', 'temperature', 'current', 'charge', 'capacity', 'design_capacity', 'power_supply_status', 'power_supply_health', 'power_supply_technology'].map((f) => [f, false]),
     ),
   });
-  useImagePanelStore.getState().update(imageId, { detectionTopic: '/detections', cloudTopic: '/lidar/points' });
+  // The route ahead comes from /camera/annotations, a protobuf foxglove.ImageAnnotations topic.
+  useImagePanelStore.getState().update(imageId, { detectionTopic: '/detections', cloudTopic: '/lidar/points', annotationsTopic: '/camera/annotations' });
   const bagId = useBagStore.getState().focusBagId ?? 'b1';
   useThreeDPanelStore.getState().update(panelLeafId('3d', '/lidar/points'), {
     colorMode: 'intensity',
