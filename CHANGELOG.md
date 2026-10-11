@@ -9,6 +9,15 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Timeline zoom. Scroll over the timeline bar (or pinch on a trackpad or
+  touchscreen) to zoom around the cursor, shift+scroll or drag with two fingers
+  to pan, and use the new magnifier buttons or `+` / `-` / `0` to zoom in, out
+  and back to the whole recording. While zoomed, an overview strip above the bar
+  shows the visible window: drag it to pan, drag its edges to resize, click
+  elsewhere to jump. The density heatmap, bookmarks, labelled ranges and the
+  per-topic lanes follow the window, and playback scrolls it along to keep the
+  playhead visible. Down to a millisecond across the bar; live connections are
+  not zoomable.
 - `pnpm bench` runs timing benchmarks for the hot paths: decoding a 1M-point
   point cloud, 10k `Imu` messages, zstd chunk decompression and aligning plot
   series, for spotting performance regressions on the same machine.
