@@ -79,6 +79,14 @@ interface TimeSeriesPlotProps {
  */
 const PLOT_MESSAGE_LIMIT = 50_000;
 
+/**
+ * The chart fills its box: the host is a flex child sized by the panel, not by
+ * its content, so this cannot feed back into itself. 8 px is the host's top padding.
+ */
+function plotHeight(host: HTMLElement): number {
+  return Math.max(100, host.clientHeight - 8);
+}
+
 export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPlotProps) {
   const entry = useBagStore((s) => resolveBagEntry(s, bagId));
   const bag = entry?.summary ?? null;
@@ -542,7 +550,7 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
 
     const opts: uPlot.Options = {
       width: containerRef.current.clientWidth,
-      height: Math.max(220, containerRef.current.clientHeight - 110),
+      height: plotHeight(containerRef.current),
       cursor: { drag: { x: true, y: false, uni: 50 } },
       scales: {
         x: initialXRange
@@ -634,7 +642,7 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
     const resizeObserver = new ResizeObserver(() => {
       if (!containerRef.current || !plotRef.current) return;
       const w = containerRef.current.clientWidth;
-      const h = Math.max(220, containerRef.current.clientHeight - 110);
+      const h = plotHeight(containerRef.current);
       if (w === lastW && h === lastH) return;
       lastW = w;
       lastH = h;
@@ -749,7 +757,9 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
         />
       )}
       {series && (
-        <div className="flex-1 flex flex-col min-h-0 min-w-0">
+        // In a short panel the chart gives up height first (down to 160 px) and then the
+        // controls scroll, rather than spilling over the footer.
+        <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-y-auto">
           {/* min-w-0 + no horizontal padding on the uPlot host: clientWidth
               includes padding, and feeding padded clientWidth into uPlot's
               setSize was part of the single-panel "extends to the right"
@@ -757,7 +767,7 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
               would still grow by the padding amount per tick. pt-2 stays
               for top breathing room; horizontal spacing comes from the
               panel border. */}
-          <div ref={containerRef} className={`flex-1 min-h-[240px] pt-2 min-w-0 ${xyMode ? 'hidden' : ''}`} />
+          <div ref={containerRef} className={`flex-1 min-h-[160px] pt-2 min-w-0 ${xyMode ? 'hidden' : ''}`} />
           {xyMode && xyCol && (
             <XYChart
               series={xySeries}
@@ -791,9 +801,10 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
               </tbody>
             </table>
           )}
-          <div className="px-4 pt-2 pb-1 border-t border-border space-y-1.5">
+          <div className="px-4 pt-2 pb-1 border-t border-border space-y-1.5 flex-shrink-0">
             {/* Series chips: raw fields + expression series */}
-            <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto">
+            {/* Two rows of chips at most; more scroll, so the chart keeps the room. */}
+            <div className="flex flex-wrap gap-x-2 gap-y-1.5 max-h-[4.25rem] overflow-y-auto">
               {series.fieldNames.map((f, i) => {
                 const color = SERIES_PALETTE[i % SERIES_PALETTE.length];
                 const visible = visibility[f] !== false;
@@ -937,7 +948,7 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
                   equal scale
                 </label>
               )}
-              <span className="text-text-muted text-xs mono">export view:</span>
+              <span className="text-text-muted text-xs mono hidden @lg/panel:inline">export view:</span>
               <button onClick={exportCsv} title="Visible range as CSV" className={EXPORT_BTN}>csv</button>
               <button
                 onClick={exportSvg}
@@ -1028,8 +1039,8 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
         </div>
       )}
       {bag && (
-        <div className="px-4 py-1.5 border-t border-border text-text-muted text-xs mono flex items-center justify-between gap-3">
-          <span>
+        <div className="panel-footer px-4 py-1.5 border-t border-border text-text-muted text-xs mono flex items-center justify-between gap-3">
+          <span className="whitespace-nowrap">
             {messages?.length.toLocaleString() ?? 0} samples
             {truncated && (
               <span
@@ -1040,7 +1051,7 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
               </span>
             )}
           </span>
-          <span>relative t in seconds from first message</span>
+          <span className="truncate min-w-0" title="relative t in seconds from first message">relative t in seconds from first message</span>
         </div>
       )}
     </PanelShell>

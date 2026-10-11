@@ -490,7 +490,7 @@ export function TrajectoryPlot({ panelId, topicName, type, bagId }: TrajectoryPl
               )}
             </OverlayCard>
           </div>
-          <div className="px-4 py-1.5 border-t border-border flex items-center justify-between text-text-muted text-xs mono gap-3">
+          <div className="panel-footer px-4 py-1.5 border-t border-border flex items-center justify-between text-text-muted text-xs mono gap-3">
             <span>
               {points.length.toLocaleString()} samples
               {truncatedAt && (

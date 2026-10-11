@@ -9,6 +9,18 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Panels adapt to their own width. The header always keeps the kind and topic
+  name (the message type is the first thing dropped, and "Export" becomes an
+  icon), the image panel's overlay controls move to a second header row until
+  the panel is wide enough, and status footers and the 3D info card cut long
+  text short instead of wrapping word by word.
+- Fixed: the plot's legend and controls spilled over its footer in a short
+  panel, and the chart left a large empty gap under its axis; the chart now
+  fills its space, the legend keeps to two rows (more scroll) and the controls
+  fit one row.
+- Fixed on phones: the toolbar no longer pushes the app wider than the screen
+  (which clipped the logo, axes and timeline at the left), and the timeline bar
+  gets its own full-width row instead of being squeezed by the buttons.
 - Timeline zoom. Scroll over the timeline bar (or pinch on a trackpad or
   touchscreen) to zoom around the cursor, shift+scroll or drag with two fingers
   to pan, and use the new magnifier buttons or `+` / `-` / `0` to zoom in, out

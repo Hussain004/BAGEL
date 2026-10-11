@@ -676,7 +676,7 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
             />
           )}
 
-          <div className="px-4 py-1.5 border-t border-border flex items-center justify-between text-text-muted text-xs mono">
+          <div className="panel-footer gap-3 px-4 py-1.5 border-t border-border flex items-center justify-between text-text-muted text-xs mono">
             <span>
               t = {nsToSeconds((isVideo ? playheadNs : (message?.timestamp ?? playheadNs)) - startNs).toFixed(3)}s
             </span>
@@ -751,7 +751,7 @@ function DepthControls({ info, colormap, minOverride, maxOverride, onChange }: D
   const inputCls =
     'w-16 bg-bg-secondary border border-border rounded px-1 py-0.5 text-text-primary mono text-[11px]';
   return (
-    <div className="px-4 py-1.5 border-t border-border flex flex-wrap items-center gap-x-3 gap-y-1 text-text-muted text-xs mono">
+    <div className="px-4 py-1.5 border-t border-border flex flex-wrap items-center gap-x-3 gap-y-1 text-text-muted text-xs mono [&>*]:whitespace-nowrap">
       <label className="flex items-center gap-1">
         <span>colormap</span>
         <select

@@ -93,7 +93,7 @@ export function Toolbar() {
   const focusedBagIsLive = bag.format === 'live';
 
   return (
-    <header className="glass-strong px-6 py-3 flex items-center justify-between animate-fade-in flex-shrink-0 z-50 gap-4">
+    <header className="glass-strong px-6 max-sm:px-3 py-3 flex items-center justify-between animate-fade-in flex-shrink-0 z-50 gap-4">
       {/* Left: Logo + bag chips */}
       <div className="flex items-center gap-3 min-w-0 flex-1">
         <button
@@ -182,8 +182,9 @@ export function Toolbar() {
       </div>
 
       {/* Right: alignment selector + anchor button (multi-bag anchor mode) +
-          Help + Close */}
-      <div className="flex items-center gap-1 flex-shrink-0">
+          Help + Close. On a phone it gets its own row and scrolls sideways
+          rather than pushing the page wider than the screen. */}
+      <div className="flex items-center gap-1 flex-shrink-0 max-sm:w-full max-sm:min-w-0 max-sm:overflow-x-auto max-sm:no-scrollbar">
         {multi && (
           <AlignmentSelector value={alignment} onChange={setAlignment} />
         )}

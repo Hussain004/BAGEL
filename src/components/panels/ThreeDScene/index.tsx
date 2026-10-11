@@ -1714,12 +1714,13 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
                 (measurePts.length === 1 ? 'Click a second point' : 'Click two points to measure')}
             </div>
           )}
-          <OverlayCard variant="subtle" className="absolute top-2 left-2 text-text-muted text-[10px] mono leading-tight px-2 py-1 max-w-[60%]">
+          {/* Each line is cut short rather than wrapped, so in a narrow panel the card stays small. */}
+          <OverlayCard variant="subtle" className="absolute top-2 left-2 text-text-muted text-[10px] mono leading-tight px-2 py-1 max-w-[60%] [&>div]:truncate">
             <div className="text-text-secondary">
               {SCENE_KIND_LABELS[sceneKind]}
             </div>
             {stats.sourceFrame && (
-              <div>
+              <div title={worldFrame && worldFrame !== stats.sourceFrame ? `${stats.sourceFrame} → ${worldFrame}` : stats.sourceFrame}>
                 <span className="text-text-tertiary">frame</span>{' '}
                 <span>{stats.sourceFrame}</span>
                 {worldFrame && worldFrame !== stats.sourceFrame && (
@@ -1736,7 +1737,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
               </div>
             )}
             {isCloud && (
-              <div className="text-text-tertiary mt-0.5">
+              <div className="text-text-tertiary mt-0.5 hidden @sm/panel:block">
                 shift+click sets orbit centre
               </div>
             )}
@@ -1777,7 +1778,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
           )}
         </div>
 
-        <div className="px-4 py-1.5 border-t border-border flex items-center justify-between text-text-muted text-xs mono gap-3">
+        <div className="panel-footer px-4 py-1.5 border-t border-border flex items-center justify-between text-text-muted text-xs mono gap-3">
           <span>
             {sceneKind === 'pose'
               ? poseMessage

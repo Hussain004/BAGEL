@@ -328,7 +328,7 @@ export function Log({ panelId, topicName, type, bagId }: LogPanelProps) {
           </div>
 
           {/* Footer */}
-          <div className="px-4 py-1.5 border-t border-border flex items-center justify-between text-text-muted text-xs mono">
+          <div className="panel-footer gap-3 px-4 py-1.5 border-t border-border flex items-center justify-between text-text-muted text-xs mono">
             <span>
               {filteredLogs.length === allLogs.length
                 ? `${filteredLogs.length.toLocaleString()} entries`
