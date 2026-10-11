@@ -24,6 +24,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.{ts,tsx}'],
+    benchmark: { include: ['bench/**/*.bench.ts'] },
     // `tests/e2e` is Playwright, not Vitest, and runs in a real browser
     // against a built bundle. Excluded explicitly so `pnpm test` never tries
     // to collect a spec that needs `page`, `expect` from Playwright, and a

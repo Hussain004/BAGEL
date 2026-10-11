@@ -9,6 +9,9 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- `pnpm bench` runs timing benchmarks for the hot paths: decoding a 1M-point
+  point cloud, 10k `Imu` messages, zstd chunk decompression and aligning plot
+  series, for spotting performance regressions on the same machine.
 - Foxglove `ImageAnnotations` and `SceneUpdate`. Annotations (circles,
   polylines, loops, points and text, in image pixels) draw over a camera image
   when chosen from the image panel's new `annotations` dropdown, and are hidden,
