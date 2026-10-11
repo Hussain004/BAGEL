@@ -1716,8 +1716,9 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
           )}
           {/* Each line is cut short rather than wrapped, so in a narrow panel the card stays small. */}
           <OverlayCard variant="subtle" className="absolute top-2 left-2 text-text-muted text-[10px] mono leading-tight px-2 py-1 max-w-[60%] [&>div]:truncate">
+            {/* The message's own type: the render path name ("Path") would mislabel detections, particles or a GPS track. */}
             <div className="text-text-secondary">
-              {SCENE_KIND_LABELS[sceneKind]}
+              {type.split('/').pop() || SCENE_KIND_LABELS[sceneKind]}
             </div>
             {stats.sourceFrame && (
               <div title={worldFrame && worldFrame !== stats.sourceFrame ? `${stats.sourceFrame} → ${worldFrame}` : stats.sourceFrame}>

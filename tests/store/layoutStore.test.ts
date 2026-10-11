@@ -316,3 +316,71 @@ describe('layoutStore panel-close undo', () => {
     expect(leafOrder()).toEqual(['/a', '/b']);
   });
 });
+
+describe('layoutStore placing new panels', () => {
+  beforeEach(freshStore);
+
+  /** The tree as nested arrays of topic names: H[...] / V[...]. */
+  const shape = (n = useLayoutStore.getState().root): unknown =>
+    !n ? null : n.node === 'panel' ? n.topicName : { [n.orientation === 'horizontal' ? 'H' : 'V']: n.children.map((c) => shape(c)) };
+  const open = (...names: string[]) => {
+    for (const t of names) useLayoutStore.getState().openPanel({ kind: 'plot', topicName: t, type: 't' });
+  };
+
+  it('fills three columns, then stacks into the emptiest column, leftmost first', () => {
+    const expected: unknown[] = [
+      '/1',
+      { H: ['/1', '/2'] },
+      { H: ['/1', '/2', '/3'] },
+      { H: [{ V: ['/1', '/4'] }, '/2', '/3'] },
+      { H: [{ V: ['/1', '/4'] }, { V: ['/2', '/5'] }, '/3'] },
+      { H: [{ V: ['/1', '/4'] }, { V: ['/2', '/5'] }, { V: ['/3', '/6'] }] },
+      { H: [{ V: ['/1', '/4', '/7'] }, { V: ['/2', '/5'] }, { V: ['/3', '/6'] }] },
+      { H: [{ V: ['/1', '/4', '/7'] }, { V: ['/2', '/5', '/8'] }, { V: ['/3', '/6'] }] },
+    ];
+    for (let i = 0; i < expected.length; i++) {
+      open(`/${i + 1}`);
+      expect(shape(), `after ${i + 1} panels`).toEqual(expected[i]);
+    }
+  });
+
+  it('keeps open panels where they are: a column that is already a stack just gets longer', () => {
+    open('/1', '/2', '/3', '/4', '/5', '/6');
+    const before = useLayoutStore.getState().root;
+    if (before?.node !== 'split') throw new Error('expected a split');
+    const firstColumnId = before.children[0]!.id;
+    open('/7');
+    const after = useLayoutStore.getState().root;
+    if (after?.node !== 'split') throw new Error('expected a split');
+    // Same split ids, so React keeps every existing panel mounted.
+    expect(after.id).toBe(before.id);
+    expect(after.children.map((c) => c.id)).toEqual(before.children.map((c) => c.id));
+    expect(after.children[0]!.id).toBe(firstColumnId);
+  });
+
+  it('balances around a column the user already stacked', () => {
+    open('/1', '/2', '/3');
+    useLayoutStore.getState().dockPanel(useLayoutStore.getState().openOrder[2]!, useLayoutStore.getState().openOrder[0]!, 'bottom');
+    expect(shape()).toEqual({ H: [{ V: ['/1', '/3'] }, '/2'] });
+    open('/4'); // two columns, so a third is added
+    open('/5'); // three columns of 2, 1, 1: the second gets it
+    expect(shape()).toEqual({ H: [{ V: ['/1', '/3'] }, { V: ['/2', '/5'] }, '/4'] });
+  });
+
+  it('a top level made vertical grows rows the same way', () => {
+    open('/1', '/2');
+    useLayoutStore.getState().dockPanel(useLayoutStore.getState().openOrder[1]!, useLayoutStore.getState().openOrder[0]!, 'bottom');
+    expect(shape()).toEqual({ V: ['/1', '/2'] });
+    open('/3', '/4');
+    expect(shape()).toEqual({ V: [{ H: ['/1', '/4'] }, '/2', '/3'] });
+  });
+
+  it('undo still puts a closed panel back where it was', () => {
+    open('/1', '/2', '/3', '/4', '/5');
+    const before = shape();
+    const id = useLayoutStore.getState().openOrder[4]!; // /5, under /2
+    useLayoutStore.getState().closePanel(id);
+    expect(useLayoutStore.getState().reopenLastClosed()).toBe(true);
+    expect(shape()).toEqual(before);
+  });
+});

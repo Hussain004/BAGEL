@@ -199,7 +199,7 @@ function describeCloseContext(
   const walk = (node: LayoutNode): { siblingId: string; wasBeforeSibling: boolean; siblingIsVertical: boolean } | null => {
     if (node.node === 'panel') return null;
     // Only a parent split with exactly two children has an unambiguous
-    // sibling. A three-child split (which appendLeafRight builds) would leave
+    // sibling. A three-child split (which placeLeaf builds) would leave
     // several candidates; using the immediate neighbour is still correct, and
     // dockPanel will place it adjacent, which is what "restore" should mean.
     const index = node.children.findIndex((c) => c.node === 'panel' && c.id === id);
@@ -348,23 +348,38 @@ function insertAt(
   return { ...tree, children: newChildren };
 }
 
+/** Side-by-side lanes (columns, on the usual horizontal top level) before new panels stack instead. */
+const MAX_LANES = 3;
+
+const countLeaves = (n: LayoutNode): number =>
+  n.node === 'panel' ? 1 : n.children.reduce((sum, c) => sum + countLeaves(c), 0);
+
 /**
- * Append `leaf` to the right edge of the existing tree.
- *
- * Used by `openPanel` so the first-opened panel lives at the left and each
- * subsequent open appears to its right - matching the v0.5 behaviour and
- * keeping the empty-tree case trivial. Users can drag-dock to reorganise.
+ * Where a newly opened panel goes. The first three sit side by side; after
+ * that each new panel stacks at the end of the lane holding the fewest panels
+ * (the leftmost of those), so the grid fills evenly instead of growing one ever
+ * thinner column at a time. Appending to an existing split keeps every open
+ * panel mounted; only a lone panel that becomes the top of a new stack is
+ * re-wrapped. A top level the user made vertical grows rows the same way.
  */
-function appendLeafRight(root: LayoutNode, leaf: PanelLeaf): LayoutNode {
-  if (root.node === 'split' && root.orientation === 'horizontal') {
-    return { ...root, children: [...root.children, leaf] };
+function placeLeaf(root: LayoutNode, leaf: PanelLeaf): LayoutNode {
+  if (root.node === 'panel') {
+    return { node: 'split', id: makeSplitId(), orientation: 'horizontal', children: [root, leaf] };
   }
-  return {
-    node: 'split',
-    id: makeSplitId(),
-    orientation: 'horizontal',
-    children: [root, leaf],
-  };
+  if (root.children.length < MAX_LANES) return { ...root, children: [...root.children, leaf] };
+  let best = 0;
+  for (let i = 1; i < root.children.length; i++) {
+    if (countLeaves(root.children[i]) < countLeaves(root.children[best])) best = i;
+  }
+  const lane = root.children[best];
+  const across: SplitOrientation = root.orientation === 'horizontal' ? 'vertical' : 'horizontal';
+  const stacked: SplitNode =
+    lane.node === 'split' && lane.orientation === across
+      ? { ...lane, children: [...lane.children, leaf] }
+      : { node: 'split', id: makeSplitId(), orientation: across, children: [lane, leaf] };
+  const children = [...root.children];
+  children[best] = stacked;
+  return { ...root, children };
 }
 
 export const useLayoutStore = create<LayoutState>((set, get) => ({
@@ -389,7 +404,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
       bagId: leaf.bagId,
     };
     // dockPanel moves a panel that is already in the tree, so the leaf has to
-    // exist before it can be positioned. openPanel appends it to the right,
+    // exist before it can be positioned. openPanel places it somewhere,
     // then dockPanel lifts it into the recorded slot.
     get().openPanel(panel);
     if (siblingId && findPanel(get().root, siblingId)) {
@@ -414,7 +429,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     const state = get();
     if (findPanel(state.root, id)) return;
     const leaf: PanelLeaf = { node: 'panel', id, kind, topicName, type, bagId };
-    const newRoot = state.root ? appendLeafRight(state.root, leaf) : leaf;
+    const newRoot = state.root ? placeLeaf(state.root, leaf) : leaf;
     // Opening something new supersedes the undo record: the recorded position
     // no longer describes a gap the user just made.
     set({ root: newRoot, openOrder: [...state.openOrder, id], lastClosed: null });

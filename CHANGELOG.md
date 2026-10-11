@@ -9,6 +9,12 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Opening a topic fills the grid evenly. The first three panels sit side by
+  side; after that each new one stacks at the bottom of the column with the
+  fewest panels, instead of adding another, ever thinner column. Panels that
+  are already open stay mounted, so a 3D view keeps its camera.
+- The 3D view's info card names the message type (for example
+  `Detection3DArray` or `PoseArray`) instead of the internal "Path" render mode.
 - Panels adapt to their own width. The header always keeps the kind and topic
   name (the message type is the first thing dropped, and "Export" becomes an
   icon), the image panel's overlay controls move to a second header row until
