@@ -324,6 +324,20 @@ function ExportMenu({
     setOpen(false);
     setError(null);
   });
+  // A press anywhere outside closes the menu. This is a document listener, not a
+  // fixed full-screen backdrop: the panel is a size container, which makes it the
+  // containing block for fixed children, so a backdrop would only cover the panel.
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (wrapperRef.current?.contains(e.target as Node)) return;
+      setOpen(false);
+      setError(null);
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    return () => document.removeEventListener('pointerdown', onDown, true);
+  }, [open]);
 
   if (!entry) return null;
   const { id: workerBagId, summary: bag, source } = entry;
@@ -359,7 +373,7 @@ function ExportMenu({
   };
 
   return (
-    <div className="relative">
+    <div className="relative" ref={wrapperRef}>
       <button
         onClick={() => setOpen((o) => !o)}
         className="ml-1 px-2 h-7 rounded-md flex items-center gap-1 text-xs text-text-tertiary hover:text-text-primary hover:bg-surface-hover transition-colors border border-transparent hover:border-border focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
@@ -375,16 +389,6 @@ function ExportMenu({
       </button>
       {open && (
         <>
-          {/* Click-outside catcher. Sits behind the menu so its z-order can't
-              accidentally swallow clicks on the menu items themselves. */}
-          <div
-            className="fixed inset-0 z-30"
-            onClick={() => {
-              setOpen(false);
-              setError(null);
-            }}
-            aria-hidden="true"
-          />
           <div
             role="menu"
             className="absolute right-0 top-full mt-1 z-40 w-56 rounded-lg border border-border bg-bg-secondary shadow-panel p-1.5 text-xs"
