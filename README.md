@@ -43,6 +43,12 @@ BAGEL eliminates this friction.
 
 ## Demo
 
+### BAGEL in 25 seconds
+
+https://github.com/user-attachments/assets/4c1ed742-f896-475b-acfb-61aa1adc062c
+
+> The real robot recording in this video is the `r2b_hallway` sequence from the NVIDIA r2b dataset 2023 (CC BY 4.0). The Gaussian splat is "Knock Community Hall" by scbenoit (CC BY 4.0).
+
 ### Quick tour with the bundled sample bag
 
 https://github.com/user-attachments/assets/a6078f92-e461-4a90-8af3-f3cedb521621
