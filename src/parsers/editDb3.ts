@@ -24,7 +24,7 @@
 import { McapWriter, type IWritable } from '@mcap/core';
 import { stringify } from '@foxglove/rosmsg';
 import { assertSingleSource, type BagSource, type SingleBagSource } from './source';
-import { loadDb3ForEdit } from './db3';
+import { db3MessageBytes, loadDb3ForEdit } from './db3';
 import { getMessageDefinition } from './typeRegistry';
 import type { EditOptions, EditResult } from './edit';
 import { compressChunkLz4 } from './chunkCompression';
@@ -304,7 +304,8 @@ export async function editDb3Bag(
       const outChannelId = await registerChannelOnce(topicId);
       if (outChannelId === null) continue;
 
-      const messageBytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+      // MCAP's `cdr` encoding means plain CDR, so unwrap per-message zstd.
+      const messageBytes = db3MessageBytes(data instanceof Uint8Array ? data : new Uint8Array(data));
       await writer.addMessage({
         channelId: outChannelId,
         // Preserve the source row id as the sequence (matches the MCAP edit
