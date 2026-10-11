@@ -19,6 +19,10 @@ pnpm dev          # http://localhost:5173
 `pnpm test:e2e` additionally needs a Chromium download (`pnpm exec playwright
 install chromium`) on a fresh machine.
 
+`pnpm bench` times the hot paths (point cloud decode, CDR decode, zstd chunks,
+series alignment). Numbers depend on the machine, so compare a run before and
+after a change on the same one; it is not part of CI.
+
 Requirements:
 
 | Tool | Version | Notes |
