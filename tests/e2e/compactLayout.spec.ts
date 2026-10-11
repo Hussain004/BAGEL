@@ -68,3 +68,32 @@ test('desktop keeps the split layout', async ({ page }) => {
   await expect(page.getByTestId('compact-tabs')).toHaveCount(0);
   await expect(page.locator('header[tabindex="0"]')).toHaveCount(4);
 });
+
+test.describe('phone', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  test('nothing pushes the page sideways, and the timeline bar gets a usable width', async ({ page }) => {
+    await page.goto('/');
+    await page.locator(SAMPLE_BUTTON).click();
+    await expect(page.getByTestId('compact-tabs')).toBeVisible({ timeout: 60_000 });
+    // Selecting the last tab scrolls the tab strip; that must not drag the whole app with it.
+    await page.getByTestId('compact-tabs').getByRole('tab').last().click();
+    await page.waitForTimeout(300);
+
+    const layout = await page.evaluate(() => {
+      const root = document.querySelector('div.h-screen') as HTMLElement;
+      const logo = document.querySelector('[aria-label="About BAGEL"]')!.getBoundingClientRect();
+      return { scrollLeft: root.scrollLeft, docWidth: document.documentElement.scrollWidth, logoLeft: logo.left, width: innerWidth };
+    });
+    expect(layout.scrollLeft).toBe(0);
+    expect(layout.docWidth).toBeLessThanOrEqual(layout.width);
+    expect(layout.logoLeft).toBeGreaterThanOrEqual(0);
+
+    // Every toolbar control stays reachable (its row scrolls), and the bar is wide enough to drag.
+    await expect(page.getByRole('button', { name: /theme/i }).first()).toBeAttached();
+    const track = (await page.locator('#timeline-track').boundingBox())!;
+    expect(track.width).toBeGreaterThanOrEqual(300);
+    expect(track.x).toBeGreaterThanOrEqual(0);
+    expect(track.x + track.width).toBeLessThanOrEqual(390);
+  });
+});

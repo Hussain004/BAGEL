@@ -129,7 +129,7 @@ function AppInner() {
       {!bag ? (
         <LandingPage />
       ) : (
-        <div className="h-screen flex flex-col overflow-hidden bg-bg-primary">
+        <div className="h-screen flex flex-col overflow-clip bg-bg-primary">
           <Toolbar />
           <MainView />
           <Timeline />
@@ -173,7 +173,7 @@ function EmbedApp() {
   const fullAppHref = `${window.location.origin}${window.location.pathname}#${fullAppHash(window.location.hash)}`;
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-bg-primary" data-testid="embed-root">
+    <div className="h-screen flex flex-col overflow-clip bg-bg-primary" data-testid="embed-root">
       {bag ? (
         <>
           <div className="flex-1 min-h-0 flex flex-col relative">

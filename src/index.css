@@ -355,6 +355,26 @@ select option {
 }
 
 /* ── Scrollbar ── */
+/* A panel's one-line status footer: in a narrow panel each part is cut short
+   with an ellipsis instead of wrapping word by word into a tall stack. */
+@utility panel-footer {
+  white-space: nowrap;
+  overflow: hidden;
+  & > * {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* A row that scrolls sideways without showing a bar (the phone toolbar). */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;

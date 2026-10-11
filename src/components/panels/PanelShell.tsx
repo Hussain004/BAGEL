@@ -157,7 +157,7 @@ export function PanelShell({
       onAnimationEnd={(e) => {
         if (e.target === e.currentTarget && isClosing) commitClose();
       }}
-      className={`flex-1 flex flex-col min-h-0 min-w-0 rounded-xl border border-border bg-bg-secondary shadow-panel overflow-hidden ${
+      className={`@container/panel flex-1 flex flex-col min-h-0 min-w-0 rounded-xl border border-border bg-bg-secondary shadow-panel overflow-hidden ${
         isClosing ? 'animate-panel-out' : 'animate-panel-in'
       } ${isDragging ? 'opacity-60 ring-2 ring-accent-blue/60' : ''} ${
         justDropped ? 'animate-pulse-border-once' : ''
@@ -185,7 +185,12 @@ export function PanelShell({
           movePanel(panelId, dir);
         }}
         tabIndex={0}
-        className="flex items-center gap-2 px-3 py-2.5 border-b border-border bg-surface/60 cursor-grab active:cursor-grabbing select-none"
+        // A grid so the panel's own width (not the window's) decides the layout: the title
+        // always keeps its row, and panel-specific controls drop to a second row until the
+        // panel is wide enough to hold everything on one line.
+        className={`grid items-center gap-x-2 gap-y-1.5 px-3 py-2.5 border-b border-border bg-surface/60 cursor-grab active:cursor-grabbing select-none ${
+          headerExtras ? 'grid-cols-[minmax(0,1fr)_auto] @4xl/panel:grid-cols-[minmax(0,1fr)_auto_auto]' : 'grid-cols-[minmax(0,1fr)_auto]'
+        }`}
         title={
           isMaximized
             ? 'Double-click to restore'
@@ -193,7 +198,7 @@ export function PanelShell({
         }
       >
         {/* Left section: topic metadata - shrinks when panel is narrow, clips internally */}
-        <div className="flex items-center gap-2 flex-1 min-w-0 overflow-hidden">
+        <div className="col-start-1 row-start-1 flex items-center gap-2 min-w-0 overflow-hidden">
           <GripIcon />
           <span
             className="w-2 h-2 rounded-full flex-shrink-0"
@@ -215,19 +220,24 @@ export function PanelShell({
             </span>
           )}
           <span
-            className="mono text-sm text-text-primary font-medium truncate flex-1 min-w-0"
-            title={topicName}
+            className="mono text-sm text-text-primary font-medium truncate flex-1 min-w-[3ch]"
+            title={type ? `${topicName}  (${type})` : topicName}
           >
             {topicName}
           </span>
-          <div className="flex items-center gap-1.5 flex-shrink-0 text-xs">
+          {/* The type is the first thing to go when the panel is narrow; the topic name matters more. */}
+          <div className="hidden @xl/panel:flex items-center gap-1.5 flex-shrink-0 text-xs">
             {pkg && <span className="text-text-muted mono">{pkg}/</span>}
             <span className="text-text-secondary mono">{shortType}</span>
           </div>
         </div>
+        {headerExtras && (
+          <div className="col-span-2 row-start-2 flex flex-wrap items-center gap-1 min-w-0 @4xl/panel:col-span-1 @4xl/panel:row-start-1 @4xl/panel:col-start-2 @4xl/panel:flex-nowrap">
+            {headerExtras}
+          </div>
+        )}
         {/* Right section: controls - never shrinks, always reachable */}
-        <div className="flex items-center gap-1 flex-shrink-0">
-          {headerExtras}
+        <div className={`row-start-1 flex items-center gap-1 flex-shrink-0 ${headerExtras ? 'col-start-2 @4xl/panel:col-start-3' : 'col-start-2'}`}>
           <ExportMenu topicName={topicName} kind={kind} bagId={bagId} />
           <button
             onClick={() => setMaximizedId(isMaximized ? null : panelId)}
@@ -361,7 +371,7 @@ function ExportMenu({
         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 12V4m0 0l-4 4m4-4l4 4" />
         </svg>
-        <span className="hidden md:inline">Export</span>
+        <span className="hidden @md/panel:inline">Export</span>
       </button>
       {open && (
         <>

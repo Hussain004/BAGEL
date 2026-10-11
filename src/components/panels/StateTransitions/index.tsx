@@ -340,7 +340,7 @@ export function StateTransitions({ panelId, topicName, type, bagId }: Props) {
             </tbody>
           </table>
 
-          <div className="px-4 py-1.5 border-t border-border text-text-muted text-xs mono flex items-center justify-between flex-shrink-0">
+          <div className="panel-footer gap-3 px-4 py-1.5 border-t border-border text-text-muted text-xs mono flex items-center justify-between flex-shrink-0">
             <span>
               {messages.length.toLocaleString()} msgs
               {bag && bag.topics.find((t) => t.name === topicName)!.messageCount > messages.length && (

@@ -502,7 +502,7 @@ export function Timeline() {
 
       <div
         ref={trackRef}
-        className="flex-1 h-8 pointer-coarse:h-11 flex items-center cursor-pointer select-none touch-none group relative"
+        className="flex-1 min-w-[160px] max-sm:order-last max-sm:basis-full h-8 pointer-coarse:h-11 flex items-center cursor-pointer select-none touch-none group relative"
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}

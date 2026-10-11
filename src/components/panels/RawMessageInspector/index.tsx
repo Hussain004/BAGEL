@@ -79,7 +79,7 @@ export function RawMessageInspector({ panelId, topicName, type, bagId }: RawMess
               without it there is no bag start to measure against, and the
               old `?? 0n` fallback turned t into raw epoch seconds. */}
           {bag && (
-            <div className="px-4 py-1.5 border-t border-border flex items-center justify-end text-text-muted text-xs mono">
+            <div className="panel-footer gap-3 px-4 py-1.5 border-t border-border flex items-center justify-end text-text-muted text-xs mono">
               <span>t = {nsToSeconds(message.timestamp - bag.startTime).toFixed(3)}s</span>
             </div>
           )}
