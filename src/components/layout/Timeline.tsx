@@ -1,12 +1,17 @@
-import { useEffect, useMemo, useRef, useCallback, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useCallback, useState } from 'react';
 import { alignedTimeFor, useBagStore } from '../../store/bagStore';
 import { useLiveStore } from '../../store/liveStore';
 import { usePlayheadStore } from '../../store/playheadStore';
 import { useUiStore } from '../../store/uiStore';
 import { useAnnotationStore, type Annotation } from '../../store/annotationStore';
 import { usePinnedTopicsStore } from '../../store/pinnedTopicsStore';
+import { useTimelineViewStore } from '../../store/timelineViewStore';
 import { useMessageDensity } from '../../hooks/useMessageDensity';
-import { computeMessageDensity } from '../../utils/messageDensity';
+import { DENSITY_BUCKETS, computeMessageDensity } from '../../utils/messageDensity';
+import {
+  FULL_VIEW, clampView, followView, isFullView, minSpanFor, panView, pinchView, viewAt, viewFraction, zoomLevel, zoomView,
+  type TimelineView,
+} from '../../utils/timelineView';
 import { formatDuration } from '../../utils/time';
 import { pageEmbedConfig } from '../../utils/embedConfig';
 import { formatRelativeTime } from '../panels/shared/formatRelativeTime';
@@ -80,6 +85,24 @@ export function Timeline() {
   );
   const [lanesExpanded, setLanesExpanded] = useState(false);
 
+  // The zoom window. Live bags have no fixed range to zoom into, so they stay fully out.
+  const storedView = useTimelineViewStore((s) => s.view);
+  const setStoredView = useTimelineViewStore((s) => s.setView);
+  const resetView = useTimelineViewStore((s) => s.reset);
+  const view = isLive ? FULL_VIEW : storedView;
+  const zoomed = !isFullView(view);
+  const totalNs = Number(endNs - startNs);
+  const minSpan = minSpanFor(totalNs);
+  useEffect(() => {
+    resetView();
+  }, [focusBagId, resetView]);
+  // Density is recounted for the visible slice; the deferred copy keeps a fast wheel spin from recounting on every event.
+  const deferredView = useDeferredValue(view);
+  const windowDensity = useMemo(
+    () => (stats && !isFullView(deferredView) ? computeMessageDensity(stats, durationNs, DENSITY_BUCKETS, deferredView) : density),
+    [stats, density, durationNs, deferredView],
+  );
+
   const trackRef = useRef<HTMLDivElement>(null);
   const lastFrameRef = useRef<number | null>(null);
   // State (not a ref) so the knob's scale-while-dragging class actually
@@ -96,9 +119,9 @@ export function Timeline() {
       const x = Math.max(0, Math.min(rect.width, clientX - rect.left));
       const frac = rect.width > 0 ? x / rect.width : 0;
       const durationSec = Number(endNs - startNs) / 1e9;
-      setHoverInfo({ x, timeSec: frac * durationSec });
+      setHoverInfo({ x, timeSec: viewAt(view, frac) * durationSec });
     },
-    [startNs, endNs],
+    [startNs, endNs, view],
   );
 
   // Brief width-transition window on the progress fill after a *discrete*
@@ -168,9 +191,9 @@ export function Timeline() {
       if (!el) return;
       const rect = el.getBoundingClientRect();
       const fraction = (clientX - rect.left) / rect.width;
-      seekFraction(fraction);
+      seekFraction(viewAt(view, Math.max(0, Math.min(1, fraction))));
     },
-    [seekFraction],
+    [seekFraction, view],
   );
 
   // Shift+drag on the track marks a labelled range instead of scrubbing. The draft is
@@ -181,9 +204,35 @@ export function Timeline() {
     return rect && rect.width > 0 ? Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) : 0;
   };
 
+  // Two fingers pinch and drag the zoom window instead of scrubbing. The first finger has
+  // already moved the playhead by the time the second lands, so that is undone.
+  const pointers = useRef(new Map<number, number>());
+  const pinch = useRef<{ dist: number; anchorG: number; span: number } | null>(null);
+  const gestureActive = useRef(false);
+  const timeBeforeTouch = useRef(0n);
+  const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
+  const midFraction = (rect: DOMRect): number => {
+    const [a = 0, b = 0] = pointers.current.values();
+    return rect.width > 0 ? clamp01(((a + b) / 2 - rect.left) / rect.width) : 0;
+  };
+
   const handlePointerDown = (e: React.PointerEvent) => {
-    setIsDragging(true);
+    pointers.current.set(e.pointerId, e.clientX);
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    if (pointers.current.size >= 2 && !isLive) {
+      const rect = trackRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const [a = 0, b = 0] = pointers.current.values();
+      pinch.current = { dist: Math.max(1, Math.abs(a - b)), anchorG: viewAt(view, midFraction(rect)), span: view.hi - view.lo };
+      gestureActive.current = true;
+      setIsDragging(false);
+      setRangeDraft(null);
+      usePlayheadStore.getState().advanceTo(timeBeforeTouch.current);
+      return;
+    }
+    if (gestureActive.current) return;
+    timeBeforeTouch.current = usePlayheadStore.getState().timeNs;
+    setIsDragging(true);
     if (e.shiftKey && !pageEmbedConfig().embed) {
       const f = fractionOf(e.clientX);
       setRangeDraft({ a: f, b: f });
@@ -194,6 +243,17 @@ export function Timeline() {
     updateHoverFromEvent(e.clientX);
   };
   const handlePointerMove = (e: React.PointerEvent) => {
+    if (pointers.current.has(e.pointerId)) pointers.current.set(e.pointerId, e.clientX);
+    const p = pinch.current;
+    if (p && pointers.current.size >= 2) {
+      const rect = trackRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const [a = 0, b = 0] = pointers.current.values();
+      const dist = Math.max(1, Math.abs(a - b));
+      setStoredView(pinchView(p.anchorG, midFraction(rect), p.span, p.dist / dist, minSpan));
+      return;
+    }
+    if (gestureActive.current) return;
     // Always tracks hover position (dragging or not) for the time tooltip;
     // only feeds the playhead while an actual drag is in progress.
     updateHoverFromEvent(e.clientX);
@@ -205,8 +265,14 @@ export function Timeline() {
     seekFromEvent(e.clientX);
   };
   const handlePointerUp = (e: React.PointerEvent) => {
+    pointers.current.delete(e.pointerId);
     setIsDragging(false);
     (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    if (pointers.current.size < 2) pinch.current = null;
+    if (gestureActive.current) {
+      if (pointers.current.size === 0) gestureActive.current = false;
+      return;
+    }
     if (!rangeDraft) return;
     const draft = { a: rangeDraft.a, b: fractionOf(e.clientX) };
     setRangeDraft(null);
@@ -215,7 +281,7 @@ export function Timeline() {
     if (!rect || Math.abs(draft.b - draft.a) * rect.width < 4) return;
     const ph = usePlayheadStore.getState();
     const span = Number(ph.endNs - ph.startNs);
-    const at = (f: number) => ph.startNs + BigInt(Math.round(span * f));
+    const at = (f: number) => ph.startNs + BigInt(Math.round(span * viewAt(view, f)));
     const count = useAnnotationStore.getState().annotations.length + 1;
     const lo = Math.min(draft.a, draft.b);
     const id = addRange(at(draft.a), at(draft.b), `Range ${count}`);
@@ -250,7 +316,8 @@ export function Timeline() {
         if (ann) {
           const ph = usePlayheadStore.getState();
           const range = ph.endNs - ph.startNs;
-          const f = range > 0n ? Number(ann.timeNs - ph.startNs) / Number(range) : 0;
+          const g = range > 0n ? Number(ann.timeNs - ph.startNs) / Number(range) : 0;
+          const f = viewFraction(view, g);
           setEditingLabel(ann.label);
           setEditingX(f * rect.width);
           setEditingTrackWidth(rect.width);
@@ -260,7 +327,7 @@ export function Timeline() {
         }
       }
 
-      const fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      const fraction = viewAt(view, Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)));
       const ph = usePlayheadStore.getState();
       const range = ph.endNs - ph.startNs;
       const raw = ph.startNs + BigInt(Math.round(Number(range) * fraction));
@@ -274,7 +341,7 @@ export function Timeline() {
       setEditingIsNew(true);
       setEditingId(id);
     },
-    [addAnnotation],
+    [addAnnotation, view],
   );
 
   // Confirm the inline label edit.
@@ -317,11 +384,66 @@ export function Timeline() {
     return () => window.removeEventListener('keydown', onKey);
   }, [bag, setPlaying]);
 
+  // Scroll wheel and trackpad pinch zoom around the cursor; shift+wheel or a sideways scroll pans.
+  const hasBag = !!bag;
+  useEffect(() => {
+    const el = trackRef.current;
+    if (!el || isLive) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      const cur = useTimelineViewStore.getState().view;
+      const scale = e.deltaMode === 1 ? 16 : 1;
+      if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+        const px = (e.deltaX || e.deltaY) * scale;
+        setStoredView(panView(cur, (px / rect.width) * (cur.hi - cur.lo), minSpan));
+        return;
+      }
+      const factor = Math.exp(e.deltaY * scale * (e.ctrlKey ? 0.01 : 0.002));
+      setStoredView(zoomView(cur, clamp01((e.clientX - rect.left) / rect.width), factor, minSpan));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [hasBag, isLive, minSpan, setStoredView]);
+
+  // Keep the playhead on screen while it plays, and when a jump (bookmark, Home/End, arrows) lands off screen.
+  useEffect(() => {
+    if (isLive || !playing || endNs <= startNs) return;
+    const cur = useTimelineViewStore.getState().view;
+    const g = Number(timeNs - startNs) / Number(endNs - startNs);
+    const next = followView(cur, g, minSpan);
+    if (next !== cur) setStoredView(next);
+  }, [timeNs, playing, isLive, startNs, endNs, minSpan, setStoredView]);
+  useEffect(() => {
+    const { timeNs: t, startNs: a, endNs: b } = usePlayheadStore.getState();
+    if (isLive || b <= a) return;
+    const cur = useTimelineViewStore.getState().view;
+    const next = followView(cur, Number(t - a) / Number(b - a), minSpan);
+    if (next !== cur) setStoredView(next);
+  }, [discreteSeekId, isLive, minSpan, setStoredView]);
+
+  // The +/- buttons and keys zoom around the playhead when it is on screen, else the middle.
+  const zoomBy = (factor: number) => {
+    const g = endNs > startNs ? Number(timeNs - startNs) / Number(endNs - startNs) : 0;
+    const f = viewFraction(view, g);
+    setStoredView(zoomView(view, f >= 0 && f <= 1 ? f : 0.5, factor, minSpan));
+  };
+
   if (!bag) return null;
 
   const duration = Number(endNs - startNs) / 1e9;
   const elapsed = Number(timeNs - startNs) / 1e9;
   const fraction = endNs > startNs ? elapsed / duration : 0;
+  // Where the playhead sits across the visible window; off screen when outside 0..1.
+  const headFraction = viewFraction(view, fraction);
+  const headVisible = headFraction >= 0 && headFraction <= 1;
+  // A whole-recording fraction as a position across the bar (null when off screen).
+  const onBar = (g: number): number | null => {
+    const f = viewFraction(view, g);
+    return f >= 0 && f <= 1 ? f : null;
+  };
+  const gOf = (t: bigint): number => (endNs > startNs ? Number(t - startNs) / Number(endNs - startNs) : 0);
 
   return (
     <div className="border-t border-border bg-bg-secondary/70 backdrop-blur-md animate-fade-in flex-shrink-0">
@@ -337,6 +459,18 @@ export function Timeline() {
                 ? (liveStatusMessage ?? 'Connection error')
                 : 'Disconnected'}
       </span>
+    )}
+    {/* Above the bar, not below it, so the bar stays under the cursor or finger while zooming. */}
+    {zoomed && !isLive && (
+      <ZoomNavigator
+        density={density}
+        view={view}
+        minSpan={minSpan}
+        totalNs={totalNs}
+        headG={fraction}
+        onChange={setStoredView}
+        onFit={resetView}
+      />
     )}
     <div className="px-4 py-3 flex items-center gap-4 flex-wrap">
       <button
@@ -376,32 +510,42 @@ export function Timeline() {
         onPointerLeave={handlePointerLeave}
         onDoubleClick={handleTrackDoubleClick}
         id="timeline-track"
+        onKeyDown={(e) => {
+          if (isLive || e.ctrlKey || e.metaKey || e.altKey) return;
+          if (e.key === '+' || e.key === '=') zoomBy(0.5);
+          else if (e.key === '-' || e.key === '_') zoomBy(2);
+          else if (e.key === '0') resetView();
+          else return;
+          e.preventDefault();
+        }}
         role="slider"
         // Focusable so the slider role is honest; arrow/Home/End handling
         // comes from the global shortcuts, which act on the playhead
         // regardless of focus.
         tabIndex={0}
-        title="Click or drag to seek. Double-click to add a bookmark. Shift+drag to label a range."
+        title="Click or drag to seek. Scroll or pinch to zoom, shift+scroll to pan. Double-click to add a bookmark. Shift+drag to label a range."
         aria-label="Playhead - drag or use arrow keys to scrub"
         aria-valuemin={0}
         aria-valuemax={Math.round(duration * 1000) / 1000}
         aria-valuenow={Math.round(elapsed * 1000) / 1000}
         aria-valuetext={`${elapsed.toFixed(2)} of ${duration.toFixed(2)} seconds`}
       >
-        {density && <DensityStrip density={density} />}
+        {windowDensity && <DensityStrip density={windowDensity} />}
         <div className="w-full h-1.5 rounded-full bg-surface overflow-hidden relative">
           <div
             className={`absolute inset-y-0 left-0 progress-bar ${
               seekTransitionActive ? 'transition-[width] duration-150 ease-out' : ''
             }`}
-            style={{ width: `${Math.max(0, Math.min(1, fraction)) * 100}%` }}
+            style={{ width: `${clamp01(headFraction) * 100}%` }}
           />
-          <div
-            className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-coarse:w-5 pointer-coarse:h-5 rounded-full bg-white shadow-glow-blue border border-accent-blue transition-transform ${
-              isDragging ? 'scale-[1.3]' : 'group-hover:scale-110'
-            }`}
-            style={{ left: `${Math.max(0, Math.min(1, fraction)) * 100}%` }}
-          />
+          {headVisible && (
+            <div
+              className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-coarse:w-5 pointer-coarse:h-5 rounded-full bg-white shadow-glow-blue border border-accent-blue transition-transform ${
+                isDragging ? 'scale-[1.3]' : 'group-hover:scale-110'
+              }`}
+              style={{ left: `${headFraction * 100}%` }}
+            />
+          )}
         </div>
 
         {/* Time-under-cursor tooltip, shown on hover and while dragging. */}
@@ -417,9 +561,8 @@ export function Timeline() {
         {/* Labelled ranges: a band under the ticks, so the start tick still hovers and renames. */}
         {annotations.map((ann) => {
           if (ann.endNs === undefined || endNs <= startNs) return null;
-          const span = Number(endNs - startNs);
-          const f1 = Math.max(0, Math.min(1, Number(ann.timeNs - startNs) / span));
-          const f2 = Math.max(0, Math.min(1, Number(ann.endNs - startNs) / span));
+          const f1 = clamp01(viewFraction(view, gOf(ann.timeNs)));
+          const f2 = clamp01(viewFraction(view, gOf(ann.endNs)));
           if (f2 <= f1) return null;
           return (
             <div
@@ -437,21 +580,19 @@ export function Timeline() {
             style={{ left: `${Math.min(rangeDraft.a, rangeDraft.b) * 100}%`, width: `${Math.abs(rangeDraft.b - rangeDraft.a) * 100}%` }}
           />
         )}
-        {pendingRangeStartNs !== null && endNs > startNs && (
+        {pendingRangeStartNs !== null && endNs > startNs && onBar(gOf(pendingRangeStartNs)) !== null && (
           <div
             data-testid="range-pending"
             title="Range start set. Press ] at the end."
             className="absolute top-1 bottom-1 w-0 border-l-2 border-dashed border-accent-amber pointer-events-none"
-            style={{ left: `${Math.max(0, Math.min(1, Number(pendingRangeStartNs - startNs) / Number(endNs - startNs))) * 100}%` }}
+            style={{ left: `${onBar(gOf(pendingRangeStartNs))! * 100}%` }}
           />
         )}
 
         {/* Annotation ticks */}
         {annotations.map((ann) => {
-          const f =
-            endNs > startNs
-              ? Math.max(0, Math.min(1, Number(ann.timeNs - startNs) / Number(endNs - startNs)))
-              : 0;
+          const f = onBar(gOf(ann.timeNs));
+          if (f === null) return null;
           return (
             <AnnotationTick
               key={ann.id}
@@ -476,7 +617,8 @@ export function Timeline() {
         {/* Auto marks from the Health panel (gaps, out-of-order stamps) */}
         {autoTicks.map((tick) => {
           if (tick.timeNs < startNs || tick.timeNs > endNs) return null;
-          const f = endNs > startNs ? Number(tick.timeNs - startNs) / Number(endNs - startNs) : 0;
+          const f = onBar(gOf(tick.timeNs));
+          if (f === null) return null;
           return (
             <AnnotationTick
               key={tick.id}
@@ -540,6 +682,31 @@ export function Timeline() {
           </button>
         )}
       </div>
+
+      {!isLive && (
+        <div className="flex items-center gap-1" role="group" aria-label="Timeline zoom">
+          <button
+            onClick={() => zoomBy(0.5)}
+            disabled={view.hi - view.lo <= minSpan * 1.0001}
+            className={ZOOM_BTN}
+            title="Zoom the timeline in (+, or scroll over the bar)"
+            aria-label="Zoom timeline in"
+            id="timeline-zoom-in"
+          >
+            <ZoomIcon plus />
+          </button>
+          <button
+            onClick={() => zoomBy(2)}
+            disabled={!zoomed}
+            className={ZOOM_BTN}
+            title="Zoom the timeline out (-)"
+            aria-label="Zoom timeline out"
+            id="timeline-zoom-out"
+          >
+            <ZoomIcon />
+          </button>
+        </div>
+      )}
 
       {!pageEmbedConfig().embed && (
       <button
@@ -662,7 +829,8 @@ export function Timeline() {
         startNs={startNs}
         endNs={endNs}
         timeNs={timeNs}
-        onSeek={(fraction) => seekFraction(fraction)}
+        view={deferredView}
+        onSeek={(f) => seekFraction(viewAt(view, f))}
         onUnpin={(topic) => focusBagId && usePinnedTopicsStore.getState().togglePin(focusBagId, topic)}
       />
     )}
@@ -739,6 +907,7 @@ function PinnedTopicLanes({
   startNs,
   endNs,
   timeNs,
+  view,
   onSeek,
   onUnpin,
 }: {
@@ -748,10 +917,11 @@ function PinnedTopicLanes({
   startNs: bigint;
   endNs: bigint;
   timeNs: bigint;
+  view: TimelineView;
   onSeek: (fraction: number) => void;
   onUnpin: (topic: string) => void;
 }) {
-  const fraction = endNs > startNs ? Number(timeNs - startNs) / Number(endNs - startNs) : 0;
+  const fraction = viewFraction(view, endNs > startNs ? Number(timeNs - startNs) / Number(endNs - startNs) : 0);
   return (
     <div className="border-t border-border/60 px-4 py-2 space-y-1.5">
       {topics.map((topic) => (
@@ -760,6 +930,7 @@ function PinnedTopicLanes({
           topic={topic}
           topicStats={stats?.[topic] ?? null}
           durationNs={durationNs}
+          view={view}
           fraction={fraction}
           onSeek={onSeek}
           onUnpin={() => onUnpin(topic)}
@@ -773,6 +944,7 @@ function LaneRow({
   topic,
   topicStats,
   durationNs,
+  view,
   fraction,
   onSeek,
   onUnpin,
@@ -780,14 +952,16 @@ function LaneRow({
   topic: string;
   topicStats: MessageStats | null;
   durationNs: number;
+  view: TimelineView;
+  /** Playhead across the visible window; outside 0..1 when off screen. */
   fraction: number;
   onSeek: (fraction: number) => void;
   onUnpin: () => void;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const density = useMemo(
-    () => (topicStats ? computeMessageDensity({ [topic]: topicStats }, durationNs) : null),
-    [topic, topicStats, durationNs],
+    () => (topicStats ? computeMessageDensity({ [topic]: topicStats }, durationNs, DENSITY_BUCKETS, view) : null),
+    [topic, topicStats, durationNs, view],
   );
 
   const handleClick = (e: React.MouseEvent) => {
@@ -809,10 +983,12 @@ function LaneRow({
         title="Click to seek"
       >
         {density && <DensityStrip density={density} className="absolute inset-0 w-full h-full" />}
-        <div
-          className="absolute top-0 bottom-0 w-px bg-white/80 pointer-events-none"
-          style={{ left: `${Math.max(0, Math.min(1, fraction)) * 100}%` }}
-        />
+        {fraction >= 0 && fraction <= 1 && (
+          <div
+            className="absolute top-0 bottom-0 w-px bg-white/80 pointer-events-none"
+            style={{ left: `${fraction * 100}%` }}
+          />
+        )}
       </div>
       <button
         onClick={onUnpin}
@@ -921,6 +1097,112 @@ function AnnotationTick({ annotation, fraction, isEditing, onSeek, onRemove, onR
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+const ZOOM_BTN =
+  'w-8 h-8 rounded-md flex items-center justify-center border border-border text-text-secondary hover:border-accent-blue/40 hover:text-accent-blue transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60 disabled:opacity-40 disabled:pointer-events-none';
+
+function ZoomIcon({ plus }: { plus?: boolean }) {
+  return (
+    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true">
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="M16 16l4.5 4.5M8.5 11h5" />
+      {plus && <path d="M11 8.5v5" />}
+    </svg>
+  );
+}
+
+/**
+ * Overview of the whole recording while zoomed in: the rectangle is what the bar
+ * shows. Drag it to pan, drag an edge to zoom, click elsewhere to jump there.
+ */
+function ZoomNavigator({
+  density,
+  view,
+  minSpan,
+  totalNs,
+  headG,
+  onChange,
+  onFit,
+}: {
+  density: Float32Array | null;
+  view: TimelineView;
+  minSpan: number;
+  totalNs: number;
+  /** Playhead as a fraction of the whole recording. */
+  headG: number;
+  onChange: (v: TimelineView) => void;
+  onFit: () => void;
+}) {
+  const barRef = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ mode: 'move' | 'lo' | 'hi'; grab: number } | null>(null);
+  const fracOf = (clientX: number): number => {
+    const r = barRef.current?.getBoundingClientRect();
+    return r && r.width > 0 ? Math.max(0, Math.min(1, (clientX - r.left) / r.width)) : 0;
+  };
+  const span = view.hi - view.lo;
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    const r = barRef.current?.getBoundingClientRect();
+    if (!r) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const f = fracOf(e.clientX);
+    const edge = (e.pointerType === 'touch' ? 16 : 7) / r.width;
+    if (Math.abs(f - view.lo) <= edge) drag.current = { mode: 'lo', grab: 0 };
+    else if (Math.abs(f - view.hi) <= edge) drag.current = { mode: 'hi', grab: 0 };
+    else if (f > view.lo && f < view.hi) drag.current = { mode: 'move', grab: f - view.lo };
+    else {
+      // Outside the rectangle: centre the window there, then keep dragging it.
+      drag.current = { mode: 'move', grab: span / 2 };
+      onChange(clampView({ lo: f - span / 2, hi: f + span / 2 }, minSpan));
+    }
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    const d = drag.current;
+    if (!d) return;
+    const f = fracOf(e.clientX);
+    if (d.mode === 'move') onChange(clampView({ lo: f - d.grab, hi: f - d.grab + span }, minSpan));
+    else if (d.mode === 'lo') onChange(clampView({ lo: Math.min(f, view.hi - minSpan), hi: view.hi }, minSpan));
+    else onChange(clampView({ lo: view.lo, hi: Math.max(f, view.lo + minSpan) }, minSpan));
+  };
+  const end = () => { drag.current = null; };
+
+  const at = (g: number) => formatRelativeTime(BigInt(Math.round(g * totalNs)));
+  return (
+    <div className="border-b border-border/60 px-4 py-1.5 flex items-center gap-3" data-testid="timeline-navigator">
+      <span className="mono text-[10px] text-text-secondary tabular-nums whitespace-nowrap" data-testid="timeline-zoom-range">
+        {at(view.lo)} to {at(view.hi)} <span className="text-text-muted">(x{zoomLevel(view) >= 10 ? Math.round(zoomLevel(view)) : zoomLevel(view).toFixed(1)})</span>
+      </span>
+      <div
+        ref={barRef}
+        className="relative flex-1 h-5 pointer-coarse:h-8 rounded bg-surface overflow-hidden cursor-pointer touch-none select-none"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={end}
+        onPointerCancel={end}
+        title="Drag the box to pan, drag its edges to zoom, click elsewhere to jump"
+      >
+        {density && <DensityStrip density={density} className="absolute inset-0 w-full h-full opacity-70 pointer-events-none" />}
+        {/* Dim what is off screen, outline what is on it. */}
+        <div className="absolute top-0 bottom-0 left-0 bg-bg-primary/60 pointer-events-none" style={{ width: `${view.lo * 100}%` }} />
+        <div className="absolute top-0 bottom-0 right-0 bg-bg-primary/60 pointer-events-none" style={{ width: `${(1 - view.hi) * 100}%` }} />
+        <div
+          className="absolute top-0 bottom-0 border-x-[3px] border-y border-accent-blue rounded-sm pointer-events-none"
+          style={{ left: `${view.lo * 100}%`, width: `${span * 100}%` }}
+          data-testid="timeline-window"
+        />
+        <div className="absolute top-0 bottom-0 w-0.5 bg-white pointer-events-none" style={{ left: `${Math.max(0, Math.min(1, headG)) * 100}%` }} />
+      </div>
+      <button
+        onClick={onFit}
+        className="px-2 h-6 rounded-md border border-border text-[11px] text-text-secondary hover:border-accent-blue/40 hover:text-accent-blue transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60"
+        title="Show the whole recording (0)"
+        id="timeline-zoom-fit"
+      >
+        Fit
+      </button>
     </div>
   );
 }

@@ -100,6 +100,7 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 - **Bag editing / MCAP clip export**: trim the time range, drop topics you don't need, download a fresh indexed `.mcap`. Replaces the `mcap filter` CLI workflow for the common cuts. **v1.2 extends the editor to ROS1 `.bag` and ROS2 `.db3` inputs** alongside MCAP - output is always MCAP regardless of input format. `.db3` topics whose type isn't in BAGEL's bundled registry are flagged in the modal and excluded by default; opt them in to include them with a schema-less channel. *(v1.1 / v1.2)*
 - **Paste-your-own `.msg` schema** flow for ROS2 `.db3` topics whose types aren't in the bundled registry. Persisted across sessions in `localStorage`.
 - **Clip export**: Export button in the Toolbar renders any open panel (Image, Plot, Trajectory, or 3D Scene) frame-by-frame to a PNG zip or MP4 video (WebM fallback on browsers that cannot record MP4). Uses a frame-sync protocol (seek playhead, 2x rAF + 250 ms settle, `canvas.toBlob()`) so every panel type captures correctly. PNG frames are zipped with `fflate` at level 0 (no re-compression of already-deflated PNGs); video uses a two-phase `MediaRecorder` + `captureStream(0)` + `requestFrame()` approach so video playback speed is always correct. *(v1.4.2)*
+- **Timeline zoom**: scroll over the bar (or pinch on a trackpad or touchscreen) to zoom in around the cursor, shift+scroll or two fingers to pan, and `+` / `-` / `0` with the bar focused (or the magnifier buttons) to zoom in, out and back to the whole recording. While zoomed, an overview strip above the bar shows which part you are looking at: drag its box to pan, drag its edges to resize, click elsewhere to jump. The density heatmap, bookmarks, ranges and per-topic lanes all follow the zoomed window, and playback scrolls it along to keep the playhead in view. Down to one millisecond across the bar; live connections are not zoomable.
 - **Timeline bookmarks**: drop named markers at any timestamp on the scrubber (double-click the bar, click the `+` button, or press `M`), click a tick to seek, hover to see the label. Bookmarks persist to `localStorage` per bag and are encoded in the URL hash (`bm=`) for sharing. *(v1.4.3)*
 
 ### Robot model (URDF) overlay *(v1.3.0)*
@@ -248,6 +249,7 @@ discovery, not behaviour.
 | `Home / End` | Jump to bag start / end |
 | `L` | Toggle loop playback *(v1.3.3)* |
 | `M` | Add timeline bookmark at playhead *(v1.4.3)* |
+| `+` / `-` / `0` | Zoom the timeline in / out / to the whole recording (with the bar focused) |
 | `T` | Focus the topic search box |
 | `O` | Open a different bag file |
 | `Esc` | Close the most recent panel (undoable with `Cmd/Ctrl + Z`) |
