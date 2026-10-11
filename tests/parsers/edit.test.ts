@@ -225,8 +225,9 @@ describeWithSample('edit/editMcapBag - tour.mcap round trip', () => {
     // Output bounds should fit inside the requested window.
     expect(result.startNs).toBeGreaterThanOrEqual(startNs);
     expect(result.endNs).toBeLessThanOrEqual(endNs);
-    // And it keeps only that slice of the messages. (Not necessarily fewer bytes: the
-    // editor writes uncompressed chunks, and the sample's are zstd.)
+    // And it keeps only that slice of the messages, in fewer bytes than the source
+    // (lz4 output chunks against the source's zstd ones).
+    expect(result.bytes.byteLength).toBeLessThan(summary.fileSize);
     disposeMcapCache();
     const sliced = await parseMcap(createFileSource(new File([new Uint8Array(result.bytes)], 'tour.slice.mcap')));
     expect(sliced.totalMessageCount).toBeLessThan(summary.totalMessageCount / 4);

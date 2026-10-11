@@ -1890,6 +1890,479 @@ var require_heap_js_umd = __commonJS({
   }
 });
 
+// node_modules/.pnpm/lz4js@0.2.0/node_modules/lz4js/util.js
+var require_util = __commonJS({
+  "node_modules/.pnpm/lz4js@0.2.0/node_modules/lz4js/util.js"(exports2) {
+    exports2.hashU32 = function hashU32(a) {
+      a = a | 0;
+      a = a + 2127912214 + (a << 12) | 0;
+      a = a ^ -949894596 ^ a >>> 19;
+      a = a + 374761393 + (a << 5) | 0;
+      a = a + -744332180 ^ a << 9;
+      a = a + -42973499 + (a << 3) | 0;
+      return a ^ -1252372727 ^ a >>> 16 | 0;
+    };
+    exports2.readU64 = function readU64(b, n) {
+      var x = 0;
+      x |= b[n++] << 0;
+      x |= b[n++] << 8;
+      x |= b[n++] << 16;
+      x |= b[n++] << 24;
+      x |= b[n++] << 32;
+      x |= b[n++] << 40;
+      x |= b[n++] << 48;
+      x |= b[n++] << 56;
+      return x;
+    };
+    exports2.readU32 = function readU32(b, n) {
+      var x = 0;
+      x |= b[n++] << 0;
+      x |= b[n++] << 8;
+      x |= b[n++] << 16;
+      x |= b[n++] << 24;
+      return x;
+    };
+    exports2.writeU32 = function writeU32(b, n, x) {
+      b[n++] = x >> 0 & 255;
+      b[n++] = x >> 8 & 255;
+      b[n++] = x >> 16 & 255;
+      b[n++] = x >> 24 & 255;
+    };
+    exports2.imul = function imul(a, b) {
+      var ah = a >>> 16;
+      var al = a & 65535;
+      var bh = b >>> 16;
+      var bl = b & 65535;
+      return al * bl + (ah * bl + al * bh << 16) | 0;
+    };
+  }
+});
+
+// node_modules/.pnpm/lz4js@0.2.0/node_modules/lz4js/xxh32.js
+var require_xxh32 = __commonJS({
+  "node_modules/.pnpm/lz4js@0.2.0/node_modules/lz4js/xxh32.js"(exports2) {
+    var util = require_util();
+    var prime1 = 2654435761;
+    var prime2 = 2246822519;
+    var prime3 = 3266489917;
+    var prime4 = 668265263;
+    var prime5 = 374761393;
+    function rotl32(x, r) {
+      x = x | 0;
+      r = r | 0;
+      return x >>> (32 - r | 0) | x << r | 0;
+    }
+    function rotmul32(h, r, m) {
+      h = h | 0;
+      r = r | 0;
+      m = m | 0;
+      return util.imul(h >>> (32 - r | 0) | h << r, m) | 0;
+    }
+    function shiftxor32(h, s) {
+      h = h | 0;
+      s = s | 0;
+      return h >>> s ^ h | 0;
+    }
+    function xxhapply(h, src, m0, s, m1) {
+      return rotmul32(util.imul(src, m0) + h, s, m1);
+    }
+    function xxh1(h, src, index) {
+      return rotmul32(h + util.imul(src[index], prime5), 11, prime1);
+    }
+    function xxh4(h, src, index) {
+      return xxhapply(h, util.readU32(src, index), prime3, 17, prime4);
+    }
+    function xxh16(h, src, index) {
+      return [
+        xxhapply(h[0], util.readU32(src, index + 0), prime2, 13, prime1),
+        xxhapply(h[1], util.readU32(src, index + 4), prime2, 13, prime1),
+        xxhapply(h[2], util.readU32(src, index + 8), prime2, 13, prime1),
+        xxhapply(h[3], util.readU32(src, index + 12), prime2, 13, prime1)
+      ];
+    }
+    function xxh32(seed, src, index, len) {
+      var h, l;
+      l = len;
+      if (len >= 16) {
+        h = [
+          seed + prime1 + prime2,
+          seed + prime2,
+          seed,
+          seed - prime1
+        ];
+        while (len >= 16) {
+          h = xxh16(h, src, index);
+          index += 16;
+          len -= 16;
+        }
+        h = rotl32(h[0], 1) + rotl32(h[1], 7) + rotl32(h[2], 12) + rotl32(h[3], 18) + l;
+      } else {
+        h = seed + prime5 + len >>> 0;
+      }
+      while (len >= 4) {
+        h = xxh4(h, src, index);
+        index += 4;
+        len -= 4;
+      }
+      while (len > 0) {
+        h = xxh1(h, src, index);
+        index++;
+        len--;
+      }
+      h = shiftxor32(util.imul(shiftxor32(util.imul(shiftxor32(h, 15), prime2), 13), prime3), 16);
+      return h >>> 0;
+    }
+    exports2.hash = xxh32;
+  }
+});
+
+// node_modules/.pnpm/lz4js@0.2.0/node_modules/lz4js/lz4.js
+var require_lz4 = __commonJS({
+  "node_modules/.pnpm/lz4js@0.2.0/node_modules/lz4js/lz4.js"(exports2) {
+    var xxhash = require_xxh32();
+    var util = require_util();
+    var minMatch = 4;
+    var minLength = 13;
+    var searchLimit = 5;
+    var skipTrigger = 6;
+    var hashSize = 1 << 16;
+    var mlBits = 4;
+    var mlMask = (1 << mlBits) - 1;
+    var runBits = 4;
+    var runMask = (1 << runBits) - 1;
+    var blockBuf = makeBuffer(5 << 20);
+    var hashTable = makeHashTable();
+    var magicNum = 407708164;
+    var fdContentChksum = 4;
+    var fdContentSize = 8;
+    var fdBlockChksum = 16;
+    var fdVersion = 64;
+    var fdVersionMask = 192;
+    var bsUncompressed = 2147483648;
+    var bsDefault = 7;
+    var bsShift = 4;
+    var bsMask = 7;
+    var bsMap = {
+      4: 65536,
+      5: 262144,
+      6: 1048576,
+      7: 4194304
+    };
+    function makeHashTable() {
+      try {
+        return new Uint32Array(hashSize);
+      } catch (error) {
+        var hashTable2 = new Array(hashSize);
+        for (var i = 0; i < hashSize; i++) {
+          hashTable2[i] = 0;
+        }
+        return hashTable2;
+      }
+    }
+    function clearHashTable(table) {
+      for (var i = 0; i < hashSize; i++) {
+        hashTable[i] = 0;
+      }
+    }
+    function makeBuffer(size) {
+      try {
+        return new Uint8Array(size);
+      } catch (error) {
+        var buf = new Array(size);
+        for (var i = 0; i < size; i++) {
+          buf[i] = 0;
+        }
+        return buf;
+      }
+    }
+    function sliceArray(array, start, end) {
+      if (typeof array.buffer !== void 0) {
+        if (Uint8Array.prototype.slice) {
+          return array.slice(start, end);
+        } else {
+          var len = array.length;
+          start = start | 0;
+          start = start < 0 ? Math.max(len + start, 0) : Math.min(start, len);
+          end = end === void 0 ? len : end | 0;
+          end = end < 0 ? Math.max(len + end, 0) : Math.min(end, len);
+          var arraySlice = new Uint8Array(end - start);
+          for (var i = start, n = 0; i < end; ) {
+            arraySlice[n++] = array[i++];
+          }
+          return arraySlice;
+        }
+      } else {
+        return array.slice(start, end);
+      }
+    }
+    exports2.compressBound = function compressBound(n) {
+      return n + n / 255 + 16 | 0;
+    };
+    exports2.decompressBound = function decompressBound(src) {
+      var sIndex = 0;
+      if (util.readU32(src, sIndex) !== magicNum) {
+        throw new Error("invalid magic number");
+      }
+      sIndex += 4;
+      var descriptor = src[sIndex++];
+      if ((descriptor & fdVersionMask) !== fdVersion) {
+        throw new Error("incompatible descriptor version " + (descriptor & fdVersionMask));
+      }
+      var useBlockSum = (descriptor & fdBlockChksum) !== 0;
+      var useContentSize = (descriptor & fdContentSize) !== 0;
+      var bsIdx = src[sIndex++] >> bsShift & bsMask;
+      if (bsMap[bsIdx] === void 0) {
+        throw new Error("invalid block size " + bsIdx);
+      }
+      var maxBlockSize = bsMap[bsIdx];
+      if (useContentSize) {
+        return util.readU64(src, sIndex);
+      }
+      sIndex++;
+      var maxSize = 0;
+      while (true) {
+        var blockSize = util.readU32(src, sIndex);
+        sIndex += 4;
+        if (blockSize & bsUncompressed) {
+          blockSize &= ~bsUncompressed;
+          maxSize += blockSize;
+        } else {
+          maxSize += maxBlockSize;
+        }
+        if (blockSize === 0) {
+          return maxSize;
+        }
+        if (useBlockSum) {
+          sIndex += 4;
+        }
+        sIndex += blockSize;
+      }
+    };
+    exports2.makeBuffer = makeBuffer;
+    exports2.decompressBlock = function decompressBlock(src, dst, sIndex, sLength, dIndex) {
+      var mLength, mOffset, sEnd, n, i;
+      sEnd = sIndex + sLength;
+      while (sIndex < sEnd) {
+        var token = src[sIndex++];
+        var literalCount = token >> 4;
+        if (literalCount > 0) {
+          if (literalCount === 15) {
+            while (true) {
+              literalCount += src[sIndex];
+              if (src[sIndex++] !== 255) {
+                break;
+              }
+            }
+          }
+          for (n = sIndex + literalCount; sIndex < n; ) {
+            dst[dIndex++] = src[sIndex++];
+          }
+        }
+        if (sIndex >= sEnd) {
+          break;
+        }
+        mLength = token & 15;
+        mOffset = src[sIndex++] | src[sIndex++] << 8;
+        if (mLength === 15) {
+          while (true) {
+            mLength += src[sIndex];
+            if (src[sIndex++] !== 255) {
+              break;
+            }
+          }
+        }
+        mLength += minMatch;
+        for (i = dIndex - mOffset, n = i + mLength; i < n; ) {
+          dst[dIndex++] = dst[i++] | 0;
+        }
+      }
+      return dIndex;
+    };
+    exports2.compressBlock = function compressBlock(src, dst, sIndex, sLength, hashTable2) {
+      var mIndex, mAnchor, mLength, mOffset, mStep;
+      var literalCount, dIndex, sEnd, n;
+      dIndex = 0;
+      sEnd = sLength + sIndex;
+      mAnchor = sIndex;
+      if (sLength >= minLength) {
+        var searchMatchCount = (1 << skipTrigger) + 3;
+        while (sIndex + minMatch < sEnd - searchLimit) {
+          var seq = util.readU32(src, sIndex);
+          var hash = util.hashU32(seq) >>> 0;
+          hash = (hash >> 16 ^ hash) >>> 0 & 65535;
+          mIndex = hashTable2[hash] - 1;
+          hashTable2[hash] = sIndex + 1;
+          if (mIndex < 0 || sIndex - mIndex >>> 16 > 0 || util.readU32(src, mIndex) !== seq) {
+            mStep = searchMatchCount++ >> skipTrigger;
+            sIndex += mStep;
+            continue;
+          }
+          searchMatchCount = (1 << skipTrigger) + 3;
+          literalCount = sIndex - mAnchor;
+          mOffset = sIndex - mIndex;
+          sIndex += minMatch;
+          mIndex += minMatch;
+          mLength = sIndex;
+          while (sIndex < sEnd - searchLimit && src[sIndex] === src[mIndex]) {
+            sIndex++;
+            mIndex++;
+          }
+          mLength = sIndex - mLength;
+          var token = mLength < mlMask ? mLength : mlMask;
+          if (literalCount >= runMask) {
+            dst[dIndex++] = (runMask << mlBits) + token;
+            for (n = literalCount - runMask; n >= 255; n -= 255) {
+              dst[dIndex++] = 255;
+            }
+            dst[dIndex++] = n;
+          } else {
+            dst[dIndex++] = (literalCount << mlBits) + token;
+          }
+          for (var i = 0; i < literalCount; i++) {
+            dst[dIndex++] = src[mAnchor + i];
+          }
+          dst[dIndex++] = mOffset;
+          dst[dIndex++] = mOffset >> 8;
+          if (mLength >= mlMask) {
+            for (n = mLength - mlMask; n >= 255; n -= 255) {
+              dst[dIndex++] = 255;
+            }
+            dst[dIndex++] = n;
+          }
+          mAnchor = sIndex;
+        }
+      }
+      if (mAnchor === 0) {
+        return 0;
+      }
+      literalCount = sEnd - mAnchor;
+      if (literalCount >= runMask) {
+        dst[dIndex++] = runMask << mlBits;
+        for (n = literalCount - runMask; n >= 255; n -= 255) {
+          dst[dIndex++] = 255;
+        }
+        dst[dIndex++] = n;
+      } else {
+        dst[dIndex++] = literalCount << mlBits;
+      }
+      sIndex = mAnchor;
+      while (sIndex < sEnd) {
+        dst[dIndex++] = src[sIndex++];
+      }
+      return dIndex;
+    };
+    exports2.decompressFrame = function decompressFrame(src, dst) {
+      var useBlockSum, useContentSum, useContentSize, descriptor;
+      var sIndex = 0;
+      var dIndex = 0;
+      if (util.readU32(src, sIndex) !== magicNum) {
+        throw new Error("invalid magic number");
+      }
+      sIndex += 4;
+      descriptor = src[sIndex++];
+      if ((descriptor & fdVersionMask) !== fdVersion) {
+        throw new Error("incompatible descriptor version");
+      }
+      useBlockSum = (descriptor & fdBlockChksum) !== 0;
+      useContentSum = (descriptor & fdContentChksum) !== 0;
+      useContentSize = (descriptor & fdContentSize) !== 0;
+      var bsIdx = src[sIndex++] >> bsShift & bsMask;
+      if (bsMap[bsIdx] === void 0) {
+        throw new Error("invalid block size");
+      }
+      if (useContentSize) {
+        sIndex += 8;
+      }
+      sIndex++;
+      while (true) {
+        var compSize;
+        compSize = util.readU32(src, sIndex);
+        sIndex += 4;
+        if (compSize === 0) {
+          break;
+        }
+        if (useBlockSum) {
+          sIndex += 4;
+        }
+        if ((compSize & bsUncompressed) !== 0) {
+          compSize &= ~bsUncompressed;
+          for (var j = 0; j < compSize; j++) {
+            dst[dIndex++] = src[sIndex++];
+          }
+        } else {
+          dIndex = exports2.decompressBlock(src, dst, sIndex, compSize, dIndex);
+          sIndex += compSize;
+        }
+      }
+      if (useContentSum) {
+        sIndex += 4;
+      }
+      return dIndex;
+    };
+    exports2.compressFrame = function compressFrame(src, dst) {
+      var dIndex = 0;
+      util.writeU32(dst, dIndex, magicNum);
+      dIndex += 4;
+      dst[dIndex++] = fdVersion;
+      dst[dIndex++] = bsDefault << bsShift;
+      dst[dIndex] = xxhash.hash(0, dst, 4, dIndex - 4) >> 8;
+      dIndex++;
+      var maxBlockSize = bsMap[bsDefault];
+      var remaining = src.length;
+      var sIndex = 0;
+      clearHashTable(hashTable);
+      while (remaining > 0) {
+        var compSize = 0;
+        var blockSize = remaining > maxBlockSize ? maxBlockSize : remaining;
+        compSize = exports2.compressBlock(src, blockBuf, sIndex, blockSize, hashTable);
+        if (compSize > blockSize || compSize === 0) {
+          util.writeU32(dst, dIndex, 2147483648 | blockSize);
+          dIndex += 4;
+          for (var z = sIndex + blockSize; sIndex < z; ) {
+            dst[dIndex++] = src[sIndex++];
+          }
+          remaining -= blockSize;
+        } else {
+          util.writeU32(dst, dIndex, compSize);
+          dIndex += 4;
+          for (var j = 0; j < compSize; ) {
+            dst[dIndex++] = blockBuf[j++];
+          }
+          sIndex += blockSize;
+          remaining -= blockSize;
+        }
+      }
+      util.writeU32(dst, dIndex, 0);
+      dIndex += 4;
+      return dIndex;
+    };
+    exports2.decompress = function decompress5(src, maxSize) {
+      var dst, size;
+      if (maxSize === void 0) {
+        maxSize = exports2.decompressBound(src);
+      }
+      dst = exports2.makeBuffer(maxSize);
+      size = exports2.decompressFrame(src, dst);
+      if (size !== maxSize) {
+        dst = sliceArray(dst, 0, size);
+      }
+      return dst;
+    };
+    exports2.compress = function compress(src, maxSize) {
+      var dst, size;
+      if (maxSize === void 0) {
+        maxSize = exports2.compressBound(src.length);
+      }
+      dst = exports2.makeBuffer(maxSize);
+      size = exports2.compressFrame(src, dst);
+      if (size !== maxSize) {
+        dst = sliceArray(dst, 0, size);
+      }
+      return dst;
+    };
+  }
+});
+
 // node_modules/.pnpm/@foxglove+rosmsg@5.0.5/node_modules/@foxglove/rosmsg/dist/index.js
 var require_dist = __commonJS({
   "node_modules/.pnpm/@foxglove+rosmsg@5.0.5/node_modules/@foxglove/rosmsg/dist/index.js"(exports2, module2) {
@@ -12121,13 +12594,13 @@ var require_BagReader = __commonJS({
       // read individual raw messages from the bag at a given chunk
       // filters to a specific set of connection ids, start time, & end time
       // generally the records will be of type MessageData
-      async readChunkMessages(chunkInfo, connections, startTime, endTime, decompress4) {
+      async readChunkMessages(chunkInfo, connections, startTime, endTime, decompress5) {
         const start = startTime ?? { sec: 0, nsec: 0 };
         const end = endTime ?? { sec: Number.MAX_VALUE, nsec: Number.MAX_VALUE };
         const conns = connections ?? chunkInfo.connections.map((connection) => {
           return connection.conn;
         });
-        const result = await this.readChunk(chunkInfo, decompress4);
+        const result = await this.readChunk(chunkInfo, decompress5);
         const chunk = result.chunk;
         const indices = {};
         result.indices.forEach((index) => {
@@ -12159,7 +12632,7 @@ var require_BagReader = __commonJS({
         return messages;
       }
       // reads a single chunk record && its index records given a chunkInfo
-      async readChunk(chunkInfo, decompress4) {
+      async readChunk(chunkInfo, decompress5) {
         if (chunkInfo === this._lastChunkInfo && this._lastReadResult != null) {
           return this._lastReadResult;
         }
@@ -12169,7 +12642,7 @@ var require_BagReader = __commonJS({
         const chunk = this.readRecordFromBuffer(buffer, chunkInfo.chunkPosition, record_1.Chunk);
         const { compression } = chunk;
         if (compression !== "none") {
-          const decompressFn = decompress4[compression];
+          const decompressFn = decompress5[compression];
           if (decompressFn == null) {
             throw new Error(`Unsupported compression type ${chunk.compression}`);
           }
@@ -12590,7 +13063,7 @@ var require_Bag = __commonJS({
         const filteredConnections = [...connections.values()].filter((connection) => {
           return topics.includes(connection.topic);
         }).map((connection) => connection.conn);
-        const { decompress: decompress4 = {} } = opts;
+        const { decompress: decompress5 = {} } = opts;
         const chunkInfos = this.chunkInfos.filter((info) => {
           return (0, rostime_1.compare)(info.startTime, endTime) <= 0 && (0, rostime_1.compare)(startTime, info.endTime) <= 0;
         });
@@ -12615,7 +13088,7 @@ var require_Bag = __commonJS({
         }
         for (let i = 0; i < chunkInfos.length; i++) {
           const info = chunkInfos[i];
-          const messages = await this.reader.readChunkMessages(info, filteredConnections, startTime, endTime, decompress4);
+          const messages = await this.reader.readChunkMessages(info, filteredConnections, startTime, endTime, decompress5);
           messages.forEach((msg) => callback(parseMsg(msg, i)));
         }
       }
@@ -13524,479 +13997,6 @@ var require_lib = __commonJS({
     Bunzip2.version = pjson.version;
     Bunzip2.license = pjson.license;
     module2.exports = Bunzip2;
-  }
-});
-
-// node_modules/.pnpm/lz4js@0.2.0/node_modules/lz4js/util.js
-var require_util = __commonJS({
-  "node_modules/.pnpm/lz4js@0.2.0/node_modules/lz4js/util.js"(exports2) {
-    exports2.hashU32 = function hashU32(a) {
-      a = a | 0;
-      a = a + 2127912214 + (a << 12) | 0;
-      a = a ^ -949894596 ^ a >>> 19;
-      a = a + 374761393 + (a << 5) | 0;
-      a = a + -744332180 ^ a << 9;
-      a = a + -42973499 + (a << 3) | 0;
-      return a ^ -1252372727 ^ a >>> 16 | 0;
-    };
-    exports2.readU64 = function readU64(b, n) {
-      var x = 0;
-      x |= b[n++] << 0;
-      x |= b[n++] << 8;
-      x |= b[n++] << 16;
-      x |= b[n++] << 24;
-      x |= b[n++] << 32;
-      x |= b[n++] << 40;
-      x |= b[n++] << 48;
-      x |= b[n++] << 56;
-      return x;
-    };
-    exports2.readU32 = function readU32(b, n) {
-      var x = 0;
-      x |= b[n++] << 0;
-      x |= b[n++] << 8;
-      x |= b[n++] << 16;
-      x |= b[n++] << 24;
-      return x;
-    };
-    exports2.writeU32 = function writeU32(b, n, x) {
-      b[n++] = x >> 0 & 255;
-      b[n++] = x >> 8 & 255;
-      b[n++] = x >> 16 & 255;
-      b[n++] = x >> 24 & 255;
-    };
-    exports2.imul = function imul(a, b) {
-      var ah = a >>> 16;
-      var al = a & 65535;
-      var bh = b >>> 16;
-      var bl = b & 65535;
-      return al * bl + (ah * bl + al * bh << 16) | 0;
-    };
-  }
-});
-
-// node_modules/.pnpm/lz4js@0.2.0/node_modules/lz4js/xxh32.js
-var require_xxh32 = __commonJS({
-  "node_modules/.pnpm/lz4js@0.2.0/node_modules/lz4js/xxh32.js"(exports2) {
-    var util = require_util();
-    var prime1 = 2654435761;
-    var prime2 = 2246822519;
-    var prime3 = 3266489917;
-    var prime4 = 668265263;
-    var prime5 = 374761393;
-    function rotl32(x, r) {
-      x = x | 0;
-      r = r | 0;
-      return x >>> (32 - r | 0) | x << r | 0;
-    }
-    function rotmul32(h, r, m) {
-      h = h | 0;
-      r = r | 0;
-      m = m | 0;
-      return util.imul(h >>> (32 - r | 0) | h << r, m) | 0;
-    }
-    function shiftxor32(h, s) {
-      h = h | 0;
-      s = s | 0;
-      return h >>> s ^ h | 0;
-    }
-    function xxhapply(h, src, m0, s, m1) {
-      return rotmul32(util.imul(src, m0) + h, s, m1);
-    }
-    function xxh1(h, src, index) {
-      return rotmul32(h + util.imul(src[index], prime5), 11, prime1);
-    }
-    function xxh4(h, src, index) {
-      return xxhapply(h, util.readU32(src, index), prime3, 17, prime4);
-    }
-    function xxh16(h, src, index) {
-      return [
-        xxhapply(h[0], util.readU32(src, index + 0), prime2, 13, prime1),
-        xxhapply(h[1], util.readU32(src, index + 4), prime2, 13, prime1),
-        xxhapply(h[2], util.readU32(src, index + 8), prime2, 13, prime1),
-        xxhapply(h[3], util.readU32(src, index + 12), prime2, 13, prime1)
-      ];
-    }
-    function xxh32(seed, src, index, len) {
-      var h, l;
-      l = len;
-      if (len >= 16) {
-        h = [
-          seed + prime1 + prime2,
-          seed + prime2,
-          seed,
-          seed - prime1
-        ];
-        while (len >= 16) {
-          h = xxh16(h, src, index);
-          index += 16;
-          len -= 16;
-        }
-        h = rotl32(h[0], 1) + rotl32(h[1], 7) + rotl32(h[2], 12) + rotl32(h[3], 18) + l;
-      } else {
-        h = seed + prime5 + len >>> 0;
-      }
-      while (len >= 4) {
-        h = xxh4(h, src, index);
-        index += 4;
-        len -= 4;
-      }
-      while (len > 0) {
-        h = xxh1(h, src, index);
-        index++;
-        len--;
-      }
-      h = shiftxor32(util.imul(shiftxor32(util.imul(shiftxor32(h, 15), prime2), 13), prime3), 16);
-      return h >>> 0;
-    }
-    exports2.hash = xxh32;
-  }
-});
-
-// node_modules/.pnpm/lz4js@0.2.0/node_modules/lz4js/lz4.js
-var require_lz4 = __commonJS({
-  "node_modules/.pnpm/lz4js@0.2.0/node_modules/lz4js/lz4.js"(exports2) {
-    var xxhash = require_xxh32();
-    var util = require_util();
-    var minMatch = 4;
-    var minLength = 13;
-    var searchLimit = 5;
-    var skipTrigger = 6;
-    var hashSize = 1 << 16;
-    var mlBits = 4;
-    var mlMask = (1 << mlBits) - 1;
-    var runBits = 4;
-    var runMask = (1 << runBits) - 1;
-    var blockBuf = makeBuffer(5 << 20);
-    var hashTable = makeHashTable();
-    var magicNum = 407708164;
-    var fdContentChksum = 4;
-    var fdContentSize = 8;
-    var fdBlockChksum = 16;
-    var fdVersion = 64;
-    var fdVersionMask = 192;
-    var bsUncompressed = 2147483648;
-    var bsDefault = 7;
-    var bsShift = 4;
-    var bsMask = 7;
-    var bsMap = {
-      4: 65536,
-      5: 262144,
-      6: 1048576,
-      7: 4194304
-    };
-    function makeHashTable() {
-      try {
-        return new Uint32Array(hashSize);
-      } catch (error) {
-        var hashTable2 = new Array(hashSize);
-        for (var i = 0; i < hashSize; i++) {
-          hashTable2[i] = 0;
-        }
-        return hashTable2;
-      }
-    }
-    function clearHashTable(table) {
-      for (var i = 0; i < hashSize; i++) {
-        hashTable[i] = 0;
-      }
-    }
-    function makeBuffer(size) {
-      try {
-        return new Uint8Array(size);
-      } catch (error) {
-        var buf = new Array(size);
-        for (var i = 0; i < size; i++) {
-          buf[i] = 0;
-        }
-        return buf;
-      }
-    }
-    function sliceArray(array, start, end) {
-      if (typeof array.buffer !== void 0) {
-        if (Uint8Array.prototype.slice) {
-          return array.slice(start, end);
-        } else {
-          var len = array.length;
-          start = start | 0;
-          start = start < 0 ? Math.max(len + start, 0) : Math.min(start, len);
-          end = end === void 0 ? len : end | 0;
-          end = end < 0 ? Math.max(len + end, 0) : Math.min(end, len);
-          var arraySlice = new Uint8Array(end - start);
-          for (var i = start, n = 0; i < end; ) {
-            arraySlice[n++] = array[i++];
-          }
-          return arraySlice;
-        }
-      } else {
-        return array.slice(start, end);
-      }
-    }
-    exports2.compressBound = function compressBound(n) {
-      return n + n / 255 + 16 | 0;
-    };
-    exports2.decompressBound = function decompressBound(src) {
-      var sIndex = 0;
-      if (util.readU32(src, sIndex) !== magicNum) {
-        throw new Error("invalid magic number");
-      }
-      sIndex += 4;
-      var descriptor = src[sIndex++];
-      if ((descriptor & fdVersionMask) !== fdVersion) {
-        throw new Error("incompatible descriptor version " + (descriptor & fdVersionMask));
-      }
-      var useBlockSum = (descriptor & fdBlockChksum) !== 0;
-      var useContentSize = (descriptor & fdContentSize) !== 0;
-      var bsIdx = src[sIndex++] >> bsShift & bsMask;
-      if (bsMap[bsIdx] === void 0) {
-        throw new Error("invalid block size " + bsIdx);
-      }
-      var maxBlockSize = bsMap[bsIdx];
-      if (useContentSize) {
-        return util.readU64(src, sIndex);
-      }
-      sIndex++;
-      var maxSize = 0;
-      while (true) {
-        var blockSize = util.readU32(src, sIndex);
-        sIndex += 4;
-        if (blockSize & bsUncompressed) {
-          blockSize &= ~bsUncompressed;
-          maxSize += blockSize;
-        } else {
-          maxSize += maxBlockSize;
-        }
-        if (blockSize === 0) {
-          return maxSize;
-        }
-        if (useBlockSum) {
-          sIndex += 4;
-        }
-        sIndex += blockSize;
-      }
-    };
-    exports2.makeBuffer = makeBuffer;
-    exports2.decompressBlock = function decompressBlock(src, dst, sIndex, sLength, dIndex) {
-      var mLength, mOffset, sEnd, n, i;
-      sEnd = sIndex + sLength;
-      while (sIndex < sEnd) {
-        var token = src[sIndex++];
-        var literalCount = token >> 4;
-        if (literalCount > 0) {
-          if (literalCount === 15) {
-            while (true) {
-              literalCount += src[sIndex];
-              if (src[sIndex++] !== 255) {
-                break;
-              }
-            }
-          }
-          for (n = sIndex + literalCount; sIndex < n; ) {
-            dst[dIndex++] = src[sIndex++];
-          }
-        }
-        if (sIndex >= sEnd) {
-          break;
-        }
-        mLength = token & 15;
-        mOffset = src[sIndex++] | src[sIndex++] << 8;
-        if (mLength === 15) {
-          while (true) {
-            mLength += src[sIndex];
-            if (src[sIndex++] !== 255) {
-              break;
-            }
-          }
-        }
-        mLength += minMatch;
-        for (i = dIndex - mOffset, n = i + mLength; i < n; ) {
-          dst[dIndex++] = dst[i++] | 0;
-        }
-      }
-      return dIndex;
-    };
-    exports2.compressBlock = function compressBlock(src, dst, sIndex, sLength, hashTable2) {
-      var mIndex, mAnchor, mLength, mOffset, mStep;
-      var literalCount, dIndex, sEnd, n;
-      dIndex = 0;
-      sEnd = sLength + sIndex;
-      mAnchor = sIndex;
-      if (sLength >= minLength) {
-        var searchMatchCount = (1 << skipTrigger) + 3;
-        while (sIndex + minMatch < sEnd - searchLimit) {
-          var seq = util.readU32(src, sIndex);
-          var hash = util.hashU32(seq) >>> 0;
-          hash = (hash >> 16 ^ hash) >>> 0 & 65535;
-          mIndex = hashTable2[hash] - 1;
-          hashTable2[hash] = sIndex + 1;
-          if (mIndex < 0 || sIndex - mIndex >>> 16 > 0 || util.readU32(src, mIndex) !== seq) {
-            mStep = searchMatchCount++ >> skipTrigger;
-            sIndex += mStep;
-            continue;
-          }
-          searchMatchCount = (1 << skipTrigger) + 3;
-          literalCount = sIndex - mAnchor;
-          mOffset = sIndex - mIndex;
-          sIndex += minMatch;
-          mIndex += minMatch;
-          mLength = sIndex;
-          while (sIndex < sEnd - searchLimit && src[sIndex] === src[mIndex]) {
-            sIndex++;
-            mIndex++;
-          }
-          mLength = sIndex - mLength;
-          var token = mLength < mlMask ? mLength : mlMask;
-          if (literalCount >= runMask) {
-            dst[dIndex++] = (runMask << mlBits) + token;
-            for (n = literalCount - runMask; n >= 255; n -= 255) {
-              dst[dIndex++] = 255;
-            }
-            dst[dIndex++] = n;
-          } else {
-            dst[dIndex++] = (literalCount << mlBits) + token;
-          }
-          for (var i = 0; i < literalCount; i++) {
-            dst[dIndex++] = src[mAnchor + i];
-          }
-          dst[dIndex++] = mOffset;
-          dst[dIndex++] = mOffset >> 8;
-          if (mLength >= mlMask) {
-            for (n = mLength - mlMask; n >= 255; n -= 255) {
-              dst[dIndex++] = 255;
-            }
-            dst[dIndex++] = n;
-          }
-          mAnchor = sIndex;
-        }
-      }
-      if (mAnchor === 0) {
-        return 0;
-      }
-      literalCount = sEnd - mAnchor;
-      if (literalCount >= runMask) {
-        dst[dIndex++] = runMask << mlBits;
-        for (n = literalCount - runMask; n >= 255; n -= 255) {
-          dst[dIndex++] = 255;
-        }
-        dst[dIndex++] = n;
-      } else {
-        dst[dIndex++] = literalCount << mlBits;
-      }
-      sIndex = mAnchor;
-      while (sIndex < sEnd) {
-        dst[dIndex++] = src[sIndex++];
-      }
-      return dIndex;
-    };
-    exports2.decompressFrame = function decompressFrame(src, dst) {
-      var useBlockSum, useContentSum, useContentSize, descriptor;
-      var sIndex = 0;
-      var dIndex = 0;
-      if (util.readU32(src, sIndex) !== magicNum) {
-        throw new Error("invalid magic number");
-      }
-      sIndex += 4;
-      descriptor = src[sIndex++];
-      if ((descriptor & fdVersionMask) !== fdVersion) {
-        throw new Error("incompatible descriptor version");
-      }
-      useBlockSum = (descriptor & fdBlockChksum) !== 0;
-      useContentSum = (descriptor & fdContentChksum) !== 0;
-      useContentSize = (descriptor & fdContentSize) !== 0;
-      var bsIdx = src[sIndex++] >> bsShift & bsMask;
-      if (bsMap[bsIdx] === void 0) {
-        throw new Error("invalid block size");
-      }
-      if (useContentSize) {
-        sIndex += 8;
-      }
-      sIndex++;
-      while (true) {
-        var compSize;
-        compSize = util.readU32(src, sIndex);
-        sIndex += 4;
-        if (compSize === 0) {
-          break;
-        }
-        if (useBlockSum) {
-          sIndex += 4;
-        }
-        if ((compSize & bsUncompressed) !== 0) {
-          compSize &= ~bsUncompressed;
-          for (var j = 0; j < compSize; j++) {
-            dst[dIndex++] = src[sIndex++];
-          }
-        } else {
-          dIndex = exports2.decompressBlock(src, dst, sIndex, compSize, dIndex);
-          sIndex += compSize;
-        }
-      }
-      if (useContentSum) {
-        sIndex += 4;
-      }
-      return dIndex;
-    };
-    exports2.compressFrame = function compressFrame(src, dst) {
-      var dIndex = 0;
-      util.writeU32(dst, dIndex, magicNum);
-      dIndex += 4;
-      dst[dIndex++] = fdVersion;
-      dst[dIndex++] = bsDefault << bsShift;
-      dst[dIndex] = xxhash.hash(0, dst, 4, dIndex - 4) >> 8;
-      dIndex++;
-      var maxBlockSize = bsMap[bsDefault];
-      var remaining = src.length;
-      var sIndex = 0;
-      clearHashTable(hashTable);
-      while (remaining > 0) {
-        var compSize = 0;
-        var blockSize = remaining > maxBlockSize ? maxBlockSize : remaining;
-        compSize = exports2.compressBlock(src, blockBuf, sIndex, blockSize, hashTable);
-        if (compSize > blockSize || compSize === 0) {
-          util.writeU32(dst, dIndex, 2147483648 | blockSize);
-          dIndex += 4;
-          for (var z = sIndex + blockSize; sIndex < z; ) {
-            dst[dIndex++] = src[sIndex++];
-          }
-          remaining -= blockSize;
-        } else {
-          util.writeU32(dst, dIndex, compSize);
-          dIndex += 4;
-          for (var j = 0; j < compSize; ) {
-            dst[dIndex++] = blockBuf[j++];
-          }
-          sIndex += blockSize;
-          remaining -= blockSize;
-        }
-      }
-      util.writeU32(dst, dIndex, 0);
-      dIndex += 4;
-      return dIndex;
-    };
-    exports2.decompress = function decompress4(src, maxSize) {
-      var dst, size;
-      if (maxSize === void 0) {
-        maxSize = exports2.decompressBound(src);
-      }
-      dst = exports2.makeBuffer(maxSize);
-      size = exports2.decompressFrame(src, dst);
-      if (size !== maxSize) {
-        dst = sliceArray(dst, 0, size);
-      }
-      return dst;
-    };
-    exports2.compress = function compress(src, maxSize) {
-      var dst, size;
-      if (maxSize === void 0) {
-        maxSize = exports2.compressBound(src.length);
-      }
-      dst = exports2.makeBuffer(maxSize);
-      size = exports2.compressFrame(src, dst);
-      if (size !== maxSize) {
-        dst = sliceArray(dst, 0, size);
-      }
-      return dst;
-    };
   }
 });
 
@@ -15107,11 +15107,11 @@ var McapIndexedReader = class _McapIndexedReader {
     const chunk = chunkRecord;
     let buffer = chunk.records;
     if (chunk.compression !== "" && buffer.byteLength > 0) {
-      const decompress4 = this.#decompressHandlers?.[chunk.compression];
-      if (!decompress4) {
+      const decompress5 = this.#decompressHandlers?.[chunk.compression];
+      if (!decompress5) {
         throw this.#errorWithLibrary(`Unsupported compression ${chunk.compression}`);
       }
-      buffer = decompress4(buffer, chunk.uncompressedSize);
+      buffer = decompress5(buffer, chunk.uncompressedSize);
     }
     if (chunk.uncompressedCrc !== 0 && options?.validateCrcs !== false) {
       const chunkCrc = (0, import_crc2.crc32)(buffer);
@@ -15263,11 +15263,11 @@ var McapStreamReader = class {
           }
           let buffer = record.records;
           if (record.compression !== "" && buffer.byteLength > 0) {
-            const decompress4 = this.#decompressHandlers[record.compression];
-            if (!decompress4) {
+            const decompress5 = this.#decompressHandlers[record.compression];
+            if (!decompress5) {
               throw errorWithLibrary(`Unsupported compression ${record.compression}`);
             }
-            buffer = decompress4(buffer, record.uncompressedSize);
+            buffer = decompress5(buffer, record.uncompressedSize);
           }
           if (this.#validateCrcs && record.uncompressedCrc !== 0) {
             const chunkCrc = (0, import_crc3.crc32)(buffer);
@@ -16288,6 +16288,9 @@ function decompress(dat, buf) {
   return cct(bufs, ol);
 }
 
+// src/parsers/mcap.ts
+var lz4 = __toESM(require_lz4(), 1);
+
 // src/parsers/cdr.ts
 var import_rosmsg2 = __toESM(require_dist(), 1);
 var import_rosmsg2_serialization = __toESM(require_dist3(), 1);
@@ -16571,6 +16574,24 @@ function makeDecompressHandlers(chunkCache) {
         buffer,
         new Uint8Array(Number(decompressedSize))
       );
+      chunkCache.set(key, out);
+      return out;
+    },
+    // lz4 frames: what BAGEL's own editor writes, and what `mcap` and other
+    // tools write with lz4 compression.
+    lz4: (buffer, decompressedSize) => {
+      const key = `lz4|${fingerprintBuffer(buffer)}`;
+      const hit = chunkCache.get(key);
+      if (hit) return hit;
+      let out;
+      try {
+        out = lz4.decompress(buffer, Number(decompressedSize));
+      } catch (err3) {
+        throw new Error(`An lz4 chunk could not be decompressed (${err3 instanceof Error ? err3.message : String(err3)}). The file may be damaged.`, { cause: err3 });
+      }
+      if (out.length !== Number(decompressedSize)) {
+        throw new Error(`lz4 chunk decompressed to ${out.length} bytes, but the chunk says ${decompressedSize}.`);
+      }
       chunkCache.set(key, out);
       return out;
     }
@@ -17384,7 +17405,7 @@ async function readAllMessageStatsDb3(source) {
 var import_rosbag = __toESM(require_cjs2(), 1);
 var import_web = __toESM(require_web(), 1);
 var import_seek_bzip = __toESM(require_lib(), 1);
-var lz4 = __toESM(require_lz4(), 1);
+var lz42 = __toESM(require_lz4(), 1);
 function filelikeFor(source) {
   if (source.kind === "file") return new import_web.BlobReader(source.file);
   return new HttpFilelike(source.url, source.contentLength);
@@ -17396,11 +17417,11 @@ function decompressBz2(buffer, size) {
   return decoded;
 }
 function decompressLz4(buffer, size) {
-  const decoded = lz4.decompress(buffer, size);
+  const decoded = lz42.decompress(buffer, size);
   if (decoded.length > size) return decoded.subarray(0, size);
   return decoded;
 }
-var decompress3 = {
+var decompress4 = {
   bz2: decompressBz2,
   lz4: decompressLz4
 };
@@ -17421,7 +17442,7 @@ async function loadBag(source) {
     return cached2;
   }
   const reader = filelikeFor(source);
-  const bag = new import_rosbag.Bag(reader, { decompress: decompress3 });
+  const bag = new import_rosbag.Bag(reader, { decompress: decompress4 });
   await bag.open();
   const connectionsById = /* @__PURE__ */ new Map();
   const topicMeta = /* @__PURE__ */ new Map();

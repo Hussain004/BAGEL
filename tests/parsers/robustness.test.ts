@@ -289,11 +289,11 @@ describe('robustness/inaccurate zstd decompressedSize hints', () => {
 });
 
 describe('robustness/unsupported chunk compression label', () => {
-  it('DOCUMENTED OBSERVATION: lz4 label parses but fails at read time', async () => {
-    // The chunk bytes stay zstd-compressed; only the label says lz4. The
-    // indexed reader validates the index (no decompression) so parseMcap
-    // succeeds, then @mcap/core rejects the compression on first read.
-    // Parsed error text must survive classifyBagError.
+  it('DOCUMENTED OBSERVATION: a bz2 label parses but fails at read time', async () => {
+    // The chunk bytes stay zstd-compressed; only the label says bz2, which no
+    // handler covers. The indexed reader validates the index (no decompression)
+    // so parseMcap succeeds, then @mcap/core rejects the compression on first
+    // read. Parsed error text must survive classifyBagError.
     const bytes = await writeSyntheticMcap(
       [
         {
@@ -302,7 +302,7 @@ describe('robustness/unsupported chunk compression label', () => {
           messages: [{ logTime: 1_000_000_000n, value: { data: 'hello' } }],
         },
       ],
-      { compress: true, chunkCompression: 'lz4' },
+      { compress: true, chunkCompression: 'bz2' },
     );
     const source = sourceFor(bytes, 'mcap');
     const summary = await parseMcap(source);
@@ -315,10 +315,23 @@ describe('robustness/unsupported chunk compression label', () => {
       expect(err).toBeInstanceOf(Error);
       message = (err as Error).message;
     }
-    expect(message).toMatch(/Unsupported compression lz4/);
+    expect(message).toMatch(/Unsupported compression bz2/);
     expect(message.length).toBeGreaterThan(0);
     const classified = classifyBagError(message, 'file');
     expect(classified.raw).toBe(message);
     expect(classified.action?.kind).toBe('choose-file');
+  });
+});
+
+describe('robustness/lz4 label on data that is not lz4', () => {
+  it('fails at read time with an error that says what went wrong', async () => {
+    // zstd bytes under an lz4 label: lz4 is supported now, so this reaches the decoder.
+    const bytes = await writeSyntheticMcap(
+      [{ topic: '/chatter', type: 'std_msgs/msg/String', messages: [{ logTime: 1_000_000_000n, value: { data: 'hello' } }] }],
+      { compress: true, chunkCompression: 'lz4' },
+    );
+    const source = sourceFor(bytes, 'mcap');
+    await parseMcap(source);
+    await expect(readRawMessagesMcap(source, '/chatter')).rejects.toThrow(/lz4 chunk could not be decompressed/);
   });
 });

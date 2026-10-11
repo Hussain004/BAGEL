@@ -9,6 +9,10 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { McapIndexedReader } from '@mcap/core';
+import * as lz4 from 'lz4js';
+
+/** Edited bags are written with lz4 chunks; a bare reader needs to be told how to open them. */
+const LZ4 = { lz4: (buf: Uint8Array, size: bigint) => lz4.decompress(buf, Number(size)) };
 import { editRos1Bag, estimateMessageCountRos1 } from '../../src/parsers/editRos1';
 import { parseMcap, disposeMcapCache } from '../../src/parsers/mcap';
 import { disposeBagCache } from '../../src/parsers/bag';
@@ -97,6 +101,7 @@ describe('editRos1/editRos1Bag', () => {
 
     const reader = await McapIndexedReader.Initialize({
       readable: makeReadable(result.bytes),
+      decompressHandlers: LZ4,
     });
     const sequences = new Map<string, number[]>();
     for await (const msg of reader.readMessages()) {
@@ -118,6 +123,7 @@ describe('editRos1/editRos1Bag', () => {
 
     const reader = await McapIndexedReader.Initialize({
       readable: makeReadable(result.bytes),
+      decompressHandlers: LZ4,
     });
     expect(reader.channelsById.size).toBeGreaterThan(0);
     for (const channel of reader.channelsById.values()) {
@@ -139,6 +145,7 @@ describe('editRos1/editRos1Bag', () => {
     });
     const reader = await McapIndexedReader.Initialize({
       readable: makeReadable(result.bytes),
+      decompressHandlers: LZ4,
     });
     expect(reader.header.library).toBe('bagel-edit/ros1');
     expect(reader.header.profile).toBe('ros1');

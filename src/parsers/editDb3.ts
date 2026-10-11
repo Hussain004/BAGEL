@@ -27,6 +27,7 @@ import { assertSingleSource, type BagSource, type SingleBagSource } from './sour
 import { loadDb3ForEdit } from './db3';
 import { getMessageDefinition } from './typeRegistry';
 import type { EditOptions, EditResult } from './edit';
+import { compressChunkLz4 } from './chunkCompression';
 
 /**
  * In-memory `IWritable` for MCAP output. Local copy so this module doesn't
@@ -170,6 +171,7 @@ export async function editDb3Bag(
     useChunkIndex: true,
     useMessageIndex: true,
     useSummaryOffsets: true,
+    compressChunk: compressChunkLz4,
   });
 
   await writer.start({
