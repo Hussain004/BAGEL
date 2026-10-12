@@ -363,7 +363,13 @@ function extractDisplayName(url: string): string {
     const last = segments[segments.length - 1] ?? '';
     // Strip query string if it leaked in (URL pathname shouldn't include it,
     // but content-disposition-style URLs sometimes do).
-    return last.split('?')[0] || parsed.hostname;
+    const name = last.split('?')[0];
+    if (!name) return parsed.hostname;
+    try {
+      return decodeURIComponent(name);
+    } catch {
+      return name; // malformed escape, show it as written
+    }
   } catch {
     return url;
   }

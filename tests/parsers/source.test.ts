@@ -316,6 +316,19 @@ describe('source/createUrlSource', () => {
     });
   });
 
+  it('decodes percent-escapes in the displayed file name', async () => {
+    const url = 'https://example.com/d/AUTOLab%2B0d4edc83%2B2023.mcap';
+    handlers.set(url, () => new Response(null, { status: 200, headers: { 'content-length': '8' } }));
+    const src = await createUrlSource(url);
+    if (src.kind === 'url') expect(src.displayName).toBe('AUTOLab+0d4edc83+2023.mcap');
+    else throw new Error('expected a url source');
+
+    const bad = 'https://example.com/d/100%.mcap';
+    handlers.set(bad, () => new Response(null, { status: 200, headers: { 'content-length': '8' } }));
+    const src2 = await createUrlSource(bad);
+    if (src2.kind === 'url') expect(src2.displayName).toBe('100%.mcap');
+  });
+
   it('falls back to hostname for URLs with no usable basename', async () => {
     handlers.set(
       'https://example.com/',

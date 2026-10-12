@@ -178,13 +178,15 @@ The following was checked by issuing a real cross-origin `HEAD` and a real
 modal's probe does.
 
 **Works: Hugging Face** (`huggingface.co/datasets/.../resolve/main/...`). Verified
-2026-10-07. The `resolve` path 302-redirects to a CDN, and the final response
-carries `Accept-Ranges: bytes`, a correct `Content-Length`,
-`Access-Control-Allow-Origin: *`, and a ranged GET returns `206` with
-`Content-Range: bytes 0-15/80359907`. One caveat: those are **presigned,
-expiring** URLs, so a link baked into a README will expire and start failing
-later. Use it for exploration and for links that get regenerated, not as a
-permanent published link.
+2026-10-12 against the hosted app with a 1.0 GB `.mcap`, which loaded and
+streamed with Range requests. The `resolve` path 302-redirects to a CDN, and the
+final response carries `Accept-Ranges: bytes`, a correct `Content-Length`,
+`Access-Control-Allow-Origin: *`, and a ranged GET returns `206` with a
+`Content-Range` header. The CDN address is signed and expires, but it is issued
+fresh every time the `resolve` URL is opened, so link to the `resolve` URL (never
+a copied CDN address) and a README badge keeps working. Only fresh opens were
+tested, so probe again if a published link ever stops loading. If the file name
+contains a `+`, write it as `%2B` in a hand-written link.
 
 **Does not work: Zenodo.** Verified 2026-10-07. The file endpoint
 (`/api/records/<id>/files/<name>/content`) answers a ranged request with
