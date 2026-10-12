@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import {
   coalesceAnnexBVideoChunks,
   hasH264AccessUnitDelimiter,
@@ -9,6 +9,8 @@ import {
   isVideoFormat,
   isVideoKeyframe,
   isVideoTopicName,
+  VideoFrameDecoder,
+  type VideoChunk,
 } from '../../src/parsers/video';
 
 // Build an H264 Annex B NAL unit with a given type byte.
@@ -190,5 +192,91 @@ describe('coalesceAnnexBVideoChunks', () => {
       { data: h264Nalu(0x41, 2), timestamp: 2n, isKeyframe: false },
     ];
     expect(coalesceAnnexBVideoChunks(chunks, 'h264')).toBe(chunks);
+  });
+});
+
+
+// ── VideoFrameDecoder with a fake WebCodecs ────────────────────────────────
+
+type FakeMode = 'immediate' | 'hold' | 'slow';
+
+/** Installs fake WebCodecs globals; `calls` records what the decoder was asked to do. */
+function installFakeWebCodecs(mode: FakeMode) {
+  const calls = { configured: 0, decoded: [] as string[], flushed: 0 };
+  class FakeDecoder {
+    state = 'unconfigured';
+    decodeQueueSize = 0;
+    private held: Array<{ close(): void }> = [];
+    private needKey = false;
+    constructor(private init: { output: (f: { close(): void }) => void; error: (e: Error) => void }) {}
+    configure(): void { calls.configured++; this.state = 'configured'; }
+    decode(chunk: { type: string }): void {
+      if (this.needKey && chunk.type !== 'key') throw new Error('DataError: key frame required after flush');
+      this.needKey = false;
+      calls.decoded.push(chunk.type);
+      const frame = { close() {} };
+      if (mode === 'immediate') this.init.output(frame);
+      else if (mode === 'hold') this.held.push(frame);
+      else {
+        this.decodeQueueSize++;
+        setTimeout(() => { this.decodeQueueSize--; this.init.output(frame); }, 80);
+      }
+    }
+    async flush(): Promise<void> {
+      calls.flushed++;
+      for (const f of this.held) this.init.output(f);
+      this.held = [];
+      this.needKey = true;
+    }
+    close(): void { this.state = 'closed'; }
+  }
+  vi.stubGlobal('VideoDecoder', FakeDecoder);
+  vi.stubGlobal('EncodedVideoChunk', class { constructor(public init: { type: string }) { this.type = init.type; } type: string; });
+  vi.stubGlobal('createImageBitmap', async () => ({ close() {} }));
+  return calls;
+}
+
+// SPS (type 7) + IDR (type 5) so the codec string and keyframe checks are satisfied.
+const KEY_DATA = concat(h264Nalu(0x67, 8), h264Nalu(0x65, 8));
+const DELTA_DATA = h264Nalu(0x41, 8);
+const key = (t: number): VideoChunk => ({ data: KEY_DATA, timestamp: BigInt(t), isKeyframe: true });
+const delta = (t: number): VideoChunk => ({ data: DELTA_DATA, timestamp: BigInt(t), isKeyframe: false });
+
+describe('VideoFrameDecoder', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('decodes forward deltas on the same decoder when frames come out directly', async () => {
+    const calls = installFakeWebCodecs('immediate');
+    const dec = new VideoFrameDecoder();
+    expect(await dec.decode([key(1), delta(2)], 'h264')).not.toBeNull();
+    expect(await dec.decode([delta(3)], 'h264')).not.toBeNull();
+    expect(calls.configured).toBe(1);
+    expect(calls.flushed).toBe(0);
+    expect(dec.requiresReseek).toBe(false);
+  });
+
+  it('flushes a decoder that holds a lone keyframe back, then asks for a reseek', async () => {
+    const calls = installFakeWebCodecs('hold');
+    const dec = new VideoFrameDecoder();
+    // Without the flush fallback this returned null forever ("Loading frame...").
+    expect(await dec.decode([key(1)], 'h264')).not.toBeNull();
+    expect(calls.flushed).toBe(1);
+    expect(dec.requiresReseek).toBe(true);
+
+    // A forward delta must not be fed to the flushed decoder (it would throw).
+    expect(await dec.decode([delta(2)], 'h264')).toBeNull();
+    expect(calls.decoded).toEqual(['key']);
+
+    // The reseek path (keyframe first) recovers with a fresh decoder.
+    expect(await dec.decode([key(1), delta(2)], 'h264')).not.toBeNull();
+    expect(calls.configured).toBe(2);
+  });
+
+  it('waits for a slow decoder instead of flushing it', async () => {
+    const calls = installFakeWebCodecs('slow');
+    const dec = new VideoFrameDecoder();
+    expect(await dec.decode([key(1), delta(2)], 'h264')).not.toBeNull();
+    expect(calls.flushed).toBe(0);
+    expect(dec.requiresReseek).toBe(false);
   });
 });

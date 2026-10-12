@@ -271,19 +271,33 @@ interface BrowserVideoFrame {
 interface BrowserVideoDecoder {
   configure(config: { codec: string }): void;
   decode(chunk: { type: string; timestamp: number; data: ArrayBufferView }): void;
+  flush?(): Promise<void>;
   close(): void;
   readonly state: string;
+  readonly decodeQueueSize?: number;
 }
 
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
 /**
- * Stateful WebCodecs decoder for forward playback. It never calls flush()
- * between frames because some H264 decoders then require another keyframe.
+ * Stateful WebCodecs decoder for forward playback. It does not flush after
+ * every frame because a flushed decoder needs another keyframe. The one
+ * exception is a decoder that has taken everything it was given and still
+ * emitted nothing (a lone keyframe, for example, is held back for reordering):
+ * that is flushed once to release the frame, and `requiresReseek` then tells
+ * the caller to restart from a keyframe instead of feeding more delta frames.
  */
 export class VideoFrameDecoder {
   private decoder: BrowserVideoDecoder | null = null;
   private format = '';
   private frames: BrowserVideoFrame[] = [];
   private decodeError: Error | null = null;
+  private needsKeyframe = false;
+
+  /** True after a flush: the next decode must start at a keyframe, so read from one. */
+  get requiresReseek(): boolean {
+    return this.needsKeyframe;
+  }
 
   reset(): void {
     for (const frame of this.frames) frame.close();
@@ -292,6 +306,32 @@ export class VideoFrameDecoder {
     this.decoder = null;
     this.format = '';
     this.decodeError = null;
+    this.needsKeyframe = false;
+  }
+
+  /** Wait for the decoder to produce output, flushing it if it is holding frames back. */
+  private async waitForOutput(): Promise<void> {
+    const decoder = this.decoder;
+    await sleep(30);
+    if (!decoder || this.frames.length > 0 || this.decodeError) return;
+    // Still working through its queue (a software decoder can be slow): wait.
+    const deadline = performance.now() + 500;
+    while (
+      (decoder.decodeQueueSize ?? 0) > 0 &&
+      this.frames.length === 0 &&
+      !this.decodeError &&
+      performance.now() < deadline
+    ) {
+      await sleep(5);
+    }
+    if (this.frames.length > 0 || this.decodeError || !decoder.flush) return;
+    try {
+      await decoder.flush();
+    } catch {
+      this.decodeError = new Error('Video decoder failed to flush.');
+      return;
+    }
+    this.needsKeyframe = true;
   }
 
   close(): void {
@@ -313,7 +353,7 @@ export class VideoFrameDecoder {
     if (!VD || !EVC) return null;
 
     const first = chunks[0]!;
-    if (!this.decoder || this.format !== format || first.isKeyframe) {
+    if (!this.decoder || this.format !== format || first.isKeyframe || this.needsKeyframe) {
       this.reset();
       if (!first.isKeyframe) return null;
       const codec = getVideoCodecString(format, first.data);
@@ -344,7 +384,7 @@ export class VideoFrameDecoder {
       }
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    await this.waitForOutput();
 
     if (this.decodeError) {
       this.reset();

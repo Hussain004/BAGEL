@@ -148,7 +148,8 @@ function useVideoFrame(
           const canDecodeForward =
             lastDecodedNs !== null &&
             targetNs >= lastDecodedNs &&
-            targetNs - lastDecodedNs <= MAX_SEQUENTIAL_VIDEO_GAP_NS;
+            targetNs - lastDecodedNs <= MAX_SEQUENTIAL_VIDEO_GAP_NS &&
+            !decoderRef.current?.requiresReseek;
 
           const result = canDecodeForward
             ? await readVideoChunkRange(
