@@ -118,6 +118,15 @@ describe('parseHash robustness', () => {
     expect(parseHash('#total-garbage').root).toBeNull();
   });
 
+  it('keeps a raw + in a hand-written bag URL, and still decodes encoded ones', () => {
+    const raw = 'https://example.com/data/A+b+2023.mcap';
+    expect(parseHash(`#b=${raw}`).bagUrl).toBe(raw);
+    expect(parseHash(`#b=${raw}&t=3`).bagUrl).toBe(raw);
+    // The Share modal percent-encodes, which must round-trip too.
+    expect(parseHash(`#b=${encodeURIComponent(raw)}`).bagUrl).toBe(raw);
+    expect(parseHash(`#t=3&b=${raw}`).bagUrl).toBe(raw);
+  });
+
   it('ignores malformed t / b / a / bm values individually', () => {
     expect(parseHash('#t=not-a-number').timeSec).toBeUndefined();
     expect(parseHash('#t=-3').timeSec).toBeUndefined();

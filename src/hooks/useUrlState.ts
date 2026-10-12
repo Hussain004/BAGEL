@@ -224,7 +224,12 @@ function parseFlatEncoding(input: string): LayoutNode | null {
 export function parseHash(hash: string): ParsedHash {
   const trimmed = hash.replace(/^#/, '');
   if (!trimmed) return { root: null };
-  const params = new URLSearchParams(trimmed);
+  // A raw `+` in the bag URL is a literal plus (a hand-written badge link),
+  // not an encoded space: URLSearchParams would turn it into a space. Links
+  // from the Share modal percent-encode it, and a real URL has no raw space.
+  const params = new URLSearchParams(
+    trimmed.replace(/(^|&)(b=[^&]*)/, (_, sep: string, kv: string) => sep + kv.replace(/\+/g, '%2B')),
+  );
   const out: ParsedHash = { root: null };
   const t = params.get('t');
   if (t != null) {
