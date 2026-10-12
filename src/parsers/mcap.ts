@@ -1877,6 +1877,10 @@ export async function readVideoChunksMcap(
       hi = mid - 1;
     }
   }
+  // Playhead before the topic's first keyframe (playback starts a few ms ahead
+  // of the first video message): show that first frame, as still-image topics
+  // do, instead of returning nothing and leaving the panel loading forever.
+  if (keyframeNs === null) keyframeNs = keyframeTimes[0] ?? null;
   if (keyframeNs === null) return null;
 
   const chunks: VideoChunk[] = [];
