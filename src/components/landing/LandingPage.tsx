@@ -144,6 +144,9 @@ function LandingHeader() {
         {install && <button type="button" onClick={() => void install()}>INSTALL APP</button>}
         <button type="button" onClick={() => useUiStore.getState().setModal('shortcuts')}>SHORTCUTS</button>
         <button type="button" onClick={() => useUiStore.getState().setModal('about')}>ABOUT</button>
+        <a className="landing-header__github" href="https://github.com/Hussain004/BAGEL" target="_blank" rel="noreferrer">
+          STAR ON GITHUB
+        </a>
         <a
           className="landing-header__support"
           href="https://donatr.ee/hussain/"

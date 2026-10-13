@@ -126,7 +126,10 @@
 }
 .landing-header__context i { width: 1px; height: 12px; background: rgba(145, 169, 186, 0.24); }
 .landing-header__actions { margin-left: auto; display: flex; align-items: center; gap: 4px; }
-.landing-header__actions button {
+.landing-header__actions button,
+.landing-header__github {
+  display: flex;
+  align-items: center;
   min-height: 34px;
   padding: 0 12px;
   color: #70899b;
@@ -136,7 +139,8 @@
   letter-spacing: 0.12em;
   transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease;
 }
-.landing-header__actions button:hover {
+.landing-header__actions button:hover,
+.landing-header__github:hover {
   color: var(--landing-text);
   border-color: rgba(103, 168, 207, 0.14);
   background: rgba(73, 191, 255, 0.045);
@@ -404,7 +408,8 @@
   .landing-page { padding: 0 18px 70px; }
   .landing-header { min-height: 62px; }
   .landing-header__context,
-  .landing-header__actions button { display: none; }
+  .landing-header__actions button,
+  .landing-header__github { display: none; }
   .landing-header__support { margin-left: auto; }
   .landing-main { padding-top: 37px; }
   .landing-copy h1 { font-size: clamp(2.65rem, 13vw, 3.5rem); }
