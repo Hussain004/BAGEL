@@ -18,6 +18,12 @@
 
 </div>
 
+https://github.com/user-attachments/assets/4c1ed742-f896-475b-acfb-61aa1adc062c
+
+<sub>BAGEL in 25 seconds. The robot recording is the `r2b_hallway` sequence from the NVIDIA r2b dataset 2023 (CC BY 4.0). The Gaussian splat is "Knock Community Hall" by scbenoit (CC BY 4.0).</sub>
+
+If BAGEL saves you a ROS install, a ⭐ helps other robotics folks find it.
+
 ---
 
 ## What is BAGEL?
@@ -42,12 +48,6 @@ BAGEL eliminates this friction.
 ---
 
 ## Demo
-
-### BAGEL in 25 seconds
-
-https://github.com/user-attachments/assets/4c1ed742-f896-475b-acfb-61aa1adc062c
-
-> The real robot recording in this video is the `r2b_hallway` sequence from the NVIDIA r2b dataset 2023 (CC BY 4.0). The Gaussian splat is "Knock Community Hall" by scbenoit (CC BY 4.0).
 
 ### Quick tour with the bundled sample bag
 
