@@ -9,6 +9,13 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Collada (`.dae`) meshes show their textures when the package is a dropped
+  folder ([#119](https://github.com/Hussain004/BAGEL/issues/119)). Before,
+  the mesh loaded but its textures were looked up next to a temporary blob URL
+  and never found, so robots from moveit2 or nav2 packages rendered untextured.
+  Texture paths now resolve against the mesh's own `package://` path, including
+  `..`, percent-encoded names and absolute paths from the exporter's machine
+  (found by file name). URL-mapped packages already worked and still do.
 - Cloud-optimized point clouds (`.copc.laz`) stream instead of loading whole
   ([#191](https://github.com/Hussain004/BAGEL/issues/191)). BAGEL reads the
   octree a node at a time, over HTTP Range for a URL or by slicing a local
@@ -28,7 +35,6 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 - The parser worker is built as an ES module, so the code it loads on demand
   (sql.js, laz-perf and others) is split into separate files. The worker every
   bag load downloads shrinks from 145 KB to 98 KB gzipped.
-
 - Edited and trimmed bags are written with lz4-compressed chunks instead of
   uncompressed ones, so a 5 s trim of the sample is 4.4 MB instead of 18.8 MB.
   Every MCAP reader supports lz4 (checked against the official Python `mcap`

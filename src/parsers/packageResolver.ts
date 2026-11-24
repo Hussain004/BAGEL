@@ -250,6 +250,8 @@ function relativePathFor(file: File): string {
 export interface ResolvedMesh {
   /** Object URL the loader can fetch from. */
   url: string;
+  /** The dropped file behind `url`, for a folder-bound package (read it directly instead of fetching). */
+  file?: File;
   /** Suffix from the URI (e.g. `.stl`, `.dae`, `.obj`). Lower-cased. */
   extension: string;
   /** Caller releases this when the mesh load is done. Idempotent. */
@@ -275,6 +277,11 @@ export interface ResolvedMesh {
  * user-facing and names the URI plus the specific failure reason.
  */
 export async function resolveMeshUri(uri: string): Promise<ResolvedMesh> {
+  return resolveMeshUriSync(uri);
+}
+
+/** `resolveMeshUri` without the promise, for callbacks that must answer synchronously (a Three.js URL modifier). */
+export function resolveMeshUriSync(uri: string): ResolvedMesh {
   hydrate();
   const trimmed = uri.trim();
   if (!trimmed) throw new Error('Empty mesh URI.');
@@ -311,6 +318,7 @@ export async function resolveMeshUri(uri: string): Promise<ResolvedMesh> {
     const objectUrl = URL.createObjectURL(fileMatch);
     return {
       url: objectUrl,
+      file: fileMatch,
       extension,
       release: () => URL.revokeObjectURL(objectUrl),
     };
@@ -329,6 +337,48 @@ export async function resolveMeshUri(uri: string): Promise<ResolvedMesh> {
 
   // Bare / relative path - usable in dev when meshes are served from /public.
   return { url: trimmed, extension, release: () => {} };
+}
+
+/**
+ * Where a file referenced from inside a mesh lives, as a URI the resolver
+ * understands. `base` is the mesh's own URI; `ref` is what the mesh wrote
+ * (a Collada `<init_from>`): a relative path (resolved against the mesh's
+ * folder, `..` included), a URL (kept), or an absolute path from the
+ * exporter's machine (`file:///home/me/tex.png`, `C:\tex.png`), which can
+ * only mean "a file with this name", so it becomes the mesh's package plus
+ * the basename and the resolver's basename fallback finds it.
+ */
+export function resolveRelativeUri(base: string, ref: string): string {
+  const r = ref.trim();
+  if (/^(https?|data|blob):/i.test(r) || r.startsWith('package://')) return r;
+  const pkg = base.match(/^package:\/\/([^/]+)\/(.*)$/);
+  const isAbsolute = /^file:/i.test(r) || r.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(r);
+  if (isAbsolute) {
+    const name = r.split(/[\\/]/).pop() ?? r;
+    return pkg ? `package://${pkg[1]}/${name}` : name;
+  }
+  if (!pkg) {
+    try {
+      return new URL(r, base).href;
+    } catch {
+      return r;
+    }
+  }
+  const dir = pkg[2].split('/').slice(0, -1);
+  for (const raw of r.replace(/\\/g, '/').split('/')) {
+    const seg = safeDecode(raw); // exporters percent-encode spaces in <init_from>
+    if (seg === '..') dir.pop();
+    else if (seg && seg !== '.') dir.push(seg);
+  }
+  return `package://${pkg[1]}/${dir.join('/')}`;
+}
+
+function safeDecode(s: string): string {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
 }
 
 function extractExtension(uri: string): string {
