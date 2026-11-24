@@ -10,9 +10,13 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { McapIndexedReader } from '@mcap/core';
 import * as lz4 from 'lz4js';
+import { decompress as fzstdDecompress } from 'fzstd';
 
-/** Edited bags are written with lz4 chunks; a bare reader needs to be told how to open them. */
-const LZ4 = { lz4: (buf: Uint8Array, size: bigint) => lz4.decompress(buf, Number(size)) };
+/** Edited bags are written with zstd (or, as a fallback, lz4) chunks; a bare reader needs to be told how to open them. */
+const LZ4 = {
+  lz4: (buf: Uint8Array, size: bigint) => lz4.decompress(buf, Number(size)),
+  zstd: (buf: Uint8Array) => fzstdDecompress(buf),
+};
 import { editRos1Bag, estimateMessageCountRos1 } from '../../src/parsers/editRos1';
 import { parseMcap, disposeMcapCache } from '../../src/parsers/mcap';
 import { disposeBagCache } from '../../src/parsers/bag';

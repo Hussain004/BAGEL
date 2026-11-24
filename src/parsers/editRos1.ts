@@ -17,7 +17,7 @@ import { McapWriter, type IWritable } from '@mcap/core';
 import type { SingleBagSource } from './source';
 import { loadBagForEdit } from './bag';
 import type { EditOptions, EditResult } from './edit';
-import { compressChunkLz4 } from './chunkCompression';
+import { chunkCompressor } from './chunkCompression';
 
 /** ROS1 `{ sec, nsec }` time shape, inlined to avoid a `@foxglove/rostime`
  *  dependency just for one type alias. */
@@ -137,7 +137,7 @@ export async function editRos1Bag(
     useChunkIndex: true,
     useMessageIndex: true,
     useSummaryOffsets: true,
-    compressChunk: compressChunkLz4,
+    compressChunk: await chunkCompressor(),
   });
 
   // The MCAP profile string says what kind of bag the file came from. ROS1

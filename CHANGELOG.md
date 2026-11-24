@@ -9,6 +9,14 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Edited and trimmed bags are written with zstd chunks
+  ([#121](https://github.com/Hussain004/BAGEL/issues/121)), MCAP's default,
+  so an edit of a zstd bag is about the size of its source instead of 1.4x
+  (a full re-edit of the sample: 17.85 MB from a 17.86 MB source; a 5 s trim:
+  3.2 MB, was 4.4 MB with lz4). The WASM encoder loads only when an edit is
+  written. Since a WASM zstd decoder was reverted in v1.6.7 for corrupting
+  memory, every chunk is decoded again with the pure-JS decoder and compared
+  before it is used; a mismatch or error switches the session back to lz4.
 - Fixed: a saved layout preset naming a panel kind this version does not have
   (from an older or newer build) could crash the panel grid. Such presets are
   now skipped, and the grid shows a short note for any unknown panel instead
@@ -36,7 +44,6 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
   model ROS defines is covered. Before, a fisheye camera's button was greyed
   out. The footer names the model in use, and LiDAR points and detection boxes
   drawn on the image follow the same lens model.
-
 - Collada (`.dae`) meshes show their textures when the package is a dropped
   folder ([#119](https://github.com/Hussain004/BAGEL/issues/119)). Before,
   the mesh loaded but its textures were looked up next to a temporary blob URL
