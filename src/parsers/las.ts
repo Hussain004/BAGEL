@@ -67,7 +67,11 @@ export function recordLayout(format: number): RecordLayout {
   throw new Error(`LAS: unsupported point data format ${format} (BAGEL reads formats 0 to 10).`);
 }
 
-export function parseLasHeader(bytes: Uint8Array): LasHeader {
+/**
+ * Parse the public header block. `fileSize` is the whole file's size when
+ * `bytes` is only its head (a range read).
+ */
+export function parseLasHeader(bytes: Uint8Array, fileSize = bytes.length): LasHeader {
   if (bytes.length < 227) throw new Error('LAS: file is too small to hold a header (truncated file?).');
   if (new TextDecoder('ascii').decode(bytes.subarray(0, 4)) !== LAS_MAGIC) {
     throw new Error('LAS: file does not start with "LASF", so it is not a LAS or LAZ file.');
@@ -91,7 +95,7 @@ export function parseLasHeader(bytes: Uint8Array): LasHeader {
     if (big > 0) pointCount = big;
   }
 
-  if (pointOffset < headerSize || pointOffset > bytes.length) {
+  if (pointOffset < headerSize || pointOffset > fileSize) {
     throw new Error(`LAS: point data offset ${pointOffset} is outside the file (header size ${headerSize}).`);
   }
 
@@ -317,10 +321,10 @@ function decodeUncompressed(bytes: Uint8Array, header: LasHeader, maxStored: num
 }
 
 /** Point formats laz-perf decodes. The waveform formats (4, 5, 9, 10) crash it. */
-const LAZ_FORMATS = new Set([0, 1, 2, 3, 6, 7, 8]);
+export const LAZ_FORMATS = new Set([0, 1, 2, 3, 6, 7, 8]);
 
 /** laz-perf throws numbers and strings, not Errors; give callers a real one. */
-function lazError(err: unknown): Error {
+export function lazError(err: unknown): Error {
   if (err instanceof Error) return new Error(`LAZ: decompression failed (${err.message}). The file may be truncated or damaged.`);
   return new Error('LAZ: decompression failed. The file may be truncated or damaged.');
 }
@@ -330,7 +334,7 @@ function lazError(err: unknown): Error {
  * its heap and allocator are not trustworthy (the zstd-wasm lesson of v1.6.7),
  * so the next file gets a fresh instance instead of a possibly corrupt one.
  */
-function discardLazPerf(): void {
+export function discardLazPerf(): void {
   lazPerfPromise = null;
 }
 

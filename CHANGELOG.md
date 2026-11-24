@@ -9,6 +9,14 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Cloud-optimized point clouds (`.copc.laz`) stream instead of loading whole
+  ([#191](https://github.com/Hussain004/BAGEL/issues/191)). BAGEL reads the
+  octree a node at a time, over HTTP Range for a URL or by slicing a local
+  file, and loads whole levels from the top until about 600,000 points, an even
+  overview of the tile. Set the 3D view's clip box to look closer: nodes count
+  by how much of them falls inside the box, so the same budget goes to deeper,
+  denser detail there. A damaged node is skipped and the rest still shows.
+
 - `.las` and `.laz` LiDAR files open like `.pcd` and `.ply` ([#191](https://github.com/Hussain004/BAGEL/issues/191)).
   LAS 1.0 to 1.4 and point formats 0 to 10 are read; compressed `.laz` is
   decoded by `laz-perf` (formats 0 to 3 and 6 to 8; the rare waveform formats

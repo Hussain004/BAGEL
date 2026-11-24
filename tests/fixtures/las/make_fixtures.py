@@ -9,6 +9,8 @@ backend for point formats 0 to 10.
 
 simple.las, simple.laz (the same points, LASzip-compressed) and 100-points.las
 come from the PDAL test suite (BSD licence), so a second producer is covered.
+So do 1.2-with-color.copc.laz (simple.las's points as COPC) and
+autzen_clip_native.copc.laz. make_copc.py writes the other .copc.laz files.
 """
 import os
 import laspy
