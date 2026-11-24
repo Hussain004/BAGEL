@@ -67,10 +67,10 @@ A condensed feature list is below. **Detailed version-by-version release notes (
 | Format | Notes |
 |---|---|
 | ROS2 `.mcap` | Including `zstd`-compressed chunks (the new ROS2 default). Foxglove JSON-encoded channels (`encoding: "json"`) supported from v1.6.1, and protobuf channels (`encoding: "protobuf"`, decoded from the descriptor set in the file, so no `.proto` files are needed). |
-| ROS2 `.db3` | SQLite via `sql.js` / WASM |
+| ROS2 `.db3` | SQLite via `sql.js` / WASM; past 48 MB from a URL or 1 GB from disk, BAGEL's own read-only SQLite page reader, which fetches only the pages it needs |
 | ROS1 `.bag` | Including `bz2` and `lz4` compressed chunks |
 | Split recordings | Pick or drop all the parts of a `ros2 bag record --max-bag-size` run (`name_0.mcap`, `name_1.mcap`, ...), a ROS1 `--split` recording, or the bag folder itself, and they open as one recording. Works for `.mcap`, `.db3` and `.bag`. |
-| Remote URLs | HTTP Range requests, so only the chunks you scrub through hit the network. `.mcap` / `.bag` stream lazily; `.db3` eager-fetches (sql.js needs it in memory). |
+| Remote URLs | HTTP Range requests, so only the chunks you scrub through hit the network. `.mcap` / `.bag` stream lazily. A `.db3` past 48 MB streams too: opening reads the table's leaf pages (about one page per message), not the blobs, and each message is fetched when shown. |
 | **Foxglove annotations** | `foxglove.ImageAnnotations` (circles, polylines, points, text) draw over a camera image: pick the topic from the image panel's `annotations` dropdown. `foxglove.SceneUpdate` (cubes, spheres, cylinders, arrows, lines, triangles, text) draws in the 3D panel like a MarkerArray, with each entity replacing its previous self. Works in MCAP files and over a live bridge, whether the messages are JSON or protobuf. |
 | **Foxglove WebSocket** *(v1.5.0)* | Paste a `ws://` or `wss://` URL to connect to a live robot running `foxglove_bridge` or `rosbridge_suite`. All panels update in real time. Per-topic ring buffer holds the last 10,000 messages per topic; Follow/Pause button lets you scrub back into history without disconnecting. Auto-reconnect with exponential backoff. |
 | **`.pcd` point clouds** *(v1.6.0)* | All three PCD 0.7 encodings: `ascii`, `binary`, `binary_compressed` (LZF). All color modes (height, intensity, rgb, single). Feeds directly into the ThreeDScene panel via a synthetic `sensor_msgs/PointCloud2` message. |
@@ -172,7 +172,6 @@ Known limitations and ideas that are not yet scheduled:
 | [Zstd-compressed edit output](https://github.com/Hussain004/BAGEL/issues/121) | Edited bags are written with lz4 chunks since `fzstd` is decompress-only. That is far smaller than uncompressed, but an edit of a zstd bag still comes out about 1.4x the size per message. |
 | [Plugin panels](https://github.com/Hussain004/BAGEL/issues/122) | User-built views against a stable panel API. Gated on the panel registry landing first. |
 | [Cloud-hosted shareable URLs](https://github.com/Hussain004/BAGEL/issues/123) | The URL hash is self-contained today, so a link breaks if the bag moves. |
-| [Streaming `.db3` over HTTP Range](https://github.com/Hussain004/BAGEL/issues/124) | `.db3` eager-fetches the whole file because sql.js wants it in memory; a custom VFS would allow partial reads. |
 | [Xacro evaluator](https://github.com/Hussain004/BAGEL/issues/125) | Roughly 1000 lines of XML transform, so it is its own project. The URDF modal explains running xacro upstream meanwhile. |
 
 ---
@@ -334,7 +333,7 @@ User's Browser
       ├── Format detect (.db3, .mcap, or .bag?)
       │     ├── .mcap → @mcap/core IndexedReader (uses the adapter)
       │     │              └── fzstd (decompress zstd chunks)
-      │     ├── .db3  → sql.js (SQLite compiled to WASM, eager-fetches the whole file)
+      │     ├── .db3  → sql.js (SQLite compiled to WASM), or sqlitePages.ts page by page for large files and URLs
       │     │              └── nearest-row-at-time SQL
       │     └── .bag  → @foxglove/rosbag (uses the adapter)
       │                    ├── chunk index + per-topic message iterator
