@@ -29,7 +29,7 @@ test('Edit & download writes a zstd-compressed MCAP', async ({ page }) => {
   expect(reader.chunkIndexes.length).toBeGreaterThan(1);
   expect(reader.chunkIndexes.some((c) => c.compression === 'zstd')).toBe(true);
   let n = 0;
-  for await (const _ of reader.readMessages()) n++;
+  for await (const message of reader.readMessages()) if (message.data.length >= 0) n++;
   expect(n).toBeGreaterThan(100);
   expect(errors).toEqual([]);
 });
