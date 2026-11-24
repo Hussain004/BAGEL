@@ -352,18 +352,19 @@ export function resolveRelativeUri(base: string, ref: string): string {
   const r = ref.trim();
   if (/^(https?|data|blob):/i.test(r) || r.startsWith('package://')) return r;
   const pkg = base.match(/^package:\/\/([^/]+)\/(.*)$/);
-  const isAbsolute = /^file:/i.test(r) || r.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(r);
-  if (isAbsolute) {
-    const name = r.split(/[\\/]/).pop() ?? r;
-    return pkg ? `package://${pkg[1]}/${name}` : name;
-  }
+  const exporterPath = /^file:/i.test(r) || /^[a-zA-Z]:[\\/]/.test(r);
+  const basename = () => r.split(/[\\/]/).pop() ?? r;
   if (!pkg) {
+    // A URL or a bare path served next to the app (/meshes/x.dae): resolve the
+    // way the browser would, against the mesh's own location.
     try {
-      return new URL(r, base).href;
+      const page = (globalThis as { location?: { href?: string } }).location?.href ?? 'http://localhost/';
+      return new URL(exporterPath ? basename() : r, new URL(base, page)).href;
     } catch {
       return r;
     }
   }
+  if (exporterPath || r.startsWith('/')) return `package://${pkg[1]}/${basename()}`;
   const dir = pkg[2].split('/').slice(0, -1);
   for (const raw of r.replace(/\\/g, '/').split('/')) {
     const seg = safeDecode(raw); // exporters percent-encode spaces in <init_from>

@@ -142,4 +142,20 @@ describe('resolveRelativeUri', () => {
   it('resolves against an http mesh URL like a browser would', () => {
     expect(resolveRelativeUri('https://h.com/m/x.dae', '../t/a.png')).toBe('https://h.com/t/a.png');
   });
+
+  it.each([
+    ['https://h.com/m/x.dae', '/textures/a.png', 'https://h.com/textures/a.png'],
+    ['/meshes/x.dae', 'tex.png', `${location.origin}/meshes/tex.png`],
+    ['/meshes/x.dae', '../t/a.png', `${location.origin}/t/a.png`],
+    ['https://h.com/m/x.dae', 'file:///C:/me/tex.png', 'https://h.com/m/tex.png'],
+  ])('non-package base %s + %s', (base2, ref, want) => {
+    expect(resolveRelativeUri(base2, ref)).toBe(want);
+  });
+});
+
+describe('Collada textures next to a bare-path mesh', () => {
+  it('loads tex.png from the mesh folder, as the loader did before', async () => {
+    globalThis.fetch = vi.fn(async () => new Response(dae('tex.png'))) as typeof fetch;
+    expect(await textureUrls('/meshes/x.dae')).toEqual([`${location.origin}/meshes/tex.png`]);
+  });
 });
