@@ -11,6 +11,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { zstdCompressSync } from 'node:zlib';
+import { createHash } from 'node:crypto';
 import { MessageWriter } from '@foxglove/rosmsg2-serialization';
 import {
   parseDb3,
@@ -124,6 +125,10 @@ function thresholds(pageSize: number): number[] {
   return [0, 1, m - overhead, x - overhead - 20, x - overhead + 20, 3 * u, 9 * u + 17].map((n) => Math.max(0, n));
 }
 
+/** Raw messages with each blob replaced by its digest: deep-equal on MBs of Uint8Array is very slow. */
+const digest = (msgs: { topicName: string; timestamp: bigint; data: Uint8Array }[]) =>
+  msgs.map((m) => ({ ...m, data: `${m.data.length}:${createHash('sha256').update(m.data).digest('hex')}` }));
+
 async function compare(bytes: Uint8Array) {
   const src = file(bytes);
   disposeDb3Cache();
@@ -134,8 +139,8 @@ async function compare(bytes: Uint8Array) {
   for (const t of viaSql.topics) {
     expect(await getTopicTypeDb3Stream(src, t.name)).toBe(await getTopicTypeDb3(src, t.name));
     const raw = await readRawMessagesDb3(src, t.name);
-    expect(await readRawMessagesDb3Stream(src, t.name)).toEqual(raw);
-    expect(await readRawMessagesDb3Stream(src, t.name, 3)).toEqual(await readRawMessagesDb3(src, t.name, 3));
+    expect(digest(await readRawMessagesDb3Stream(src, t.name))).toEqual(digest(raw));
+    expect(digest(await readRawMessagesDb3Stream(src, t.name, 3))).toEqual(digest(await readRawMessagesDb3(src, t.name, 3)));
     if (raw.length === 0) continue;
     const first = raw[0].timestamp;
     const last = raw[raw.length - 1].timestamp;
