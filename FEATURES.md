@@ -84,6 +84,8 @@ v1.6 broadens the set of file types BAGEL understands, starting with standalone 
 
 Drop a `.pcd` or `.ply` file straight into BAGEL. No bag wrapping required. The cloud appears immediately in the ThreeDScene panel with all existing color modes (height, intensity, rgb, single), range filters, point-accumulation toggles, and multi-file overlay.
 
+LiDAR survey tiles (`.las` / `.laz`) joined later through the same standalone path (`src/parsers/las.ts`, see the changelog), with a `classification` color mode for ASPRS class codes. LAZ is decoded by the `laz-perf` WASM build; the module is shared per worker, and discarded after any trap so a damaged file cannot leave a corrupt heap behind for the next one.
+
 **Design approach.** Both parsers produce a synthetic `sensor_msgs/PointCloud2` message that feeds directly into the existing `decodePointCloud2` path. This means every colormap, range-filter, maxPoints limit, and height-axis setting works unchanged - the parsers do format-specific decoding and then hand off, so there is no duplicated rendering code anywhere.
 
 **PCD parser** (`src/parsers/pcd.ts`):
