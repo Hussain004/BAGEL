@@ -20763,7 +20763,7 @@ function recordLayout(format) {
   }
   throw new Error(`LAS: unsupported point data format ${format} (BAGEL reads formats 0 to 10).`);
 }
-function parseLasHeader(bytes) {
+function parseLasHeader(bytes, fileSize = bytes.length) {
   if (bytes.length < 227) throw new Error("LAS: file is too small to hold a header (truncated file?).");
   if (new TextDecoder("ascii").decode(bytes.subarray(0, 4)) !== LAS_MAGIC) {
     throw new Error('LAS: file does not start with "LASF", so it is not a LAS or LAZ file.');
@@ -20782,7 +20782,7 @@ function parseLasHeader(bytes) {
     const big = Number(dv.getBigUint64(247, true));
     if (big > 0) pointCount = big;
   }
-  if (pointOffset < headerSize || pointOffset > bytes.length) {
+  if (pointOffset < headerSize || pointOffset > fileSize) {
     throw new Error(`LAS: point data offset ${pointOffset} is outside the file (header size ${headerSize}).`);
   }
   return {
@@ -21010,6 +21010,258 @@ async function parseLas(source) {
   };
   lasSummaryCache.set(key, summary);
   return summary;
+}
+
+// src/parsers/copc.ts
+var COPC_HEAD_BYTES = 589;
+var ENTRY_BYTES = 32;
+var NODE_POINT_BUDGET = 6e5;
+var NODE_CACHE_BYTES = 256 * 1024 * 1024;
+var FETCH_CONCURRENCY = 6;
+var keyOf = (d, x, y, z) => `${d}-${x}-${y}-${z}`;
+function parseCopcInfo(head) {
+  if (head.length < COPC_HEAD_BYTES) return null;
+  const dv = new DataView(head.buffer, head.byteOffset, head.byteLength);
+  const userId = new TextDecoder("ascii").decode(head.subarray(377, 393)).replace(/\0+$/, "");
+  if (userId !== "copc" || dv.getUint16(393, true) !== 1) return null;
+  const f2 = (o) => dv.getFloat64(o, true);
+  return {
+    center: [f2(429), f2(437), f2(445)],
+    halfsize: f2(453),
+    spacing: f2(461),
+    rootOffset: Number(dv.getBigUint64(469, true)),
+    rootSize: Number(dv.getBigUint64(477, true))
+  };
+}
+function parseHierarchyPage(bytes) {
+  if (bytes.length % ENTRY_BYTES !== 0) {
+    throw new Error(`COPC: hierarchy page of ${bytes.length} bytes is not a whole number of 32-byte entries.`);
+  }
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const out = [];
+  for (let o = 0; o < bytes.length; o += ENTRY_BYTES) {
+    out.push({
+      d: dv.getInt32(o, true),
+      x: dv.getInt32(o + 4, true),
+      y: dv.getInt32(o + 8, true),
+      z: dv.getInt32(o + 12, true),
+      offset: Number(dv.getBigUint64(o + 16, true)),
+      byteSize: dv.getInt32(o + 24, true),
+      pointCount: dv.getInt32(o + 28, true)
+    });
+  }
+  return out;
+}
+function nodeBounds(info, d, x, y, z) {
+  const side = 2 * info.halfsize / 2 ** d;
+  const min = [x, y, z].map((v, a) => info.center[a] - info.halfsize + v * side);
+  return { min, max: min.map((v) => v + side) };
+}
+function overlapFraction(b, clip) {
+  if (!clip) return 1;
+  let f2 = 1;
+  for (let a = 0; a < 3; a++) {
+    const side = b.max[a] - b.min[a];
+    const len = Math.min(b.max[a], clip.max[a]) - Math.max(b.min[a], clip.min[a]);
+    if (len < 0) return 0;
+    f2 *= side > 0 ? Math.min(1, len / side) : 1;
+  }
+  return f2;
+}
+var CopcFile = class {
+  nodes = /* @__PURE__ */ new Map();
+  pages = /* @__PURE__ */ new Map();
+  loadedPages = /* @__PURE__ */ new Set();
+  cache = /* @__PURE__ */ new Map();
+  cacheBytes = 0;
+  lastBuilt = null;
+  origin;
+  source;
+  header;
+  info;
+  fileSize;
+  constructor(source, header2, info) {
+    this.source = source;
+    this.header = header2;
+    this.info = info;
+    this.fileSize = sourceSize(source);
+    this.origin = lasOrigin(header2.min, header2.max, info.center);
+  }
+  checkRange(what, offset, size) {
+    if (offset < 0 || size <= 0 || offset + size > this.fileSize) {
+      throw new Error(`COPC: ${what} at ${offset} (+${size} bytes) is outside the ${this.fileSize}-byte file.`);
+    }
+  }
+  async loadPage(offset, size) {
+    if (this.loadedPages.has(offset)) return;
+    this.checkRange("hierarchy page", offset, size);
+    this.loadedPages.add(offset);
+    for (const e of parseHierarchyPage(await sourceReadSlice(this.source, offset, offset + size))) {
+      const k = keyOf(e.d, e.x, e.y, e.z);
+      if (e.pointCount === -1) {
+        if (!this.loadedPages.has(e.offset)) this.pages.set(k, e);
+      } else {
+        this.nodes.set(k, e);
+      }
+    }
+  }
+  /** The entry for a node, loading the hierarchy page that holds it if needed. */
+  async entry(k) {
+    for (let guard = 0; guard < 64 && !this.nodes.has(k); guard++) {
+      const page = this.pages.get(k);
+      if (!page) return void 0;
+      this.pages.delete(k);
+      await this.loadPage(page.offset, page.byteSize);
+    }
+    return this.nodes.get(k);
+  }
+  /** Whole levels, breadth-first, within the budget and the clip box (world space). */
+  async select(clip, budget) {
+    const chosen = [];
+    let total = 0;
+    let level = [];
+    const root = await this.entry(keyOf(0, 0, 0, 0));
+    if (root) level.push(root);
+    while (level.length > 0) {
+      const share = level.map((e) => overlapFraction(nodeBounds(this.info, e.d, e.x, e.y, e.z), clip));
+      const inView = level.filter((_, i) => share[i] > 0);
+      const points = level.reduce((n, e, i) => n + Math.max(0, e.pointCount) * share[i], 0);
+      if (chosen.length > 0 && total + points > budget) break;
+      for (const e of inView) if (e.pointCount > 0) chosen.push(e);
+      total += points;
+      const next = [];
+      for (const e of inView) {
+        for (let c = 0; c < 8; c++) {
+          const child = await this.entry(keyOf(e.d + 1, 2 * e.x + (c & 1), 2 * e.y + (c >> 1 & 1), 2 * e.z + (c >> 2 & 1)));
+          if (child) next.push(child);
+        }
+      }
+      level = next;
+    }
+    return chosen;
+  }
+  /** Decompressed records of one node (pointCount * recordLength bytes). */
+  async nodeRecords(e) {
+    const k = keyOf(e.d, e.x, e.y, e.z);
+    const hit = this.cache.get(k);
+    if (hit) return hit;
+    this.checkRange("point chunk", e.offset, e.byteSize);
+    const compressed = await sourceReadSlice(this.source, e.offset, e.offset + e.byteSize);
+    const records = await decompressChunk(compressed, this.header.pointFormat, this.header.recordLength, e.pointCount);
+    if (this.cacheBytes + records.length > NODE_CACHE_BYTES) {
+      this.cache.clear();
+      this.cacheBytes = 0;
+    }
+    this.cache.set(k, records);
+    this.cacheBytes += records.length;
+    return records;
+  }
+  async cloud(axisClip, budget) {
+    const o = this.origin;
+    const clip = axisClip && hasClip(axisClip) ? {
+      min: [axisClip.xMin ?? -Infinity, axisClip.yMin ?? -Infinity, axisClip.zMin ?? -Infinity].map((v, a) => v + o[a]),
+      max: [axisClip.xMax ?? Infinity, axisClip.yMax ?? Infinity, axisClip.zMax ?? Infinity].map((v, a) => v + o[a])
+    } : null;
+    const chosen = await this.select(clip, budget);
+    const key = chosen.map((e) => keyOf(e.d, e.x, e.y, e.z)).join(",");
+    if (this.lastBuilt?.key === key) return { cloud: this.lastBuilt.cloud, nodes: chosen.length };
+    const records = new Array(chosen.length).fill(null);
+    let firstError = null;
+    let next = 0;
+    const worker = async () => {
+      while (next < chosen.length) {
+        const i = next++;
+        try {
+          records[i] = await this.nodeRecords(chosen[i]);
+        } catch (err3) {
+          firstError ??= err3;
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(FETCH_CONCURRENCY, chosen.length) }, worker));
+    const good = records.filter((r) => r !== null);
+    if (good.length === 0) throw firstError instanceof Error ? firstError : new Error("COPC: the file holds no points.");
+    const rl = this.header.recordLength;
+    const count = good.reduce((n, r) => n + r.length / rl, 0);
+    const builder = new LasCloudBuilder(this.header, o, count);
+    for (const r of good) {
+      const view = new DataView(r.buffer, r.byteOffset, r.byteLength);
+      for (let at = 0; at + rl <= r.length; at += rl) builder.add(view, at);
+    }
+    const cloud = builder.build();
+    this.lastBuilt = { key, cloud };
+    return { cloud, nodes: chosen.length };
+  }
+};
+function hasClip(c) {
+  return [c.xMin, c.xMax, c.yMin, c.yMax, c.zMin, c.zMax].some((v) => v !== void 0 && Number.isFinite(v));
+}
+async function decompressChunk(compressed, pointFormat, recordLength, pointCount) {
+  if (!LAZ_FORMATS.has(pointFormat)) throw new Error(`COPC: point format ${pointFormat} is not supported.`);
+  const lp = await getLazPerf();
+  let healthy = true;
+  const inPtr = lp._malloc(compressed.length);
+  const outPtr = lp._malloc(recordLength);
+  const decoder = new lp.ChunkDecoder();
+  try {
+    lp.HEAPU8.set(compressed, inPtr);
+    decoder.open(pointFormat, recordLength, inPtr);
+    const out = new Uint8Array(pointCount * recordLength);
+    for (let i = 0; i < pointCount; i++) {
+      decoder.getPoint(outPtr);
+      out.set(lp.HEAPU8.subarray(outPtr, outPtr + recordLength), i * recordLength);
+    }
+    return out;
+  } catch (err3) {
+    healthy = false;
+    throw lazError(err3);
+  } finally {
+    if (healthy) {
+      decoder.delete();
+      lp._free(outPtr);
+      lp._free(inPtr);
+    } else {
+      discardLazPerf();
+    }
+  }
+}
+var opened = /* @__PURE__ */ new Map();
+function openCopc(source) {
+  const key = sourceKey(source);
+  let p = opened.get(key);
+  if (!p) {
+    p = (async () => {
+      const size = sourceSize(source);
+      if (size < COPC_HEAD_BYTES) return null;
+      const head = await sourceReadSlice(source, 0, COPC_HEAD_BYTES);
+      const info = parseCopcInfo(head);
+      if (!info) return null;
+      const header2 = parseLasHeader(head, size);
+      const file = new CopcFile(source, header2, info);
+      await file.loadPage(info.rootOffset, info.rootSize);
+      return file;
+    })();
+    p.catch(() => opened.delete(key));
+    opened.set(key, p);
+  }
+  return p;
+}
+async function parseCopc(source) {
+  const file = await openCopc(source);
+  if (!file) throw new Error("COPC: not a COPC file.");
+  await file.cloud(void 0, NODE_POINT_BUDGET);
+  return {
+    format: "las",
+    fileName: source.kind === "file" ? source.file.name : source.displayName,
+    fileSize: sourceSize(source),
+    startTime: 0n,
+    endTime: 1000000n,
+    duration: 1e-3,
+    totalMessageCount: 1,
+    topics: [
+      { name: "/cloud", type: "sensor_msgs/PointCloud2", messageCount: 1, serializationFormat: "copc", frequency: void 0 }
+    ]
+  };
 }
 
 // node_modules/.pnpm/fflate@0.8.3/node_modules/fflate/esm/index.mjs
@@ -22095,7 +22347,7 @@ async function parseBag(source) {
     case "ply":
       return parsePly(source);
     case "las":
-      return parseLas(source);
+      return await openCopc(source) ? parseCopc(source) : parseLas(source);
     case "splat":
       return parseSplat(source);
     case "ulog":

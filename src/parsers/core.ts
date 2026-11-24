@@ -53,6 +53,7 @@ import {
   PLY_MAGIC,
 } from './ply';
 import { parseLas, readPointCloudAtTimeLas, disposeLasCache, LAS_MAGIC } from './las';
+import { openCopc, parseCopc, readPointCloudAtTimeCopc, disposeCopcCache } from './copc';
 import { parseSplat, isSplatPly, disposeSplatCache, SPLAT_TYPE } from './splat';
 import { checkMagicBytes } from '../utils/bytes';
 import { sourceDisplayName, sourceReadSlice, type BagSource } from './source';
@@ -143,7 +144,8 @@ export async function parseBag(source: BagSource): Promise<BagSummary> {
     case 'ply':
       return parsePly(source);
     case 'las':
-      return parseLas(source);
+      // A COPC file is valid LAZ, but reading it node by node avoids loading it whole.
+      return (await openCopc(source)) ? parseCopc(source) : parseLas(source);
     case 'splat':
       return parseSplat(source);
     case 'ulog':
@@ -254,6 +256,7 @@ export function disposeParserCaches(): void {
   disposePcdCache();
   disposePlyCache();
   disposeLasCache();
+  disposeCopcCache();
   disposeSplatCache();
   disposeUlogCache();
   multi.disposeMultiCache();
@@ -303,6 +306,7 @@ export async function readPointCloudAtTime(
     return readPointCloudAtTimePly(source, colorMode, maxPoints, maxRange, heightAxis, axisClip);
   }
   if (format === 'las') {
+    if (await openCopc(source)) return readPointCloudAtTimeCopc(source, colorMode, maxPoints, maxRange, heightAxis, axisClip);
     return readPointCloudAtTimeLas(source, colorMode, maxPoints, maxRange, heightAxis, axisClip);
   }
   // Splats never go through the point-cloud decoder - SplatViewer reads the
