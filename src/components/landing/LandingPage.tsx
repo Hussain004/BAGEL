@@ -126,7 +126,7 @@ export function LandingPage() {
         <footer className="landing-footer">
           <span>OPEN SOURCE ROS DATA EXPLORATION</span>
           <span className="landing-footer__line" />
-          <span>MCAP / DB3 / BAG / PCD / PLY / SPLAT</span>
+          <span>MCAP / DB3 / BAG / PCD / PLY / LAZ / SPLAT</span>
         </footer>
       </div>
       <NarrowViewportNotice />

@@ -37,3 +37,6 @@ await build({
 copyFileSync('node_modules/sql.js/dist/sql-wasm.wasm', `${out}/sql-wasm.wasm`);
 // copyFileSync keeps the source mode, which differs between machines; pin it so the CI drift check compares content only.
 chmodSync(`${out}/sql-wasm.wasm`, 0o644);
+// laz-perf (for .laz) does the same.
+copyFileSync('node_modules/laz-perf/lib/node/laz-perf.wasm', `${out}/laz-perf.wasm`);
+chmodSync(`${out}/laz-perf.wasm`, 0o644);

@@ -48,7 +48,52 @@ export interface PointCloud2Message {
   is_dense?: boolean;
 }
 
-export type ColorMode = 'intensity' | 'height' | 'rgb' | 'single';
+export type ColorMode = 'intensity' | 'height' | 'rgb' | 'single' | 'classification';
+
+/**
+ * ASPRS LAS classification colours (class code -> RGB in [0, 1]), the usual
+ * palette of LiDAR viewers. Codes past the table get a stable hashed colour.
+ */
+export const ASPRS_CLASS_COLORS: Record<number, [number, number, number]> = {
+  0: [0.55, 0.55, 0.55], // created, never classified
+  1: [0.7, 0.7, 0.7], // unclassified
+  2: [0.65, 0.45, 0.25], // ground
+  3: [0.6, 0.85, 0.45], // low vegetation
+  4: [0.3, 0.7, 0.25], // medium vegetation
+  5: [0.1, 0.45, 0.15], // high vegetation
+  6: [0.9, 0.3, 0.2], // building
+  7: [1, 0, 1], // low point (noise)
+  8: [1, 0.9, 0], // model key-point / reserved
+  9: [0.2, 0.45, 0.95], // water
+  10: [0.6, 0.4, 0.6], // rail
+  11: [0.35, 0.35, 0.4], // road surface
+  12: [0.85, 0.85, 0.45], // overlap / reserved
+  13: [1, 0.75, 0.3], // wire guard
+  14: [1, 0.6, 0.1], // wire conductor
+  15: [0.85, 0.5, 0.2], // transmission tower
+  16: [1, 0.85, 0.55], // wire connector
+  17: [0.55, 0.5, 0.8], // bridge deck
+  18: [1, 0.2, 0.6], // high noise
+};
+
+/** Colour modes worth offering for a cloud: rgb and class only when it carries them. */
+export function colorModesFor(fields?: string[]): ColorMode[] {
+  const has = (n: string) => !!fields?.includes(n);
+  return [
+    'height',
+    'intensity',
+    ...(has('rgb') || has('rgba') ? (['rgb'] as const) : []),
+    ...(has('classification') ? (['classification'] as const) : []),
+    'single',
+  ];
+}
+
+export function classificationColor(code: number): [number, number, number] {
+  const known = ASPRS_CLASS_COLORS[code];
+  if (known) return known;
+  const h = ((code * 2654435761) >>> 0) / 4294967296;
+  return [0.35 + 0.6 * h, 0.35 + 0.6 * ((h * 7) % 1), 0.35 + 0.6 * ((h * 13) % 1)];
+}
 
 /**
  * Which source-frame axis (and sign) the height colormap samples.
@@ -315,9 +360,11 @@ export function decodePointCloud2(
     fields.find((f) => f.name === 'intensity') ?? fields.find((f) => f.name === 'i');
   const rgbField = fields.find((f) => f.name === 'rgb' || f.name === 'rgba');
   const ringField = fields.find((f) => f.name === 'ring');
+  const classField = colorMode === 'classification' ? fields.find((f) => f.name === 'classification') : undefined;
 
   const intensityReader = intensityField ? makeFieldReader(intensityField.datatype, le) : null;
   const ringReader = ringField ? makeFieldReader(ringField.datatype, le) : null;
+  const classReader = classField ? makeFieldReader(classField.datatype, le) : null;
 
   const totalPoints = Math.min(width * height, Math.floor(data.byteLength / pointStep));
   // maxPoints <= 0 / NaN (bad UI state) would otherwise give stride =
@@ -378,6 +425,7 @@ export function decodePointCloud2(
   // them back per point. Costs one extra read per point and 4 bytes per field.
   const intensities = intensityReader ? new Float32Array(sampleCount) : null;
   const rings = ringReader ? new Float32Array(sampleCount) : null;
+  const classes = classReader ? new Uint8Array(sampleCount) : null;
 
   let validCount = 0;
   if (f32) {
@@ -426,6 +474,9 @@ export function decodePointCloud2(
         if (v > maxRing) maxRing = v;
       }
 
+      if (classes && classReader && classField) {
+        classes[validCount] = classReader.read(view, i * pointStep + classField.offset);
+      }
       if (colorMode === 'rgb' && rgbField) {
         const raw = view.getUint32(i * pointStep + rgbField.offset, le);
         const r = ((raw >> 16) & 0xff) / 255;
@@ -481,6 +532,9 @@ export function decodePointCloud2(
         if (v > maxRing) maxRing = v;
       }
 
+      if (classes && classReader && classField) {
+        classes[validCount] = classReader.read(view, base + classField.offset);
+      }
       if (colorMode === 'rgb' && rgbField) {
         const raw = view.getUint32(base + rgbField.offset, le);
         const r = ((raw >> 16) & 0xff) / 255;
@@ -512,8 +566,18 @@ export function decodePointCloud2(
   });
   const readHeight = (i: number): number => heightSign * finalPositions[i * 3 + heightOff];
 
-  if (colorMode === 'height') {
+  // A mode whose field the cloud lacks (rgb or classification) falls back to
+  // height rather than leaving every point black.
+  const missingField = (colorMode === 'rgb' && !rgbField) || (colorMode === 'classification' && !classes);
+  if (colorMode === 'height' || missingField) {
     fillColorsByScalar(finalColors, validCount, readHeight, heightRange.min, heightRange.max);
+  } else if (colorMode === 'classification' && classes) {
+    for (let i = 0; i < validCount; i++) {
+      const c = classificationColor(classes[i]);
+      finalColors[i * 3] = c[0];
+      finalColors[i * 3 + 1] = c[1];
+      finalColors[i * 3 + 2] = c[2];
+    }
   } else if (colorMode === 'intensity') {
     if (intensities && Number.isFinite(minIntensity) && maxIntensity > minIntensity) {
       fillColorsByScalar(finalColors, validCount, (i) => intensities[i], minIntensity, maxIntensity);

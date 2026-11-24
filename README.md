@@ -28,7 +28,7 @@ If BAGEL saves you a ROS install, a ⭐ helps other robotics folks find it.
 
 ## What is BAGEL?
 
-**BAGEL** is a fully static web application that lets you explore ROS bag files (`.mcap`, `.db3`, `.bag`), PX4 flight logs (`.ulg`), standalone point cloud files (`.pcd`, `.ply`), and 3D Gaussian Splat scenes (`.ply`, `.splat`, `.ksplat`) entirely in your browser needing no server, no installation, no account. Just drag and drop!
+**BAGEL** is a fully static web application that lets you explore ROS bag files (`.mcap`, `.db3`, `.bag`), PX4 flight logs (`.ulg`), standalone point cloud files (`.pcd`, `.ply`, `.las`, `.laz`), and 3D Gaussian Splat scenes (`.ply`, `.splat`, `.ksplat`) entirely in your browser needing no server, no installation, no account. Just drag and drop!
 
 Robotics engineers and researchers frequently generate bag files during experiments, SLAM runs, and sensor calibration. Inspecting these files currently requires a full ROS1 or ROS2 installation, Foxglove Studio (increasingly commercial), or writing custom Python scripts for every inspection task.
 
@@ -75,6 +75,7 @@ A condensed feature list is below. **Detailed version-by-version release notes (
 | **Foxglove WebSocket** *(v1.5.0)* | Paste a `ws://` or `wss://` URL to connect to a live robot running `foxglove_bridge` or `rosbridge_suite`. All panels update in real time. Per-topic ring buffer holds the last 10,000 messages per topic; Follow/Pause button lets you scrub back into history without disconnecting. Auto-reconnect with exponential backoff. |
 | **`.pcd` point clouds** *(v1.6.0)* | All three PCD 0.7 encodings: `ascii`, `binary`, `binary_compressed` (LZF). All color modes (height, intensity, rgb, single). Feeds directly into the ThreeDScene panel via a synthetic `sensor_msgs/PointCloud2` message. |
 | **`.ply` point clouds** *(v1.6.0)* | ASCII + `binary_little_endian` + `binary_big_endian`. RGB from `red`/`green`/`blue` uchar properties or packed `rgb` float. Drop a `.ply` and the cloud appears instantly in the 3D panel with all existing color, range-filter, and accumulator settings. |
+| **`.las` / `.laz` LiDAR tiles** | ASPRS LAS 1.0 to 1.4, point formats 0 to 10 (compressed `.laz`: 0 to 3 and 6 to 8, decoded by the `laz-perf` WASM build in the parser worker). Colour by height, intensity, RGB or ASPRS classification (ground, vegetation, buildings, water and so on). Survey coordinates are shifted to a local origin near the data, and tiles over 2 million points are thinned evenly at load. |
 | **Gaussian Splats** *(v1.7.0)* | Splat-flavored `.ply` (detected by header, not extension - a plain colored-point-cloud `.ply` still opens in the regular 3D panel), plus `.splat` and `.ksplat`. Opens in a dedicated Splat panel with outlier-robust camera auto-fit, shift+click custom orbit pivot, keyboard fly-through and orbit controls (W/S/A/D/Q/E/R/F/Z/C), `B`/`N`/`I`/`K`/`U`/`J` shortcuts to spin the splat itself on all three axes instead of moving the camera, and a `V` shortcut to cycle up-axis orientation presets. |
 
 ### Visualization panels

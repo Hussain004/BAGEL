@@ -5,7 +5,7 @@ import { type MapColorSchemeChoice, type PoseDisplayStyle, type SpatialOverlaySt
 import { detectKind, type SceneKind } from './sceneKind';
 import { type RobotSubtreeWarning } from './robotModel';
 import { type TFGraph } from '../TFTree/useTFGraph';
-import type { ColorMode } from '../../../utils/pointcloud';
+import { colorModesFor, type ColorMode } from '../../../utils/pointcloud';
 import { overlayKey, type SpatialOverlayTopic } from './spatialOverlayTopics';
 import { type AccumulationMode } from './accumulator';
 
@@ -22,6 +22,8 @@ export interface ControlsCardProps {
   sceneKind: SceneKind;
   colorMode: ColorMode;
   setColorMode: (m: ColorMode) => void;
+  /** Fields of the decoded cloud, so rgb / class only show when the cloud has them. */
+  cloudFields?: string[];
   pointSize: number;
   setPointSize: (s: number) => void;
   laserScanColor: string | null;
@@ -147,6 +149,7 @@ export function ControlsCard({
   sceneKind,
   colorMode,
   setColorMode,
+  cloudFields,
   pointSize,
   setPointSize,
   laserScanColor,
@@ -273,7 +276,7 @@ export function ControlsCard({
             <div>
               <div className="text-text-tertiary text-[10px] mb-1">color by</div>
               <div className="flex gap-1 flex-wrap">
-                {(['height', 'intensity', 'single'] as ColorMode[]).map((m) => (
+                {colorModesFor(cloudFields).map((m) => (
                   <button
                     key={m}
                     onClick={() => setColorMode(m)}
@@ -284,7 +287,7 @@ export function ControlsCard({
                         : 'border border-border text-text-secondary hover:border-accent-blue/40'
                     }`}
                   >
-                    {m}
+                    {m === 'classification' ? 'class' : m}
                   </button>
                 ))}
               </div>
