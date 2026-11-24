@@ -52,6 +52,7 @@ import {
   disposePlyCache,
   PLY_MAGIC,
 } from './ply';
+import { parseLas, readPointCloudAtTimeLas, disposeLasCache, LAS_MAGIC } from './las';
 import { parseSplat, isSplatPly, disposeSplatCache, SPLAT_TYPE } from './splat';
 import { checkMagicBytes } from '../utils/bytes';
 import { sourceDisplayName, sourceReadSlice, type BagSource } from './source';
@@ -96,6 +97,7 @@ export async function detectFormat(source: BagSource): Promise<BagFormat | 'unkn
   if (ext === 'db3') return 'db3';
   if (ext === 'bag') return 'bag';
   if (ext === 'pcd') return 'pcd';
+  if (ext === 'las' || ext === 'laz') return 'las';
   if (ext === 'ulg') return 'ulog';
   if (ext === 'splat' || ext === 'ksplat' || ext === 'spz') return 'splat';
   if (ext === 'ply') {
@@ -116,6 +118,7 @@ export async function detectFormat(source: BagSource): Promise<BagFormat | 'unkn
   // PCD: first line starts with "# .PCD"
   const headerText = new TextDecoder('ascii').decode(header);
   if (headerText.startsWith(PCD_MAGIC)) return 'pcd';
+  if (headerText.startsWith(LAS_MAGIC)) return 'las';
   if (headerText.startsWith(PLY_MAGIC)) {
     const fullHead = await sourceReadSlice(source, 0, 8192);
     return isSplatPly(fullHead) ? 'splat' : 'ply';
@@ -139,6 +142,8 @@ export async function parseBag(source: BagSource): Promise<BagSummary> {
       return parsePcd(source);
     case 'ply':
       return parsePly(source);
+    case 'las':
+      return parseLas(source);
     case 'splat':
       return parseSplat(source);
     case 'ulog':
@@ -146,7 +151,7 @@ export async function parseBag(source: BagSource): Promise<BagSummary> {
     default:
       throw new Error(
         `Unsupported file format: "${sourceDisplayName(source)}". ` +
-          'BAGEL supports .mcap, .db3, .bag, .ulg, .pcd, .ply, .splat, .ksplat, and .spz files.',
+          'BAGEL supports .mcap, .db3, .bag, .ulg, .pcd, .ply, .las, .laz, .splat, .ksplat, and .spz files.',
       );
   }
 }
@@ -159,7 +164,7 @@ export async function readRawMessages(
   limit?: number,
 ): Promise<RawMessage[]> {
   if (source.kind === 'multi') return multi.readRawMessagesMulti(source, format, topicName, limit);
-  if (format === 'pcd' || format === 'ply' || format === 'splat' || format === 'ulog') return [];
+  if (format === 'pcd' || format === 'ply' || format === 'las' || format === 'splat' || format === 'ulog') return [];
   if (format === 'mcap') return readRawMessagesMcap(source, topicName, limit);
   if (format === 'bag') return readRawMessagesBag(source, topicName, limit);
   return readRawMessagesDb3(source, topicName, limit);
@@ -177,7 +182,7 @@ export async function readDeserializedMessages(
   if (source.kind === 'multi') {
     return multi.readDeserializedMessagesMulti(source, format, topicName, limit, onProgress, onBatch);
   }
-  if (format === 'pcd' || format === 'ply' || format === 'splat') return [];
+  if (format === 'pcd' || format === 'ply' || format === 'las' || format === 'splat') return [];
   if (format === 'ulog') return readDeserializedMessagesUlog(source, topicName, limit, onProgress, onBatch);
   if (format === 'mcap')
     return readDeserializedMessagesMcap(source, topicName, limit, onProgress, onBatch);
@@ -200,7 +205,7 @@ export async function readMessageAtTime(
   timeNs: bigint,
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null } | null> {
   if (source.kind === 'multi') return multi.readMessageAtTimeMulti(source, format, topicName, timeNs);
-  if (format === 'pcd' || format === 'ply' || format === 'splat') return null;
+  if (format === 'pcd' || format === 'ply' || format === 'las' || format === 'splat') return null;
   if (format === 'ulog') return readMessageAtTimeUlog(source, topicName, timeNs);
   if (format === 'mcap') return readMessageAtTimeMcap(source, topicName, timeNs);
   if (format === 'bag') return readMessageAtTimeBag(source, topicName, timeNs);
@@ -221,7 +226,7 @@ export async function readMessagesInRange(
   if (source.kind === 'multi') {
     return rangeFromAll(await multi.readDeserializedMessagesMulti(source, format, topicName), params);
   }
-  if (format === 'pcd' || format === 'ply' || format === 'splat') return { messages: [], nextStartNs: null, phase: 0 };
+  if (format === 'pcd' || format === 'ply' || format === 'las' || format === 'splat') return { messages: [], nextStartNs: null, phase: 0 };
   if (format === 'ulog') return readRangeUlog(source, topicName, params);
   if (format === 'mcap') return readRangeMcap(source, topicName, params);
   if (format === 'bag') return readRangeBag(source, topicName, params);
@@ -234,7 +239,7 @@ export async function getTopicType(
   topicName: string,
 ): Promise<string | undefined> {
   if (source.kind === 'multi') return multi.getTopicTypeMulti(source, format, topicName);
-  if (format === 'pcd' || format === 'ply') return 'sensor_msgs/PointCloud2';
+  if (format === 'pcd' || format === 'ply' || format === 'las') return 'sensor_msgs/PointCloud2';
   if (format === 'splat') return SPLAT_TYPE;
   if (format === 'ulog') return getTopicTypeUlog(source, topicName);
   if (format === 'mcap') return getTopicTypeMcap(source, topicName);
@@ -248,6 +253,7 @@ export function disposeParserCaches(): void {
   disposeBagCache();
   disposePcdCache();
   disposePlyCache();
+  disposeLasCache();
   disposeSplatCache();
   disposeUlogCache();
   multi.disposeMultiCache();
@@ -259,7 +265,7 @@ export async function readAllMessageStats(
   format: BagFormat,
 ): Promise<AllTopicStats> {
   if (source.kind === 'multi') return multi.readAllMessageStatsMulti(source, format);
-  if (format === 'pcd' || format === 'ply' || format === 'splat') return {};
+  if (format === 'pcd' || format === 'ply' || format === 'las' || format === 'splat') return {};
   if (format === 'ulog') return readAllMessageStatsUlog(source);
   if (format === 'mcap') return readAllMessageStatsMcap(source);
   if (format === 'bag') return readAllMessageStatsBag(source);
@@ -295,6 +301,9 @@ export async function readPointCloudAtTime(
   }
   if (format === 'ply') {
     return readPointCloudAtTimePly(source, colorMode, maxPoints, maxRange, heightAxis, axisClip);
+  }
+  if (format === 'las') {
+    return readPointCloudAtTimeLas(source, colorMode, maxPoints, maxRange, heightAxis, axisClip);
   }
   // Splats never go through the point-cloud decoder - SplatViewer reads the
   // raw file/URL directly and hands it to the splat-rendering library.
@@ -341,7 +350,7 @@ export async function readLaserScanAtTime(
   timeNs: bigint,
 ): Promise<(LaserScanExtraction & { timestamp: bigint }) | null> {
   if (source.kind === 'multi') return multi.readLaserScanAtTimeMulti(source, format, topicName, timeNs);
-  if (format === 'pcd' || format === 'ply' || format === 'splat' || format === 'ulog') return null;
+  if (format === 'pcd' || format === 'ply' || format === 'las' || format === 'splat' || format === 'ulog') return null;
   const message =
     format === 'mcap'
       ? await readMessageAtTimeMcap(source, topicName, timeNs)

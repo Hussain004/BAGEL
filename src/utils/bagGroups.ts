@@ -10,7 +10,7 @@
  */
 
 export const SPLITTABLE_EXTENSIONS = ['mcap', 'db3', 'bag'] as const;
-export const INGEST_EXTENSIONS = [...SPLITTABLE_EXTENSIONS, 'pcd', 'ply', 'ulg', 'splat', 'ksplat', 'spz'] as const;
+export const INGEST_EXTENSIONS = [...SPLITTABLE_EXTENSIONS, 'pcd', 'ply', 'las', 'laz', 'ulg', 'splat', 'ksplat', 'spz'] as const;
 
 export interface NamedFile {
   name: string;

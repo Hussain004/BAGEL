@@ -33,6 +33,7 @@
     "fflate": "^0.8.3",
     "framer-motion": "^12.42.2",
     "fzstd": "^0.1.1",
+    "laz-perf": "0.0.7",
     "lz4js": "^0.2.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",

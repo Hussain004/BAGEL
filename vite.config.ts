@@ -10,6 +10,7 @@ const OFFLINE_PUBLIC = [
   '/favicon.svg',
   '/icons.svg',
   '/sql-wasm.wasm',
+  '/laz-perf.wasm',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
   '/sample-bags/tour.mcap',
@@ -52,6 +53,11 @@ export default defineConfig({
       'Cross-Origin-Resource-Policy': 'cross-origin',
     },
   },
+
+  // ES-format workers can code-split, so a dynamic import in the parser worker
+  // (laz-perf, only needed for .laz) becomes its own chunk instead of being
+  // inlined into the worker every bag load downloads.
+  worker: { format: 'es' },
 
   build: {
     target: 'es2022', // Required for BigInt literals and top-level await

@@ -9,6 +9,18 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- `.las` and `.laz` LiDAR files open like `.pcd` and `.ply` ([#191](https://github.com/Hussain004/BAGEL/issues/191)).
+  LAS 1.0 to 1.4 and point formats 0 to 10 are read; compressed `.laz` is
+  decoded by `laz-perf` (formats 0 to 3 and 6 to 8; the rare waveform formats
+  get a message saying how to decompress them first). A new "class" colour
+  mode paints points by ASPRS classification, and the 3D view's colour picker
+  now offers "rgb" and "class" whenever the cloud carries those fields (an rgb
+  `.ply` had no way to show its colours before). Large survey coordinates are
+  shifted to a local origin, and tiles past 2 million points are thinned evenly.
+- The parser worker is built as an ES module, so the code it loads on demand
+  (sql.js, laz-perf and others) is split into separate files. The worker every
+  bag load downloads shrinks from 145 KB to 98 KB gzipped.
+
 - Edited and trimmed bags are written with lz4-compressed chunks instead of
   uncompressed ones, so a 5 s trim of the sample is 4.4 MB instead of 18.8 MB.
   Every MCAP reader supports lz4 (checked against the official Python `mcap`

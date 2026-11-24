@@ -33,7 +33,7 @@ import { nsToSeconds } from '../../../utils/time';
 import { useMessageAtTime } from '../../../hooks/useMessageAtTime';
 import { useTopicMessages } from '../../../hooks/useTopicMessages';
 import { useTFGraph } from '../TFTree/useTFGraph';
-import type { ColorMode } from '../../../utils/pointcloud';
+import type { ColorMode, PointCloudExtraction } from '../../../utils/pointcloud';
 import { useScene, MIN_ZOOM_LEVEL, MAX_ZOOM_LEVEL } from './useScene';
 import {
   pickScenePoint,
@@ -1622,6 +1622,7 @@ export function ThreeDScene({ panelId, topicName, type, bagId }: ThreeDSceneProp
               overlayBagMeta={overlayBagMeta}
               selectedOverlayCount={selectedSpatialOverlays.length}
               hasPointCloudLayer={hasPointCloudLayer}
+              cloudFields={sceneKind === 'pointcloud' ? (cloud as PointCloudExtraction | null)?.fieldNames : undefined}
               hasPointLayer={hasPointLayer}
               hasMapLayer={hasMapLayer}
               hasRobotModel={!!robotModel}

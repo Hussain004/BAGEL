@@ -14,7 +14,7 @@ interface FileIngestPanelProps {
  * Extensions BAGEL accepts, shared by the picker and the fallback input so the
  * two paths never drift apart.
  */
-const ACCEPTED_EXTENSIONS = ['.db3', '.mcap', '.bag', '.ulg', '.pcd', '.ply', '.splat', '.ksplat', '.spz'] as const;
+const ACCEPTED_EXTENSIONS = ['.db3', '.mcap', '.bag', '.ulg', '.pcd', '.ply', '.las', '.laz', '.splat', '.ksplat', '.spz'] as const;
 
 /**
  * The file types shown in the File System Access picker. The fallback input
@@ -161,7 +161,7 @@ export function FileIngestPanel({ isLoading, progress, onFiles, inputRef }: File
             <div><strong>{isDragOver ? 'Release to decode' : 'Drop a recording to begin'}</strong><p>Local-first ingestion for multi-gigabyte robotics datasets</p></div>
             <span className="ingest-panel__browse">BROWSE FILES</span>
             <div className="ingest-panel__formats">
-              <span>.MCAP</span><span>.DB3</span><span>.BAG</span><span>.PCD</span><span>.PLY</span><span>.SPLAT</span><span>.SPZ</span>
+              <span>.MCAP</span><span>.DB3</span><span>.BAG</span><span>.PCD</span><span>.PLY</span><span>.LAZ</span><span>.SPLAT</span><span>.SPZ</span>
               <button
                 type="button"
                 className="ingest-panel__folder"
