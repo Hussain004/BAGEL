@@ -20,6 +20,7 @@ import {
   panelLeafId,
   type LayoutNode,
   type PanelKind,
+  isPanelKind,
   type SplitOrientation,
 } from './layoutStore';
 import { useBagStore } from './bagStore';
@@ -45,7 +46,9 @@ function isValidPresetNode(node: unknown): node is PresetNode {
   if (typeof node !== 'object' || node === null) return false;
   const n = node as Record<string, unknown>;
   if (n.node === 'slot') {
-    return typeof n.kind === 'string' && typeof n.type === 'string';
+    // A kind this build does not have (from an older or newer build) would
+    // reach the panel registry as undefined; drop the preset instead.
+    return isPanelKind(n.kind) && typeof n.type === 'string';
   }
   if (n.node === 'split') {
     return (

@@ -170,7 +170,7 @@ Known limitations and ideas that are not yet scheduled:
 | Idea | Notes |
 |---|---|
 | [Zstd-compressed edit output](https://github.com/Hussain004/BAGEL/issues/121) | Edited bags are written with lz4 chunks since `fzstd` is decompress-only. That is far smaller than uncompressed, but an edit of a zstd bag still comes out about 1.4x the size per message. |
-| [Plugin panels](https://github.com/Hussain004/BAGEL/issues/122) | User-built views against a stable panel API. Gated on the panel registry landing first. |
+| [Plugin panels](https://github.com/Hussain004/BAGEL/issues/122) | User-built views against a stable panel API. The internal registry is in place (`PANEL_KINDS`, `PANEL_META`, `PANEL_COMPONENTS`); a public API is deliberately not published until the internal panels settle. |
 | [Cloud-hosted shareable URLs](https://github.com/Hussain004/BAGEL/issues/123) | The URL hash is self-contained today, so a link breaks if the bag moves. |
 | [Xacro evaluator](https://github.com/Hussain004/BAGEL/issues/125) | Roughly 1000 lines of XML transform, so it is its own project. The URDF modal explains running xacro upstream meanwhile. |
 

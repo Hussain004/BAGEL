@@ -180,6 +180,14 @@ function Visualisation({ leaf }: { leaf: PanelLeaf }) {
     bagId: leaf.bagId,
   };
   const Component = PANEL_COMPONENTS[leaf.kind];
+  // Layouts can be restored from other builds; a kind this one lacks must not crash the grid.
+  if (!Component) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-text-muted text-xs p-4 text-center">
+        This layout has a "{leaf.kind}" panel, which this version of BAGEL does not have.
+      </div>
+    );
+  }
   return (
     <Suspense fallback={<div className="flex-1 flex items-center justify-center text-text-muted text-xs">Loading...</div>}>
       <Component {...props} />
