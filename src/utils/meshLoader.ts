@@ -22,7 +22,7 @@
  */
 
 import * as THREE from 'three';
-import { resolveMeshUri, type ResolvedMesh } from '../parsers/packageResolver';
+import { resolveMeshUri, resolveMeshUriSync, resolveRelativeUri, type ResolvedMesh } from '../parsers/packageResolver';
 
 export type MeshKind = 'stl' | 'dae' | 'obj';
 
@@ -53,7 +53,6 @@ let cachedVertices = 0;
 // subsequent fetch of that file type.
 let stlLoader: import('three/examples/jsm/loaders/STLLoader.js').STLLoader | null = null;
 let objLoader: import('three/examples/jsm/loaders/OBJLoader.js').OBJLoader | null = null;
-let colladaLoader: import('three/examples/jsm/loaders/ColladaLoader.js').ColladaLoader | null = null;
 
 async function getStlLoader() {
   if (!stlLoader) {
@@ -71,12 +70,40 @@ async function getObjLoader() {
   return objLoader;
 }
 
-async function getColladaLoader() {
-  if (!colladaLoader) {
-    const { ColladaLoader } = await import('three/examples/jsm/loaders/ColladaLoader.js');
-    colladaLoader = new ColladaLoader();
-  }
-  return colladaLoader;
+/** Prefix ColladaLoader puts in front of every texture path, so the URL modifier can recognise them. */
+const TEXTURE_PREFIX = 'bagel-mesh-ref:';
+
+/**
+ * Parse a `.dae` whose textures are found the way the mesh itself was: a
+ * relative `<init_from>` resolves against the mesh's own URI (so
+ * `package://pkg/meshes/x.dae` + `../textures/t.png` is
+ * `package://pkg/textures/t.png`) and then through the package resolver,
+ * which is what makes a dropped folder work: the mesh is a blob URL there,
+ * and paths relative to a blob URL lead nowhere.
+ */
+async function loadCollada(uri: string, resolved: ResolvedMesh): Promise<THREE.Object3D> {
+  const { ColladaLoader } = await import('three/examples/jsm/loaders/ColladaLoader.js');
+  const releases: (() => void)[] = [];
+  const manager = new THREE.LoadingManager();
+  manager.setURLModifier((url) => {
+    if (!url.startsWith(TEXTURE_PREFIX)) return url;
+    try {
+      const texture = resolveMeshUriSync(resolveRelativeUri(uri, url.slice(TEXTURE_PREFIX.length)));
+      releases.push(texture.release);
+      return texture.url;
+    } catch {
+      // Missing from the package: the mesh still shows, untextured, as before.
+      return url.slice(TEXTURE_PREFIX.length);
+    }
+  });
+  // Texture images finish loading after parse() returns; free their object URLs then.
+  manager.onLoad = () => releases.splice(0).forEach((release) => release());
+  const text = resolved.file ? await resolved.file.text() : await (await fetch(resolved.url)).text();
+  const loader = new ColladaLoader(manager);
+  loader.setResourcePath(TEXTURE_PREFIX);
+  const dae = loader.parse(text, TEXTURE_PREFIX);
+  if (!dae?.scene) throw new Error('Collada loader returned no scene.');
+  return dae.scene;
 }
 
 function kindFromExtension(extension: string): MeshKind | null {
@@ -185,12 +212,7 @@ export async function loadMesh(uri: string): Promise<THREE.Object3D> {
       const loader = await getObjLoader();
       object = await loader.loadAsync(resolved.url);
     } else {
-      const loader = await getColladaLoader();
-      const dae = await loader.loadAsync(resolved.url);
-      if (!dae?.scene) {
-        throw new Error('Collada loader returned no scene.');
-      }
-      object = dae.scene;
+      object = await loadCollada(uri, resolved);
     }
   } catch (err) {
     resolved.release();

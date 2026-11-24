@@ -113,7 +113,7 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 ### Robot model (URDF) overlay *(v1.3.0)*
 
 - **Drop a `.urdf` and the robot appears in every 3D panel**, anchored to its root link in world space via the bag's `/tf` stream. Joints animate from `sensor_msgs/JointState` (auto-detected) when the bag publishes it; static URDFs render at their rest pose. A toolbar "Robot" button opens the load modal; the Display card in each 3D panel grows a per-panel `robot model` hide toggle.
-- **Geometry support**: box / cylinder / sphere primitives + `.stl` / `.dae` / `.obj` meshes. Loaders are lazy-imported on first use of each file type so primitives-only URDFs don't pay the Collada loader's bundle cost.
+- **Geometry support**: box / cylinder / sphere primitives + `.stl` / `.dae` / `.obj` meshes. Loaders are lazy-imported on first use of each file type so primitives-only URDFs don't pay the Collada loader's bundle cost. A `.dae`'s textures resolve through the same package mapping as the mesh, so a dropped package folder shows them too (relative paths, `..`, percent-encoded names, and absolute paths from the exporter's machine, matched by file name).
 - **`package://` resolver**: paste a URL prefix or drag-drop a folder per referenced package; URL bindings persist across sessions in `localStorage` under `bagel:package-roots:v1`. No auto-fetch from ROS distros - BAGEL only loads meshes from where you point it.
 - **Bundled sample robot URDF** (`public/sample-bags/sample-robot.urdf`) pairs with `tour.mcap` so the "Try a sample robot" button in the modal demonstrates the full flow on a fresh checkout.
 
@@ -170,7 +170,6 @@ Known limitations and ideas that are not yet scheduled:
 | Idea | Notes |
 |---|---|
 | [Fisheye / equidistant undistortion](https://github.com/Hussain004/BAGEL/issues/120) | v1.3.4 covers plumb-bob (~95% of bags). `fisheye` and `equidistant` (Kalibr) need different remap math. |
-| [Collada texture resolution](https://github.com/Hussain004/BAGEL/issues/119) | `.dae` files reference textures by relative path; the mesh loader handles the mesh but not its textures. |
 | [Zstd-compressed edit output](https://github.com/Hussain004/BAGEL/issues/121) | Edited bags are written with lz4 chunks since `fzstd` is decompress-only. That is far smaller than uncompressed, but an edit of a zstd bag still comes out about 1.4x the size per message. |
 | [Plugin panels](https://github.com/Hussain004/BAGEL/issues/122) | User-built views against a stable panel API. Gated on the panel registry landing first. |
 | [Cloud-hosted shareable URLs](https://github.com/Hussain004/BAGEL/issues/123) | The URL hash is self-contained today, so a link breaks if the bag moves. |
