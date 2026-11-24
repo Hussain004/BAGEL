@@ -2,8 +2,9 @@
  * Tests for v1.3.4 plumb-bob undistortion utility (imageRectify.ts).
  *
  * Exercises:
- *  - isPlumbBobModel returns true for the supported models and false for
- *    unsupported ones (fisheye, equidistant, rational_polynomial).
+ *  - lensModel names the three ROS models (and fisheye aliases), rejects others.
+ *  - Equidistant and rational_polynomial forward maps match their formulas,
+ *    and undistortPixel inverts every model to within a thousandth of a pixel.
  *  - buildRemapMap produces a map with the correct dimensions.
  *  - An all-zero D vector produces an identity remap (source == output).
  *  - The centre pixel always maps to itself regardless of distortion.
@@ -15,10 +16,14 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  isPlumbBobModel,
+  lensModel,
+  isSupportedDistortion,
+  distortNormalized,
+  undistortPixel,
   buildRemapMap,
   applyRemap,
 } from '../../src/utils/imageRectify';
+import { projectCloud } from '../../src/utils/projectCloud';
 import type { CameraIntrinsics } from '../../src/hooks/useCameraInfo';
 
 function makeIntrinsics(overrides: Partial<CameraIntrinsics> = {}): CameraIntrinsics {
@@ -37,23 +42,22 @@ function makeIntrinsics(overrides: Partial<CameraIntrinsics> = {}): CameraIntrin
   };
 }
 
-// ── isPlumbBobModel ────────────────────────────────────────────────────────
+// ── lensModel ──────────────────────────────────────────────────────────────
 
-describe('isPlumbBobModel', () => {
-  it('returns true for plumb_bob', () => {
-    expect(isPlumbBobModel('plumb_bob')).toBe(true);
-  });
-  it('returns true for empty string (ROS default when no model specified)', () => {
-    expect(isPlumbBobModel('')).toBe(true);
-  });
-  it('returns false for fisheye', () => {
-    expect(isPlumbBobModel('fisheye')).toBe(false);
-  });
-  it('returns false for equidistant', () => {
-    expect(isPlumbBobModel('equidistant')).toBe(false);
-  });
-  it('returns false for rational_polynomial', () => {
-    expect(isPlumbBobModel('rational_polynomial')).toBe(false);
+describe('lensModel', () => {
+  it.each([
+    ['plumb_bob', 'plumb_bob'],
+    ['', 'plumb_bob'],
+    ['rational_polynomial', 'rational_polynomial'],
+    ['equidistant', 'equidistant'],
+    ['fisheye', 'equidistant'],
+    ['Kannala_Brandt', 'equidistant'],
+    ['  EQUIDISTANT ', 'equidistant'],
+    ['omni', null],
+    ['double_sphere', null],
+  ])('%j -> %j', (name, want) => {
+    expect(lensModel(name)).toBe(want);
+    expect(isSupportedDistortion(name)).toBe(want !== null);
   });
 });
 
@@ -160,5 +164,96 @@ describe('applyRemap', () => {
     for (let i = 0; i < dst.length; i++) {
       expect(dst[i]).toBe(0);
     }
+  });
+});
+
+// ── equidistant (Kannala-Brandt) and rational_polynomial (#120) ────────────
+
+// Kalibr equidistant calibration of a 512x512 fisheye, in the style TUM-VI publishes.
+const fisheye = makeIntrinsics({
+  fx: 190.97847715128717,
+  fy: 190.9733070521226,
+  cx: 254.93170605935475,
+  cy: 256.8974428996504,
+  width: 512,
+  height: 512,
+  distortionModel: 'equidistant',
+  distortionCoefficients: [0.0034823894022493434, 0.0007150348452162257, -0.0020532361418706202, 0.00020293673591811182],
+});
+
+describe('equidistant model', () => {
+  it('maps a ray to theta_d along its own direction', () => {
+    const k = [0.1, -0.02, 0.003, -0.0004];
+    for (const [x, y] of [[1, 0], [0.3, -0.4], [-2, 1.5]]) {
+      const r = Math.hypot(x, y);
+      const t = Math.atan(r);
+      const td = t * (1 + k[0] * t ** 2 + k[1] * t ** 4 + k[2] * t ** 6 + k[3] * t ** 8);
+      const [xd, yd] = distortNormalized('equidistant', k, x, y);
+      expect(xd).toBeCloseTo((x / r) * td, 12);
+      expect(yd).toBeCloseTo((y / r) * td, 12);
+    }
+  });
+
+  it('bends even with all-zero coefficients (f-theta is not a pinhole)', () => {
+    const [xd] = distortNormalized('equidistant', [0, 0, 0, 0], 1, 0);
+    expect(xd).toBeCloseTo(Math.PI / 4, 12);
+    const map = buildRemapMap({ ...fisheye, distortionCoefficients: [0, 0, 0, 0] });
+    const corner = map.mapX[0];
+    expect(Math.abs(corner - 0)).toBeGreaterThan(1);
+  });
+
+  it('undistortPixel inverts the remap across the whole frame', () => {
+    const map = buildRemapMap(fisheye);
+    let worst = 0;
+    for (let v = 0; v < 512; v += 17) {
+      for (let u = 0; u < 512; u += 13) {
+        const i = v * 512 + u;
+        const back = undistortPixel(fisheye, map.mapX[i], map.mapY[i]);
+        worst = Math.max(worst, Math.hypot(back.x - u, back.y - v));
+      }
+    }
+    expect(worst).toBeLessThan(1e-3);
+  });
+
+  it('LiDAR projection lands where the remap says that pixel comes from', () => {
+    // A point straight down a ray (u, v) of the rectified image lands on mapX/mapY in the raw one.
+    const map = buildRemapMap(fisheye);
+    const [u, v] = [40, 450];
+    const x = (u - fisheye.cx) / fisheye.fx;
+    const y = (v - fisheye.cy) / fisheye.fy;
+    const identity = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+    const out = projectCloud(new Float32Array([x * 3, y * 3, 3]), identity, fisheye, {});
+    expect(out.count).toBe(1);
+    expect(out.u[0]).toBeCloseTo(map.mapX[v * 512 + u], 2);
+    expect(out.v[0]).toBeCloseTo(map.mapY[v * 512 + u], 2);
+  });
+});
+
+describe('rational_polynomial model', () => {
+  it('equals plumb_bob when k4..k6 are zero, and divides by the second polynomial otherwise', () => {
+    const d = [-0.3, 0.1, 0.001, -0.0005, 0.02];
+    expect(distortNormalized('rational_polynomial', [...d, 0, 0, 0], 0.4, -0.2)).toEqual(distortNormalized('plumb_bob', d, 0.4, -0.2));
+    const [x, y] = [0.4, -0.2];
+    const r2 = x * x + y * y;
+    const k = [0.5, 0.05, 0, 0, 0.001, 0.6, 0.06, 0.002];
+    const radial = (1 + k[0] * r2 + k[1] * r2 ** 2 + k[4] * r2 ** 3) / (1 + k[5] * r2 + k[6] * r2 ** 2 + k[7] * r2 ** 3);
+    expect(distortNormalized('rational_polynomial', k, x, y)[0]).toBeCloseTo(x * radial, 12);
+  });
+
+  it('undistortPixel inverts it', () => {
+    const ci = makeIntrinsics({ distortionModel: 'rational_polynomial', distortionCoefficients: [0.5, 0.05, 0.0005, -0.0003, 0.001, 0.6, 0.06, 0.002] });
+    const map = buildRemapMap(ci);
+    for (const [u, v] of [[10, 10], [320, 240], [600, 30], [5, 470]]) {
+      const i = v * 640 + u;
+      const back = undistortPixel(ci, map.mapX[i], map.mapY[i]);
+      expect(Math.hypot(back.x - u, back.y - v)).toBeLessThan(1e-3);
+    }
+  });
+
+  it('caches per model, so the same numbers under two models get two maps', () => {
+    const d = [0.01, 0.002, 0.0003, 0.00004, 0, 0, 0, 0];
+    const a = buildRemapMap(makeIntrinsics({ distortionModel: 'rational_polynomial', distortionCoefficients: d }));
+    const b = buildRemapMap(makeIntrinsics({ distortionModel: 'equidistant', distortionCoefficients: d }));
+    expect(a).not.toBe(b);
   });
 });

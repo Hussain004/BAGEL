@@ -1,9 +1,12 @@
 /**
- * Plumb-bob (Brown-Conrady) lens undistortion for sensor_msgs/Image frames.
- *
- * v1.3.4 - issue #47: per-frame canvas remap using D = [k1, k2, p1, p2, k3].
- * Covers ~95% of real bags. Fisheye / equidistant / rational_polynomial are
- * unsupported (we reject them rather than silently mangle the image).
+ * Lens undistortion for sensor_msgs/Image frames, for every distortion model
+ * ROS defines (`sensor_msgs/distortion_models.hpp`):
+ *   - `plumb_bob` (Brown-Conrady), D = [k1, k2, p1, p2, k3] (v1.3.4, #47);
+ *   - `rational_polynomial`, D = [k1, k2, p1, p2, k3, k4, k5, k6];
+ *   - `equidistant` (Kannala-Brandt), D = [k1, k2, k3, k4]: OpenCV's fisheye
+ *     model and Kalibr's equidistant one are the same, so `fisheye` and
+ *     `kannala_brandt` are accepted as names for it (#120).
+ * Anything else is rejected rather than silently mangling the image.
  *
  * Strategy: forward distortion remap.
  * For each output pixel (u, v) in the rectified image, compute the source
@@ -21,10 +24,44 @@ export interface RemapMap {
   height: number;
 }
 
-/** True for distortion models we can handle with plumb-bob math. */
-export function isPlumbBobModel(model: string): boolean {
+export type LensModel = 'plumb_bob' | 'rational_polynomial' | 'equidistant';
+
+/** The model a CameraInfo `distortion_model` names, or null if BAGEL cannot undistort it. */
+export function lensModel(model: string): LensModel | null {
   const m = model.trim().toLowerCase();
-  return m === 'plumb_bob' || m === '';
+  if (m === 'plumb_bob' || m === '') return 'plumb_bob';
+  if (m === 'rational_polynomial') return 'rational_polynomial';
+  if (m === 'equidistant' || m === 'fisheye' || m === 'kannala_brandt') return 'equidistant';
+  return null;
+}
+
+/** True for distortion models BAGEL can undistort. */
+export function isSupportedDistortion(model: string): boolean {
+  return lensModel(model) !== null;
+}
+
+/**
+ * Forward distortion: an ideal (undistorted) normalised image point to where
+ * the lens puts it. One function for every model, shared by the remap table,
+ * the LiDAR projection and the inverse below.
+ */
+export function distortNormalized(model: LensModel, d: number[], x: number, y: number): [number, number] {
+  const c = (i: number) => d[i] ?? 0;
+  if (model === 'equidistant') {
+    const r = Math.hypot(x, y);
+    if (r < 1e-12) return [x, y];
+    const t = Math.atan(r);
+    const t2 = t * t;
+    const td = t * (1 + t2 * (c(0) + t2 * (c(1) + t2 * (c(2) + t2 * c(3)))));
+    const s = td / r;
+    return [x * s, y * s];
+  }
+  const r2 = x * x + y * y;
+  let radial = 1 + r2 * (c(0) + r2 * (c(1) + r2 * c(4)));
+  if (model === 'rational_polynomial') radial /= 1 + r2 * (c(5) + r2 * (c(6) + r2 * c(7)));
+  const p1 = c(2);
+  const p2 = c(3);
+  return [x * radial + 2 * p1 * x * y + p2 * (r2 + 2 * x * x), y * radial + p1 * (r2 + 2 * y * y) + 2 * p2 * x * y];
 }
 
 // LRU cache keyed by intrinsics fingerprint. Size 4 covers a typical
@@ -35,8 +72,7 @@ const cacheKeys: string[] = [];
 const cacheVals: RemapMap[] = [];
 
 function fingerprintIntrinsics(ci: CameraIntrinsics): string {
-  const d = ci.distortionCoefficients;
-  return `${ci.fx},${ci.fy},${ci.cx},${ci.cy},${ci.width},${ci.height},${d[0] ?? 0},${d[1] ?? 0},${d[2] ?? 0},${d[3] ?? 0},${d[4] ?? 0}`;
+  return `${lensModel(ci.distortionModel)},${ci.fx},${ci.fy},${ci.cx},${ci.cy},${ci.width},${ci.height},${ci.distortionCoefficients.join(',')}`;
 }
 
 /**
@@ -58,11 +94,7 @@ export function buildRemapMap(ci: CameraIntrinsics): RemapMap {
   }
 
   const { fx, fy, cx, cy, width, height, distortionCoefficients: d } = ci;
-  const k1 = d[0] ?? 0;
-  const k2 = d[1] ?? 0;
-  const p1 = d[2] ?? 0;
-  const p2 = d[3] ?? 0;
-  const k3 = d[4] ?? 0;
+  const model = lensModel(ci.distortionModel) ?? 'plumb_bob';
 
   const n = width * height;
   const mapX = new Float32Array(n);
@@ -70,16 +102,8 @@ export function buildRemapMap(ci: CameraIntrinsics): RemapMap {
 
   for (let v = 0; v < height; v++) {
     for (let u = 0; u < width; u++) {
-      // Normalised (undistorted) image coords.
-      const xu = (u - cx) / fx;
-      const yu = (v - cy) / fy;
-      const r2 = xu * xu + yu * yu;
-      const r4 = r2 * r2;
-      const r6 = r4 * r2;
-      const radial = 1 + k1 * r2 + k2 * r4 + k3 * r6;
-      // Forward distortion (plumb-bob / Brown-Conrady).
-      const xd = xu * radial + 2 * p1 * xu * yu + p2 * (r2 + 2 * xu * xu);
-      const yd = yu * radial + p1 * (r2 + 2 * yu * yu) + 2 * p2 * xu * yu;
+      // Normalised (undistorted) image coords, through the lens.
+      const [xd, yd] = distortNormalized(model, d, (u - cx) / fx, (v - cy) / fy);
       mapX[v * width + u] = xd * fx + cx;
       mapY[v * width + u] = yd * fy + cy;
     }
@@ -154,29 +178,49 @@ export function applyRemap(src: Uint8ClampedArray, map: RemapMap): Uint8ClampedA
  * Where a pixel of the ORIGINAL (distorted) image lands in the rectified
  * image: the inverse of the remap above, which maps rectified -> original.
  *
- * There is no closed form for the inverse of the plumb-bob model, so this runs
- * the usual fixed-point iteration (the same one OpenCV's undistortPoints uses).
- * Used to carry overlay geometry such as detection boxes, which are expressed
- * in raw image pixels, onto an undistorted frame.
+ * No model has a closed-form inverse. The equidistant one is radial only, so
+ * it solves theta_d = theta * (1 + k1 theta^2 + ...) for theta by Newton's
+ * method; the others run the usual fixed-point iteration (the one OpenCV's
+ * undistortPoints uses). Used to carry overlay geometry such as detection
+ * boxes, which are in raw image pixels, onto an undistorted frame.
  */
 export function undistortPixel(ci: CameraIntrinsics, u: number, v: number): { x: number; y: number } {
   const { fx, fy, cx, cy, distortionCoefficients: d } = ci;
-  const k1 = d[0] ?? 0;
-  const k2 = d[1] ?? 0;
-  const p1 = d[2] ?? 0;
-  const p2 = d[3] ?? 0;
-  const k3 = d[4] ?? 0;
+  const model = lensModel(ci.distortionModel) ?? 'plumb_bob';
   const xd = (u - cx) / fx;
   const yd = (v - cy) / fy;
   let x = xd;
   let y = yd;
-  for (let i = 0; i < 10; i++) {
-    const r2 = x * x + y * y;
-    const radial = 1 + k1 * r2 + k2 * r2 * r2 + k3 * r2 * r2 * r2;
-    const dx = 2 * p1 * x * y + p2 * (r2 + 2 * x * x);
-    const dy = p1 * (r2 + 2 * y * y) + 2 * p2 * x * y;
-    x = (xd - dx) / radial;
-    y = (yd - dy) / radial;
+  if (model === 'equidistant') {
+    const td = Math.hypot(xd, yd);
+    if (td < 1e-12) return { x: u, y: v };
+    const c = (i: number) => d[i] ?? 0;
+    let t = td;
+    for (let i = 0; i < 20; i++) {
+      const t2 = t * t;
+      const f = t * (1 + t2 * (c(0) + t2 * (c(1) + t2 * (c(2) + t2 * c(3))))) - td;
+      const df = 1 + t2 * (3 * c(0) + t2 * (5 * c(1) + t2 * (7 * c(2) + t2 * 9 * c(3))));
+      const step = f / df;
+      t -= step;
+      if (Math.abs(step) < 1e-12) break;
+    }
+    // Rays at or past 90 degrees have no pinhole image; keep them on the far edge.
+    const r = Math.tan(Math.min(t, Math.PI / 2 - 1e-6));
+    x = (xd * r) / td;
+    y = (yd * r) / td;
+  } else {
+    const c = (i: number) => d[i] ?? 0;
+    const p1 = c(2);
+    const p2 = c(3);
+    for (let i = 0; i < 10; i++) {
+      const r2 = x * x + y * y;
+      let radial = 1 + r2 * (c(0) + r2 * (c(1) + r2 * c(4)));
+      if (model === 'rational_polynomial') radial /= 1 + r2 * (c(5) + r2 * (c(6) + r2 * c(7)));
+      const dx = 2 * p1 * x * y + p2 * (r2 + 2 * x * x);
+      const dy = p1 * (r2 + 2 * y * y) + 2 * p2 * x * y;
+      x = (xd - dx) / radial;
+      y = (yd - dy) / radial;
+    }
   }
   return { x: x * fx + cx, y: y * fy + cy };
 }
