@@ -293,10 +293,11 @@ export async function editDb3Bag(
   let lastNs: bigint | null = null;
   try {
     while (stmt.step()) {
-      const row = stmt.get();
+      // useBigInt: a double would round int64 nanosecond timestamps by up to 128 ns.
+      const row = stmt.get(null, { useBigInt: true });
       const base = hasRowId ? 1 : 0;
       const id = hasRowId ? (row[0] as number | bigint) : null;
-      const topicId = row[base] as number;
+      const topicId = Number(row[base]);
       const tsRaw = row[base + 1] as number | bigint;
       const ts = typeof tsRaw === 'bigint' ? tsRaw : BigInt(tsRaw);
       const data = row[base + 2] as Uint8Array;

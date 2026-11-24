@@ -3146,11 +3146,11 @@ var require_dist = __commonJS({
                 }
                 this.lexer = this.options.lexer;
                 this.lexerState = void 0;
-                var column = new Column(grammar, 0);
-                var table = this.table = [column];
-                column.wants[grammar.start] = [];
-                column.predict(grammar.start);
-                column.process();
+                var column2 = new Column(grammar, 0);
+                var table = this.table = [column2];
+                column2.wants[grammar.start] = [];
+                column2.predict(grammar.start);
+                column2.process();
                 this.current = 0;
               }
               Parser.fail = {};
@@ -3172,7 +3172,7 @@ var require_dist = __commonJS({
                     err3.token = e.token;
                     throw err3;
                   }
-                  var column = this.table[this.current];
+                  var column2 = this.table[this.current];
                   if (!this.options.keepHistory) {
                     delete this.table[this.current - 1];
                   }
@@ -3181,7 +3181,7 @@ var require_dist = __commonJS({
                   this.table.push(nextColumn);
                   var literal = token.text !== void 0 ? token.text : token.value;
                   var value = lexer.constructor === StreamLexer ? token.value : token;
-                  var scannable = column.scannable;
+                  var scannable = column2.scannable;
                   for (var w = scannable.length; w--; ) {
                     var state = scannable[w];
                     var expect = state.rule.symbols[state.dot];
@@ -3198,11 +3198,11 @@ var require_dist = __commonJS({
                     throw err3;
                   }
                   if (this.options.keepHistory) {
-                    column.lexerState = lexer.save();
+                    column2.lexerState = lexer.save();
                   }
                   this.current++;
                 }
-                if (column) {
+                if (column2) {
                   this.lexerState = lexer.save();
                 }
                 this.results = this.finish();
@@ -3290,16 +3290,16 @@ var require_dist = __commonJS({
                 return [state].concat(childResult);
               };
               Parser.prototype.save = function() {
-                var column = this.table[this.current];
-                column.lexerState = this.lexerState;
-                return column;
+                var column2 = this.table[this.current];
+                column2.lexerState = this.lexerState;
+                return column2;
               };
-              Parser.prototype.restore = function(column) {
-                var index = column.index;
+              Parser.prototype.restore = function(column2) {
+                var index = column2.index;
                 this.current = index;
-                this.table[index] = column;
+                this.table[index] = column2;
                 this.table.splice(index + 1);
-                this.lexerState = column.lexerState;
+                this.lexerState = column2.lexerState;
                 this.results = this.finish();
               };
               Parser.prototype.rewind = function(index) {
@@ -3311,8 +3311,8 @@ var require_dist = __commonJS({
               Parser.prototype.finish = function() {
                 var considerations = [];
                 var start = this.grammar.start;
-                var column = this.table[this.table.length - 1];
-                column.states.forEach(function(t) {
+                var column2 = this.table[this.table.length - 1];
+                column2.states.forEach(function(t) {
                   if (t.rule.name === start && t.dot === t.rule.symbols.length && t.reference === 0 && t.data !== Parser.fail) {
                     considerations.push(t);
                   }
@@ -10937,11 +10937,11 @@ var require_dist4 = __commonJS({
                 }
                 this.lexer = this.options.lexer;
                 this.lexerState = void 0;
-                var column = new Column(grammar, 0);
-                var table = this.table = [column];
-                column.wants[grammar.start] = [];
-                column.predict(grammar.start);
-                column.process();
+                var column2 = new Column(grammar, 0);
+                var table = this.table = [column2];
+                column2.wants[grammar.start] = [];
+                column2.predict(grammar.start);
+                column2.process();
                 this.current = 0;
               }
               Parser.fail = {};
@@ -10963,7 +10963,7 @@ var require_dist4 = __commonJS({
                     err3.token = e.token;
                     throw err3;
                   }
-                  var column = this.table[this.current];
+                  var column2 = this.table[this.current];
                   if (!this.options.keepHistory) {
                     delete this.table[this.current - 1];
                   }
@@ -10972,7 +10972,7 @@ var require_dist4 = __commonJS({
                   this.table.push(nextColumn);
                   var literal = token.text !== void 0 ? token.text : token.value;
                   var value = lexer.constructor === StreamLexer ? token.value : token;
-                  var scannable = column.scannable;
+                  var scannable = column2.scannable;
                   for (var w = scannable.length; w--; ) {
                     var state = scannable[w];
                     var expect = state.rule.symbols[state.dot];
@@ -10989,11 +10989,11 @@ var require_dist4 = __commonJS({
                     throw err3;
                   }
                   if (this.options.keepHistory) {
-                    column.lexerState = lexer.save();
+                    column2.lexerState = lexer.save();
                   }
                   this.current++;
                 }
-                if (column) {
+                if (column2) {
                   this.lexerState = lexer.save();
                 }
                 this.results = this.finish();
@@ -11081,16 +11081,16 @@ var require_dist4 = __commonJS({
                 return [state].concat(childResult);
               };
               Parser.prototype.save = function() {
-                var column = this.table[this.current];
-                column.lexerState = this.lexerState;
-                return column;
+                var column2 = this.table[this.current];
+                column2.lexerState = this.lexerState;
+                return column2;
               };
-              Parser.prototype.restore = function(column) {
-                var index = column.index;
+              Parser.prototype.restore = function(column2) {
+                var index = column2.index;
                 this.current = index;
-                this.table[index] = column;
+                this.table[index] = column2;
                 this.table.splice(index + 1);
-                this.lexerState = column.lexerState;
+                this.lexerState = column2.lexerState;
                 this.results = this.finish();
               };
               Parser.prototype.rewind = function(index) {
@@ -11102,8 +11102,8 @@ var require_dist4 = __commonJS({
               Parser.prototype.finish = function() {
                 var considerations = [];
                 var start = this.grammar.start;
-                var column = this.table[this.table.length - 1];
-                column.states.forEach(function(t) {
+                var column2 = this.table[this.table.length - 1];
+                column2.states.forEach(function(t) {
                   if (t.rule.name === start && t.dot === t.rule.symbols.length && t.reference === 0 && t.data !== Parser.fail) {
                     considerations.push(t);
                   }
@@ -16655,9 +16655,9 @@ var CachedReadable = class {
   }
   async read(offset, size) {
     const requestedSize = Number(size);
-    const cached3 = this.#cache.get(offset);
-    if (cached3 != void 0 && cached3.byteLength >= requestedSize) {
-      return cached3.byteLength === requestedSize ? cached3 : cached3.subarray(0, requestedSize);
+    const cached4 = this.#cache.get(offset);
+    if (cached4 != void 0 && cached4.byteLength >= requestedSize) {
+      return cached4.byteLength === requestedSize ? cached4 : cached4.subarray(0, requestedSize);
     }
     const data = await this.#readable.read(offset, size);
     if (this.#currentCacheSizeBytes + data.byteLength <= this.#maxCacheSizeBytes) {
@@ -19841,7 +19841,509 @@ async function readStatsFromMcapIndexes(source, meta) {
 }
 var TEXT_DEC = new TextDecoder();
 
+// src/parsers/sqlitePages.ts
+var HEADER_MAGIC = "SQLite format 3\0";
+function readVarint(b, at) {
+  let v = 0;
+  for (let i = 0; i < 8; i++) {
+    const byte = b[at + i];
+    if (byte === void 0) throw new Error("SQLite: varint runs past the page.");
+    v = v * 128 + (byte & 127);
+    if (!(byte & 128)) return [v, i + 1];
+  }
+  const last = b[at + 8];
+  if (last === void 0) throw new Error("SQLite: varint runs past the page.");
+  return [v * 256 + last, 9];
+}
+function serialSize(t) {
+  if (t <= 4) return [0, 1, 2, 3, 4][t];
+  if (t === 5) return 6;
+  if (t === 6 || t === 7) return 8;
+  if (t === 8 || t === 9) return 0;
+  if (t >= 12) return (t - (t % 2 === 0 ? 12 : 13)) / 2;
+  throw new Error(`SQLite: reserved serial type ${t}.`);
+}
+function parseColumns(sql) {
+  const open2 = sql.indexOf("(");
+  const close = sql.lastIndexOf(")");
+  if (open2 < 0 || close < open2) return { columns: [], rowidColumn: -1 };
+  const body = sql.slice(open2 + 1, close);
+  const defs = [];
+  let depth = 0;
+  let quote = "";
+  let cur = "";
+  for (const ch of body) {
+    if (quote) {
+      if (ch === quote) quote = "";
+    } else if (ch === '"' || ch === "'" || ch === "`" || ch === "[") {
+      quote = ch === "[" ? "]" : ch;
+    } else if (ch === "(") depth++;
+    else if (ch === ")") depth--;
+    else if (ch === "," && depth === 0) {
+      defs.push(cur);
+      cur = "";
+      continue;
+    }
+    cur += ch;
+  }
+  defs.push(cur);
+  const columns = [];
+  let rowidColumn = -1;
+  for (const raw of defs) {
+    const def = raw.trim();
+    if (!def || /^(constraint|primary\s+key|unique|check|foreign\s+key)\b/i.test(def)) continue;
+    const m = def.match(/^(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|(\S+))\s*(.*)$/s);
+    if (!m) continue;
+    const rest = m[5] ?? "";
+    if (/^integer\s+primary\s+key(?!\s+desc)\b/i.test(rest)) rowidColumn = columns.length;
+    columns.push(m[1] ?? m[2] ?? m[3] ?? m[4]);
+  }
+  return { columns, rowidColumn };
+}
+var SqlitePages = class _SqlitePages {
+  pageSize;
+  usable;
+  pageCount;
+  textDecoder;
+  readSlice;
+  cache = /* @__PURE__ */ new Map();
+  cacheLimit;
+  /** Bytes fetched so far (for tests and diagnostics). */
+  bytesRead = 0;
+  constructor(header2, fileSize, readSlice, cacheBytes) {
+    const dv = new DataView(header2.buffer, header2.byteOffset, header2.byteLength);
+    const raw = dv.getUint16(16);
+    this.pageSize = raw === 1 ? 65536 : raw;
+    if (this.pageSize < 512 || this.pageSize > 65536 || (this.pageSize & this.pageSize - 1) !== 0) {
+      throw new Error(`SQLite: invalid page size ${raw}.`);
+    }
+    this.usable = this.pageSize - header2[20];
+    if (this.usable < 480) throw new Error("SQLite: too many reserved bytes per page.");
+    const inHeader = dv.getUint32(28);
+    const fromFile = Math.floor(fileSize / this.pageSize);
+    this.pageCount = inHeader > 0 && dv.getUint32(92) === dv.getUint32(24) ? Math.min(inHeader, fromFile) : fromFile;
+    const enc = dv.getUint32(56);
+    this.textDecoder = new TextDecoder(enc === 2 ? "utf-16le" : enc === 3 ? "utf-16be" : "utf-8");
+    this.readSlice = readSlice;
+    this.cacheLimit = Math.max(16, Math.floor(cacheBytes / this.pageSize));
+  }
+  static async open(fileSize, readSlice, cacheBytes = 64 * 1024 * 1024) {
+    if (fileSize < 512) throw new Error("SQLite: file is too small to be a database.");
+    const header2 = await readSlice(0, 100);
+    if (new TextDecoder("latin1").decode(header2.subarray(0, 16)) !== HEADER_MAGIC) {
+      throw new Error("SQLite: file does not start with the SQLite header.");
+    }
+    const db = new _SqlitePages(header2, fileSize, readSlice, cacheBytes);
+    db.bytesRead = header2.length;
+    return db;
+  }
+  checkPage(n) {
+    if (!Number.isInteger(n) || n < 1 || n > this.pageCount) {
+      throw new Error(`SQLite: page ${n} is outside the ${this.pageCount}-page file (corrupt database?).`);
+    }
+  }
+  remember(n, page) {
+    this.cache.delete(n);
+    this.cache.set(n, page);
+    while (this.cache.size > this.cacheLimit) this.cache.delete(this.cache.keys().next().value);
+  }
+  /** Fetch pages first..first+count-1 in one read, caching each. */
+  async fetchRun(first, count) {
+    const last = Math.min(this.pageCount, first + count - 1);
+    this.checkPage(first);
+    const bytes = await this.readSlice((first - 1) * this.pageSize, last * this.pageSize);
+    this.bytesRead += bytes.length;
+    if (bytes.length < (last - first + 1) * this.pageSize) throw new Error("SQLite: the file ended inside a page.");
+    for (let n = first; n <= last; n++) {
+      const o = (n - first) * this.pageSize;
+      this.remember(n, bytes.subarray(o, o + this.pageSize));
+    }
+  }
+  /**
+   * Fetch many pages, merging neighbours into one read and running a few
+   * reads at once. For walking every leaf of a table: their page numbers
+   * are known from the level above before any of them is read.
+   */
+  async prefetch(pages, concurrency = 6, maxRun = 64) {
+    const want = [...new Set(pages)].filter((n) => !this.cache.has(n)).sort((a, b) => a - b);
+    const runs = [];
+    for (const n of want) {
+      this.checkPage(n);
+      const run2 = runs[runs.length - 1];
+      if (run2 && n === run2[0] + run2[1] && run2[1] < maxRun) run2[1]++;
+      else runs.push([n, 1]);
+    }
+    let next = 0;
+    const worker = async () => {
+      while (next < runs.length) {
+        const [first, count] = runs[next++];
+        await this.fetchRun(first, count);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(concurrency, runs.length) }, worker));
+  }
+  async page(n) {
+    this.checkPage(n);
+    const hit = this.cache.get(n);
+    if (hit) {
+      this.remember(n, hit);
+      return hit;
+    }
+    await this.fetchRun(n, 1);
+    return this.cache.get(n);
+  }
+  /** Header fields of a b-tree page. */
+  btree(n, p) {
+    const h = n === 1 ? 100 : 0;
+    const type = p[h];
+    if (type !== 5 && type !== 13 && type !== 2 && type !== 10) {
+      throw new Error(`SQLite: page ${n} is not a b-tree page (type ${type}).`);
+    }
+    const dv = new DataView(p.buffer, p.byteOffset, p.byteLength);
+    const cells = dv.getUint16(h + 3);
+    const interior = type === 5 || type === 2;
+    const ptrs = h + (interior ? 12 : 8);
+    if (ptrs + cells * 2 > this.usable) throw new Error(`SQLite: page ${n} claims more cells than fit.`);
+    return { type, cells, dv, ptrs, rightmost: interior ? dv.getUint32(h + 8) : 0 };
+  }
+  /** Child pages of an interior table page, in key order. */
+  async children(n) {
+    const p = await this.page(n);
+    const { type, cells, dv, ptrs, rightmost } = this.btree(n, p);
+    if (type !== 5) return [];
+    const out = [];
+    for (let i = 0; i < cells; i++) out.push(dv.getUint32(dv.getUint16(ptrs + i * 2)));
+    out.push(rightmost);
+    return out;
+  }
+  /** Bytes of a table-leaf payload stored on the page itself. */
+  localSize(payload) {
+    const u = this.usable;
+    const x = u - 35;
+    if (payload <= x) return payload;
+    const m = Math.floor((u - 12) * 32 / 255) - 23;
+    const k = m + (payload - m) % (u - 4);
+    return k <= x ? k : m;
+  }
+  /**
+   * Parse every cell of a table leaf page (record headers only), plus the
+   * values of the `pick` columns, which are decoded straight from the page
+   * when stored there (the common case for small columns).
+   */
+  async leafRows(n, pick, table) {
+    const p = await this.page(n);
+    const { type, cells, dv, ptrs } = this.btree(n, p);
+    if (type !== 13) return [];
+    const rows = [];
+    for (let i = 0; i < cells; i++) {
+      const at = dv.getUint16(ptrs + i * 2);
+      rows.push(await this.parseCell(n, i, p, at, pick, table));
+    }
+    return rows;
+  }
+  decode(t, bytes) {
+    if (t === 0) return null;
+    if (t === 8) return 0;
+    if (t === 9) return 1;
+    if (t >= 12) return t % 2 === 0 ? bytes : this.textDecoder.decode(bytes);
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    if (t === 7) return dv.getFloat64(0);
+    if (t === 6) return dv.getBigInt64(0);
+    if (t === 5) return dv.getInt16(0) * 2 ** 32 + dv.getUint32(2);
+    if (t === 3) return dv.getInt8(0) << 16 | dv.getUint16(1);
+    return t === 1 ? dv.getInt8(0) : t === 2 ? dv.getInt16(0) : dv.getInt32(0);
+  }
+  async parseCell(n, cell, p, at, pick, table) {
+    if (at >= this.usable) throw new Error(`SQLite: cell ${cell} of page ${n} starts past the page.`);
+    const [payloadSize, l1] = readVarint(p, at);
+    const [rowid, l2] = readVarint(p, at + l1);
+    const start = at + l1 + l2;
+    const local = this.localSize(payloadSize);
+    let head = p.subarray(start, start + local);
+    const [headerSize] = readVarint(head, 0);
+    if (headerSize > head.length) head = await this.payload({ page: n, cell }, 0, headerSize);
+    const types2 = [];
+    const offsets = [];
+    let o = readVarint(head, 0)[1];
+    let value = headerSize;
+    while (o < headerSize) {
+      const [t, len] = readVarint(head, o);
+      o += len;
+      types2.push(t);
+      offsets.push(value);
+      value += serialSize(t);
+    }
+    if (value !== payloadSize) throw new Error(`SQLite: record on page ${n} does not match its payload size.`);
+    const row = { rowid, location: { page: n, cell }, types: types2, offsets, payloadSize };
+    if (pick) {
+      row.picked = [];
+      for (const i of pick) {
+        const size = i < types2.length ? serialSize(types2[i]) : 0;
+        if (table && i === table.rowidColumn) row.picked.push(rowid);
+        else if (i >= types2.length) row.picked.push(null);
+        else if (offsets[i] + size <= local) row.picked.push(this.decode(types2[i], p.subarray(start + offsets[i], start + offsets[i] + size)));
+        else row.picked.push(await this.value(row, i, table));
+      }
+    }
+    return row;
+  }
+  /** Re-read the row at a known location. */
+  async rowAt(loc) {
+    const p = await this.page(loc.page);
+    const { cells, dv, ptrs } = this.btree(loc.page, p);
+    if (loc.cell >= cells) throw new Error(`SQLite: page ${loc.page} has no cell ${loc.cell}.`);
+    return this.parseCell(loc.page, loc.cell, p, dv.getUint16(ptrs + loc.cell * 2));
+  }
+  /**
+   * Bytes [from, from + length) of a row's payload, following the overflow
+   * chain as needed. Overflow pages are usually consecutive, so the whole
+   * expected run is fetched in one read and the chain then checked page by page.
+   */
+  async payload(loc, from, length) {
+    const p = await this.page(loc.page);
+    const { dv, ptrs } = this.btree(loc.page, p);
+    const at = dv.getUint16(ptrs + loc.cell * 2);
+    const [payloadSize, l1] = readVarint(p, at);
+    const [, l2] = readVarint(p, at + l1);
+    const start = at + l1 + l2;
+    const local = this.localSize(payloadSize);
+    const end = Math.min(payloadSize, from + length);
+    const out = new Uint8Array(Math.max(0, end - from));
+    let filled = 0;
+    if (from < local) {
+      const take = p.subarray(start + from, start + Math.min(local, end));
+      out.set(take, 0);
+      filled = take.length;
+    }
+    if (from + filled >= end) return out;
+    const chunk = this.usable - 4;
+    let next = new DataView(p.buffer, p.byteOffset + start + local, 4).getUint32(0);
+    let pos = local;
+    let guard = Math.ceil((payloadSize - local) / chunk) + 1;
+    while (next !== 0 && pos < end) {
+      if (guard-- <= 0) throw new Error("SQLite: overflow chain is longer than its payload (loop?).");
+      if (!this.cache.has(next)) await this.fetchRun(next, Math.min(Math.ceil((end - pos) / chunk), 256));
+      const op = await this.page(next);
+      const pageEnd = pos + chunk;
+      if (pageEnd > from) {
+        const a = Math.max(from, pos) - pos;
+        const b = Math.min(end, pageEnd) - pos;
+        out.set(op.subarray(4 + a, 4 + b), Math.max(from, pos) - from);
+        filled += b - a;
+      }
+      pos = pageEnd;
+      next = new DataView(op.buffer, op.byteOffset, 4).getUint32(0);
+    }
+    if (filled < out.length) throw new Error("SQLite: overflow chain ended before the payload did.");
+    return out;
+  }
+  /** Decode column `i` of a row. */
+  async value(row, i, table) {
+    if (table && i === table.rowidColumn) return row.rowid;
+    if (i >= row.types.length) return null;
+    const t = row.types[i];
+    const size = serialSize(t);
+    return this.decode(t, size === 0 ? new Uint8Array(0) : await this.payload(row.location, row.offsets[i], size));
+  }
+  /** Length in bytes of a blob or text column, without reading it. */
+  static valueLength(row, i) {
+    const t = row.types[i];
+    return t === void 0 ? 0 : t >= 12 ? serialSize(t) : 0;
+  }
+  /** Every row of a table, in rowid order, fetching each tree level in merged parallel reads. */
+  async scan(rootPage, onRows, pick, table) {
+    let level = [rootPage];
+    const seen = /* @__PURE__ */ new Set();
+    const window2 = Math.max(1, Math.floor(this.cacheLimit / 2));
+    while (level.length > 0) {
+      const next = [];
+      for (let w = 0; w < level.length; w += window2) {
+        const slice = level.slice(w, w + window2);
+        await this.prefetch(slice);
+        for (const n of slice) {
+          if (seen.has(n)) throw new Error(`SQLite: page ${n} appears twice in one table (corrupt database?).`);
+          seen.add(n);
+          const p = await this.page(n);
+          const { type } = this.btree(n, p);
+          if (type === 5) next.push(...await this.children(n));
+          else if (type === 13) onRows(await this.leafRows(n, pick, table));
+          else throw new Error(`SQLite: page ${n} is an index page inside a table.`);
+        }
+      }
+      level = next;
+    }
+  }
+  /** Tables from `sqlite_schema` (page 1). */
+  async tables() {
+    const out = /* @__PURE__ */ new Map();
+    const rows = [];
+    await this.scan(1, (r) => rows.push(...r));
+    for (const row of rows) {
+      const [type, name, , rootPage, sql] = await Promise.all([0, 1, 2, 3, 4].map((i) => this.value(row, i)));
+      if (type !== "table" || typeof name !== "string" || typeof sql !== "string") continue;
+      const { columns, rowidColumn } = parseColumns(sql);
+      out.set(name, { name, rootPage: Number(rootPage), columns, rowidColumn });
+    }
+    return out;
+  }
+};
+
+// src/parsers/db3Stream.ts
+var cached2 = null;
+var opening = null;
+function column(table, name) {
+  const i = table.columns.indexOf(name);
+  if (i < 0) throw new Error(`db3: table "${table.name}" has no "${name}" column.`);
+  return i;
+}
+var toBig = (v) => typeof v === "bigint" ? v : BigInt(Math.trunc(Number(v)));
+async function open(source) {
+  const size = sourceSize(source);
+  const pages = await SqlitePages.open(size, (a, b) => sourceReadSlice(source, a, b));
+  const tables = await pages.tables();
+  const topicsTable = tables.get("topics");
+  const messages = tables.get("messages");
+  if (!topicsTable || !messages) throw new Error('db3: this SQLite file has no rosbag2 "topics" and "messages" tables.');
+  const tId = column(topicsTable, "id");
+  const tName = column(topicsTable, "name");
+  const tType = column(topicsTable, "type");
+  const tFmt = topicsTable.columns.indexOf("serialization_format");
+  const topicRows2 = [];
+  const tPick = [tId, tName, tType, ...tFmt >= 0 ? [tFmt] : []];
+  await pages.scan(topicsTable.rootPage, (r) => topicRows2.push(...r), tPick, topicsTable);
+  const topics = [];
+  const nameById = /* @__PURE__ */ new Map();
+  const topicTypeByName = /* @__PURE__ */ new Map();
+  for (const row of topicRows2) {
+    const [id, name, type, fmt] = row.picked;
+    topics.push({ name: String(name), type: String(type), messageCount: 0, serializationFormat: fmt || "cdr" });
+    nameById.set(Number(id), String(name));
+    topicTypeByName.set(String(name), String(type));
+  }
+  const mTopic = column(messages, "topic_id");
+  const mTs = column(messages, "timestamp");
+  const dataColumn = column(messages, "data");
+  const rowid = [];
+  const topicOf = [];
+  const tsAll = [];
+  const sizeAll = [];
+  const pageAll = [];
+  const cellAll = [];
+  let minTs = null;
+  let maxTs = null;
+  await pages.scan(
+    messages.rootPage,
+    (rows) => {
+      for (const row of rows) {
+        const [topicId, ts] = row.picked;
+        if (ts === null) continue;
+        const t = toBig(ts);
+        if (minTs === null || t < minTs) minTs = t;
+        if (maxTs === null || t > maxTs) maxTs = t;
+        rowid.push(row.rowid);
+        topicOf.push(nameById.get(Number(topicId)) ?? "");
+        tsAll.push(t);
+        sizeAll.push(SqlitePages.valueLength(row, dataColumn));
+        pageAll.push(row.location.page);
+        cellAll.push(row.location.cell);
+      }
+    },
+    [mTopic, mTs],
+    messages
+  );
+  const byTopic = /* @__PURE__ */ new Map();
+  for (let i = 0; i < rowid.length; i++) {
+    if (!topicOf[i]) continue;
+    let list = byTopic.get(topicOf[i]);
+    if (!list) byTopic.set(topicOf[i], list = []);
+    list.push(i);
+  }
+  const index = /* @__PURE__ */ new Map();
+  for (const [name, list] of byTopic) {
+    list.sort((a, b) => tsAll[a] < tsAll[b] ? -1 : tsAll[a] > tsAll[b] ? 1 : rowid[a] - rowid[b]);
+    index.set(name, {
+      ts: BigInt64Array.from(list, (i) => tsAll[i]),
+      rowid: Float64Array.from(list, (i) => rowid[i]),
+      page: Uint32Array.from(list, (i) => pageAll[i]),
+      cell: Uint16Array.from(list, (i) => cellAll[i]),
+      size: Uint32Array.from(list, (i) => sizeAll[i])
+    });
+  }
+  for (const t of topics) t.messageCount = index.get(t.name)?.ts.length ?? 0;
+  return {
+    key: sourceKey(source),
+    displayName: sourceDisplayName(source),
+    size,
+    pages,
+    messages,
+    dataColumn,
+    topics,
+    topicTypeByName,
+    index,
+    minTs,
+    maxTs,
+    rowCount: rowid.length,
+    all: { rowid: Float64Array.from(rowid), topic: topicOf, ts: BigInt64Array.from(tsAll), size: Uint32Array.from(sizeAll) },
+    messageCache: /* @__PURE__ */ new Map()
+  };
+}
+async function loadStreamDb(source) {
+  const key = sourceKey(source);
+  if (cached2?.key === key) return cached2;
+  if (opening?.key === key) return opening.promise;
+  const promise = open(source).then(
+    (db) => {
+      cached2 = db;
+      opening = null;
+      return db;
+    },
+    (err3) => {
+      opening = null;
+      throw err3;
+    }
+  );
+  opening = { key, promise };
+  return promise;
+}
+async function summaryStream(source) {
+  const db = await loadStreamDb(source);
+  return {
+    displayName: db.displayName,
+    size: db.size,
+    topics: db.topics.map((t) => ({ ...t })),
+    startTime: db.minTs ?? 0n,
+    endTime: db.maxTs ?? 0n
+  };
+}
+var MAX_TOTAL_SAMPLES = 1e5;
+async function readAllMessageStatsDb3Stream(source) {
+  const db = await loadStreamDb(source);
+  const startNs = db.minTs ?? 0n;
+  const step = Math.max(1, Math.floor(db.rowCount / MAX_TOTAL_SAMPLES));
+  const { rowid, topic, ts, size } = db.all;
+  const picked = [];
+  for (let i = 0; i < rowid.length; i++) {
+    if (topic[i] && (step <= 1 || (rowid[i] - 1) % step === 0)) picked.push(i);
+  }
+  picked.sort((a, b) => ts[a] < ts[b] ? -1 : ts[a] > ts[b] ? 1 : rowid[a] - rowid[b]);
+  const times = /* @__PURE__ */ new Map();
+  const sizes = /* @__PURE__ */ new Map();
+  for (const i of picked) {
+    let t = times.get(topic[i]);
+    if (!t) {
+      times.set(topic[i], t = []);
+      sizes.set(topic[i], []);
+    }
+    t.push(Number(ts[i] - startNs));
+    sizes.get(topic[i]).push(size[i]);
+  }
+  const result = {};
+  for (const [name, t] of times) result[name] = { times: new Float64Array(t), sizes: new Uint32Array(sizes.get(name)) };
+  return result;
+}
+
 // src/parsers/db3.ts
+var BIGINT = { useBigInt: true };
 var sqlPromise = null;
 function getSqlJs() {
   if (!sqlPromise) {
@@ -19864,6 +20366,11 @@ function disposeCachedDb() {
     }
     cachedDb = null;
   }
+}
+var DB3_STREAM_URL_BYTES = 48 * 1024 * 1024;
+var DB3_STREAM_FILE_BYTES = 1024 * 1024 * 1024;
+function db3Streams(source) {
+  return sourceSize(source) > (source.kind === "url" ? DB3_STREAM_URL_BYTES : DB3_STREAM_FILE_BYTES);
 }
 async function loadDb(source) {
   const key = sourceKey(source);
@@ -19891,13 +20398,24 @@ async function loadDb(source) {
   };
   return cachedDb;
 }
-async function parseDb3(source) {
-  const meta = await loadDb(source);
-  const { db } = meta;
-  const topics = queryTopics(db);
-  const { startTime, endTime, messageCounts } = queryMessageStats(db);
-  for (const topic of topics) {
-    topic.messageCount = messageCounts.get(topic.name) ?? 0;
+async function parseDb3(source, stream = db3Streams(source)) {
+  let meta;
+  let topics;
+  let startTime;
+  let endTime;
+  if (stream) {
+    const s = await summaryStream(source);
+    ({ topics, startTime, endTime } = s);
+    meta = s;
+  } else {
+    meta = await loadDb(source);
+    const db = meta.db;
+    topics = queryTopics(db);
+    const stats = queryMessageStats(db);
+    ({ startTime, endTime } = stats);
+    for (const topic of topics) {
+      topic.messageCount = stats.messageCounts.get(topic.name) ?? 0;
+    }
   }
   const durationNs = endTime - startTime;
   const duration = Number(durationNs) / 1e9;
@@ -19933,7 +20451,7 @@ function queryTopics(db) {
   }));
 }
 function queryMessageStats(db) {
-  const timeResult = db.exec(`SELECT MIN(timestamp), MAX(timestamp) FROM messages`);
+  const timeResult = db.exec(`SELECT MIN(timestamp), MAX(timestamp) FROM messages`, void 0, BIGINT);
   let startTime = 0n;
   let endTime = 0n;
   if (timeResult.length > 0 && timeResult[0].values.length > 0) {
@@ -19957,14 +20475,15 @@ function queryMessageStats(db) {
 }
 var DB3_MAX_TOTAL_SAMPLES = 1e5;
 async function readAllMessageStatsDb3(source) {
+  if (db3Streams(source)) return readAllMessageStatsDb3Stream(source);
   const { db } = await loadDb(source);
-  const timeResult = db.exec("SELECT MIN(timestamp), COUNT(*) FROM messages");
+  const timeResult = db.exec("SELECT MIN(timestamp), COUNT(*) FROM messages", void 0, BIGINT);
   let startNs = 0n;
   let totalMessages = 0;
   if (timeResult.length > 0 && timeResult[0].values.length > 0) {
     const row = timeResult[0].values[0];
     if (row[0] != null) startNs = BigInt(row[0]);
-    if (row[1] != null) totalMessages = row[1];
+    if (row[1] != null) totalMessages = Number(row[1]);
   }
   const step = Math.max(1, Math.floor(totalMessages / DB3_MAX_TOTAL_SAMPLES));
   const sql = step <= 1 ? `SELECT t.name, m.timestamp, LENGTH(m.data)
@@ -19980,10 +20499,10 @@ async function readAllMessageStatsDb3(source) {
   const rawSizes = /* @__PURE__ */ new Map();
   try {
     while (stmt.step()) {
-      const row = stmt.get();
+      const row = stmt.get(null, BIGINT);
       const topic = row[0];
       const ts = row[1];
-      const size = row[2];
+      const size = Number(row[2]);
       const tsNs = typeof ts === "bigint" ? ts : BigInt(ts);
       const relNs = Number(tsNs - startNs);
       let t = rawTimes.get(topic);
@@ -20021,7 +20540,7 @@ function filelikeFor(source) {
   if (source.kind === "file") return new import_web.BlobReader(source.file);
   return new HttpFilelike(source.url, source.contentLength);
 }
-var cached2 = null;
+var cached3 = null;
 function decompressBz2(buffer, size) {
   const decoded = import_seek_bzip.default.decode(buffer);
   if (decoded.length > size) return decoded.subarray(0, size);
@@ -20049,8 +20568,8 @@ function normalizeTypeName(raw) {
 }
 async function loadBag(source) {
   const key = sourceKey(source);
-  if (cached2 && cached2.sourceKey === key) {
-    return cached2;
+  if (cached3 && cached3.sourceKey === key) {
+    return cached3;
   }
   const reader = filelikeFor(source);
   const bag = new import_rosbag.Bag(reader, { decompress: decompress4 });
@@ -20073,7 +20592,7 @@ async function loadBag(source) {
       });
     }
   }
-  cached2 = {
+  cached3 = {
     sourceKey: key,
     displayName: sourceDisplayName(source),
     size: sourceSize(source),
@@ -20082,7 +20601,7 @@ async function loadBag(source) {
     topicMeta,
     messageCache: /* @__PURE__ */ new Map()
   };
-  return cached2;
+  return cached3;
 }
 async function parseBagFile(source) {
   const meta = await loadBag(source);
@@ -20414,8 +20933,8 @@ function pcdPointStep(header2) {
 }
 async function loadPcdCloud(source) {
   const key = sourceKey(source);
-  const cached3 = pcdCloudCache.get(key);
-  if (cached3) return cached3;
+  const cached4 = pcdCloudCache.get(key);
+  if (cached4) return cached4;
   const bytes = await sourceReadAll(source);
   const { header: header2, dataByteOffset } = parsePcdHeader(bytes);
   const expectedBytes = header2.points * pcdPointStep(header2);
@@ -20452,8 +20971,8 @@ async function loadPcdCloud(source) {
 }
 async function parsePcd(source) {
   const key = sourceKey(source);
-  const cached3 = pcdSummaryCache.get(key);
-  if (cached3) return cached3;
+  const cached4 = pcdSummaryCache.get(key);
+  if (cached4) return cached4;
   await loadPcdCloud(source);
   const summary = {
     format: "pcd",
@@ -20712,8 +21231,8 @@ function buildPlyCloud(bytes, header2) {
 }
 async function loadPlyCloud(source) {
   const key = sourceKey(source);
-  const cached3 = plyCloudCache.get(key);
-  if (cached3) return cached3;
+  const cached4 = plyCloudCache.get(key);
+  if (cached4) return cached4;
   const bytes = await sourceReadAll(source);
   const header2 = parsePlyHeader(bytes);
   const cloud = buildPlyCloud(bytes, header2);
@@ -20722,8 +21241,8 @@ async function loadPlyCloud(source) {
 }
 async function parsePly(source) {
   const key = sourceKey(source);
-  const cached3 = plySummaryCache.get(key);
-  if (cached3) return cached3;
+  const cached4 = plySummaryCache.get(key);
+  if (cached4) return cached4;
   await loadPlyCloud(source);
   const summary = {
     format: "ply",
@@ -20984,8 +21503,8 @@ var lasCache = /* @__PURE__ */ new Map();
 var lasSummaryCache = /* @__PURE__ */ new Map();
 async function loadLasCloud(source) {
   const key = sourceKey(source);
-  const cached3 = lasCache.get(key);
-  if (cached3) return cached3;
+  const cached4 = lasCache.get(key);
+  if (cached4) return cached4;
   const decoded = await decodeLasFile(await sourceReadAll(source));
   if (decoded.cloud.width === 0) throw new Error("LAS: the file holds no points.");
   lasCache.set(key, decoded);
@@ -20993,8 +21512,8 @@ async function loadLasCloud(source) {
 }
 async function parseLas(source) {
   const key = sourceKey(source);
-  const cached3 = lasSummaryCache.get(key);
-  if (cached3) return cached3;
+  const cached4 = lasSummaryCache.get(key);
+  if (cached4) return cached4;
   await loadLasCloud(source);
   const summary = {
     format: "las",
@@ -21764,8 +22283,8 @@ async function estimateSplatCount(source) {
 }
 async function parseSplat(source) {
   const key = sourceKey(source);
-  const cached3 = splatSummaryCache.get(key);
-  if (cached3) return cached3;
+  const cached4 = splatSummaryCache.get(key);
+  if (cached4) return cached4;
   const splatCount = await estimateSplatCount(source);
   const summary = {
     format: "splat",

@@ -9,6 +9,18 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Large `.db3` bags stream instead of loading whole
+  ([#124](https://github.com/Hussain004/BAGEL/issues/124)). From a URL past
+  48 MB, or a local file past 1 GB, BAGEL reads the SQLite file itself, page
+  by page over HTTP Range (or file slices): opening walks the messages table's
+  leaf pages, about one page per message and none of the image or cloud bytes,
+  and each message is fetched when a panel shows it. Smaller bags and editing
+  stay on sql.js. Tests compare every read against sql.js on files built with
+  page sizes from 512 to 65536 bytes, auto-vacuum, deleted rows, UTF-16 text
+  and blobs at every overflow boundary.
+- Fixed: `.db3` timestamps were rounded by up to 128 ns, in playback and in
+  edited output, because sql.js returned the 64-bit nanosecond values as
+  doubles. They are now read exactly.
 - Fisheye cameras undistort
   ([#120](https://github.com/Hussain004/BAGEL/issues/120)). The image panel's
   "undistort" now handles `equidistant` (Kannala-Brandt, the model OpenCV's

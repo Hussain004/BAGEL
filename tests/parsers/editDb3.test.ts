@@ -410,3 +410,22 @@ describe('editDb3/getResolvableTopicsDb3', () => {
     expect(byTopic.get('/mystery')?.resolvable).toBe(false);
   });
 });
+
+describe('int64 timestamps survive exactly', () => {
+  it('reading and editing keep nanoseconds past 2^53 (a double rounds them by up to 128 ns)', async () => {
+    const { writeSyntheticDb3 } = await import('../fixtures/synth');
+    const w = new MessageWriter(collectMessageDefinitions('std_msgs/msg/Int32'));
+    const times = [1_700_000_000_000_000_003n, 1_700_000_000_000_000_077n, 1_700_000_000_000_000_129n];
+    const input = bytesToFile(
+      await writeSyntheticDb3([{ topic: '/ints', type: 'std_msgs/msg/Int32', messages: times.map((t, i) => ({ timestampNs: t, data: w.writeMessage({ data: i }) })) }]),
+      'exact.db3',
+    );
+    const { parseDb3, readRawMessagesDb3 } = await import('../../src/parsers/db3');
+    const src = createFileSource(input);
+    const summary = await parseDb3(src);
+    expect([summary.startTime, summary.endTime]).toEqual([times[0], times[2]]);
+    expect((await readRawMessagesDb3(src, '/ints')).map((m) => m.timestamp)).toEqual(times);
+    const result = await editDb3Bag(src, { startNs: times[0], endNs: times[2] });
+    expect([result.startNs, result.endNs]).toEqual([times[0], times[2]]);
+  });
+});

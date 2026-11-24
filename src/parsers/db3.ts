@@ -10,7 +10,17 @@
  * first parseDb3() call so subsequent reads avoid re-parsing the WASM file.
  */
 
-import { decompress as fzstdDecompress } from 'fzstd';
+import { db3MessageBytes } from './db3Bytes';
+import {
+  clearDb3StreamDecodedCache,
+  disposeDb3StreamCache,
+  getTopicTypeDb3Stream,
+  readAllMessageStatsDb3Stream,
+  readMessageAtTimeDb3Stream,
+  readRangeDb3Stream,
+  readRawMessagesDb3Stream,
+  summaryStream,
+} from './db3Stream';
 import type { AllTopicStats, BagSummary, RawMessage, TopicInfo } from '../types/bag';
 import { deserializeByType } from './cdr';
 import { RangePicker, type RangeParams, type RangeResult } from './range';
@@ -22,8 +32,11 @@ import {
   type SingleBagSource,
 } from './source';
 
+/** Read integers exactly: timestamps are int64 nanoseconds, past a double's 2^53. */
+const BIGINT = { useBigInt: true };
+
 interface SqlDatabase {
-  exec(sql: string): { columns: string[]; values: unknown[][] }[];
+  exec(sql: string, params?: unknown[], config?: { useBigInt?: boolean }): { columns: string[]; values: unknown[][] }[];
   prepare(sql: string): SqlStatement;
   close(): void;
 }
@@ -31,7 +44,7 @@ interface SqlDatabase {
 interface SqlStatement {
   bind(params: unknown[]): boolean;
   step(): boolean;
-  get(): unknown[];
+  get(params?: unknown[] | null, config?: { useBigInt?: boolean }): unknown[];
   free(): boolean;
 }
 
@@ -80,6 +93,19 @@ function disposeCachedDb() {
 
 export function disposeDb3Cache(): void {
   disposeCachedDb();
+  disposeDb3StreamCache();
+}
+
+// ponytail: fixed thresholds. sql.js stays the default (proven, and the only
+// path editing uses); the page reader takes over where loading the whole file
+// first is the problem: a URL past a few tens of MB, or a local file past what
+// the WASM heap holds comfortably.
+export const DB3_STREAM_URL_BYTES = 48 * 1024 * 1024;
+export const DB3_STREAM_FILE_BYTES = 1024 * 1024 * 1024;
+
+/** Whether reads of this source go through the page reader (`db3Stream.ts`) instead of sql.js. */
+export function db3Streams(source: SingleBagSource): boolean {
+  return sourceSize(source) > (source.kind === 'url' ? DB3_STREAM_URL_BYTES : DB3_STREAM_FILE_BYTES);
 }
 
 /**
@@ -94,6 +120,7 @@ export function disposeDb3Cache(): void {
  */
 export function clearDb3DecodedCache(): void {
   if (cachedDb) cachedDb.messageCache.clear();
+  clearDb3StreamDecodedCache();
 }
 
 async function loadDb(source: SingleBagSource): Promise<CachedDb> {
@@ -131,24 +158,7 @@ async function loadDb(source: SingleBagSource): Promise<CachedDb> {
   return cachedDb;
 }
 
-/**
- * A message blob as CDR bytes. rosbag2 recorded with `compression_mode:
- * message` stores each blob as its own zstd frame, and that setting lives only
- * in `metadata.yaml`, which a dropped `.db3` arrives without. So detect it per
- * blob: a CDR blob opens with its encapsulation header (`00 01 00 00` and
- * kin), never the zstd magic `28 B5 2F FD`. (`compression_mode: file`, a
- * whole `.db3.zstd`, is not a SQLite file and is not handled here.)
- * A frame that will not decompress comes back as it is, so that one row fails
- * to decode like any other bad message instead of failing its whole topic.
- */
-export function db3MessageBytes(data: Uint8Array): Uint8Array {
-  if (!(data[0] === 0x28 && data[1] === 0xb5 && data[2] === 0x2f && data[3] === 0xfd)) return data;
-  try {
-    return fzstdDecompress(data);
-  } catch {
-    return data;
-  }
-}
+export { db3MessageBytes } from './db3Bytes';
 
 /** Per-topic decoded-message LRU bound. */
 const DB3_MESSAGE_CACHE_MAX_PER_TOPIC = 6;
@@ -189,15 +199,24 @@ async function rememberDecodedDb3(
 /**
  * Parse a .db3 ROS2 bag file and return a BagSummary.
  */
-export async function parseDb3(source: SingleBagSource): Promise<BagSummary> {
-  const meta = await loadDb(source);
-  const { db } = meta;
-
-  const topics = queryTopics(db);
-  const { startTime, endTime, messageCounts } = queryMessageStats(db);
-
-  for (const topic of topics) {
-    topic.messageCount = messageCounts.get(topic.name) ?? 0;
+export async function parseDb3(source: SingleBagSource, stream = db3Streams(source)): Promise<BagSummary> {
+  let meta: { displayName: string; size: number };
+  let topics: TopicInfo[];
+  let startTime: bigint;
+  let endTime: bigint;
+  if (stream) {
+    const s = await summaryStream(source);
+    ({ topics, startTime, endTime } = s);
+    meta = s;
+  } else {
+    meta = await loadDb(source);
+    const db = (meta as CachedDb).db;
+    topics = queryTopics(db);
+    const stats = queryMessageStats(db);
+    ({ startTime, endTime } = stats);
+    for (const topic of topics) {
+      topic.messageCount = stats.messageCounts.get(topic.name) ?? 0;
+    }
   }
 
   const durationNs = endTime - startTime;
@@ -244,7 +263,8 @@ function queryMessageStats(db: SqlDatabase): {
   endTime: bigint;
   messageCounts: Map<string, number>;
 } {
-  const timeResult = db.exec(`SELECT MIN(timestamp), MAX(timestamp) FROM messages`);
+  // useBigInt: ROS nanosecond times pass 2^53, and a double rounds them by up to 128 ns.
+  const timeResult = db.exec(`SELECT MIN(timestamp), MAX(timestamp) FROM messages`, undefined, BIGINT);
 
   let startTime = 0n;
   let endTime = 0n;
@@ -284,6 +304,7 @@ export async function readRawMessagesDb3(
   topicName: string,
   limit?: number,
 ): Promise<RawMessage[]> {
+  if (db3Streams(source)) return readRawMessagesDb3Stream(source, topicName, limit);
   const { db } = await loadDb(source);
 
   const sql = `
@@ -300,7 +321,7 @@ export async function readRawMessagesDb3(
   const out: RawMessage[] = [];
   try {
     while (stmt.step()) {
-      const row = stmt.get();
+      const row = stmt.get(null, BIGINT);
       const ts = row[0] as number | bigint;
       out.push({
         topicName,
@@ -330,8 +351,7 @@ export async function readDeserializedMessagesDb3(
   onProgress?: (decoded: number) => void,
   onBatch?: (batch: { timestamp: bigint; value: Record<string, unknown> | null }[]) => void,
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null }[]> {
-  const { topicTypeByName } = await loadDb(source);
-  const msgType = topicTypeByName.get(topicName);
+  const msgType = await getTopicTypeDb3(source, topicName);
   if (!msgType) return [];
 
   const raws = await readRawMessagesDb3(source, topicName, limit);
@@ -366,6 +386,7 @@ export async function readRangeDb3(
   topicName: string,
   params: RangeParams,
 ): Promise<RangeResult> {
+  if (db3Streams(source)) return readRangeDb3Stream(source, topicName, params);
   const { db, topicTypeByName } = await loadDb(source);
   const msgType = topicTypeByName.get(topicName);
   if (!msgType) return { messages: [], nextStartNs: null, phase: 0 };
@@ -382,7 +403,7 @@ export async function readRangeDb3(
   const out: RangeResult['messages'] = [];
   try {
     while (stmt.step()) {
-      const row = stmt.get();
+      const row = stmt.get(null, BIGINT);
       const ts = typeof row[0] === 'bigint' ? row[0] : BigInt(row[0] as number);
       if (picker.offer(ts)) {
         let value: Record<string, unknown> | null = null;
@@ -413,6 +434,7 @@ export async function readMessageAtTimeDb3(
   topicName: string,
   timeNs: bigint,
 ): Promise<{ timestamp: bigint; value: Record<string, unknown> | null } | null> {
+  if (db3Streams(source)) return readMessageAtTimeDb3Stream(source, topicName, timeNs);
   const cache = await loadDb(source);
   const { db, topicTypeByName } = cache;
   const msgType = topicTypeByName.get(topicName);
@@ -448,7 +470,7 @@ export async function readMessageAtTimeDb3(
   let best: { timestamp: bigint; data: Uint8Array } | null = null;
   try {
     while (stmt.step()) {
-      const row = stmt.get();
+      const row = stmt.get(null, BIGINT);
       const ts = row[0] as number | bigint;
       const data = row[1] as Uint8Array;
       const tsBig = typeof ts === 'bigint' ? ts : BigInt(ts);
@@ -483,6 +505,7 @@ export async function getTopicTypeDb3(
   source: SingleBagSource,
   topicName: string,
 ): Promise<string | undefined> {
+  if (db3Streams(source)) return getTopicTypeDb3Stream(source, topicName);
   const { topicTypeByName } = await loadDb(source);
   return topicTypeByName.get(topicName);
 }
@@ -490,15 +513,16 @@ export async function getTopicTypeDb3(
 const DB3_MAX_TOTAL_SAMPLES = 100_000;
 
 export async function readAllMessageStatsDb3(source: SingleBagSource): Promise<AllTopicStats> {
+  if (db3Streams(source)) return readAllMessageStatsDb3Stream(source);
   const { db } = await loadDb(source);
 
-  const timeResult = db.exec('SELECT MIN(timestamp), COUNT(*) FROM messages');
+  const timeResult = db.exec('SELECT MIN(timestamp), COUNT(*) FROM messages', undefined, BIGINT);
   let startNs = 0n;
   let totalMessages = 0;
   if (timeResult.length > 0 && timeResult[0].values.length > 0) {
     const row = timeResult[0].values[0];
     if (row[0] != null) startNs = BigInt(row[0] as number);
-    if (row[1] != null) totalMessages = row[1] as number;
+    if (row[1] != null) totalMessages = Number(row[1]);
   }
 
   // SQL-level sampling: skip every step-th row to cap total rows fetched.
@@ -521,10 +545,10 @@ export async function readAllMessageStatsDb3(source: SingleBagSource): Promise<A
 
   try {
     while (stmt.step()) {
-      const row = stmt.get();
+      const row = stmt.get(null, BIGINT);
       const topic = row[0] as string;
       const ts = row[1] as number | bigint;
-      const size = row[2] as number;
+      const size = Number(row[2]);
       const tsNs = typeof ts === 'bigint' ? ts : BigInt(ts);
       const relNs = Number(tsNs - startNs);
 
