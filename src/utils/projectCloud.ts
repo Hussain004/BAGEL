@@ -9,7 +9,7 @@
 
 import type { CameraIntrinsics } from '../hooks/useCameraInfo';
 import { autoDepthRange } from './depthColor';
-import { isPlumbBobModel } from './imageRectify';
+import { distortNormalized, lensModel } from './imageRectify';
 import { turboColor } from './pointcloud';
 
 export interface ProjectedPoints {
@@ -58,13 +58,8 @@ export function projectCloud(
   // if the stream was resized uniformly: scale pixel coordinates to match.
   const sx = ci.width > 0 ? w / ci.width : 1;
   const sy = ci.height > 0 ? h / ci.height : 1;
-  const distort = !opts.rectified && isPlumbBobModel(ci.distortionModel);
+  const model = opts.rectified ? null : lensModel(ci.distortionModel);
   const d = ci.distortionCoefficients;
-  const k1 = d[0] ?? 0;
-  const k2 = d[1] ?? 0;
-  const p1 = d[2] ?? 0;
-  const p2 = d[3] ?? 0;
-  const k3 = d[4] ?? 0;
 
   let count = 0;
   let inFront = 0;
@@ -79,14 +74,7 @@ export function projectCloud(
     const cy = m[1]! * x + m[5]! * y + m[9]! * z + m[13]!;
     let nx = cx / cz;
     let ny = cy / cz;
-    if (distort) {
-      const r2 = nx * nx + ny * ny;
-      const radial = 1 + k1 * r2 + k2 * r2 * r2 + k3 * r2 * r2 * r2;
-      const dx = 2 * p1 * nx * ny + p2 * (r2 + 2 * nx * nx);
-      const dy = p1 * (r2 + 2 * ny * ny) + 2 * p2 * nx * ny;
-      nx = nx * radial + dx;
-      ny = ny * radial + dy;
-    }
+    if (model) [nx, ny] = distortNormalized(model, d, nx, ny);
     const pu = (ci.fx * nx + ci.cx) * sx;
     const pv = (ci.fy * ny + ci.cy) * sy;
     if (!(pu >= 0 && pu < w && pv >= 0 && pv < h)) continue;

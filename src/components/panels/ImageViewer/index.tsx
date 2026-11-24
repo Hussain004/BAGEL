@@ -19,7 +19,8 @@ import {
   useImagePanelStore,
 } from '../../../store/panelUiStores';
 import {
-  isPlumbBobModel,
+  isSupportedDistortion,
+  lensModel,
   buildRemapMap,
   applyRemap,
   undistortPixel,
@@ -395,7 +396,7 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
         ci &&
         ci.width === bitmap.width &&
         ci.height === bitmap.height &&
-        isPlumbBobModel(ci.distortionModel)
+        isSupportedDistortion(ci.distortionModel)
       ) {
         const imageData = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
         const map = buildRemapMap(ci);
@@ -475,7 +476,7 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
   const canRectify =
     camera.candidates.length > 0 &&
     !camera.hasNoInfoTopic &&
-    (camera.info ? isPlumbBobModel(camera.info.distortionModel) : true);
+    (camera.info ? isSupportedDistortion(camera.info.distortionModel) : true);
   // Boxes are in raw image pixels; when the frame is being undistorted they
   // must be carried through the same correction or they drift off the object.
   const rectifyCamera =
@@ -484,7 +485,7 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
     meta &&
     camera.info.width === meta.width &&
     camera.info.height === meta.height &&
-    isPlumbBobModel(camera.info.distortionModel)
+    isSupportedDistortion(camera.info.distortionModel)
       ? camera.info
       : null;
   const headerExtras = (
@@ -701,6 +702,11 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
                   {annotationFreshness.fresh
                     ? `${annotations.shapes.length} annotations`
                     : `annotations hidden: ${Math.abs(Number(annotationFreshness.deltaNs ?? 0n) / 1e6).toFixed(0)} ms off`}
+                </span>
+              )}
+              {rectifyCamera && (
+                <span className="text-accent-violet" title="Distortion model used to undistort this frame">
+                  {lensModel(rectifyCamera.distortionModel)}
                 </span>
               )}
               {detectionTopic && (
@@ -1177,12 +1183,12 @@ function RectifyHeaderToggle({
       }`}
       title={
         unsupported
-          ? 'Unsupported distortion model - only plumb_bob is supported'
+          ? 'Unsupported distortion model: BAGEL undistorts plumb_bob, rational_polynomial and equidistant (fisheye)'
           : enabled
             ? hasInfo
               ? 'Undistortion on - click to disable'
               : 'Undistortion on but no CameraInfo at this timestamp'
-            : 'Undistort frames using the paired CameraInfo D coefficients (plumb_bob)'
+            : 'Undistort frames using the paired CameraInfo D coefficients'
       }
     >
       undistort

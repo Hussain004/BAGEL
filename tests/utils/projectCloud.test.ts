@@ -71,8 +71,17 @@ describe('projectCloud', () => {
   });
 
   it('ignores a distortion model it cannot evaluate rather than guessing', () => {
-    const ci = { ...K, distortionModel: 'equidistant', distortionCoefficients: [0.5, 0.5, 0, 0, 0] };
+    const ci = { ...K, distortionModel: 'double_sphere', distortionCoefficients: [0.5, 0.5, 0, 0, 0] };
     expect(projectCloud(Float32Array.from([2, 0, 4]), IDENTITY, ci).u[0]).toBeCloseTo(570, 4);
+  });
+
+  it('applies the equidistant (fisheye) model', () => {
+    const ci = { ...K, distortionModel: 'equidistant', distortionCoefficients: [0.5, 0.5, 0, 0] };
+    const t = Math.atan(0.5);
+    const td = t * (1 + 0.5 * t ** 2 + 0.5 * t ** 4);
+    const u0 = projectCloud(Float32Array.from([0, 0, 4]), IDENTITY, ci).u[0];
+    const f = (570 - u0) / 0.5;
+    expect(projectCloud(Float32Array.from([2, 0, 4]), IDENTITY, ci).u[0]).toBeCloseTo(u0 + f * td, 3);
   });
 
   it('scales pixel coordinates when the stream is a uniform resize of the calibrated size', () => {

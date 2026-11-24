@@ -9,6 +9,15 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Fisheye cameras undistort
+  ([#120](https://github.com/Hussain004/BAGEL/issues/120)). The image panel's
+  "undistort" now handles `equidistant` (Kannala-Brandt, the model OpenCV's
+  fisheye calibration and Kalibr write; `fisheye` and `kannala_brandt` are
+  accepted as names for it) and `rational_polynomial`, so every distortion
+  model ROS defines is covered. Before, a fisheye camera's button was greyed
+  out. The footer names the model in use, and LiDAR points and detection boxes
+  drawn on the image follow the same lens model.
+
 - Collada (`.dae`) meshes show their textures when the package is a dropped
   folder ([#119](https://github.com/Hussain004/BAGEL/issues/119)). Before,
   the mesh loaded but its textures were looked up next to a temporary blob URL
