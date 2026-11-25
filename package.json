@@ -27,6 +27,7 @@
     "@foxglove/rosmsg-msgs-common": "^3.2.3",
     "@foxglove/rosmsg-serialization": "^2.1.1",
     "@foxglove/rosmsg2-serialization": "^3.1.1",
+    "@hpcc-js/wasm-zstd": "1.17.0",
     "@mcap/browser": "^1.1.0",
     "@mcap/core": "^2.2.1",
     "@mkkellogg/gaussian-splats-3d": "^0.4.7",

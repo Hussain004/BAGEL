@@ -169,7 +169,6 @@ Known limitations and ideas that are not yet scheduled:
 
 | Idea | Notes |
 |---|---|
-| [Zstd-compressed edit output](https://github.com/Hussain004/BAGEL/issues/121) | Edited bags are written with lz4 chunks since `fzstd` is decompress-only. That is far smaller than uncompressed, but an edit of a zstd bag still comes out about 1.4x the size per message. |
 | [Plugin panels](https://github.com/Hussain004/BAGEL/issues/122) | User-built views against a stable panel API. The internal registry is in place (`PANEL_KINDS`, `PANEL_META`, `PANEL_COMPONENTS`); a public API is deliberately not published until the internal panels settle. |
 | [Cloud-hosted shareable URLs](https://github.com/Hussain004/BAGEL/issues/123) | The URL hash is self-contained today, so a link breaks if the bag moves. |
 | [Xacro evaluator](https://github.com/Hussain004/BAGEL/issues/125) | Roughly 1000 lines of XML transform, so it is its own project. The URDF modal explains running xacro upstream meanwhile. |
@@ -283,7 +282,8 @@ The shortcuts modal (`?`) lists everything at runtime (adding a binding in `src/
 | **ROS1 Parsing** | @foxglove/rosbag | Indexed reader for legacy .bag files (range-read from File) |
 | **ROS1 Deser.** | @foxglove/rosmsg-serialization | Pre-CDR ROS1 wire-format deserialization |
 | **ROS1 bz2** | seek-bzip | Pure-JS bzip2 for `rosbag record --bz2` chunks |
-| **ROS1 lz4** | lz4js | Pure-JS LZ4 frame format for `rosbag record --lz4` chunks |
+| **ROS1 lz4** | lz4js | Pure-JS LZ4 frame format for `rosbag record --lz4` chunks, and the fallback for edit output |
+| **Edit output zstd** | @hpcc-js/wasm-zstd | WASM zstd encoder for edited bags, loaded on first edit; every chunk is checked by decoding it with fzstd |
 | **CDR Deser.** | @foxglove/rosmsg2-serialization | ROS2 message deserialization |
 | **Type Registry** | @foxglove/rosmsg-msgs-common | Pre-built ROS2 message defs (fallback for .db3 only) |
 | **3D** | three.js (WebGL) | Point clouds, scans, pose markers, MarkerArray primitives, orbit controls |

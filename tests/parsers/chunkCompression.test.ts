@@ -67,7 +67,7 @@ describe('compressChunkLz4', () => {
   });
 });
 
-describe('the bag editor writes lz4 chunks', () => {
+describe('the bag editor writes verified zstd chunks', () => {
   const SAMPLE = join(__dirname, '../../public/sample-bags/tour.mcap');
   const sample = () => file(readFileSync(SAMPLE), 'tour.mcap');
 
@@ -83,10 +83,12 @@ describe('the bag editor writes lz4 chunks', () => {
     const { reader } = await loadMcapForEdit(out);
     const chunks = reader!.chunkIndexes;
     expect(chunks.length).toBeGreaterThan(1);
-    expect(chunks.some((c) => c.compression === 'lz4')).toBe(true);
+    expect(chunks.some((c) => c.compression === 'zstd')).toBe(true);
+    expect(chunks.every((c) => c.compression === 'zstd' || c.compression === '')).toBe(true);
     const compressed = chunks.reduce((n, c) => n + Number(c.compressedSize), 0);
     const uncompressed = chunks.reduce((n, c) => n + Number(c.uncompressedSize), 0);
     expect(compressed).toBeLessThan(uncompressed * 0.6);
+    console.log('trim size', result.bytes.length);
 
     // Byte-for-byte the same messages as the source's window, on a heavy topic and a light one.
     for (const topic of ['/camera/image_raw', '/lidar/points', '/odom', '/camera/annotations']) {
