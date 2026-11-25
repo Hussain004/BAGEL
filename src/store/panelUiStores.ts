@@ -73,6 +73,12 @@ export interface TimeSeriesPanelSettings {
   xyX: string | null;
   /** XY plot only: give both axes the same scale so a circle in the data stays a circle. */
   xyEqual: boolean;
+  /**
+   * Show only these fields of the panel's topic (an imported layout names the
+   * fields it plotted). Turned into `visibility` entries once the fields are
+   * known, then cleared.
+   */
+  onlyFields?: string[] | null;
 }
 
 export const DEFAULT_TIMESERIES_SETTINGS: TimeSeriesPanelSettings = {
