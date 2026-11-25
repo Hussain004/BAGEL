@@ -9,6 +9,13 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Xacro files load directly: drop a `.urdf.xacro` in the robot modal and it
+  expands in the browser (properties, math, macros with defaults, `^`
+  forwarding and blocks, `xacro:if` / `unless`, `$(arg)`, namespaced and
+  optional includes). An include from another package (`$(find pkg)`) asks
+  for that package's folder, then expands. The output is checked attribute
+  for attribute against ROS xacro 2.1.1 on test robots
+  ([#125](https://github.com/Hussain004/BAGEL/issues/125)).
 - Edited and trimmed bags are written with zstd chunks
   ([#121](https://github.com/Hussain004/BAGEL/issues/121)), MCAP's default,
   so an edit of a zstd bag is about the size of its source instead of 1.4x
@@ -23,7 +30,6 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
   of failing. Internally, panel kinds now come from one runtime list
   (`PANEL_KINDS`), which the URL parser, presets and the panel registry all
   check against ([#122](https://github.com/Hussain004/BAGEL/issues/122)).
-
 - Large `.db3` bags stream instead of loading whole
   ([#124](https://github.com/Hussain004/BAGEL/issues/124)). From a URL past
   48 MB, or a local file past 1 GB, BAGEL reads the SQLite file itself, page
