@@ -9,6 +9,11 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Health has a Delay column: per topic, on request, it samples up to 500
+  messages across the bag and shows log time minus `header.stamp` (p50 / p95,
+  with a histogram and min / max in the tooltip). Heavy topics are sampled
+  more thinly so an image topic never ships more than about 64 MB to the page.
+
 - Xacro files load directly: drop a `.urdf.xacro` in the robot modal and it
   expands in the browser (properties, math, macros with defaults, `^`
   forwarding and blocks, `xacro:if` / `unless`, `$(arg)`, namespaced and
