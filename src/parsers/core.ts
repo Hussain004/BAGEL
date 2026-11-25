@@ -53,6 +53,7 @@ import {
   PLY_MAGIC,
 } from './ply';
 import { parseLas, readPointCloudAtTimeLas, disposeLasCache, LAS_MAGIC } from './las';
+import { decompressCloud, isCompressedCloudValue } from './compressedCloud';
 import { openCopc, parseCopc, readPointCloudAtTimeCopc, disposeCopcCache } from './copc';
 import { parseSplat, isSplatPly, disposeSplatCache, SPLAT_TYPE } from './splat';
 import { checkMagicBytes } from '../utils/bytes';
@@ -325,7 +326,10 @@ export async function readPointCloudAtTime(
   // and similar) carry a `points: []` array of {x,y,z,...}. Most bags only
   // produce one or the other for a given topic, but checking shape rather
   // than type name means converted bags with non-standard names still work.
-  const value = message.value;
+  // CompressedPointCloud2 (zstd / zlib) is a PointCloud2 with its data packed.
+  const value: Record<string, unknown> = isCompressedCloudValue(message.value)
+    ? (decompressCloud(message.value) as unknown as Record<string, unknown>)
+    : message.value;
   const hasPointCloud2Fields = Array.isArray((value as { fields?: unknown[] }).fields);
   const opts = { colorMode, maxPoints, maxRange, heightAxis, axisClip };
   // Try the PointCloud2 path first when the shape matches, otherwise the

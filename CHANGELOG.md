@@ -9,6 +9,12 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- `point_cloud_interfaces/msg/CompressedPointCloud2` topics (from
+  `point_cloud_transport`) render in the 3D scene like any PointCloud2, for
+  the `zstd` and `zlib` plugins, in MCAP and `.db3` bags (the type is now in
+  the bundled registry for `.db3`). Draco-compressed clouds say they are not
+  supported yet instead of failing silently.
+
 - VP9 and AV1 `foxglove.CompressedVideo` topics play in the image viewer,
   alongside H264 and H265. Keyframes come from the VP9 frame header and the
   AV1 sequence and frame headers, and the WebCodecs codec string carries the

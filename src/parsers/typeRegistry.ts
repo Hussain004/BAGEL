@@ -66,9 +66,29 @@ const bundledClosureCache = new Map<string, MessageDefinition[]>();
 function loadDefinitions(): Promise<Record<string, MessageDefinition>> {
   if (ros2Definitions) return Promise.resolve(ros2Definitions);
   return import('@foxglove/rosmsg-msgs-common').then((mod) => {
-    ros2Definitions = mod.ros2galactic as unknown as Record<string, MessageDefinition>;
+    const common = mod.ros2galactic as unknown as Record<string, MessageDefinition>;
+    ros2Definitions = { ...common, ...extraDefinitions(common) };
     return ros2Definitions;
   });
+}
+
+/**
+ * Types .db3 bags use that the common set lacks. CompressedPointCloud2
+ * (point_cloud_interfaces) is PointCloud2 with `data` as `compressed_data`
+ * and a trailing `format` string, field for field.
+ */
+function extraDefinitions(common: Record<string, MessageDefinition>): Record<string, MessageDefinition> {
+  const pc2 = common['sensor_msgs/PointCloud2'];
+  if (!pc2) return {};
+  return {
+    'point_cloud_interfaces/CompressedPointCloud2': {
+      name: 'point_cloud_interfaces/CompressedPointCloud2',
+      definitions: [
+        ...pc2.definitions.map((f) => (f.name === 'data' ? { ...f, name: 'compressed_data' } : f)),
+        { name: 'format', type: 'string', isComplex: false, isArray: false },
+      ],
+    },
+  };
 }
 
 /** Returns every key form we recognise for a given type name. */

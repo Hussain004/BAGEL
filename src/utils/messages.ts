@@ -177,7 +177,7 @@ export function isCustomLidarCapableType(type: string): boolean {
 
 /** True if a type is any point cloud the 3D scene can render. */
 export function isCloudType(type: string): boolean {
-  return isPointCloud2Type(type) || isCustomLidarType(type) || type === 'foxglove.PointCloud';
+  return isPointCloud2Type(type) || type.endsWith('/CompressedPointCloud2') || isCustomLidarType(type) || type === 'foxglove.PointCloud';
 }
 
 /**
