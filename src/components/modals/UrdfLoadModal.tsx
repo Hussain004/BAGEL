@@ -23,7 +23,7 @@ async function readIncludedFile(uri: string): Promise<string> {
   if (!uri.startsWith('package://') && !/^https?:\/\//.test(uri)) {
     throw new Error(
       'a dropped file cannot read the files next to it. Include it as $(find <package>)/... ' +
-        'and map the package, or load the xacro from a URL.',
+        'and map the package.',
     );
   }
   const resolved = resolveMeshUriSync(uri);
@@ -91,7 +91,7 @@ export function UrdfLoadModal() {
     setParseError(null);
     setPendingXacro(null);
     try {
-      const xacro = isXacro(text);
+      const xacro = /\.xacro$/i.test(sourceName) || isXacro(text);
       const urdf = xacro ? await expandXacro(text, { uri: sourceName, readFile: readIncludedFile }) : text;
       const { model, warnings } = parseUrdf(urdf, { xacroExpanded: xacro });
       setParsed({ model, text: urdf, sourceName, warnings });

@@ -82,6 +82,17 @@ describe('expandXacro errors (the same cases ROS xacro rejects)', () => {
     }
   });
 
+  it('old-style % formatting fails loudly instead of leaving "%s" in a name', async () => {
+    await expect(expand(wrap(`<link name="\${'%s_link' % 'arm'}"/>`))).rejects.toThrow(/old-style string formatting/);
+    expect(await expand(wrap('<l v="${7 % 3}"/>'))).toContain('v="1"');
+  });
+
+  it('load_yaml says it is unsupported, in both spellings', async () => {
+    for (const call of ["xacro.load_yaml('limits.yaml')", "load_yaml('limits.yaml')"]) {
+      await expect(expand(wrap(`<xacro:property name="p" value="\${${call}}" lazy_eval="false"/>`))).rejects.toThrow(/load_yaml\('limits.yaml'\) is not supported/);
+    }
+  });
+
   it('a non-boolean condition', async () => {
     await expect(expand(wrap('<xacro:if value="maybe"><l/></xacro:if>'))).rejects.toThrow(/not a boolean expression/);
   });
@@ -110,6 +121,11 @@ describe('expandXacro details', () => {
     expect(seen).toEqual(['package://my_robot/urdf/parts.xacro']);
     expect(out).toContain('f="package://my_robot/meshes/a.dae"');
     expect(out).toContain('r="0.3"');
+  });
+
+  it('file://$(find pkg) becomes a plain package:// URI', async () => {
+    const out = await expand(wrap('<mesh filename="file://$(find ur_description)/meshes/base.dae"/>'));
+    expect(out).toContain('filename="package://ur_description/meshes/base.dae"');
   });
 
   it('relative includes resolve against the including file, at any depth', () => {

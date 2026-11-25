@@ -1,8 +1,9 @@
 /**
  * A xacro evaluator: expands a `.xacro` / `.urdf.xacro` file into plain URDF
- * in the browser, following ROS 2 xacro (2.x, in-order processing) closely
- * enough to give the same URDF for real robot descriptions. Mirrored from
- * xacro's own source where it matters:
+ * in the browser, following ROS 2 xacro (2.x, in-order processing). The test
+ * fixtures match ROS xacro 2.1.1's output exactly, and the ros2_control_demos
+ * and urdf_tutorial descriptions expand and parse. Mirrored from xacro's own
+ * source where it matters:
  *
  * - properties: `value`, `default`, `remove`, `scope="parent|global"`,
  *   `lazy_eval`, and block properties; every stored value goes through
@@ -17,8 +18,10 @@
  * - `xacro:if` / `unless`, `xacro:arg`, `xacro:element` / `attribute`, and
  *   `xacro:include` (with `ns` and `optional`) through a caller-supplied reader.
  *
- * Not supported: `load_yaml` (BAGEL has no YAML parser), comment evaluation,
- * `$(env)` (a browser has no environment), and globbed includes.
+ * Not supported: `load_yaml` (BAGEL has no YAML parser; it fails with a clear
+ * message, which rules out e.g. the UR descriptions), `'...' % x` string
+ * formatting, comment evaluation, `$(env)` (a browser has no environment),
+ * and globbed includes.
  */
 
 import { detectXacro, parseXml, type XmlElement } from './urdf';
@@ -302,7 +305,8 @@ function grabProperty(el: XmlElement, table: Table) {
 async function evalAll(el: XmlElement, macros: MacroTable, symbols: Table): Promise<void> {
   for (const [k, v] of Object.entries(el.attrs)) {
     if (k.startsWith('xacro:') || k === 'xmlns:xacro') delete el.attrs[k];
-    else el.attrs[k] = pyStr(evalText(v, symbols));
+    // `file://$(find pkg)/...` (common in Gazebo-minded descriptions) would read file://package://.
+    else el.attrs[k] = pyStr(evalText(v, symbols)).replace(/file:\/\/(?=package:\/\/)/g, '');
   }
   if (el.text) el.text = pyStr(evalText(el.text, symbols));
   const out: XmlElement[] = [];

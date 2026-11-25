@@ -128,7 +128,8 @@ function arith(op: string, a: Value, b: Value): Value {
   if (op === '+' && Array.isArray(a) && Array.isArray(b)) return [...a, ...b];
   if (op === '*' && typeof a === 'string' && typeof b === 'number') return a.repeat(Math.max(0, b));
   if (op === '*' && Array.isArray(a) && typeof b === 'number') return Array.from({ length: Math.max(0, b) }, () => a).flat();
-  if (op === '%' && typeof a === 'string') return a; // old-style formatting is not supported; leave text as is
+  // Returning the text unchanged would name links "%s_link"; refuse instead.
+  if (op === '%' && typeof a === 'string') throw new XacroError("old-style string formatting ('...' % x) is not supported; use '...' + str(x)");
   throw new XacroError(`unsupported operand type(s) for ${op}: '${typeName(a)}' and '${typeName(b)}'`);
 }
 
@@ -421,9 +422,13 @@ const module = (members: Record<string, Value>): Members => ({
 export function globalNames(args: Record<string, string>): Lookup {
   // xacro exposes only these builtins globally; the rest live under `python.`.
   const direct = ['len', 'str', 'float', 'int', 'bool', 'list', 'min', 'max', 'round', 'sorted', 'range'];
+  const loadYaml: PyFunction = (f) => {
+    throw new XacroError(`load_yaml(${pyRepr(f ?? '')}) is not supported in BAGEL yet; expand this robot with ROS xacro and drop the .urdf`);
+  };
   const g: Record<string, Value> = {
     ...MATH,
     ...Object.fromEntries(direct.map((n) => [n, BUILTINS[n]!])),
+    load_yaml: loadYaml,
     math: module(MATH),
     python: module(BUILTINS),
     xacro: module({
@@ -432,6 +437,7 @@ export function globalNames(args: Record<string, string>): Lookup {
         if (v === undefined) throw new XacroError(`Undefined substitution argument ${pyStr(n)}`);
         return v;
       },
+      load_yaml: loadYaml,
     }),
   };
   return (n) => (Object.prototype.hasOwnProperty.call(g, n) ? g[n] : undefined);
