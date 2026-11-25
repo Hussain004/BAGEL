@@ -30,6 +30,7 @@ import {
   isTrajectoryCapableType,
 } from './messages';
 import { isImageAnnotationsType } from './imageAnnotations';
+import { isAudioType } from './messages';
 
 /**
  * Everything the UI says about a panel kind, in one place: add a kind to
@@ -49,6 +50,7 @@ export const PANEL_META: Record<PanelKind, { label: string; paletteLabel: string
   splat: { label: 'Splat', paletteLabel: 'Gaussian splat', title: 'Open gaussian splat viewer' },
   state: { label: 'State', paletteLabel: 'State timeline', title: 'Open state timeline' },
   search: { label: 'Find', paletteLabel: 'Find in messages', title: 'Find when a field meets a condition' },
+  audio: { label: 'Audio', paletteLabel: 'Audio', title: 'Open audio waveform and playback' },
 };
 
 const mapKinds = (pick: (m: (typeof PANEL_META)[PanelKind]) => string) =>
@@ -68,6 +70,7 @@ export const KIND_BUTTON_TITLE = mapKinds((m) => m.title);
  */
 export function suggestPanelKind(topic: TopicInfo): PanelKind {
   if (isTfTopic(topic.name, topic.type)) return 'tf';
+  if (isAudioType(topic.type)) return 'audio';
   if (isImageType(topic.type)) return 'image';
   // Annotations draw on an image panel (pick them there); on their own they are just data.
   if (isImageAnnotationsType(topic.type)) return 'raw';
@@ -100,6 +103,7 @@ export function suggestPanelKind(topic: TopicInfo): PanelKind {
 /** The panel kinds that should appear as quick buttons for a given topic. */
 export function panelOptionsFor(topic: TopicInfo): PanelKind[] {
   if (isTfTopic(topic.name, topic.type)) return ['tf', 'raw'];
+  if (isAudioType(topic.type)) return ['audio', 'raw'];
   if (isImageType(topic.type)) return ['image', 'raw'];
   if (isImageAnnotationsType(topic.type)) return ['raw', 'search'];
   if (isSplatType(topic.type)) return ['splat', 'raw'];

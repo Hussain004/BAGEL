@@ -56,7 +56,7 @@ describe('panel routing', () => {
 
   it('every kind has a button label, a palette label and a tooltip', () => {
     const kinds = Object.keys(KIND_BUTTON_LABEL);
-    expect(kinds.sort()).toEqual(['3d', 'diagnostic', 'health', 'image', 'log', 'plot', 'raw', 'search', 'splat', 'state', 'tf', 'trajectory']);
+    expect(kinds.sort()).toEqual(['3d', 'audio', 'diagnostic', 'health', 'image', 'log', 'plot', 'raw', 'search', 'splat', 'state', 'tf', 'trajectory']);
     expect(Object.keys(KIND_PALETTE_LABEL).sort()).toEqual(kinds);
     expect(Object.keys(KIND_BUTTON_TITLE).sort()).toEqual(kinds);
   });

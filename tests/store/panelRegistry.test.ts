@@ -30,6 +30,7 @@ const TOPICS = [
   topic('/odom', 'nav_msgs/msg/Odometry'),
   topic('/pose', 'geometry_msgs/msg/Pose'),
   topic('/imu', 'sensor_msgs/msg/Imu'),
+  topic('/audio', 'audio_common_msgs/msg/AudioDataStamped'),
 ];
 
 describe('panel registry', () => {

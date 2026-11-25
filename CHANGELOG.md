@@ -9,6 +9,15 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Audio panel for `audio_common_msgs` topics, from both packages that use the
+  name: ros-drivers' AudioData / AudioDataStamped (raw PCM in any GStreamer
+  sample format, with the rate and channels from the bag's AudioInfo topic)
+  and mgonzs13's Audio / AudioStamped (format inline). It draws the waveform
+  across the whole bag, seeks on click, and with Sound on plays along with
+  BAGEL's playback, following pause, seek and speed. Chunks are placed at
+  their log times, so dropouts are silence. MP3-coded audio says it is not
+  supported yet.
+
 - `grid_map_msgs/msg/GridMap` topics render in the 3D scene as a point per
   known cell at its height (the `elevation` layer, else the first), coloured
   by a packed `color` layer or the next layer as intensity. Storage order,
