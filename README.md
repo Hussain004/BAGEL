@@ -231,6 +231,11 @@ copy-paste configs for S3, GCS, R2, nginx, and Apache, and a note on which
 public hosts work. The Share modal also has a probe that tells you which
 specific header a given host is missing.
 
+To report a problem, **Download issue report** in the same modal saves one zip
+to attach to a GitHub or Jira ticket: a clip of the bag (the zoomed timeline
+window, or 10 s around the playhead), the link for this view, and a Health
+summary of every topic with its longest gaps.
+
 ### Command palette
 
 `Cmd/Ctrl + K` opens a searchable list of everything BAGEL can do: every topic
