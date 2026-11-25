@@ -58,6 +58,8 @@ interface VideoFrameState {
   bitmap: ImageBitmap | null;
   loading: boolean;
   error: string | null;
+  /** Codec of the last decoded frame (h264, vp9, av1...), for the footer. */
+  format?: string;
 }
 
 /** What a depth decode used, so the footer can label the color bar. */
@@ -185,7 +187,7 @@ function useVideoFrame(
             }
             if (bitmap) {
               bitmapRef.current = bitmap;
-              setState({ bitmap, loading: false, error: null });
+              setState({ bitmap, loading: false, error: null, format: result.format });
             } else {
               setState((prev) => ({ ...prev, loading: false, error: null }));
             }
@@ -199,7 +201,7 @@ function useVideoFrame(
           decoderRef.current?.reset();
           lastDecodedNsRef.current = null;
           setState((prev) => ({
-            bitmap: prev.bitmap,
+            ...prev,
             loading: false,
             error: err instanceof Error ? err.message : String(err),
           }));
@@ -242,7 +244,7 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
   // Standard single-message path (JPEG, raw pixels, Foxglove images).
   const { message, loading: msgLoading, error: msgError } = useMessageAtTime(topicName, playheadNs, bagId);
   // Video path (H264/H265 via WebCodecs). No-op when isVideo is false.
-  const { bitmap: videoBitmap, loading: videoLoading, error: videoError } = useVideoFrame(
+  const { bitmap: videoBitmap, loading: videoLoading, error: videoError, format: videoFormat } = useVideoFrame(
     topicName, playheadNs, bagId, isVideo,
   );
 
@@ -412,7 +414,7 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
     if (isVideo) {
       if (!videoBitmap || !canvasRef.current) return;
       try {
-        drawBitmap(videoBitmap, 'h264/h265');
+        drawBitmap(videoBitmap, videoFormat || 'video');
         const previous = drawnVideoBitmapRef.current;
         drawnVideoBitmapRef.current = videoBitmap;
         if (previous && previous !== videoBitmap) previous.close();
@@ -460,6 +462,7 @@ export function ImageViewer({ panelId, topicName, type, bagId }: ImageViewerProp
   }, [
     message,
     videoBitmap,
+    videoFormat,
     isVideo,
     compressed,
     settings.rectify,

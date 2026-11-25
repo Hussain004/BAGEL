@@ -9,11 +9,17 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- VP9 and AV1 `foxglove.CompressedVideo` topics play in the image viewer,
+  alongside H264 and H265. Keyframes come from the VP9 frame header and the
+  AV1 sequence and frame headers, and the WebCodecs codec string carries the
+  stream's real profile, bit depth and (for AV1) level and tier. The footer
+  now names the codec instead of always saying `h264/h265`. Tested on
+  streams from libvpx (8 and 10 bit), libaom and SVT-AV1, including a real
+  in-browser decode.
 - Health has a Delay column: per topic, on request, it samples up to 500
   messages across the bag and shows log time minus `header.stamp` (p50 / p95,
   with a histogram and min / max in the tooltip). Heavy topics are sampled
   more thinly so an image topic never ships more than about 64 MB to the page.
-
 - Xacro files load directly: drop a `.urdf.xacro` in the robot modal and it
   expands in the browser (properties, math, macros with defaults, `^`
   forwarding and blocks, `xacro:if` / `unless`, `$(arg)`, namespaced and

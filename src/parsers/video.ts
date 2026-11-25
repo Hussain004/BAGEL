@@ -40,8 +40,171 @@ export function isH265VideoFormat(format: string): boolean {
   );
 }
 
+export function isVp9VideoFormat(format: string): boolean {
+  const f = format.trim().toLowerCase();
+  return f.includes('vp9') || f.includes('vp09');
+}
+
+export function isAv1VideoFormat(format: string): boolean {
+  const f = format.trim().toLowerCase();
+  return f.includes('av1') || f.includes('av01');
+}
+
 export function isVideoFormat(format: string): boolean {
-  return isH264VideoFormat(format) || isH265VideoFormat(format);
+  return isH264VideoFormat(format) || isH265VideoFormat(format) || isVp9VideoFormat(format) || isAv1VideoFormat(format);
+}
+
+/** MSB-first bit reader; throws RangeError past the end, so a truncated header reads as "unknown". */
+function bitReader(data: Uint8Array) {
+  let bit = 0;
+  return (n: number): number => {
+    let v = 0;
+    for (let k = 0; k < n; k++, bit++) {
+      const byte = data[bit >> 3];
+      if (byte === undefined) throw new RangeError('truncated');
+      v = v * 2 + ((byte >> (7 - (bit & 7))) & 1);
+    }
+    return v;
+  };
+}
+
+export interface VideoStreamInfo {
+  key: boolean;
+  profile: number;
+  bitDepth: number;
+  /** AV1 seq_level_idx and tier; unknown for VP9, which does not carry a level. */
+  level?: number;
+  tier?: number;
+}
+
+/**
+ * The VP9 uncompressed header of the first frame in a message (a superframe
+ * starts with its first frame too): key or not, and for a key frame the
+ * profile and bit depth the codec string needs.
+ */
+export function vp9FrameInfo(data: Uint8Array): VideoStreamInfo | null {
+  const read = bitReader(data);
+  try {
+    if (read(2) !== 2) return null; // frame_marker
+    const lo = read(1);
+    const profile = read(1) * 2 + lo;
+    if (profile === 3) read(1); // reserved_zero
+    if (read(1)) return { key: false, profile, bitDepth: 8 }; // show_existing_frame
+    if (read(1) !== 0) return { key: false, profile, bitDepth: 8 }; // frame_type 0 = KEY_FRAME
+    read(2); // show_frame, error_resilient_mode
+    if (read(8) !== 0x49 || read(8) !== 0x83 || read(8) !== 0x42) return null; // frame_sync_code
+    const bitDepth = profile >= 2 ? (read(1) ? 12 : 10) : 8;
+    return { key: true, profile, bitDepth };
+  } catch {
+    return null;
+  }
+}
+
+/** The OBUs of an AV1 temporal unit (low overhead bitstream format, as CompressedVideo carries). */
+function av1Obus(data: Uint8Array): { type: number; payload: Uint8Array }[] {
+  const out: { type: number; payload: Uint8Array }[] = [];
+  let i = 0;
+  while (i < data.length) {
+    const h = data[i]!;
+    const type = (h >> 3) & 15;
+    i += 1 + ((h >> 2) & 1); // header, plus the extension byte
+    let size = data.length - i;
+    if ((h >> 1) & 1) {
+      size = 0;
+      for (let k = 0; k < 8; k++) {
+        const b = data[i++];
+        if (b === undefined) return out;
+        size += (b & 0x7f) * 2 ** (7 * k);
+        if (!(b & 0x80)) break;
+      }
+    }
+    out.push({ type, payload: data.subarray(i, Math.min(data.length, i + size)) });
+    i += size;
+  }
+  return out;
+}
+
+/** Fields of an AV1 sequence header up to color_config (spec 5.5), enough for the codec string. */
+function av1SequenceHeader(p: Uint8Array): { profile: number; level: number; tier: number; bitDepth: number; reduced: boolean } | null {
+  const read = bitReader(p);
+  let profile = 0, level = 8, tier = 0;
+  let reduced = false;
+  try {
+    profile = read(3);
+    read(1); // still_picture
+    reduced = read(1) === 1;
+    if (reduced) {
+      level = read(5);
+    } else {
+      let decoderModel = false;
+      let bufferDelayBits = 0;
+      if (read(1)) { // timing_info_present_flag
+        read(32); read(32); // num_units_in_display_tick, time_scale
+        if (read(1)) { // equal_picture_interval: uvlc num_ticks_per_picture_minus_1
+          let zeros = 0;
+          while (!read(1)) zeros++;
+          read(zeros);
+        }
+        decoderModel = read(1) === 1;
+        if (decoderModel) {
+          bufferDelayBits = read(5) + 1;
+          read(32); // num_units_in_decoding_tick
+          read(5); read(5); // buffer_removal_time_length, frame_presentation_time_length
+        }
+      }
+      const initialDelay = read(1) === 1;
+      const ops = read(5) + 1;
+      for (let k = 0; k < ops; k++) {
+        read(12); // operating_point_idc
+        const lv = read(5);
+        const tr = lv > 7 ? read(1) : 0;
+        if (k === 0) [level, tier] = [lv, tr];
+        if (decoderModel && read(1)) { read(bufferDelayBits); read(bufferDelayBits); read(1); }
+        if (initialDelay && read(1)) read(4);
+      }
+    }
+    const wBits = read(4) + 1;
+    const hBits = read(4) + 1;
+    read(wBits); read(hBits);
+    if (!reduced && read(1)) { read(4); read(3); } // frame_id_numbers_present_flag
+    read(3); // use_128x128_superblock, enable_filter_intra, enable_intra_edge
+    let orderHint = false;
+    if (!reduced) {
+      read(4); // interintra, masked_compound, warped_motion, dual_filter
+      orderHint = read(1) === 1;
+      if (orderHint) read(2); // jnt_comp, ref_frame_mvs
+      const force = read(1) ? 2 : read(1); // seq_choose_screen_content_tools
+      if (force > 0 && !read(1)) read(1); // seq_choose_integer_mv
+      if (orderHint) read(3);
+    }
+    read(3); // superres, cdef, restoration
+    const high = read(1) === 1;
+    const bitDepth = profile === 2 && high ? (read(1) ? 12 : 10) : high ? 10 : 8;
+    return { profile, level, tier, bitDepth, reduced };
+  } catch {
+    // Truncated (the keyframe index peeks at only a few bytes): the profile is still known.
+    return { profile, level, tier, bitDepth: profile === 2 ? 10 : 8, reduced };
+  }
+}
+
+/**
+ * An AV1 temporal unit is a key frame when its frame header says KEY_FRAME and
+ * it carries the sequence header a decoder must start from. When the frame
+ * header is not in the bytes given (a short peek), the sequence header alone
+ * decides, as encoders send it with key frames.
+ */
+export function av1FrameInfo(data: Uint8Array): VideoStreamInfo | null {
+  let seq: ReturnType<typeof av1SequenceHeader> = null;
+  for (const obu of av1Obus(data)) {
+    if (obu.type === 1) seq = av1SequenceHeader(obu.payload);
+    if (obu.type === 3 || obu.type === 6) { // OBU_FRAME_HEADER, OBU_FRAME
+      const b = obu.payload[0];
+      if (b === undefined) break;
+      const key = seq !== null && (seq.reduced || (!(b >> 7) && ((b >> 5) & 3) === 0));
+      return seq ? { key, ...seq } : { key: false, profile: 0, bitDepth: 8 };
+    }
+  }
+  return seq ? { key: true, ...seq } : null;
 }
 
 export function isVideoTopicName(topicName: string): boolean {
@@ -209,6 +372,8 @@ export function isH265Keyframe(data: Uint8Array): boolean {
 
 /** Detect keyframe using the codec-appropriate detector. */
 export function isVideoKeyframe(data: Uint8Array, format: string): boolean {
+  if (isVp9VideoFormat(format)) return vp9FrameInfo(data)?.key ?? false;
+  if (isAv1VideoFormat(format)) return av1FrameInfo(data)?.key ?? false;
   return isH264VideoFormat(format) ? isH264Keyframe(data) : isH265Keyframe(data);
 }
 
@@ -225,7 +390,19 @@ function safeCloseCodec(codec: { close(): void; readonly state?: string }): void
   }
 }
 
-function getVideoCodecString(format: string, keyframeData: Uint8Array): string {
+const pad2 = (n: number) => n.toString().padStart(2, '0');
+
+/** WebCodecs codec string for the stream, from its key frame where the format needs it. */
+export function getVideoCodecString(format: string, keyframeData: Uint8Array): string {
+  if (isVp9VideoFormat(format)) {
+    // VP9 carries no level; 4.1 is a valid catch-all that decoders do not enforce.
+    const info = vp9FrameInfo(keyframeData);
+    return `vp09.${pad2(info?.profile ?? 0)}.41.${pad2(info?.bitDepth ?? 8)}`;
+  }
+  if (isAv1VideoFormat(format)) {
+    const info = av1FrameInfo(keyframeData);
+    return `av01.${info?.profile ?? 0}.${pad2(info?.level ?? 8)}${info?.tier ? 'H' : 'M'}.${pad2(info?.bitDepth ?? 8)}`;
+  }
   return isH264VideoFormat(format) ? getH264CodecString(keyframeData) : 'hev1.1.6.L93.B0';
 }
 
