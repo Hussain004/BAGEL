@@ -88,6 +88,28 @@ function extraDefinitions(common: Record<string, MessageDefinition>): Record<str
         { name: 'format', type: 'string', isComplex: false, isArray: false },
       ],
     },
+    // grid_map_msgs (GridMap.msg, GridMapInfo.msg), field for field.
+    'grid_map_msgs/GridMapInfo': {
+      name: 'grid_map_msgs/GridMapInfo',
+      definitions: [
+        { name: 'resolution', type: 'float64', isComplex: false, isArray: false },
+        { name: 'length_x', type: 'float64', isComplex: false, isArray: false },
+        { name: 'length_y', type: 'float64', isComplex: false, isArray: false },
+        { name: 'pose', type: 'geometry_msgs/Pose', isComplex: true, isArray: false },
+      ],
+    },
+    'grid_map_msgs/GridMap': {
+      name: 'grid_map_msgs/GridMap',
+      definitions: [
+        { name: 'header', type: 'std_msgs/Header', isComplex: true, isArray: false },
+        { name: 'info', type: 'grid_map_msgs/GridMapInfo', isComplex: true, isArray: false },
+        { name: 'layers', type: 'string', isComplex: false, isArray: true },
+        { name: 'basic_layers', type: 'string', isComplex: false, isArray: true },
+        { name: 'data', type: 'std_msgs/Float32MultiArray', isComplex: true, isArray: true },
+        { name: 'outer_start_index', type: 'uint16', isComplex: false, isArray: false },
+        { name: 'inner_start_index', type: 'uint16', isComplex: false, isArray: false },
+      ],
+    },
   };
 }
 

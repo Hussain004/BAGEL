@@ -54,6 +54,7 @@ import {
 } from './ply';
 import { parseLas, readPointCloudAtTimeLas, disposeLasCache, LAS_MAGIC } from './las';
 import { decompressCloud, isCompressedCloudValue } from './compressedCloud';
+import { gridMapToPointCloud2, isGridMapValue } from '../utils/gridMap';
 import { openCopc, parseCopc, readPointCloudAtTimeCopc, disposeCopcCache } from './copc';
 import { parseSplat, isSplatPly, disposeSplatCache, SPLAT_TYPE } from './splat';
 import { checkMagicBytes } from '../utils/bytes';
@@ -327,9 +328,14 @@ export async function readPointCloudAtTime(
   // produce one or the other for a given topic, but checking shape rather
   // than type name means converted bags with non-standard names still work.
   // CompressedPointCloud2 (zstd / zlib) is a PointCloud2 with its data packed.
-  const value: Record<string, unknown> = isCompressedCloudValue(message.value)
-    ? (decompressCloud(message.value) as unknown as Record<string, unknown>)
-    : message.value;
+  // CompressedPointCloud2 is a PointCloud2 with packed data; a GridMap becomes a point per cell.
+  const asCloud = (v: Record<string, unknown>): Record<string, unknown> | null => {
+    if (isCompressedCloudValue(v)) return decompressCloud(v) as unknown as Record<string, unknown>;
+    if (isGridMapValue(v)) return gridMapToPointCloud2(v) as unknown as Record<string, unknown> | null;
+    return v;
+  };
+  const value = asCloud(message.value);
+  if (!value) return null;
   const hasPointCloud2Fields = Array.isArray((value as { fields?: unknown[] }).fields);
   const opts = { colorMode, maxPoints, maxRange, heightAxis, axisClip };
   // Try the PointCloud2 path first when the shape matches, otherwise the

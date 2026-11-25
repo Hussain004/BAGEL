@@ -382,6 +382,7 @@ BAGEL's built-in type registry covers all standard ROS2 packages:
 | `geometry_msgs` | Pose, Twist, Transform, Point, Quaternion |
 | `sensor_msgs` | Image, Imu, LaserScan, NavSatFix, PointCloud2, JointState (drives URDF joints in the 3D scene from v1.3.0), CameraInfo (renders the principal-point reticle on ImageViewer + a wireframe frustum in ThreeDScene from v1.3.2) |
 | `point_cloud_interfaces` | CompressedPointCloud2 from `point_cloud_transport` (`zstd` and `zlib`; `draco` is not supported yet), shown like a PointCloud2 in the 3D scene |
+| `grid_map_msgs` | GridMap, drawn in the 3D scene as a point per known cell at its height (`elevation`, else the first layer), coloured by the `color` layer or the next layer as intensity |
 | `nav_msgs` | Odometry, Path, OccupancyGrid |
 | `tf2_msgs` | TFMessage |
 | `visualization_msgs` | Marker, MarkerArray (CUBE / SPHERE / CYLINDER / ARROW / LINE_STRIP / LINE_LIST / CUBE_LIST / SPHERE_LIST / POINTS / TEXT_VIEW_FACING) |
