@@ -10,6 +10,7 @@ import { withEmbed } from '../../utils/embedConfig';
 import { probeCors, type CorsProbeResult } from '../../utils/corsProbe';
 import { DATASET_HOSTING_DOC_URL } from '../../utils/actionableError';
 import { BadgePreview } from './BadgePreview';
+import { IssueReportSection } from './IssueReportSection';
 
 /**
  * ShareModal - builds a permalink and a dataset badge for the current session.
@@ -197,6 +198,8 @@ export function ShareModal() {
             </button>
           )}
         </div>
+
+        <IssueReportSection link={snippets.link} linkCarriesBag={shareable} />
       </div>
     </ModalShell>
   );

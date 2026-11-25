@@ -9,12 +9,16 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Issue report: the Share modal can download one zip to attach to a ticket,
+  holding a clip of the bag (the zoomed timeline window, or 10 s around the
+  playhead), the link that restores the layout, and a Health summary of every
+  topic with its longest gaps. If the clip or the health scan fails, the zip
+  says so in `errors.txt` instead of being skipped.
 - `point_cloud_interfaces/msg/CompressedPointCloud2` topics (from
   `point_cloud_transport`) render in the 3D scene like any PointCloud2, for
   the `zstd` and `zlib` plugins, in MCAP and `.db3` bags (the type is now in
   the bundled registry for `.db3`). Draco-compressed clouds say they are not
   supported yet instead of failing silently.
-
 - VP9 and AV1 `foxglove.CompressedVideo` topics play in the image viewer,
   alongside H264 and H265. Keyframes come from the VP9 frame header and the
   AV1 sequence and frame headers, and the WebCodecs codec string carries the
