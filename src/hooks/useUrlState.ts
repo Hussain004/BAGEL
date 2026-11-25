@@ -38,6 +38,7 @@ import {
   useLayoutStore,
   type LayoutNode,
   type PanelKind,
+  isPanelKind,
   type PanelLeaf,
   type SplitNode,
   type SplitOrientation,
@@ -45,32 +46,6 @@ import {
 import { usePlayheadStore } from '../store/playheadStore';
 import { useAnnotationStore, type Annotation } from '../store/annotationStore';
 import { embedExtras, pageEmbedConfig } from '../utils/embedConfig';
-
-/**
- * Every `PanelKind` as a compile-time exhaustiveness guard: adding a kind
- * to the `PanelKind` union without listing it here is a type error, so the
- * parse-time set below can never fall behind `layoutStore`. (An omitted
- * kind made `parsePanel` return null, which aborted the whole layout parse
- * and lost every panel whenever that kind was present in a shared hash.)
- */
-const PANEL_KIND_COVERAGE: Record<PanelKind, true> = {
-  plot: true,
-  image: true,
-  raw: true,
-  trajectory: true,
-  tf: true,
-  '3d': true,
-  diagnostic: true,
-  log: true,
-  health: true,
-  splat: true,
-  state: true,
-  search: true,
-};
-
-const PANEL_KIND_VALUES: ReadonlySet<string> = new Set(
-  Object.keys(PANEL_KIND_COVERAGE) as PanelKind[],
-);
 
 export interface ParsedHash {
   timeSec?: number;
@@ -123,7 +98,7 @@ export function parseTreeEncoding(input: string): LayoutNode | null {
     const parts = raw.split(':');
     if (parts.length < 2) return null;
     const kind = parts[0];
-    if (!PANEL_KIND_VALUES.has(kind)) return null;
+    if (!isPanelKind(kind)) return null;
     let bagId: string | undefined;
     let encodedTopic: string;
     if (parts.length === 2) {
@@ -194,7 +169,7 @@ function parseFlatEncoding(input: string): LayoutNode | null {
     const colon = raw.indexOf(':');
     if (colon < 1) continue;
     const kind = raw.slice(0, colon);
-    if (!PANEL_KIND_VALUES.has(kind)) continue;
+    if (!isPanelKind(kind)) continue;
     let topicName: string;
     try {
       topicName = decodeURIComponent(raw.slice(colon + 1));

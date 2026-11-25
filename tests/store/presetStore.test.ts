@@ -193,6 +193,14 @@ describe('presetStore', () => {
       expect(out.map((p) => p.id)).toEqual(['ok']);
     });
 
+    it('drops a preset naming a panel kind this build does not have', () => {
+      const out = loadFrom([
+        { id: 'ok', name: 'Good', tree: validSlot },
+        { id: 'future', name: 'From a newer build', tree: { node: 'slot', kind: 'spectrogram', type: 'audio/Audio' } },
+      ]);
+      expect(out.map((p) => p.id)).toEqual(['ok']);
+    });
+
     it('returns an empty list for a non-array payload', () => {
       expect(loadFrom({ nope: true })).toEqual([]);
     });

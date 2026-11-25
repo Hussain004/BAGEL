@@ -9,6 +9,13 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Fixed: a saved layout preset naming a panel kind this version does not have
+  (from an older or newer build) could crash the panel grid. Such presets are
+  now skipped, and the grid shows a short note for any unknown panel instead
+  of failing. Internally, panel kinds now come from one runtime list
+  (`PANEL_KINDS`), which the URL parser, presets and the panel registry all
+  check against ([#122](https://github.com/Hussain004/BAGEL/issues/122)).
+
 - Large `.db3` bags stream instead of loading whole
   ([#124](https://github.com/Hussain004/BAGEL/issues/124)). From a URL past
   48 MB, or a local file past 1 GB, BAGEL reads the SQLite file itself, page

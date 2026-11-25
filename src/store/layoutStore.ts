@@ -25,19 +25,38 @@
 
 import { create } from 'zustand';
 
-export type PanelKind =
-  | 'plot'
-  | 'image'
-  | 'raw'
-  | 'trajectory'
-  | 'tf'
-  | '3d'
-  | 'diagnostic'
-  | 'log'
-  | 'health'
-  | 'splat'
-  | 'state'
-  | 'search';
+/**
+ * Every panel kind, at runtime: the one list the rest derive from. Adding a
+ * kind here makes TypeScript demand its entry in `PANEL_META`
+ * (utils/panelOptions.ts) and `PANEL_COMPONENTS` (components/panels/registry.ts).
+ */
+export const PANEL_KINDS = [
+  'plot',
+  'image',
+  'raw',
+  'trajectory',
+  'tf',
+  '3d',
+  'diagnostic',
+  'log',
+  'health',
+  'splat',
+  'state',
+  'search',
+] as const;
+
+export type PanelKind = (typeof PANEL_KINDS)[number];
+
+const PANEL_KIND_SET: ReadonlySet<string> = new Set(PANEL_KINDS);
+
+/**
+ * Whether a string from outside (a shared URL, a saved preset, a tour file)
+ * names a panel kind this build has. Layouts can come from older or newer
+ * builds, so check before a kind reaches the panel registry.
+ */
+export function isPanelKind(kind: unknown): kind is PanelKind {
+  return typeof kind === 'string' && PANEL_KIND_SET.has(kind);
+}
 
 export interface PanelLeaf {
   node: 'panel';
