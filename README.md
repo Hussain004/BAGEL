@@ -136,6 +136,7 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 ### Analysis tools *(v1.4)*
 
 - **Bag Health dashboard** *(v1.4.0, extended v1.5.6)*: a per-topic analytics panel showing measured Hz, jitter (standard deviation of inter-message gaps), gap events (pauses longer than 3x the expected period), and bandwidth (bytes/s). Opens from a `Health` button in the Toolbar. Data is computed once per bag in a background scan and cached. *(v1.5.6)* When multiple bags are loaded, a chip strip at the top lets you switch the view between bags without opening additional panels.
+- **Delay per topic**: a `measure` link in Health's Delay column decodes a sample of up to 500 messages (fewer for heavy topics such as images) spread over the bag, and shows log time minus `header.stamp` as p50 / p95 with a small histogram. The tooltip adds min, max and the sample size; a negative delay is flagged because it means the publisher's clock is ahead of the recorder's.
 - **Math expressions in plots** *(v1.4.1)*: type arithmetic expressions (`vel_x * 2 + offset`, `sqrt(x*x + y*y)`) as derived series directly in the TimeSeriesPlot panel. References other numeric fields from the same topic; evaluated in a sandboxed expression engine (no `eval`).
 - **Clip export** *(v1.4.2)*: render any panel to an animated PNG zip or MP4 video (WebM fallback) via a frame-sync protocol. Toolbar Export button opens the modal.
 - **Timeline bookmarks** *(v1.4.3)*: named markers on the scrubber, persisted per bag and shareable via the `bm=` URL hash segment.

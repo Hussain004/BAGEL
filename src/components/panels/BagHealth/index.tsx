@@ -3,6 +3,7 @@ import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
 import { getParserClient } from '../../../workers/parserClient';
 import { computeAllTopicHealth, type TopicHealth } from '../../../utils/topicStats';
 import { buildAutoMarks, detectNonMonotonicStamps } from '../../../utils/anomalies';
+import { delaySampleCount, measureTopicDelay, type DelayStats } from '../../../utils/topicDelay';
 import { useAnnotationStore } from '../../../store/annotationStore';
 import type { AllTopicStats } from '../../../types/bag';
 import { PanelShell } from '../PanelShell';
@@ -100,6 +101,27 @@ export function BagHealth({ panelId, topicName, type, bagId }: Props) {
   }, [effectiveBagId]);
 
   const healths = useMemo(() => (stats ? computeAllTopicHealth(stats) : []), [stats]);
+
+  // Delay is measured per topic on request: it decodes a sample of messages.
+  const [delays, setDelays] = useState<Record<string, DelayState>>({});
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a new bag starts with nothing measured
+    setDelays({});
+  }, [effectiveBagId]);
+  const measureDelay = (h: TopicHealth) => {
+    if (!entry?.source) return;
+    const { id, source, summary } = entry;
+    setDelays((d) => ({ ...d, [h.topic]: 'loading' }));
+    const client = getParserClient(id);
+    const bytesPerMsg = h.meanHz > 0 ? h.bandwidthBytesPerSec / h.meanHz : 0;
+    measureTopicDelay(
+      (...a) => client.readMessagesInRange(...a),
+      source, summary.format, h.topic, h.count, delaySampleCount(h.count, bytesPerMsg),
+      summary.startTime, summary.endTime,
+    )
+      .then((r) => setDelays((d) => ({ ...d, [h.topic]: r ?? 'none' })))
+      .catch((e: unknown) => setDelays((d) => ({ ...d, [h.topic]: { error: e instanceof Error ? e.message : String(e) } })));
+  };
 
   const nonMonotonic = useMemo(
     () => (stats ? detectNonMonotonicStamps(stats) : []),
@@ -285,12 +307,13 @@ export function BagHealth({ panelId, topicName, type, bagId }: Props) {
                     <Th label="Jitter" sortKey="jitterMs" current={sortKey} dir={sortDir} onSort={onSort} />
                     <Th label="Gaps" sortKey="gaps" current={sortKey} dir={sortDir} onSort={onSort} />
                     <Th label="BW" sortKey="bwKBs" current={sortKey} dir={sortDir} onSort={onSort} />
+                    <th className="py-2 px-3 text-text-muted font-medium text-right" title="Log time minus header.stamp, from a sample of up to 500 messages">Delay</th>
                     <th className="py-2 px-3 text-text-muted font-medium text-right">Rate</th>
                   </tr>
                 </thead>
                 <tbody>
                   {sorted.map((h) => (
-                    <HealthRow key={h.topic} health={h} />
+                    <HealthRow key={h.topic} health={h} delay={delays[h.topic]} onMeasure={() => measureDelay(h)} />
                   ))}
                 </tbody>
               </table>
@@ -348,7 +371,41 @@ function SortArrow({ dir }: { dir: SortDir }) {
   );
 }
 
-function HealthRow({ health }: { health: TopicHealth }) {
+type DelayState = DelayStats | 'loading' | 'none' | { error: string };
+
+const fmtMs = (ms: number) => (Math.abs(ms) < 1 ? `${(ms * 1000).toFixed(0)}us` : Math.abs(ms) < 1000 ? `${ms.toFixed(1)}ms` : `${(ms / 1000).toFixed(2)}s`);
+
+function DelayCell({ delay, onMeasure, topic }: { delay: DelayState | undefined; onMeasure: () => void; topic: string }) {
+  if (delay === undefined) {
+    return (
+      <button onClick={onMeasure} className="text-text-muted hover:text-accent-blue underline decoration-dotted" aria-label={`Measure delay of ${topic}`}>
+        measure
+      </button>
+    );
+  }
+  if (delay === 'loading') return <span className="text-text-muted">...</span>;
+  if (delay === 'none') return <span className="text-text-muted" title="No sampled message had a header.stamp">no stamp</span>;
+  if ('error' in delay) return <span className="text-accent-rose" title={delay.error}>error</span>;
+  const top = Math.max(...delay.bins, 1);
+  const title =
+    `p50 ${fmtMs(delay.p50Ms)}, p95 ${fmtMs(delay.p95Ms)}, min ${fmtMs(delay.minMs)}, max ${fmtMs(delay.maxMs)} ` +
+    `over ${delay.n} sampled messages` + (delay.unstamped ? ` (${delay.unstamped} without a stamp)` : '') +
+    (delay.minMs < 0 ? '. Negative: stamped after it was logged, so the clocks differ.' : '');
+  return (
+    <span className="inline-flex items-center gap-1.5" title={title} aria-label={`Delay of ${topic}: ${title}`}>
+      <svg width={32} height={14} className="inline-block text-accent-blue/70" aria-hidden>
+        {delay.bins.map((c, i) => (
+          <rect key={i} x={i * 2} y={14 - (c / top) * 14} width={1.6} height={(c / top) * 14} fill="currentColor" />
+        ))}
+      </svg>
+      <span className={`tabular-nums ${delay.p95Ms > 100 || delay.minMs < 0 ? 'text-accent-amber' : 'text-text-primary'}`}>
+        {fmtMs(delay.p50Ms)} / {fmtMs(delay.p95Ms)}
+      </span>
+    </span>
+  );
+}
+
+function HealthRow({ health, delay, onMeasure }: { health: TopicHealth; delay: DelayState | undefined; onMeasure: () => void }) {
   const { topic, count, meanHz, jitterSec, gapCount, bandwidthBytesPerSec, rateOverTime } = health;
   const jitterMs = jitterSec * 1000;
   const bwKBs = bandwidthBytesPerSec / 1024;
@@ -375,6 +432,9 @@ function HealthRow({ health }: { health: TopicHealth }) {
       </td>
       <td className="py-1.5 px-3 text-right tabular-nums text-text-primary">
         {bwKBs >= 1000 ? `${(bwKBs / 1024).toFixed(1)} MB/s` : `${bwKBs.toFixed(1)} KB/s`}
+      </td>
+      <td className="py-1.5 px-3 text-right whitespace-nowrap">
+        <DelayCell delay={delay} onMeasure={onMeasure} topic={topic} />
       </td>
       <td className="py-1.5 px-3 text-right">
         <Sparkline t={rateOverTime.t} hz={rateOverTime.hz} />
