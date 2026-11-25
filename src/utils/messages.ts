@@ -305,3 +305,13 @@ export function isLogType(type: string): boolean {
     (type.includes('rcl_interfaces') || type.includes('rosgraph_msgs'))
   );
 }
+
+/** audio_common_msgs audio (both the ros-drivers and the mgonzs13 packages). */
+export function isAudioType(type: string): boolean {
+  return /audio_common_msgs\/(msg\/)?(AudioData|AudioDataStamped|Audio|AudioStamped)$/.test(type);
+}
+
+/** The ros-drivers AudioInfo topic type (format for the raw-byte variant). */
+export function isAudioInfoType(type: string): boolean {
+  return /audio_common_msgs\/(msg\/)?AudioInfo$/.test(type);
+}

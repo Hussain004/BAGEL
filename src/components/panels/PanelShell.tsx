@@ -45,6 +45,7 @@ const KIND_LABELS: Record<PanelKind, string> = {
   splat: 'Gaussian Splat',
   state: 'State',
   search: 'Find',
+  audio: 'Audio',
 };
 
 /**

@@ -29,4 +29,5 @@ export const PANEL_COMPONENTS: Record<PanelKind, LazyExoticComponent<ComponentTy
   splat: panel(() => import('./SplatViewer'), 'SplatViewer'),
   state: panel(() => import('./StateTransitions'), 'StateTransitions'),
   search: panel(() => import('./Search'), 'SearchPanel'),
+  audio: panel(() => import('./Audio'), 'AudioPanel'),
 };

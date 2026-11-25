@@ -43,6 +43,7 @@ export const PANEL_KINDS = [
   'splat',
   'state',
   'search',
+  'audio',
 ] as const;
 
 export type PanelKind = (typeof PANEL_KINDS)[number];
