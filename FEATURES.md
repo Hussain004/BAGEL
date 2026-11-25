@@ -188,7 +188,7 @@ Explicitly out of scope for v1.6.1:
 
 Explicitly out of scope for v1.6.2:
 - **Codec string auto-detection from SPS.** The `avc1.PPCCLL` string can be parsed from the SPS NAL unit's profile, constraint, and level bytes. The current implementation uses a safe fallback (`'avc1.42E01E'` for H264, `'hev1.1.6.L93.B0'` for H265) that most browsers accept for conformant streams.
-- **AV1 / VP9 decoding.** The WebCodecs `VideoDecoder` supports additional codecs, but no Foxglove bridge currently emits AV1 or VP9 `CompressedVideo` messages in practice. The format routing table can be extended when needed.
+- **AV1 / VP9 decoding.** The WebCodecs `VideoDecoder` supports additional codecs, but no Foxglove bridge currently emits AV1 or VP9 `CompressedVideo` messages in practice. The format routing table can be extended when needed. (Since shipped: VP9 and AV1 decode, see CHANGELOG.)
 - **Live video seeking.** During live playback the ring buffer holds the last 10,000 messages per topic, so the seek window is bounded by the buffer size and does not require a pre-built keyframe index.
 
 ---
