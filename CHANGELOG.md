@@ -9,12 +9,16 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- `grid_map_msgs/msg/GridMap` topics render in the 3D scene as a point per
+  known cell at its height (the `elevation` layer, else the first), coloured
+  by a packed `color` layer or the next layer as intensity. Storage order,
+  the circular buffer start indices and the cell positions follow
+  grid_map_ros, and the type is in the bundled registry for `.db3` bags.
 - Layout import: **Presets > Import Foxglove / PlotJuggler layout** rebuilds a
   Foxglove / Lichtblick `.json` or PlotJuggler `.xml` layout for the loaded
   bag (splits, panel kinds and topics, plot fields, extra-topic series, XY
   plots) and lists what it left out. Plot field chips now report their state
   to assistive technology (`aria-pressed`).
-
 - Issue report: the Share modal can download one zip to attach to a ticket,
   holding a clip of the bag (the zoomed timeline window, or 10 s around the
   playhead), the link that restores the layout, and a Health summary of every
