@@ -9,6 +9,12 @@ Per-version feature detail lives in [FEATURES.md](FEATURES.md). The
 
 ## [Unreleased]
 
+- Layout import: **Presets > Import Foxglove / PlotJuggler layout** rebuilds a
+  Foxglove / Lichtblick `.json` or PlotJuggler `.xml` layout for the loaded
+  bag (splits, panel kinds and topics, plot fields, extra-topic series, XY
+  plots) and lists what it left out. Plot field chips now report their state
+  to assistive technology (`aria-pressed`).
+
 - Issue report: the Share modal can download one zip to attach to a ticket,
   holding a clip of the bag (the zoomed timeline window, or 10 s around the
   playhead), the link that restores the layout, and a Health summary of every

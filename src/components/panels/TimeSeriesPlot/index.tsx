@@ -183,6 +183,16 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
   const visibility = settings.visibility;
   const setVisibility = (next: Record<string, boolean>) =>
     updateSettings(panelId, { visibility: next });
+  // An imported layout names the fields it plotted. Once the topic's fields are
+  // known, hide the rest (explicit entries win) and drop the one-off list.
+  const onlyFields = settings.onlyFields;
+  useEffect(() => {
+    if (!onlyFields || !primary) return;
+    const keep = new Set(onlyFields);
+    const next = { ...visibility };
+    for (const f of primary.fieldNames) if (!(f in next)) next[f] = keep.has(f);
+    updateSettings(panelId, { visibility: next, onlyFields: null });
+  }, [onlyFields, primary, visibility, panelId, updateSettings]);
   // Guard against old stored state that predates the expressions field.
   // useMemo (rather than `settings.expressions ?? []` inline) so the
   // fallback is a stable array reference across renders - otherwise every
@@ -814,6 +824,7 @@ export function TimeSeriesPlot({ panelId, topicName, type, bagId }: TimeSeriesPl
                   <button
                     key={f}
                     onClick={() => setVisibility({ ...visibility, [f]: !visible })}
+                    aria-pressed={visible}
                     title={extra ? `${extra.topic}  ${extra.field}` : undefined}
                     className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs mono transition-colors border ${
                       visible

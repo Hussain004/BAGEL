@@ -236,6 +236,17 @@ to attach to a GitHub or Jira ticket: a clip of the bag (the zoomed timeline
 window, or 10 s around the playhead), the link for this view, and a Health
 summary of every topic with its longest gaps.
 
+### Importing a Foxglove or PlotJuggler layout
+
+**Presets > Import Foxglove / PlotJuggler layout** opens a Foxglove (or
+Lichtblick) layout `.json` or a PlotJuggler layout `.xml` and rebuilds it for
+the loaded bag: the split tree, each panel's kind and topic, and each plot's
+fields (fields from other topics come along as extra series; XY plots stay XY).
+Topics the bag lacks and panels BAGEL has no equivalent for are listed after
+the import. BAGEL shows a topic once per panel kind, so several plots of one
+topic become one plot with all their fields, and only the open tab of a tabbed
+layout is imported.
+
 ### Command palette
 
 `Cmd/Ctrl + K` opens a searchable list of everything BAGEL can do: every topic

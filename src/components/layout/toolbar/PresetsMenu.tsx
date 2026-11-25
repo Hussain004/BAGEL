@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { useBagStore, resolveBagEntry } from '../../../store/bagStore';
+import { useTimeSeriesPanelStore } from '../../../store/panelUiStores';
 import { useLayoutStore } from '../../../store/layoutStore';
 import { usePresetStore } from '../../../store/presetStore';
 
@@ -110,8 +112,70 @@ export function PresetsMenu() {
                 Save
               </button>
             </form>
+            <LayoutImport />
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Open a Foxglove / Lichtblick layout JSON or a PlotJuggler layout XML and
+ * replace the current layout with its BAGEL equivalent for the focused bag.
+ * What could not be carried over is listed under the button.
+ */
+function LayoutImport() {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const entry = useBagStore((s) => resolveBagEntry(s, null));
+  const [notes, setNotes] = useState<string[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !entry) return;
+    setError(null);
+    setNotes(null);
+    try {
+      // Loaded on use: the importer and its XML parser stay out of the main bundle.
+      const { importLayout } = await import('../../../utils/layoutImport');
+      const result = importLayout(await file.text(), entry.summary.topics, entry.id);
+      if (result.root) {
+        useLayoutStore.getState().restoreLayout(result.root);
+        const update = useTimeSeriesPanelStore.getState().update;
+        for (const [id, settings] of Object.entries(result.plots)) update(id, settings);
+      }
+      setNotes(result.notes);
+    } catch (err) {
+      setError(`Could not read ${file.name}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
+  return (
+    <div className="border-t border-border p-2 text-xs">
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        disabled={!entry}
+        className="w-full rounded-md border border-border px-2.5 py-1.5 text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        title={entry ? 'Replace the layout with one from Foxglove, Lichtblick or PlotJuggler' : 'Load a bag first'}
+      >
+        Import Foxglove / PlotJuggler layout...
+      </button>
+      <input ref={inputRef} type="file" accept=".json,.xml" className="hidden" onChange={(e) => void onFile(e)} aria-label="Layout file to import" />
+      {error && <p className="mt-2 text-accent-rose" role="alert">{error}</p>}
+      {notes && (
+        <div className="mt-2 text-text-muted" role="status">
+          {notes.length === 0 ? 'Imported everything.' : (
+            <>
+              Imported. Left out or changed:
+              <ul className="mt-1 list-disc pl-4 space-y-0.5 max-h-32 overflow-y-auto">
+                {notes.map((n) => <li key={n}>{n}</li>)}
+              </ul>
+            </>
+          )}
+        </div>
       )}
     </div>
   );
