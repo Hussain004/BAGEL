@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:property name="arm_reach" value="0.75"/>
+  <xacro:macro name="arm" params="parent">
+    <link name="arm_link"><visual><geometry><mesh filename="meshes/arm.stl" scale="1 1 1"/></geometry></visual></link>
+    <joint name="arm_joint" type="revolute">
+      <parent link="${parent}"/><child link="arm_link"/>
+      <limit lower="${-pi}" upper="${pi}" effort="10" velocity="${arm_reach * 2}"/>
+    </joint>
+  </xacro:macro>
+</robot>

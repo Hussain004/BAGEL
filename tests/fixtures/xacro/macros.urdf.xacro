@@ -1,0 +1,56 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="macros">
+  <xacro:property name="scale" value="2"/>
+  <xacro:property name="lazy_val" value="${scale * later}"/>
+  <xacro:property name="later" value="5"/>
+  <xacro:property name="greedy" value="${scale * 3}" lazy_eval="false"/>
+  <xacro:property name="body">
+    <geometry><sphere radius="0.05"/></geometry>
+  </xacro:property>
+
+  <!-- forwarding with ^ and ^| -->
+  <xacro:property name="arm_len" value="0.4"/>
+  <xacro:macro name="segment" params="name arm_len:=^ width:=^|0.03 **content">
+    <link name="${name}" len="${arm_len}" width="${width}">
+      <xacro:insert_block name="content"/>
+    </link>
+  </xacro:macro>
+
+  <!-- macro using caller scope, scope=parent, nested calls -->
+  <xacro:macro name="chain" params="prefix n">
+    <xacro:segment name="${prefix}${n}">
+      <parts>
+        <visual><xacro:insert_block name="body"/></visual>
+        <collision><xacro:insert_block name="body"/></collision>
+      </parts>
+    </xacro:segment>
+    <xacro:property name="last_link" value="${prefix}${n}" scope="parent"/>
+    <xacro:if value="${n > 1}">
+      <xacro:chain prefix="${prefix}" n="${n - 1}"/>
+    </xacro:if>
+  </xacro:macro>
+
+  <xacro:chain prefix="seg_" n="3"/>
+  <link name="after" last="${last_link}" lazy="${lazy_val}" greedy="${greedy}"/>
+
+  <xacro:property name="dyn" value="segment"/>
+  <xacro:call macro="${dyn}" name="dynamic" width="0.5">
+    <inertial><mass value="1"/></inertial>
+  </xacro:call>
+
+  <xacro:element xacro:name="link" name="made_by_element">
+    <xacro:attribute name="note" value="n${scale + 0.5}"/>
+  </xacro:element>
+
+  <xacro:property name="temp" value="1"/>
+  <xacro:property name="temp" remove="true"/>
+  <xacro:property name="temp" default="restored"/>
+  <link name="temp_${temp}"/>
+
+  <xacro:macro name="multi_line" params="a
+                                         b:=2
+                                         c:='quoted value'">
+    <link name="ml" a="${a}" b="${b}" c="${c}"/>
+  </xacro:macro>
+  <xacro:multi_line a="1"/>
+</robot>

@@ -1,0 +1,72 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="basic">
+  <xacro:arg name="prefix" default="bot_"/>
+  <xacro:arg name="use_lidar" default="true"/>
+  <xacro:property name="robot_name" value="demo_$(arg prefix)"/>
+  <xacro:property name="wheel_radius" value="0.1"/>
+  <xacro:property name="wheel_width" value="${wheel_radius / 2}"/>
+  <xacro:property name="base_len" value="0.6"/>
+  <xacro:property name="half" value="${base_len/2}"/>
+  <xacro:property name="count" value="3"/>
+  <xacro:property name="ratio" value="${count / 2}"/>
+  <xacro:property name="ifloor" value="${7 // 2}"/>
+  <xacro:property name="neg_mod" value="${-7 % 3}"/>
+  <xacro:property name="tiny" value="${0.1 * 3}"/>
+  <xacro:property name="big" value="${10.0 ** 17}"/>
+  <xacro:property name="small" value="${1.5e-5}"/>
+  <xacro:property name="color" value="blue"/>
+  <xacro:property name="mass" default="2.5"/>
+  <xacro:property name="mass" default="9.0"/>
+
+  <material name="${color}"><color rgba="0 0 ${1.0 if color == 'blue' else 0} 1"/></material>
+
+  <link name="$(arg prefix)base">
+    <visual>
+      <origin xyz="0 0 ${wheel_radius}" rpy="0 0 ${pi/2}"/>
+      <geometry><box size="${base_len} ${base_len*0.5} 0.2"/></geometry>
+      <material name="${color}"/>
+    </visual>
+    <inertial>
+      <mass value="${mass}"/>
+      <inertia ixx="${mass * (0.3**2) / 12}" ixy="0" ixz="0" iyy="${round(mass*0.123456, 3)}" iyz="0" izz="${int(ratio * 10)}"/>
+    </inertial>
+  </link>
+  <link name="info" robot="${robot_name}" ratio="${ratio}" ifloor="${ifloor}" neg_mod="${neg_mod}" tiny="${tiny}" big="${big}" small="${small}"
+        cmp="${1 &lt; 2 &lt; 3}" logic="${0 or 'fallback'}" inlist="${'b' in ['a', 'b']}" deg="${degrees(pi)}"
+        trig="${sin(0)} ${cos(0)} ${atan2(1, 1)} ${sqrt(2)}" dollars="$${not_expanded}" strcat="${'x' + str(count)}"
+        mathns="${math.pi * 2}" absv="${python.abs(-3)} ${python.abs(-2.5)}" minmax="${min(3, 1, 2)} ${max([4.0, 7, 5])}"
+        neg="${-wheel_radius}" pw="${2 ** 10} ${2 ** -1}" lst="${[1, 2.5, 'a']}" idx="${[10, 20, 30][-1]}"/>
+
+  <xacro:macro name="wheel" params="side reflect:=1 radius:=${wheel_radius} *origin">
+    <link name="$(arg prefix)${side}_wheel">
+      <visual>
+        <xacro:insert_block name="origin"/>
+        <geometry><cylinder radius="${radius}" length="${wheel_width}"/></geometry>
+      </visual>
+    </link>
+    <joint name="${side}_wheel_joint" type="continuous">
+      <parent link="$(arg prefix)base"/>
+      <child link="$(arg prefix)${side}_wheel"/>
+      <origin xyz="0 ${reflect * half} 0" rpy="${-pi/2} 0 0"/>
+      <axis xyz="0 0 1"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:wheel side="left">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </xacro:wheel>
+  <xacro:wheel side="right" reflect="-1" radius="0.12">
+    <origin xyz="0 0.01 0"/>
+  </xacro:wheel>
+
+  <xacro:if value="$(arg use_lidar)">
+    <link name="lidar"/>
+    <joint name="lidar_joint" type="fixed"><parent link="$(arg prefix)base"/><child link="lidar"/></joint>
+  </xacro:if>
+  <xacro:unless value="${count > 2}">
+    <link name="never"/>
+  </xacro:unless>
+  <xacro:if value="${count == 3 and color != 'red'}">
+    <link name="always"/>
+  </xacro:if>
+</robot>

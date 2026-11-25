@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="includes">
+  <link name="base"/>
+  <xacro:include filename="arm/arm.xacro"/>
+  <xacro:include filename="arm/tool.xacro" ns="t"/>
+  <xacro:include filename="arm/missing.xacro" optional="true"/>
+  <xacro:arm parent="base"/>
+  <xacro:t.tool/>
+  <link name="reach" value="${arm_reach}" tool="${t.tool_len}"/>
+</robot>

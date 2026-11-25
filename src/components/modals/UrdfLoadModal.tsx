@@ -14,7 +14,28 @@ import {
   setUrlBinding,
   subscribePackageResolver,
   listPackageMappings,
+  resolveMeshUriSync,
 } from '../../parsers/packageResolver';
+import { expandXacro, isXacro } from '../../parsers/xacro';
+
+/** Read a file a xacro includes: through the package mapping, or over http(s). */
+async function readIncludedFile(uri: string): Promise<string> {
+  if (!uri.startsWith('package://') && !/^https?:\/\//.test(uri)) {
+    throw new Error(
+      'a dropped file cannot read the files next to it. Include it as $(find <package>)/... ' +
+        'and map the package.',
+    );
+  }
+  const resolved = resolveMeshUriSync(uri);
+  try {
+    if (resolved.file) return await resolved.file.text();
+    const res = await fetch(resolved.url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.text();
+  } finally {
+    resolved.release();
+  }
+}
 
 /**
  * UrdfLoadModal - v1.3.0
@@ -62,33 +83,50 @@ export function UrdfLoadModal() {
   const inputRef = useRef<HTMLInputElement>(null);
   const onPickFile = () => inputRef.current?.click();
 
-  const ingestUrdfText = useCallback((text: string, sourceName: string) => {
+  // A xacro whose include needs a package that is not mapped yet: show that
+  // package's row, and expand again once it is bound.
+  const [pendingXacro, setPendingXacro] = useState<{ text: string; sourceName: string; pkg: string } | null>(null);
+
+  const ingestUrdfText = useCallback(async (text: string, sourceName: string) => {
     setParseError(null);
+    setPendingXacro(null);
     try {
-      const { model, warnings } = parseUrdf(text);
-      setParsed({ model, text, sourceName, warnings });
+      const xacro = /\.xacro$/i.test(sourceName) || isXacro(text);
+      const urdf = xacro ? await expandXacro(text, { uri: sourceName, readFile: readIncludedFile }) : text;
+      const { model, warnings } = parseUrdf(urdf, { xacroExpanded: xacro });
+      setParsed({ model, text: urdf, sourceName, warnings });
     } catch (err) {
-      setParseError(err instanceof Error ? err.message : String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      const pkg = /No mapping for package "([^"]+)"/.exec(message)?.[1];
+      if (pkg) setPendingXacro({ text, sourceName, pkg });
+      else setParseError(message);
       setParsed(null);
     }
   }, []);
+
+  useEffect(() => {
+    if (!pendingXacro) return;
+    return subscribePackageResolver(() => {
+      if (hasPackageBinding(pendingXacro.pkg)) void ingestUrdfText(pendingXacro.text, pendingXacro.sourceName);
+    });
+  }, [pendingXacro, ingestUrdfText]);
 
   const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = '';
     const text = await file.text();
-    ingestUrdfText(text, file.name);
+    await ingestUrdfText(text, file.name);
   };
 
-  // Drag-drop on the modal body. We accept .urdf / .xacro / any text file -
-  // xacro detection inside `parseUrdf` will surface a clear error if needed.
+  // Drag-drop on the modal body. We accept .urdf / .xacro / any text file;
+  // xacro files are expanded in the browser before parsing.
   const onDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
     if (!file) return;
     const text = await file.text();
-    ingestUrdfText(text, file.name);
+    await ingestUrdfText(text, file.name);
   };
   const onDragOver = (e: React.DragEvent) => e.preventDefault();
 
@@ -99,7 +137,7 @@ export function UrdfLoadModal() {
       const res = await fetch(import.meta.env.BASE_URL + 'sample-bags/sample-robot.urdf');
       if (!res.ok) throw new Error(`Failed to fetch sample URDF (${res.status}).`);
       const text = await res.text();
-      ingestUrdfText(text, 'sample-robot.urdf');
+      await ingestUrdfText(text, 'sample-robot.urdf');
     } catch (err) {
       setParseError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -174,7 +212,7 @@ export function UrdfLoadModal() {
             <div className="mt-4 flex flex-col items-center justify-center gap-3 border border-dashed border-border rounded-md p-8 text-center">
               <UrdfIcon />
               <p className="text-text-tertiary text-xs">
-                Drag a <code className="mono text-text-primary">.urdf</code> file here
+                Drag a <code className="mono text-text-primary">.urdf</code> or <code className="mono text-text-primary">.urdf.xacro</code> file here
               </p>
               <div className="flex items-center gap-2">
                 <button
@@ -222,6 +260,18 @@ export function UrdfLoadModal() {
                 </ul>
               </details>
             )}
+          </section>
+        )}
+
+        {pendingXacro && (
+          <section>
+            <SectionHeader
+              title="Package needed to expand this xacro"
+              hint={`${pendingXacro.sourceName} includes a file from this package.`}
+            />
+            <ul className="mt-2 space-y-3">
+              <PackageRow packageName={pendingXacro.pkg} />
+            </ul>
           </section>
         )}
 

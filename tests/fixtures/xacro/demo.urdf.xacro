@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="walker">
+  <xacro:include filename="$(find demo_pkg)/urdf/parts.xacro"/>
+  <link name="pelvis"><visual><geometry><box size="0.2 0.3 0.1"/></geometry></visual></link>
+  <xacro:leg side="left" parent="pelvis"/>
+  <xacro:leg side="right" parent="pelvis"/>
+</robot>

@@ -27,8 +27,8 @@
  *     other extension elements that aren't part of the URDF visualisation
  *     model. Surfaced as `unknown-element` warnings so the user knows we saw
  *     them.
- *   - Xacro macros (`<xacro:include>`, `${...}` substitutions). Detected and
- *     surfaced as an explicit warning - users pre-process with `xacro` once.
+ *   - Xacro macros (`<xacro:include>`, `${...}` substitutions). parsers/xacro.ts
+ *     expands them first; parseUrdf itself refuses unexpanded xacro.
  *   - Texture / material images. Colour only.
  */
 
@@ -155,7 +155,7 @@ export interface XmlElement {
 
 class XmlError extends Error {}
 
-function parseXml(source: string): XmlElement {
+export function parseXml(source: string): XmlElement {
   let i = 0;
   const len = source.length;
 
@@ -515,7 +515,7 @@ function parseJoint(el: XmlElement, warnings: UrdfWarning[]): UrdfJoint | null {
 }
 
 /** Walk the entire document for `xacro:`-prefixed elements or `${…}` substitutions. */
-function detectXacro(root: XmlElement): boolean {
+export function detectXacro(root: XmlElement): boolean {
   const stack: XmlElement[] = [root];
   while (stack.length > 0) {
     const el = stack.pop()!;
@@ -536,7 +536,7 @@ function detectXacro(root: XmlElement): boolean {
  * unprocessed xacro). Anything recoverable is surfaced as a warning so the
  * modal can show "we saw these issues but the model still rendered".
  */
-export function parseUrdf(xmlText: string): UrdfParseResult {
+export function parseUrdf(xmlText: string, opts: { xacroExpanded?: boolean } = {}): UrdfParseResult {
   if (!xmlText || !xmlText.trim()) {
     throw new Error('URDF text is empty.');
   }
@@ -555,11 +555,11 @@ export function parseUrdf(xmlText: string): UrdfParseResult {
     );
   }
 
-  if (detectXacro(root)) {
+  // Expanded output may still hold a literal `${` (left by a `$${` escape), so skip the check then.
+  if (!opts.xacroExpanded && detectXacro(root)) {
     throw new Error(
-      'This file contains xacro macros (e.g. <xacro:include>) or ${…} expressions. ' +
-        'BAGEL does not run xacro - pre-process with `xacro your.urdf.xacro > your.urdf` ' +
-        'first and drop the resulting URDF here.',
+      'This file contains xacro macros (e.g. <xacro:include>) or ${…} expressions; ' +
+        'expand it with expandXacro (parsers/xacro.ts) before parsing.',
     );
   }
 

@@ -1,0 +1,5 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:property name="tool_len" value="0.12"/>
+  <xacro:macro name="tool" params=""><link name="tool" len="${tool_len}"/></xacro:macro>
+</robot>

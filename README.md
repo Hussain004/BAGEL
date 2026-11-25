@@ -115,6 +115,7 @@ All panels resolve `header.frame_id` through `/tf` + `/tf_static` against a user
 - **Drop a `.urdf` and the robot appears in every 3D panel**, anchored to its root link in world space via the bag's `/tf` stream. Joints animate from `sensor_msgs/JointState` (auto-detected) when the bag publishes it; static URDFs render at their rest pose. A toolbar "Robot" button opens the load modal; the Display card in each 3D panel grows a per-panel `robot model` hide toggle.
 - **Geometry support**: box / cylinder / sphere primitives + `.stl` / `.dae` / `.obj` meshes. Loaders are lazy-imported on first use of each file type so primitives-only URDFs don't pay the Collada loader's bundle cost. A `.dae`'s textures resolve through the same package mapping as the mesh, so a dropped package folder shows them too (relative paths, `..`, percent-encoded names, and absolute paths from the exporter's machine, matched by file name).
 - **`package://` resolver**: paste a URL prefix or drag-drop a folder per referenced package; URL bindings persist across sessions in `localStorage` under `bagel:package-roots:v1`. No auto-fetch from ROS distros - BAGEL only loads meshes from where you point it.
+- **Xacro expands in the browser**: drop a `.urdf.xacro` and BAGEL runs it, with properties, math, macros (defaults, `^` forwarding, blocks), conditionals, `$(arg)`, and includes read through the same package mapping (`$(find pkg)` asks for that package's folder). Checked against ROS xacro's own output. Not yet: `load_yaml` (so the UR descriptions still need ROS xacro), xacro arguments other than the defaults, and relative includes from a single dropped file (use `$(find pkg)`).
 - **Bundled sample robot URDF** (`public/sample-bags/sample-robot.urdf`) pairs with `tour.mcap` so the "Try a sample robot" button in the modal demonstrates the full flow on a fresh checkout.
 
 ### Live robot data *(v1.5.0 - v1.5.6)*
@@ -170,8 +171,6 @@ Known limitations and ideas that are not yet scheduled:
 | Idea | Notes |
 |---|---|
 | [Plugin panels](https://github.com/Hussain004/BAGEL/issues/122) | User-built views against a stable panel API. The internal registry is in place (`PANEL_KINDS`, `PANEL_META`, `PANEL_COMPONENTS`); a public API is deliberately not published until the internal panels settle. |
-| [Cloud-hosted shareable URLs](https://github.com/Hussain004/BAGEL/issues/123) | The URL hash is self-contained today, so a link breaks if the bag moves. |
-| [Xacro evaluator](https://github.com/Hussain004/BAGEL/issues/125) | Roughly 1000 lines of XML transform, so it is its own project. The URDF modal explains running xacro upstream meanwhile. |
 
 ---
 

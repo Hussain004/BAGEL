@@ -581,7 +581,7 @@ Everything in v1.2, plus:
 Explicitly out of scope for v1.3.0 (each follows in a sub-version):
 - **`MESH_RESOURCE` and `TRIANGLE_LIST` marker primitives** (v1.3.1) - the v0.8 pink-wireframe placeholder stays until v1.3.1 plumbs the same mesh loader into `markerObjects.ts`.
 - **`CameraInfo` overlay + frustum** (v1.3.2) - independent of the URDF work, ships as its own PR.
-- **Xacro evaluator**: ~1000 LOC of pure-JS XML transform, its own project. The modal explains the `xacro` pre-processing workaround when an unprocessed file is detected.
+- **Xacro evaluator**: ~1000 LOC of pure-JS XML transform, its own project. The modal explains the `xacro` pre-processing workaround when an unprocessed file is detected. (Since shipped: xacro files now expand in the browser, see CHANGELOG.)
 - **Mesh resolution from `package://` without a user-provided root** - no magic auto-resolve from URLs or GitHub. The alternative is fragile and a security risk. Users provide the package root once; persisted across sessions.
 - **Image rectification from `CameraInfo`** - the v1.3.2 overlay will show intrinsics and the camera frustum, not rectify pixels. Real rectification needs a per-frame canvas remap with a model-specific (plumb-bob, fisheye, equidistant) implementation.
 
